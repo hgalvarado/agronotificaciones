@@ -1,36 +1,105 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AgroNotificaciones — App web (Next.js + Supabase)
 
-## Getting Started
+Plataforma de control operativo de maquinaria agrícola. Ver `../ARQUITECTURA.md` (o el documento que te entregué antes) para el diseño completo de base de datos, RLS y lógica de negocio.
 
-First, run the development server:
+## 1. Requisitos
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- Node.js 20+ (este proyecto se generó con Node 22)
+- Una cuenta y proyecto en [supabase.com](https://supabase.com)
+- Los tres scripts SQL: `01_schema.sql`, `02_rls_policies.sql`, `03_rpc_business_logic.sql`
+
+## 2. Preparar la base de datos en Supabase
+
+1. Entra a tu proyecto de Supabase → **SQL Editor** → **New query**.
+2. Pega el contenido completo de `01_schema.sql` → **Run**. Debe terminar sin errores (crea tablas, tipos, triggers).
+3. Nueva query → pega `02_rls_policies.sql` → **Run** (activa RLS y crea las políticas).
+4. Nueva query → pega `03_rpc_business_logic.sql` → **Run** (crea las funciones de negocio y el dashboard).
+5. Verifica en **Table Editor** que aparezcan las tablas (`tickets`, `horometros`, `registros`, `equipos`, etc.) y que en cada una el candado de RLS esté **verde/activado**.
+
+### 2.1 Crear tu primer usuario Administrador
+
+1. Ve a **Authentication → Users → Add user** y créalo con tu correo y una contraseña (marca "Auto Confirm User").
+2. Copia el UUID del usuario recién creado.
+3. En **SQL Editor**, ejecuta (reemplazando el UUID y tu nombre):
+
+```sql
+insert into public.perfiles (id, nombre, rol_id, departamento)
+values ('PEGA-AQUI-EL-UUID', 'Henry Alvarado', 1, 'Torre Control'); -- rol_id 1 = ADMIN
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Sin esta fila, el login funciona pero la app mostrará "Cuenta pendiente de activación" (es la pantalla que armé a propósito para ese caso).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 2.2 Crear una temporada activa
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Para que el dashboard y el formulario de labores tengan lotes que mostrar, necesitas al menos una temporada marcada como activa y algunos lotes:
 
-## Learn More
+```sql
+insert into public.temporadas (nombre, fecha_inicio, fecha_fin, activa)
+values ('Temp. 25-26', '2025-08-01', '2026-07-31', true);
+```
 
-To learn more about Next.js, take a look at the following resources:
+Luego, desde la app (Panel admin → Catálogos → pestaña "Lotes") puedes ir agregando lotes, y desde el SQL Editor vincularlos a la temporada:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```sql
+insert into public.lotes_temporada (lote_id, temporada_id, area_neta)
+select l.id, t.id, 20
+from public.lotes l, public.temporadas t
+where l.nomenclatura = '1001-010' and t.activa = true;
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+(Esto se puede convertir en otra pantalla de catálogo más adelante — de momento se hace por SQL para no bloquear las pruebas.)
 
-## Deploy on Vercel
+## 3. Obtener las credenciales de la API
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+En el dashboard de Supabase: **Settings → API**.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `Project URL` → va en `NEXT_PUBLIC_SUPABASE_URL`
+- `anon public` key → va en `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+
+## 4. Correr la app en local
+
+```bash
+cp .env.local.example .env.local
+# edita .env.local y pega tus dos valores de Supabase
+
+npm install
+npm run dev
+```
+
+Abre http://localhost:3000 — te debe mandar a `/login`. Entra con el correo/contraseña que creaste en el paso 2.1.
+
+Para probarlo desde tu celular en la misma red (recomendado, ya que la app es mobile-first):
+
+```bash
+npm run dev -- -H 0.0.0.0
+```
+
+y entra desde el celular a `http://<IP-de-tu-compu>:3000`.
+
+## 5. Qué puedes probar ya mismo
+
+1. **Generar ticket** desde la pantalla de Tickets.
+2. Dentro del ticket, **Agregar horómetro** (elige un equipo — antes debes cargar equipos y operadores desde Panel admin → Catálogos si la base está vacía).
+3. Dentro del horómetro, **Agregar labor** (elige labor, tarea SAP, implemento y lote(s) con avance en mz). Nota: para que aparezcan tareas/implementos debes vincularlos a la labor — de momento eso se hace por SQL insertando en `labores_tareas` / `labores_implementos` (o lo agregamos como pantalla en la siguiente iteración).
+4. Botón **⧉ Duplicar** en un horómetro o una labor ya guardada.
+5. **Cerrar ticket** — después de cerrado, intenta editar un horómetro: debe fallar (o no mostrar la opción) para tu usuario si no eres Admin/Torre de Control.
+6. **Avance (dashboard)** — filtra por categoría de labor y toca una tarjeta de lote para ver el detalle.
+7. **Panel admin → Catálogos** — agrega/edita zonas, equipos, operadores, labores, etc. **Panel admin → Permisos por rol** (sólo visible siendo Admin) — activa/desactiva permisos de Torre de Control y Digitador sin tocar código.
+
+## 6. Siguiente paso: publicarla para que el equipo la use
+
+Cuando quieras que quede disponible fuera de tu compu (para que el equipo de campo la use desde su celular):
+
+1. Sube este proyecto a un repositorio de GitHub (puedo ayudarte con eso).
+2. Crea una cuenta gratuita en [vercel.com](https://vercel.com) e importa el repositorio.
+3. En Vercel, en **Settings → Environment Variables**, agrega las mismas dos variables (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`).
+4. Deploy. Vercel te da una URL pública (`https://tu-app.vercel.app`) que ya es 100% usable desde cualquier celular, con HTTPS.
+
+No lo hice en este paso porque primero quieres probarla en local — avísame cuando estés listo y lo dejamos publicado.
+
+## 7. Pendientes conocidos (siguiente iteración)
+
+- Pantallas de catálogo para las relaciones `labores_tareas` y `labores_implementos` (hoy se administran por SQL).
+- Pantalla para vincular `lotes` a una `temporada` (hoy por SQL).
+- Módulo financiero (tarifas) — el backend ya existe (`tarifas_equipo`, `tarifas_labor`, función `fn_costo_ticket`), falta la pantalla.
+- Generar tipos TypeScript reales desde tu esquema con `npx supabase gen types typescript` una vez tengas la CLI de Supabase enlazada al proyecto, para reemplazar los tipos escritos a mano en `src/lib/types.ts`.
