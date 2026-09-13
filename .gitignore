@@ -30,8 +30,12 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# Variables de entorno: NINGUNA sube al repositorio.
+# `.env*` cubre .env, .env.local, .env.production y cualquier variante.
 .env*
+# …salvo la PLANTILLA, que no lleva valores y documenta qué hay que
+# configurar en Vercel y en cada máquina.
+!.env*.example
 
 # vercel
 .vercel

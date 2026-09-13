@@ -1,7 +1,26 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { RegistroRow } from '@/components/registro/RegistroRow'
+import { getPerfilActual } from '@/lib/auth'
+import { TablaRegistros } from '@/components/registro/TablaRegistros'
+import {
+  BotonLink,
+  EstadoVacio,
+  Insignia,
+  Tarjeta,
+  TarjetaEncabezado,
+} from '@/components/ui/Primitivos'
+import {
+  IconChevronLeft,
+  IconGauge,
+  IconMoon,
+  IconPencil,
+  IconPlus,
+  IconSun,
+  IconTractor,
+  IconUser,
+} from '@/components/ui/Icons'
+import { formatearFecha } from '@/lib/estados'
 import type { Horometro, Registro, RegistroDetalle, Ticket } from '@/lib/types'
 
 export default async function HorometroDetailPage({
@@ -11,74 +30,192 @@ export default async function HorometroDetailPage({
 }) {
   const { ticketId, horometroId } = await params
   const supabase = await createClient()
+  const { rol } = await getPerfilActual()
 
-  const { data: ticket } = await supabase.from('tickets').select('*').eq('id', ticketId).single()
-  const { data: horometro } = await supabase
-    .from('horometros')
-    .select('*, equipos(*), operadores(*)')
-    .eq('id', horometroId)
-    .single()
+  const [{ data: ticketData }, { data: horometroData }] = await Promise.all([
+    supabase.from('tickets').select('*').eq('id', ticketId).single(),
+    supabase
+      .from('horometros')
+      .select('*, equipos(*), operadores(*)')
+      .eq('id', horometroId)
+      .single(),
+  ])
 
-  if (!ticket || !horometro) notFound()
+  if (!ticketData || !horometroData) notFound()
+  const ticket = ticketData as Ticket
+  const h = horometroData as Horometro
 
-  const { data: registros } = await supabase
+  const { data: registrosData } = await supabase
     .from('registros')
     .select('*, labores(*), tareas_sap(*), implementos(*)')
     .eq('horometro_id', horometroId)
     .order('created_at', { ascending: true })
 
-  const registroIds = (registros ?? []).map((r) => r.id)
-  const { data: detalles } =
+  const registros = (registrosData as Registro[] | null) ?? []
+  const registroIds = registros.map((r) => r.id)
+
+  const { data: detallesData } =
     registroIds.length > 0
       ? await supabase
           .from('registro_detalle')
           .select('*, lotes_temporada(*, lotes(*))')
           .in('registro_id', registroIds)
-      : { data: [] as RegistroDetalle[] }
+      : { data: [] }
+  const detalles = (detallesData as RegistroDetalle[] | null) ?? []
 
-  const abierto = (ticket as Ticket).estado === 'ABIERTO'
-  const h = horometro as Horometro
+  const abierto = ticket.estado === 'ABIERTO'
+  const esAdmin = rol?.codigo === 'ADMIN'
+  const esDiurno = h.turno === 'DIURNO'
 
   return (
-    <div className="flex flex-col gap-4 p-4">
-      <div>
-        <Link href={`/tickets/${ticketId}`} className="text-sm text-emerald-700">
-          ← Volver al ticket
-        </Link>
-        <h1 className="mt-1 text-lg font-bold text-slate-900">{h.equipos?.codigo}</h1>
-        <p className="text-sm text-slate-500">
-          {h.turno === 'DIURNO' ? 'Diurno' : 'Nocturno'} · {h.fecha} · {h.horometro_inicial} → {h.horometro_final} (
-          {h.horas_maquina} hrs máquina{h.horas_hombre != null ? `, ${h.horas_hombre} hrs hombre` : ''})
-        </p>
-        {h.operadores?.nombre && <p className="text-sm text-slate-500">Operador: {h.operadores.nombre}</p>}
-        {h.comentario && <p className="mt-1 rounded-lg bg-amber-50 p-2 text-sm text-amber-800">{h.comentario}</p>}
-      </div>
+    <div className="anim-aparecer flex flex-col gap-4 p-4 lg:p-6">
+      <Link
+        href={`/tickets/${ticketId}`}
+        className="inline-flex items-center gap-1 text-sm font-medium text-slate-500 transition-colors hover:text-slate-800"
+      >
+        <IconChevronLeft className="h-4 w-4" />
+        {ticket.codigo}
+      </Link>
 
-      {abierto && (
-        <Link
-          href={`/tickets/${ticketId}/horometros/${horometroId}/registros/nuevo`}
-          className="w-full rounded-xl bg-emerald-700 px-4 py-4 text-center text-base font-semibold text-white shadow active:scale-[0.98]"
-        >
-          + Agregar labor
-        </Link>
-      )}
+      {/* Encabezado del horómetro */}
+      <Tarjeta className="p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-700">
+              <IconTractor className="h-6 w-6" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-slate-900">
+                {h.equipos?.codigo ?? '—'}
+              </h1>
+              <p className="text-sm text-slate-400">{h.equipos?.nombre}</p>
+            </div>
+          </div>
 
-      <div className="flex flex-col gap-2">
-        <h2 className="text-sm font-semibold text-slate-500">Labores registradas</h2>
-        {(registros as Registro[] | null)?.map((r) => (
-          <RegistroRow
-            key={r.id}
-            registro={r}
-            detalle={(detalles as RegistroDetalle[] | null)?.filter((d) => d.registro_id === r.id) ?? []}
-            ticketAbierto={abierto}
-          />
-        ))}
-        {registros?.length === 0 && (
-          <p className="py-6 text-center text-sm text-slate-400">
-            Sin labores registradas todavía. Agrega la primera arriba.
+          <div className="flex flex-col items-end gap-1.5">
+            <Insignia tono={esDiurno ? 'ambar' : 'azul'}>
+              <span className="flex items-center gap-1">
+                {esDiurno ? <IconSun className="h-3.5 w-3.5" /> : <IconMoon className="h-3.5 w-3.5" />}
+                {esDiurno ? 'Diurno' : 'Nocturno'}
+              </span>
+            </Insignia>
+            <span className="text-xs text-slate-400">{formatearFecha(h.fecha)}</span>
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-100 pt-4 sm:grid-cols-4">
+          <Dato etiqueta="Inicial" valor={h.horometro_inicial} />
+          <Dato etiqueta="Final" valor={h.horometro_final} />
+          <Dato etiqueta="Horas máquina" valor={h.horas_maquina} destacado />
+          <Dato etiqueta="Horas hombre" valor={h.horas_hombre ?? '—'} />
+        </div>
+
+        {h.operadores?.nombre && (
+          <p className="mt-3 flex items-center gap-1.5 text-sm text-slate-500">
+            <IconUser className="h-4 w-4 text-slate-300" />
+            {h.operadores.nombre}
           </p>
         )}
-      </div>
+
+        {h.comentario && (
+          <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800 ring-1 ring-inset ring-amber-600/10">
+            {h.comentario}
+          </p>
+        )}
+
+        {abierto && (
+          <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+            <BotonLink
+              href={`/tickets/${ticketId}/horometros/${horometroId}/editar`}
+              variante="secundario"
+              tamano="sm"
+            >
+              <IconPencil className="h-4 w-4" />
+              Editar horómetro
+            </BotonLink>
+            {/* Cierra el ciclo equipo → labores → siguiente equipo sin
+                tener que devolverse a la pantalla del ticket. */}
+            <BotonLink href={`/tickets/${ticketId}/horometros/nuevo`} tamano="sm">
+              <IconPlus className="h-4 w-4" />
+              Siguiente equipo
+            </BotonLink>
+          </div>
+        )}
+      </Tarjeta>
+
+      {/* Labores de este horómetro */}
+      <Tarjeta>
+        <TarjetaEncabezado
+          titulo="Labores de este equipo"
+          contador={registros.length}
+          accion={
+            abierto ? (
+              <BotonLink
+                href={`/tickets/${ticketId}/horometros/${horometroId}/registros/nuevo`}
+                variante="suave"
+                tamano="sm"
+              >
+                <IconPlus className="h-4 w-4" />
+                Agregar
+              </BotonLink>
+            ) : undefined
+          }
+        />
+
+        <div className="p-3">
+          {registros.length === 0 ? (
+            <EstadoVacio
+              icono={<IconGauge />}
+              titulo="Sin labores registradas"
+              descripcion="Desglosa qué hizo este equipo durante las horas trabajadas."
+              accion={
+                abierto ? (
+                  <BotonLink
+                    href={`/tickets/${ticketId}/horometros/${horometroId}/registros/nuevo`}
+                    tamano="sm"
+                  >
+                    <IconPlus className="h-4 w-4" />
+                    Agregar labor
+                  </BotonLink>
+                ) : undefined
+              }
+            />
+          ) : (
+            <TablaRegistros
+              ticketId={ticketId}
+              ticketAbierto={abierto}
+              esAdmin={esAdmin}
+              registros={registros.map((r) => ({
+                ...r,
+                detalle: detalles.filter((d) => d.registro_id === r.id),
+              }))}
+            />
+          )}
+        </div>
+      </Tarjeta>
+    </div>
+  )
+}
+
+function Dato({
+  etiqueta,
+  valor,
+  destacado,
+}: {
+  etiqueta: string
+  valor: string | number
+  destacado?: boolean
+}) {
+  return (
+    <div>
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{etiqueta}</p>
+      <p
+        className={`mt-0.5 text-lg font-bold tracking-tight ${
+          destacado ? 'text-brand-700' : 'text-slate-900'
+        }`}
+      >
+        {valor}
+      </p>
     </div>
   )
 }

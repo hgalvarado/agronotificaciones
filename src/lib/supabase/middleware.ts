@@ -29,9 +29,16 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const isAuthRoute = request.nextUrl.pathname.startsWith('/login')
+  const ruta = request.nextUrl.pathname
+  const isAuthRoute = ruta.startsWith('/login')
 
-  if (!user && !isAuthRoute) {
+  // Rutas que existen para quien NO tiene usuario. El reporte de
+  // maquinaria se publica hacia afuera y lo que enseña lo decide la
+  // configuración del Administrador, no la sesión: pedirle login aquí
+  // sería contradecir lo único que hace esa pantalla.
+  const esPublica = ruta.startsWith('/reporte-maquinaria')
+
+  if (!user && !isAuthRoute && !esPublica) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)

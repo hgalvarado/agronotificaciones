@@ -1,6 +1,10 @@
+import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { RegistroForm } from '@/components/registro/RegistroForm'
+import { cargarCatalogosRegistro } from '@/lib/datosRegistro'
+import { IconChevronLeft } from '@/components/ui/Icons'
+import { Alerta } from '@/components/ui/Primitivos'
 
 export default async function NuevoRegistroPage({
   params,
@@ -10,53 +14,72 @@ export default async function NuevoRegistroPage({
   const { ticketId, horometroId } = await params
   const supabase = await createClient()
 
-  const { data: horometro } = await supabase.from('horometros').select('id, fecha').eq('id', horometroId).single()
-  if (!horometro) notFound()
-
-  const { data: temporadaActiva } = await supabase.from('temporadas').select('id').eq('activa', true).maybeSingle()
-
-  const [{ data: labores }, { data: tareasSap }, { data: implementos }, { data: lotesTemporada }] = await Promise.all([
+  const [{ data: horometro }, { data: hermanos }, catalogos] = await Promise.all([
     supabase
-      .from('labores')
-      .select('id, nombre, labores_tareas(tarea_id), labores_implementos(implemento_id)')
-      .eq('activo', true)
-      .order('nombre'),
-    supabase.from('tareas_sap').select('*').eq('activo', true).order('codigo'),
-    supabase.from('implementos').select('*').eq('activo', true).order('nombre'),
-    temporadaActiva
-      ? supabase
-          .from('lotes_temporada')
-          .select('id, area_neta, lotes(nomenclatura)')
-          .eq('temporada_id', temporadaActiva.id)
-          .eq('activo', true)
-      : Promise.resolve({ data: [] as never[] }),
+      .from('horometros')
+      .select('id, fecha, horas_maquina, equipos(codigo)')
+      .eq('id', horometroId)
+      .single(),
+    // Horas ya repartidas en las labores que este horometro ya tiene: el
+    // formulario propone el saldo, no el dia completo.
+    supabase.from('registros').select('horas_notificadas').eq('horometro_id', horometroId),
+    cargarCatalogosRegistro(),
   ])
 
-  const lotesOpciones = (lotesTemporada ?? []).map((lt: { id: string; area_neta: number; lotes: { nomenclatura: string } | { nomenclatura: string }[] | null }) => ({
-    lote_temporada_id: lt.id,
-    nomenclatura: Array.isArray(lt.lotes) ? (lt.lotes[0]?.nomenclatura ?? '—') : (lt.lotes?.nomenclatura ?? '—'),
-    area_neta: lt.area_neta,
-  }))
+  if (!horometro) notFound()
+
+  const horasMaquina = horometro.horas_maquina ?? 0
+  const horasRepartidas =
+    (hermanos as { horas_notificadas: number | null }[] | null)?.reduce(
+      (acc, r) => acc + (r.horas_notificadas ?? 0),
+      0
+    ) ?? 0
+
+  const equipoCodigo = Array.isArray(horometro.equipos)
+    ? horometro.equipos[0]?.codigo
+    : (horometro.equipos as { codigo: string } | null)?.codigo
 
   return (
-    <div>
-      <div className="p-4 pb-0">
-        <h1 className="text-lg font-bold text-slate-900">Nueva labor</h1>
-        {!temporadaActiva && (
-          <p className="mt-1 rounded-lg bg-amber-50 p-2 text-sm text-amber-800">
-            No hay una temporada activa configurada — no se pueden seleccionar lotes. Actívala en el panel admin.
-          </p>
-        )}
+    <div className="anim-aparecer flex flex-col gap-4 p-4 lg:p-6">
+      <Link
+        href={`/tickets/${ticketId}/horometros/${horometroId}`}
+        className="inline-flex items-center gap-1 text-sm font-medium text-slate-500 transition-colors hover:text-slate-800"
+      >
+        <IconChevronLeft className="h-4 w-4" />
+        Volver al horómetro
+      </Link>
+
+      <div>
+        <h1 className="text-xl font-bold tracking-tight text-slate-900">
+          ¿Qué hizo {equipoCodigo ?? 'el equipo'}?
+        </h1>
+        <p className="text-sm text-slate-400">
+          Registra la labor y los lotes donde trabajó. Puedes agregar varias seguidas.
+        </p>
       </div>
+
+      {!catalogos.temporadaId && (
+        <Alerta tono="ambar">
+          No hay una temporada activa configurada, así que no hay lotes para seleccionar. Actívala
+          desde Catálogos.
+        </Alerta>
+      )}
+
       <RegistroForm
         ticketId={ticketId}
         horometroId={horometroId}
-        temporadaId={temporadaActiva?.id ?? null}
+        temporadaId={catalogos.temporadaId}
         fecha={horometro.fecha}
-        labores={labores ?? []}
-        tareasSap={tareasSap ?? []}
-        implementos={implementos ?? []}
-        lotes={lotesOpciones}
+        labores={catalogos.labores}
+        tareasSap={catalogos.tareasSap}
+        implementos={catalogos.implementos}
+        lotes={catalogos.lotes}
+        temporadas={catalogos.temporadas}
+        proveedores={catalogos.proveedores}
+        implementosFisicos={catalogos.implementosFisicos}
+        vinculosFisicos={catalogos.vinculosFisicos}
+        horasMaquina={horasMaquina}
+        horasRepartidas={horasRepartidas}
       />
     </div>
   )

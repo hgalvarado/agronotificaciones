@@ -1,45 +1,56 @@
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
-import { getPerfilActual } from '@/lib/auth'
+import { getPerfilActual, getPermisos, getUsuarioActual } from '@/lib/auth'
+import { AppShell } from '@/components/ui/AppShell'
 import { LogoutButton } from '@/components/ui/LogoutButton'
-import { BottomNav } from '@/components/ui/BottomNav'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
+  // Ambas llamadas están memorizadas con cache(): getUsuarioActual() se
+  // resuelve una vez por request aunque getPerfilActual() también lo use.
+  const user = await getUsuarioActual()
   if (!user) redirect('/login')
 
-  const { perfil, rol } = await getPerfilActual()
+  const [{ perfil, rol }, permisos] = await Promise.all([getPerfilActual(), getPermisos()])
 
   if (!perfil) {
     return (
-      <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-slate-50 px-6 text-center">
-        <h1 className="text-lg font-semibold text-slate-900">Cuenta pendiente de activación</h1>
-        <p className="max-w-sm text-sm text-slate-500">
-          Tu usuario existe en Supabase Auth pero todavía no tiene un perfil (rol/departamento)
-          asignado en la tabla <code>perfiles</code>. Pide al Administrador que te agregue.
-        </p>
-        <LogoutButton />
-      </div>
+      <AvisoCuenta
+        titulo="Cuenta pendiente de activación"
+        mensaje="Tu usuario existe pero todavía no tiene un perfil asignado. Pide al Administrador que te dé de alta desde el panel de usuarios."
+      />
+    )
+  }
+
+  if (!perfil.activo) {
+    return (
+      <AvisoCuenta
+        titulo="Cuenta desactivada"
+        mensaje="Tu acceso fue desactivado por el Administrador. Si crees que es un error, comunícate con Torre de Control."
+      />
     )
   }
 
   return (
-    <div className="flex min-h-dvh flex-col bg-slate-50">
-      <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
-        <div>
-          <p className="text-sm font-semibold text-slate-900">{perfil.nombre}</p>
-          <p className="text-xs text-slate-500">{rol?.nombre ?? 'Sin rol'}</p>
-        </div>
-        <LogoutButton />
-      </header>
+    <AppShell
+      nombre={perfil.nombre}
+      rolNombre={rol?.nombre ?? 'Sin rol'}
+      esAdmin={rol?.codigo === 'ADMIN'}
+      esTorreControl={rol?.codigo === 'TORRE_CONTROL'}
+      permisos={[...permisos]}
+    >
+      {children}
+    </AppShell>
+  )
+}
 
-      <main className="flex-1 overflow-y-auto pb-24">{children}</main>
-
-      <BottomNav esAdmin={rol?.codigo === 'ADMIN'} esTorreControl={rol?.codigo === 'TORRE_CONTROL'} />
+function AvisoCuenta({ titulo, mensaje }: { titulo: string; mensaje: string }) {
+  return (
+    <div className="flex min-h-dvh flex-col items-center justify-center gap-4 px-6 text-center">
+      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-100 text-xl">
+        ⏳
+      </div>
+      <h1 className="text-lg font-semibold text-slate-900">{titulo}</h1>
+      <p className="max-w-sm text-sm text-slate-500">{mensaje}</p>
+      <LogoutButton />
     </div>
   )
 }

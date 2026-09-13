@@ -1,26 +1,191 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@theme {
+  /* Marca — verde campo, más profundo y menos "fluorescente" que el emerald default */
+  --color-brand-50: #f0fdf4;
+  --color-brand-100: #dcfce7;
+  --color-brand-200: #bbf7d0;
+  --color-brand-300: #86efac;
+  --color-brand-400: #4ade80;
+  --color-brand-500: #22c55e;
+  --color-brand-600: #16a34a;
+  --color-brand-700: #15803d;
+  --color-brand-800: #166534;
+  --color-brand-900: #14532d;
+
+  /* Tipografía del sistema: nítida en Windows 11 (Segoe UI Variable),
+     macOS/iOS (SF Pro) y Android (Roboto), sin descargar nada. */
+  --font-sans: "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", -apple-system,
+    BlinkMacSystemFont, "SF Pro Text", Roboto, ui-sans-serif, system-ui, "Helvetica Neue", Arial,
+    sans-serif;
+
+  /* Sombras suaves (la clave para que no se vea "plano de los 80") */
+  --shadow-card: 0 1px 2px 0 rgb(15 23 42 / 0.04), 0 1px 3px 0 rgb(15 23 42 / 0.06);
+  --shadow-raised: 0 4px 6px -1px rgb(15 23 42 / 0.07), 0 2px 4px -2px rgb(15 23 42 / 0.05);
+  --shadow-float: 0 10px 25px -5px rgb(15 23 42 / 0.12), 0 8px 10px -6px rgb(15 23 42 / 0.06);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ------------------------------------------------------------------ */
+/* Base                                                                */
+/* ------------------------------------------------------------------ */
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: #f6f7f9;
+  color: #0f172a;
+  font-family: var(--font-sans);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+/* Títulos con tracking ajustado: detalle chico, impacto grande */
+h1,
+h2,
+h3 {
+  letter-spacing: -0.018em;
+}
+
+/* Scrollbar discreto en paneles (desktop) */
+.scroll-suave {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+.scroll-suave::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scroll-suave::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.scroll-suave::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Entrada suave de paneles y modales */
+/* Termina en `transform: none` a propósito, NO en translateY(0).
+   Un transform distinto de `none` convierte al elemento en el marco de
+   referencia de sus hijos `position: fixed`, y con animation-fill-mode
+   `both` ese valor se queda pegado para siempre. Eso hacía que los
+   modales se dimensionaran contra el contenedor de la página en vez de
+   contra la pantalla. */
+@keyframes aparecer {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes subir {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@keyframes fundido {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.anim-aparecer {
+  animation: aparecer 0.18s ease-out both;
+}
+.anim-subir {
+  animation: subir 0.22s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+.anim-fundido {
+  animation: fundido 0.15s ease-out both;
+}
+
+/* Esqueleto de carga */
+@keyframes pulso {
+  50% {
+    opacity: 0.45;
+  }
+}
+.esqueleto {
+  background-color: #e2e8f0;
+  border-radius: 0.5rem;
+  animation: pulso 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Respeta a quien pide menos movimiento */
+@media (prefers-reduced-motion: reduce) {
+  .anim-aparecer,
+  .anim-subir,
+  .anim-fundido,
+  .esqueleto {
+    animation: none;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Impresión                                                           */
+/* ------------------------------------------------------------------ */
+/* El reporte de gerencia se manda por correo como PDF, y la forma de
+   sacarlo es imprimir la pantalla a PDF desde el navegador. Estas reglas
+   dejan la hoja limpia: sin menú, sin barras y con los fondos de color
+   respetados, que por defecto Chrome no imprime. */
+@media print {
+  @page {
+    size: letter portrait;
+    margin: 14mm 12mm;
+  }
+
+  html,
+  body {
+    background: #fff;
+  }
+
+  /* Los gráficos de barra son fondos de color: sin esto salen en blanco. */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* La barra lateral, la navegación inferior y los botones no van al papel.
+     Se marcan con `.no-imprimir` y NO por etiqueta: escondiendo `header`
+     a secas también desaparecía el encabezado gerencial del reporte
+     —«AGROPECUARIA MONTELIBANO S.A.»—, que es justo lo que tiene que
+     salir en el PDF. La etiqueta dice qué ES el elemento, no si va al
+     papel; eso lo decide la clase. */
+  .no-imprimir,
+  .print\:hidden {
+    display: none !important;
+  }
+
+  main {
+    padding-bottom: 0 !important;
+  }
+
+  /* Una tabla partida a la mitad entre dos páginas es ilegible. */
+  table {
+    break-inside: auto;
+  }
+  tr {
+    break-inside: avoid;
+    break-after: auto;
+  }
+  thead {
+    display: table-header-group;
+  }
+  section {
+    break-inside: avoid;
+  }
+
+  .anim-aparecer {
+    animation: none;
+  }
 }

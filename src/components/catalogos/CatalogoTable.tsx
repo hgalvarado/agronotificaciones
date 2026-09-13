@@ -3,140 +3,231 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { Modal } from '@/components/ui/Modal'
+import { Alerta, Boton, Campo, Entrada, Selector } from '@/components/ui/Primitivos'
+import { IconPlus } from '@/components/ui/Icons'
+import {
+  TablaAvanzada,
+  type ColumnaTabla,
+  type FilaTabla,
+  type PermisosTabla,
+} from '@/components/ui/TablaAvanzada'
+import { ImportarExcel, type RelacionCatalogo } from './ImportarExcel'
 
 export type CampoCatalogo = {
   key: string
   label: string
-  tipo: 'text' | 'number' | 'checkbox'
+  tipo: 'text' | 'number' | 'date' | 'checkbox' | 'select'
   requerido?: boolean
+  /** Sólo para tipo 'select': catálogo relacionado (ej. familias de equipo). */
+  opciones?: { value: string; label: string }[]
 }
 
 type Fila = Record<string, string | number | boolean | null>
 
+/** Traduce la definición del catálogo a columnas de la tabla genérica. */
+const TIPOS = {
+  text: 'texto',
+  number: 'numero',
+  date: 'fecha',
+  checkbox: 'booleano',
+  select: 'seleccion',
+} as const
+
 export function CatalogoTable({
   tabla,
+  titulo,
   campos,
   filas,
+  clave = 'nombre',
   soloLectura = false,
+  permisos,
+  relaciones,
 }: {
   tabla: string
+  /** Nombre visible del catálogo; se usa en la plantilla y el importador. */
+  titulo: string
   campos: CampoCatalogo[]
   filas: Fila[]
+  /**
+   * Campo que identifica una fila del mundo real: el código del puesto, el
+   * nombre de la zona. Es lo que permite al importador actualizar lo que ya
+   * existe en vez de duplicarlo.
+   */
+  clave?: string
   soloLectura?: boolean
+  permisos?: PermisosTabla
+  /**
+   * Vinculaciones de muchos a muchos que el importador puede cargar. Las
+   * labores las usan para sus tareas SAP y sus implementos.
+   */
+  relaciones?: RelacionCatalogo[]
 }) {
   const supabase = createClient()
   const router = useRouter()
-  const [nuevaFila, setNuevaFila] = useState<Fila>(
-    Object.fromEntries(campos.map((c) => [c.key, c.tipo === 'checkbox' ? true : '']))
-  )
-  const [guardandoNueva, setGuardandoNueva] = useState(false)
+  const [abrirNuevo, setAbrirNuevo] = useState(false)
+  const [abrirImportar, setAbrirImportar] = useState(false)
+  const [nuevaFila, setNuevaFila] = useState<Record<string, string>>({})
+  const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  async function actualizarCampo(id: string, key: string, valor: string | number | boolean) {
-    const { error } = await supabase.from(tabla).update({ [key]: valor }).eq('id', id)
-    if (error) {
-      alert(error.message)
+  const camposTexto = campos.filter((c) => c.tipo !== 'checkbox')
+  const campoBool = campos.find((c) => c.tipo === 'checkbox')
+
+  const efectivos: PermisosTabla = {
+    editar: !soloLectura && permisos?.editar !== false,
+    eliminar: !soloLectura && permisos?.eliminar !== false,
+    descargar: permisos?.descargar !== false,
+  }
+
+  const columnas: ColumnaTabla[] = campos.map((c) => ({
+    key: c.key,
+    label: c.label,
+    tipo: TIPOS[c.tipo],
+    opciones: c.opciones,
+    editable: true,
+    // La clave natural no entra en los cambios en masa: poner el mismo
+    // código en veinte filas sólo puede terminar mal.
+    sinMasivo: c.key === clave,
+    alinear: c.tipo === 'number' ? 'derecha' : undefined,
+  }))
+
+  async function editarCelda(id: string, key: string, valor: unknown) {
+    const { error: e } = await supabase.from(tabla).update({ [key]: valor }).eq('id', id)
+    if (e) {
+      alert(e.message)
       return
     }
     router.refresh()
   }
 
-  async function crearFila(e: React.FormEvent) {
-    e.preventDefault()
-    setError(null)
-    setGuardandoNueva(true)
-    const payload = Object.fromEntries(
-      Object.entries(nuevaFila).filter(([, v]) => v !== '')
-    )
-    const { error } = await supabase.from(tabla).insert(payload)
-    setGuardandoNueva(false)
-    if (error) {
-      setError(error.message)
-      return
+  async function editarMasivo(ids: string[], cambios: Record<string, unknown>) {
+    // Un solo UPDATE con `in`: es una sola vuelta al servidor por más filas
+    // que se hayan marcado.
+    const { error: e } = await supabase.from(tabla).update(cambios).in('id', ids)
+    if (e) throw new Error(e.message)
+    router.refresh()
+  }
+
+  async function eliminar(ids: string[]) {
+    const { error: e } = await supabase.from(tabla).delete().in('id', ids)
+    if (e) {
+      // 23503 es la violación de llave foránea: el registro está en uso.
+      throw new Error(
+        e.code === '23503'
+          ? 'No se puede eliminar: hay movimientos que usan alguno de estos registros. Desactívalos con el interruptor en vez de borrarlos, así el histórico no se rompe.'
+          : e.message
+      )
     }
-    setNuevaFila(Object.fromEntries(campos.map((c) => [c.key, c.tipo === 'checkbox' ? true : ''])))
+    router.refresh()
+  }
+
+  async function crearFila() {
+    setError(null)
+    const faltante = campos.find(
+      (c) => c.requerido && !(nuevaFila[c.key] ?? '').trim()
+    )
+    if (faltante) return setError(`Falta «${faltante.label}».`)
+
+    setGuardando(true)
+    const payload = Object.fromEntries(Object.entries(nuevaFila).filter(([, v]) => v !== ''))
+    const { error: e } = await supabase.from(tabla).insert(payload)
+    setGuardando(false)
+    if (e) return setError(e.message)
+    setNuevaFila({})
+    setAbrirNuevo(false)
     router.refresh()
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-        <table className="w-full min-w-[420px] text-sm">
-          <thead>
-            <tr className="border-b border-slate-100 text-left text-xs font-semibold uppercase text-slate-400">
-              {campos.map((c) => (
-                <th key={c.key} className="px-3 py-2">
-                  {c.label}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {filas.map((fila) => (
-              <tr key={String(fila.id)} className="border-b border-slate-50 last:border-0">
-                {campos.map((c) => (
-                  <td key={c.key} className="px-3 py-2">
-                    {c.tipo === 'checkbox' ? (
-                      <input
-                        type="checkbox"
-                        defaultChecked={Boolean(fila[c.key])}
-                        disabled={soloLectura}
-                        onChange={(e) => actualizarCampo(String(fila.id), c.key, e.target.checked)}
-                        className="h-5 w-5 accent-emerald-700"
-                      />
-                    ) : (
-                      <input
-                        type={c.tipo}
-                        defaultValue={fila[c.key] as string | number}
-                        disabled={soloLectura}
-                        onBlur={(e) =>
-                          e.target.value !== String(fila[c.key] ?? '') &&
-                          actualizarCampo(String(fila.id), c.key, c.tipo === 'number' ? Number(e.target.value) : e.target.value)
-                        }
-                        className="w-full min-w-[100px] rounded-md border border-transparent px-2 py-1 focus:border-slate-300 focus:bg-slate-50 disabled:bg-transparent"
-                      />
-                    )}
-                  </td>
-                ))}
-              </tr>
-            ))}
-            {filas.length === 0 && (
-              <tr>
-                <td colSpan={campos.length} className="px-3 py-6 text-center text-slate-400">
-                  Sin registros todavía.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+    <>
+      <TablaAvanzada
+        titulo={titulo}
+        columnas={columnas}
+        filas={filas as FilaTabla[]}
+        permisos={efectivos}
+        vacio={{
+          titulo: 'Sin registros',
+          descripcion: 'Agrega el primero, o cárgalos todos desde Excel.',
+        }}
+        onEditarCelda={efectivos.editar ? editarCelda : undefined}
+        onEditarMasivo={efectivos.editar ? editarMasivo : undefined}
+        onEliminar={efectivos.eliminar ? eliminar : undefined}
+        acciones={
+          !soloLectura && (
+            <>
+              <Boton variante="secundario" tamano="sm" onClick={() => setAbrirImportar(true)}>
+                Importar
+              </Boton>
+              <Boton tamano="sm" onClick={() => setAbrirNuevo(true)}>
+                <IconPlus className="h-4 w-4" />
+                Agregar
+              </Boton>
+            </>
+          )
+        }
+      />
 
-      {!soloLectura && (
-        <form onSubmit={crearFila} className="flex flex-wrap items-end gap-2 rounded-xl border border-dashed border-slate-300 p-3">
-          {campos
-            .filter((c) => c.key !== 'activo')
-            .map((c) => (
-              <label key={c.key} className="flex flex-col gap-1 text-xs font-medium text-slate-600">
-                {c.label}
-                <input
-                  type={c.tipo === 'checkbox' ? 'text' : c.tipo}
-                  value={(nuevaFila[c.key] as string) ?? ''}
+      <Modal
+        abierto={abrirNuevo}
+        onCerrar={() => setAbrirNuevo(false)}
+        titulo={`Agregar a ${titulo}`}
+        pie={
+          <div className="flex gap-2">
+            <Boton variante="secundario" className="flex-1" onClick={() => setAbrirNuevo(false)}>
+              Cancelar
+            </Boton>
+            <Boton className="flex-1" onClick={crearFila} disabled={guardando}>
+              {guardando ? 'Agregando…' : 'Agregar'}
+            </Boton>
+          </div>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          {camposTexto.map((c, i) => (
+            <Campo key={c.key} etiqueta={c.label} requerido={c.requerido}>
+              {c.tipo === 'select' ? (
+                <Selector
+                  value={nuevaFila[c.key] ?? ''}
                   onChange={(e) => setNuevaFila((prev) => ({ ...prev, [c.key]: e.target.value }))}
-                  className="rounded-lg border border-slate-300 px-2 py-2 text-sm"
-                  required={c.requerido}
+                >
+                  <option value="">—</option>
+                  {(c.opciones ?? []).map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </Selector>
+              ) : (
+                <Entrada
+                  type={c.tipo}
+                  autoFocus={i === 0}
+                  value={nuevaFila[c.key] ?? ''}
+                  onChange={(e) => setNuevaFila((prev) => ({ ...prev, [c.key]: e.target.value }))}
                 />
-              </label>
-            ))}
-          <button
-            type="submit"
-            disabled={guardandoNueva}
-            className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-          >
-            {guardandoNueva ? 'Agregando…' : '+ Agregar'}
-          </button>
-        </form>
-      )}
-      {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-    </div>
+              )}
+            </Campo>
+          ))}
+          {campoBool && (
+            <p className="text-xs text-slate-400">
+              El registro se crea activo por defecto; puedes desactivarlo después con el interruptor
+              de la tabla.
+            </p>
+          )}
+          {error && <Alerta>{error}</Alerta>}
+        </div>
+      </Modal>
+
+      <ImportarExcel
+        abierto={abrirImportar}
+        onCerrar={() => setAbrirImportar(false)}
+        tabla={tabla}
+        titulo={titulo}
+        campos={campos}
+        filas={filas}
+        clave={clave}
+        relaciones={relaciones}
+      />
+    </>
   )
 }

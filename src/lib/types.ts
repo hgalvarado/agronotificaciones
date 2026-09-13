@@ -6,6 +6,7 @@
 export type RolCodigo = 'ADMIN' | 'TORRE_CONTROL' | 'DIGITADOR'
 export type EstadoTicket = 'ABIERTO' | 'CERRADO'
 export type TurnoTipo = 'DIURNO' | 'NOCTURNO'
+export type ProcesoTicket = 'REGISTRADO' | 'REVISANDO' | 'PENDIENTE_APROBACION' | 'NOTIFICADO'
 
 export type Perfil = {
   id: string
@@ -113,9 +114,11 @@ export type Ticket = {
   usuario_id: string
   departamento: string | null
   estado: EstadoTicket
+  proceso: ProcesoTicket
   temporada_id: string | null
   cerrado_at: string | null
   created_at: string
+  perfiles?: { nombre: string } | null
 }
 
 export type Horometro = {

@@ -1,49 +1,18 @@
-import { createClient } from '@/lib/supabase/server'
-import { getPerfilActual } from '@/lib/auth'
-import { TicketCard } from '@/components/ticket/TicketCard'
-import { NuevoTicketForm } from '@/components/ticket/NuevoTicketForm'
-import type { Ticket } from '@/lib/types'
+import { IconTicket } from '@/components/ui/Icons'
 
-export default async function TicketsPage() {
-  const supabase = await createClient()
-  const { perfil } = await getPerfilActual()
-
-  // RLS ya filtra: un Digitador sólo recibe los suyos; Admin/Torre de
-  // Control reciben todos. No hace falta filtrar manualmente aquí.
-  const { data: tickets } = await supabase
-    .from('tickets')
-    .select('*')
-    .order('fecha', { ascending: false })
-    .limit(50)
-
-  const { data: temporadaActiva } = await supabase
-    .from('temporadas')
-    .select('id')
-    .eq('activa', true)
-    .maybeSingle()
-
+// Sólo se ve en escritorio: en celular el layout muestra la lista a
+// pantalla completa y este panel queda oculto.
+export default function TicketsIndexPage() {
   return (
-    <div className="flex flex-col gap-4 p-4">
-      <h1 className="text-lg font-bold text-slate-900">Tickets</h1>
-
-      {perfil && (
-        <NuevoTicketForm
-          usuarioId={perfil.id}
-          nombreUsuario={perfil.nombre}
-          departamento={perfil.departamento}
-          temporadaActivaId={temporadaActiva?.id ?? null}
-        />
-      )}
-
-      <div className="flex flex-col gap-2">
-        {(tickets as Ticket[] | null)?.map((t) => (
-          <TicketCard key={t.id} ticket={t} />
-        ))}
-        {tickets?.length === 0 && (
-          <p className="py-8 text-center text-sm text-slate-400">
-            Todavía no tienes tickets. Genera el primero arriba.
-          </p>
-        )}
+    <div className="hidden h-full flex-col items-center justify-center gap-3 px-6 text-center lg:flex">
+      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-300">
+        <IconTicket className="h-7 w-7" />
+      </div>
+      <div>
+        <p className="text-sm font-semibold text-slate-600">Selecciona un ticket</p>
+        <p className="mt-1 text-sm text-slate-400">
+          Elige uno de la lista para ver sus horómetros y labores registradas.
+        </p>
       </div>
     </div>
   )

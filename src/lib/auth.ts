@@ -1,34 +1,69 @@
+import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import type { Perfil, Rol } from '@/lib/types'
 
-// Trae el perfil (rol, departamento) del usuario autenticado en el server.
-// Si el usuario no tiene fila en `perfiles` todavía (recién creado en
-// Supabase Auth pero sin vincular), retorna null y la UI debe mostrar un
-// aviso de "cuenta pendiente de activación" en vez de romper.
-export async function getPerfilActual(): Promise<{
-  perfil: Perfil | null
-  rol: Rol | null
-}> {
+// `cache()` de React deduplica dentro de UN MISMO request: aunque el
+// layout, la página y un componente anidado llamen a getPerfilActual(),
+// se ejecuta una sola vez. Antes se hacían hasta 4 viajes a Supabase por
+// pantalla (getUser + perfil + rol, repetidos en layout y página).
+export const getUsuarioActual = cache(async () => {
   const supabase = await createClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()
+  return user
+})
 
+// Una sola consulta con JOIN embebido en vez de dos secuenciales.
+export const getPerfilActual = cache(async (): Promise<{
+  perfil: Perfil | null
+  rol: Rol | null
+}> => {
+  const user = await getUsuarioActual()
   if (!user) return { perfil: null, rol: null }
 
-  const { data: perfil } = await supabase
+  const supabase = await createClient()
+  const { data } = await supabase
     .from('perfiles')
-    .select('*')
+    .select('*, roles(*)')
     .eq('id', user.id)
-    .single()
+    .maybeSingle()
 
-  if (!perfil) return { perfil: null, rol: null }
+  if (!data) return { perfil: null, rol: null }
 
-  const { data: rol } = await supabase
-    .from('roles')
-    .select('*')
-    .eq('id', perfil.rol_id)
-    .single()
+  const { roles, ...perfil } = data as Perfil & { roles: Rol | Rol[] | null }
+  const rol = Array.isArray(roles) ? (roles[0] ?? null) : roles
 
-  return { perfil: perfil as Perfil, rol: rol as Rol | null }
+  return { perfil: perfil as Perfil, rol }
+})
+
+/**
+ * Permisos efectivos del usuario, como un conjunto de claves
+ * `"pantalla:accion"` (por ejemplo `"costos:ver"`).
+ *
+ * Sale de `fn_mis_permisos()`, que ya resuelve el caso del Administrador
+ * devolviéndole todas las combinaciones. Va con `cache()` como los otros:
+ * el layout lo pide para dibujar el menú y cada página lo vuelve a pedir
+ * para esconder botones, y así se consulta una sola vez por request.
+ */
+export const getPermisos = cache(async (): Promise<Set<string>> => {
+  const user = await getUsuarioActual()
+  if (!user) return new Set()
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('fn_mis_permisos')
+
+  // Si la migración 12 todavía no se ha corrido, la función no existe. En
+  // vez de dejar la app sin menú, se cae al comportamiento anterior: el
+  // rol manda. Así actualizar el código y correr el SQL pueden ir en
+  // momentos distintos sin que nadie se quede sin poder trabajar.
+  if (error) return new Set(['__sin_migracion__'])
+
+  const filas = (data as { recurso: string; accion: string }[] | null) ?? []
+  return new Set(filas.map((f) => `${f.recurso}:${f.accion}`))
+})
+
+/** Ayuda para leer el conjunto sin repetir la plantilla en cada pantalla. */
+export function puede(permisos: Set<string>, pantalla: string, accion: string) {
+  return permisos.has('__sin_migracion__') || permisos.has(`${pantalla}:${accion}`)
 }

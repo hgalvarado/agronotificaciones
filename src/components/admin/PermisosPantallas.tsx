@@ -1,0 +1,284 @@
+'use client'
+
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
+import { Alerta, Insignia, Tarjeta } from '@/components/ui/Primitivos'
+import { IconCheck, IconLock } from '@/components/ui/Icons'
+
+export type Pantalla = {
+  codigo: string
+  nombre: string
+  descripcion: string | null
+  ruta: string | null
+  acciones: string[]
+}
+
+export type RolFila = { id: number; codigo: string; nombre: string }
+export type PermisoFila = { rol_id: number; recurso: string; accion: string }
+
+const ETIQUETAS: Record<string, string> = {
+  ver: 'Ver',
+  crear: 'Crear',
+  editar: 'Editar',
+  eliminar: 'Eliminar',
+  descargar: 'Descargar',
+}
+
+const AYUDA: Record<string, string> = {
+  ver: 'La pantalla le aparece en el menú y puede consultarla.',
+  crear: 'Puede agregar registros nuevos.',
+  editar: 'Puede modificar lo que ya existe.',
+  eliminar: 'Puede borrar registros.',
+  descargar: 'Puede bajar la información a Excel.',
+}
+
+export function PermisosPantallas({
+  roles,
+  pantallas,
+  permisos,
+}: {
+  roles: RolFila[]
+  pantallas: Pantalla[]
+  permisos: PermisoFila[]
+}) {
+  const supabase = createClient()
+  const router = useRouter()
+  const [rolActivo, setRolActivo] = useState(
+    roles.find((r) => r.codigo !== 'ADMIN')?.id ?? roles[0]?.id ?? 0
+  )
+  const [guardando, setGuardando] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  // El Administrador no se lista: su acceso total no sale de esta tabla
+  // sino de `fn_es_admin()`, y dejarlo editable haría creer que se le
+  // puede quitar algo.
+  const editables = roles.filter((r) => r.codigo !== 'ADMIN')
+  const rol = editables.find((r) => r.id === rolActivo) ?? editables[0]
+
+  function tiene(recurso: string, accion: string) {
+    return permisos.some(
+      (p) => p.rol_id === rol?.id && p.recurso === recurso && p.accion === accion
+    )
+  }
+
+  async function alternar(recurso: string, accion: string) {
+    if (!rol) return
+    const activo = tiene(recurso, accion)
+    const llave = `${recurso}:${accion}`
+    setGuardando(llave)
+    setError(null)
+
+    if (activo) {
+      const { error: e } = await supabase
+        .from('permisos')
+        .delete()
+        .match({ rol_id: rol.id, recurso, accion })
+      if (e) setError(e.message)
+
+      // Quitar «Ver» deja al rol con permisos que no puede alcanzar,
+      // porque la pantalla desaparece del menú. Se limpian con él.
+      if (!e && accion === 'ver') {
+        await supabase.from('permisos').delete().match({ rol_id: rol.id, recurso })
+      }
+    } else {
+      const filas = [{ rol_id: rol.id, recurso, accion }]
+      // Al revés: dar cualquier acción implica poder entrar a la pantalla.
+      if (accion !== 'ver' && !tiene(recurso, 'ver')) {
+        filas.push({ rol_id: rol.id, recurso, accion: 'ver' })
+      }
+      const { error: e } = await supabase.from('permisos').insert(filas)
+      if (e) setError(e.message)
+    }
+
+    setGuardando(null)
+    router.refresh()
+  }
+
+  const cuenta = pantallas.filter((p) => tiene(p.codigo, 'ver')).length
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* ------------------------- Selector de rol ------------------------ */}
+      <div className="flex flex-wrap gap-1.5">
+        {editables.map((r) => (
+          <button
+            key={r.id}
+            onClick={() => setRolActivo(r.id)}
+            className={`rounded-full px-3.5 py-2 text-sm font-semibold transition-all ${
+              r.id === rol?.id
+                ? 'bg-brand-700 text-white shadow-[var(--shadow-raised)]'
+                : 'bg-white text-slate-500 ring-1 ring-inset ring-slate-200 hover:text-slate-900'
+            }`}
+          >
+            {r.nombre}
+          </button>
+        ))}
+      </div>
+
+      <Tarjeta className="flex items-center justify-between gap-3 p-4">
+        <div>
+          <p className="text-sm font-bold text-slate-900">{rol?.nombre}</p>
+          <p className="text-xs text-slate-400">
+            Ve {cuenta} de {pantallas.length} pantallas
+          </p>
+        </div>
+        <Insignia tono="gris">{rol?.codigo}</Insignia>
+      </Tarjeta>
+
+      {error && <Alerta>{error}</Alerta>}
+
+      {/* ----------------------------- Matriz ----------------------------- */}
+
+      {/* Celular: una tarjeta por pantalla con sus acciones como fichas.
+          Una matriz de seis columnas no cabe en un teléfono, y él dijo que
+          casi todos van a usar la plataforma desde ahí. */}
+      <div className="flex flex-col gap-2 sm:hidden">
+        {pantallas.map((p) => {
+          const puedeVer = tiene(p.codigo, 'ver')
+          return (
+            <div
+              key={p.codigo}
+              className={`rounded-2xl border p-3 shadow-[var(--shadow-card)] ${
+                puedeVer ? 'border-brand-200 bg-white' : 'border-slate-200 bg-slate-50/60'
+              }`}
+            >
+              <p
+                className={`text-sm font-bold ${puedeVer ? 'text-slate-900' : 'text-slate-400'}`}
+              >
+                {p.nombre}
+              </p>
+              {p.descripcion && <p className="text-xs text-slate-400">{p.descripcion}</p>}
+
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {Object.keys(ETIQUETAS)
+                  .filter((a) => p.acciones.includes(a))
+                  .map((accion) => {
+                    const activo = tiene(p.codigo, accion)
+                    const llave = `${p.codigo}:${accion}`
+                    return (
+                      <button
+                        key={accion}
+                        onClick={() => alternar(p.codigo, accion)}
+                        disabled={guardando === llave}
+                        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 text-xs font-semibold transition-all disabled:opacity-40 ${
+                          activo
+                            ? 'bg-brand-700 text-white'
+                            : 'bg-white text-slate-500 ring-1 ring-inset ring-slate-200'
+                        }`}
+                      >
+                        {activo && <IconCheck className="h-3 w-3" />}
+                        {ETIQUETAS[accion]}
+                      </button>
+                    )
+                  })}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Escritorio: la matriz completa */}
+      <div className="hidden sm:block">
+        <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[var(--shadow-card)]">
+          <div className="scroll-suave overflow-x-auto">
+            <table className="w-full min-w-[620px] text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50/70 text-left">
+                  <th className="px-4 py-2.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                    Pantalla
+                  </th>
+                  {Object.keys(ETIQUETAS).map((a) => (
+                    <th
+                      key={a}
+                      title={AYUDA[a]}
+                      className="w-24 px-2 py-2.5 text-center text-[11px] font-bold uppercase tracking-wide text-slate-500"
+                    >
+                      {ETIQUETAS[a]}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {pantallas.map((p) => {
+                  const puedeVer = tiene(p.codigo, 'ver')
+                  return (
+                    <tr
+                      key={p.codigo}
+                      className={`border-b border-slate-50 last:border-0 ${
+                        puedeVer ? '' : 'bg-slate-50/40'
+                      }`}
+                    >
+                      <td className="px-4 py-2.5">
+                        <p
+                          className={`font-semibold ${
+                            puedeVer ? 'text-slate-800' : 'text-slate-400'
+                          }`}
+                        >
+                          {p.nombre}
+                        </p>
+                        {p.descripcion && (
+                          <p className="text-xs text-slate-400">{p.descripcion}</p>
+                        )}
+                      </td>
+  
+                      {Object.keys(ETIQUETAS).map((accion) => {
+                        const aplica = p.acciones.includes(accion)
+                        const activo = tiene(p.codigo, accion)
+                        const llave = `${p.codigo}:${accion}`
+                        return (
+                          <td key={accion} className="px-2 py-2.5 text-center">
+                            {!aplica ? (
+                              <span
+                                className="text-slate-200"
+                                title="Esta acción no aplica en esta pantalla"
+                              >
+                                —
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => alternar(p.codigo, accion)}
+                                disabled={guardando === llave}
+                                aria-label={`${ETIQUETAS[accion]} en ${p.nombre}`}
+                                className={`mx-auto flex h-6 w-6 items-center justify-center rounded-md border transition-all disabled:opacity-40 ${
+                                  activo
+                                    ? 'border-brand-700 bg-brand-700 text-white'
+                                    : 'border-slate-300 bg-white hover:border-brand-400'
+                                }`}
+                              >
+                                {activo && <IconCheck className="h-3.5 w-3.5" />}
+                              </button>
+                            )}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-start gap-2 rounded-xl bg-slate-50 px-3.5 py-3 text-xs text-slate-500 ring-1 ring-inset ring-slate-200/70">
+        <IconLock className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+        <div className="space-y-1">
+          <p>
+            El cambio aplica de inmediato: la próxima vez que el usuario cargue una pantalla, el
+            menú y los botones ya salen según esto.
+          </p>
+          <p>
+            No es sólo cosmético. Las mismas reglas están en la base de datos, así que aunque
+            alguien intente entrar escribiendo la dirección a mano, Postgres le niega los datos.
+          </p>
+          <p>
+            El <strong>Administrador</strong> no aparece en la lista porque siempre tiene acceso
+            total, y el <strong>Digitador</strong> sigue viendo únicamente sus propios registros
+            aunque le des permiso de ver una pantalla: eso es una regla de fila, no de pantalla.
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}

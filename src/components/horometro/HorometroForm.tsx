@@ -1,14 +1,23 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { Alerta, AreaTexto, Boton, Campo, Entrada, Tarjeta } from '@/components/ui/Primitivos'
+import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
+import { IconMoon, IconSun } from '@/components/ui/Icons'
 import type { Equipo, Operador, TurnoTipo } from '@/lib/types'
+import { mensajeDeError } from '@/lib/errores'
+import { formatearFecha } from '@/lib/estados'
 
 type Props = {
   ticketId: string
+  /** Fecha del ticket. Es la única fecha que existe; no se captura aquí. */
+  fechaTicket: string
   equipos: Equipo[]
   operadores: Operador[]
+  /** Heredado del último horómetro del ticket, para no reteclear lo mismo. */
+  valoresIniciales?: { turno?: TurnoTipo }
   horometroBase?: {
     id: string
     equipo_id?: string
@@ -22,14 +31,23 @@ type Props = {
   }
 }
 
-export function HorometroForm({ ticketId, equipos, operadores, horometroBase }: Props) {
+export function HorometroForm({
+  ticketId,
+  fechaTicket,
+  equipos,
+  operadores,
+  horometroBase,
+  valoresIniciales,
+}: Props) {
   const supabase = createClient()
   const router = useRouter()
-  const [saving, setSaving] = useState(false)
+  const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Copia local para que un operador recién creado aparezca de inmediato
+  // sin recargar la página ni perder lo que ya se escribió en el formulario.
+  const [listaOperadores, setListaOperadores] = useState(operadores)
   const [form, setForm] = useState({
-    fecha: horometroBase?.fecha ?? new Date().toISOString().slice(0, 10),
-    turno: (horometroBase?.turno ?? 'DIURNO') as TurnoTipo,
+    turno: (horometroBase?.turno ?? valoresIniciales?.turno ?? 'DIURNO') as TurnoTipo,
     equipo_id: horometroBase?.equipo_id ?? '',
     horometro_inicial: horometroBase?.horometro_inicial?.toString() ?? '',
     horometro_final: horometroBase?.horometro_final?.toString() ?? '',
@@ -38,48 +56,76 @@ export function HorometroForm({ ticketId, equipos, operadores, horometroBase }: 
     comentario: horometroBase?.comentario ?? '',
   })
 
+  // Vista previa en vivo de las horas máquina: el operador ve el cálculo
+  // mientras teclea, sin tener que guardar para descubrir un error.
+  const horasMaquina = useMemo(() => {
+    const ini = Number(form.horometro_inicial)
+    const fin = Number(form.horometro_final)
+    if (!form.horometro_inicial || !form.horometro_final) return null
+    if (Number.isNaN(ini) || Number.isNaN(fin)) return null
+    return Math.round((fin - ini) * 100) / 100
+  }, [form.horometro_inicial, form.horometro_final])
+
+  async function crearOperador(valores: Record<string, string>) {
+    const { data, error: dbError } = await supabase
+      .from('operadores')
+      .insert({ nombre: valores.nombre.trim(), codigo: valores.codigo?.trim() || null })
+      .select('id, nombre, codigo')
+      .single()
+
+    if (dbError) throw new Error(dbError.message)
+
+    setListaOperadores((prev) =>
+      [...prev, data as Operador].sort((a, b) => a.nombre.localeCompare(b.nombre))
+    )
+    return { id: data.id, titulo: data.nombre, subtitulo: data.codigo ?? undefined }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
 
     const inicial = Number(form.horometro_inicial)
     const final = Number(form.horometro_final)
+
     if (Number.isNaN(inicial) || Number.isNaN(final)) {
-      setError('Ingresa lecturas de horómetro válidas.')
-      return
+      return setError('Ingresa lecturas de horómetro válidas.')
     }
     if (final < inicial) {
-      setError('El horómetro final no puede ser menor al inicial.')
-      return
+      return setError('El horómetro final no puede ser menor al inicial.')
     }
     if (!form.equipo_id) {
-      setError('Selecciona un equipo.')
-      return
+      return setError('Selecciona un equipo.')
     }
 
-    setSaving(true)
+    setGuardando(true)
+
+    // La fecha ya no se captura, pero SÍ se manda: es la del ticket.
+    //
+    // El disparador de la base la sobreescribe con la del ticket de todos
+    // modos, así que mandarla no cambia el resultado. Se manda porque la
+    // columna es obligatoria: si el código llega a la máquina antes de que
+    // se corra la migración 14, sin este valor el insert fallaría por
+    // NOT NULL. Con esto, el código nuevo funciona con o sin migración.
+    const valores = {
+      fecha: fechaTicket,
+      turno: form.turno,
+      equipo_id: form.equipo_id,
+      horometro_inicial: inicial,
+      horometro_final: final,
+      horas_hombre: form.horas_hombre ? Number(form.horas_hombre) : null,
+      operador_id: form.operador_id || null,
+      comentario: form.comentario || null,
+    }
 
     if (horometroBase?.id) {
-      // Estamos completando un horómetro duplicado: se actualiza en vez de insertar.
       const { error: dbError } = await supabase
         .from('horometros')
-        .update({
-          fecha: form.fecha,
-          turno: form.turno,
-          equipo_id: form.equipo_id,
-          horometro_inicial: inicial,
-          horometro_final: final,
-          horas_hombre: form.horas_hombre ? Number(form.horas_hombre) : null,
-          operador_id: form.operador_id || null,
-          comentario: form.comentario || null,
-        })
+        .update(valores)
         .eq('id', horometroBase.id)
 
-      setSaving(false)
-      if (dbError) {
-        setError(dbError.message)
-        return
-      }
+      setGuardando(false)
+      if (dbError) return setError(mensajeDeError(dbError))
       router.push(`/tickets/${ticketId}/horometros/${horometroBase.id}`)
       router.refresh()
       return
@@ -87,148 +133,169 @@ export function HorometroForm({ ticketId, equipos, operadores, horometroBase }: 
 
     const { data, error: dbError } = await supabase
       .from('horometros')
-      .insert({
-        ticket_id: ticketId,
-        fecha: form.fecha,
-        turno: form.turno,
-        equipo_id: form.equipo_id,
-        horometro_inicial: inicial,
-        horometro_final: final,
-        horas_hombre: form.horas_hombre ? Number(form.horas_hombre) : null,
-        operador_id: form.operador_id || null,
-        comentario: form.comentario || null,
-      })
+      .insert({ ticket_id: ticketId, ...valores })
       .select('id')
       .single()
 
-    setSaving(false)
-    if (dbError) {
-      setError(dbError.message)
-      return
-    }
-    router.push(`/tickets/${ticketId}/horometros/${data.id}`)
+    setGuardando(false)
+    if (dbError) return setError(mensajeDeError(dbError))
+    // Se salta la pantalla de detalle: después de capturar un horómetro
+    // SIEMPRE sigue registrar qué hizo el equipo. Un clic menos por equipo.
+    router.push(`/tickets/${ticketId}/horometros/${data.id}/registros/nuevo`)
     router.refresh()
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4 p-4">
-      <div className="grid grid-cols-2 gap-3">
-        <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-          Fecha
-          <input
-            type="date"
-            value={form.fecha}
-            onChange={(e) => setForm({ ...form, fecha: e.target.value })}
-            className="rounded-lg border border-slate-300 px-3 py-3 text-base"
-            required
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      <Tarjeta className="flex flex-col gap-4 p-5">
+        {/* En celular cada campo ocupa el ancho completo: con Fecha y Turno
+            compartiendo fila, cada botón de turno quedaba a un cuarto de
+            pantalla y el texto se encimaba. */}
+        {/* La fecha NO se captura: es la del ticket. Tenerla editable aquí
+            permitía que un horómetro quedara en otro día que su ticket, y
+            entonces el ticket dejaba de controlar nada. */}
+        <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3.5 py-2.5 ring-1 ring-inset ring-slate-200/70">
+          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Fecha de la jornada
+          </span>
+          <span className="text-sm font-semibold text-slate-800">
+            {formatearFecha(fechaTicket)}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4">
+          <Campo etiqueta="Turno" requerido>
+            <div className="grid grid-cols-2 gap-1.5">
+              {(
+                [
+                  { valor: 'DIURNO' as const, etiqueta: 'Diurno', icono: <IconSun className="h-4 w-4" /> },
+                  { valor: 'NOCTURNO' as const, etiqueta: 'Nocturno', icono: <IconMoon className="h-4 w-4" /> },
+                ]
+              ).map((op) => (
+                <button
+                  key={op.valor}
+                  type="button"
+                  onClick={() => setForm({ ...form, turno: op.valor })}
+                  className={`flex h-12 items-center justify-center gap-2 rounded-xl border px-2 text-sm font-semibold transition-all ${
+                    form.turno === op.valor
+                      ? 'border-brand-700 bg-brand-700 text-white'
+                      : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
+                  }`}
+                >
+                  {op.icono}
+                  {op.etiqueta}
+                </button>
+              ))}
+            </div>
+          </Campo>
+        </div>
+
+        <Campo etiqueta="Equipo" requerido>
+          <SelectorBuscable
+            valor={form.equipo_id}
+            onCambiar={(id) => setForm({ ...form, equipo_id: id })}
+            placeholder="Buscar equipo…"
+            etiquetaBusqueda="Escribe el código, ej. A08"
+            permitirVacio={false}
+            opciones={equipos.map((eq) => ({
+              id: eq.id,
+              titulo: eq.codigo,
+              subtitulo: eq.nombre,
+            }))}
           />
-        </label>
-        <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-          Turno
-          <select
-            value={form.turno}
-            onChange={(e) => setForm({ ...form, turno: e.target.value as TurnoTipo })}
-            className="rounded-lg border border-slate-300 px-3 py-3 text-base"
+        </Campo>
+
+        <Campo etiqueta="Operador">
+          <SelectorBuscable
+            valor={form.operador_id}
+            onCambiar={(id) => setForm({ ...form, operador_id: id })}
+            placeholder="Buscar operador…"
+            etiquetaBusqueda="Escribe el nombre o código"
+            textoVacio="Sin operador asignado"
+            opciones={listaOperadores.map((op) => ({
+              id: op.id,
+              titulo: op.nombre,
+              subtitulo: op.codigo ?? undefined,
+            }))}
+            creacionRapida={{
+              etiqueta: 'Crear operador nuevo',
+              campos: [
+                { key: 'nombre', label: 'Nombre del operador', requerido: true },
+                { key: 'codigo', label: 'Código (opcional)' },
+              ],
+              onCrear: crearOperador,
+            }}
+          />
+        </Campo>
+      </Tarjeta>
+
+      <Tarjeta className="flex flex-col gap-4 p-5">
+        <div className="grid grid-cols-2 gap-3">
+          <Campo etiqueta="Horómetro inicial" requerido>
+            <Entrada
+              type="text"
+              inputMode="decimal"
+              value={form.horometro_inicial}
+              onChange={(e) => setForm({ ...form, horometro_inicial: e.target.value })}
+              placeholder="0"
+              required
+            />
+          </Campo>
+          <Campo etiqueta="Horómetro final" requerido>
+            <Entrada
+              type="text"
+              inputMode="decimal"
+              value={form.horometro_final}
+              onChange={(e) => setForm({ ...form, horometro_final: e.target.value })}
+              placeholder="0"
+              required
+            />
+          </Campo>
+        </div>
+
+        {horasMaquina !== null && (
+          <div
+            className={`flex items-center justify-between rounded-xl px-3.5 py-3 ring-1 ring-inset ${
+              horasMaquina < 0
+                ? 'bg-red-50 text-red-700 ring-red-600/10'
+                : 'bg-brand-50 text-brand-800 ring-brand-600/10'
+            }`}
           >
-            <option value="DIURNO">Diurno</option>
-            <option value="NOCTURNO">Nocturno</option>
-          </select>
-        </label>
-      </div>
+            <span className="text-sm font-medium">Horas máquina</span>
+            <span className="text-lg font-bold">{horasMaquina}</span>
+          </div>
+        )}
 
-      <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-        Equipo
-        <select
-          value={form.equipo_id}
-          onChange={(e) => setForm({ ...form, equipo_id: e.target.value })}
-          className="rounded-lg border border-slate-300 px-3 py-3 text-base"
-          required
-        >
-          <option value="">Selecciona un equipo…</option>
-          {equipos.map((eq) => (
-            <option key={eq.id} value={eq.id}>
-              {eq.codigo} — {eq.nombre}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <div className="grid grid-cols-2 gap-3">
-        <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-          Horómetro inicial
-          <input
+        <Campo etiqueta="Horas hombre" ayuda="Sólo si difiere de las horas máquina (ej. 4 h máquina, 8 h hombre).">
+          <Entrada
             type="text"
             inputMode="decimal"
-            value={form.horometro_inicial}
-            onChange={(e) => setForm({ ...form, horometro_inicial: e.target.value })}
-            className="rounded-lg border border-slate-300 px-3 py-3 text-base"
-            required
+            value={form.horas_hombre}
+            onChange={(e) => setForm({ ...form, horas_hombre: e.target.value })}
+            placeholder="8"
           />
-        </label>
-        <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-          Horómetro final
-          <input
-            type="text"
-            inputMode="decimal"
-            value={form.horometro_final}
-            onChange={(e) => setForm({ ...form, horometro_final: e.target.value })}
-            className="rounded-lg border border-slate-300 px-3 py-3 text-base"
-            required
+        </Campo>
+
+        <Campo etiqueta="Comentarios" ayuda="Fallas, novedades o cualquier observación de la jornada.">
+          <AreaTexto
+            value={form.comentario}
+            onChange={(e) => setForm({ ...form, comentario: e.target.value })}
+            rows={3}
           />
-        </label>
+        </Campo>
+      </Tarjeta>
+
+      {error && <Alerta>{error}</Alerta>}
+
+      <div className="sticky bottom-20 z-10 lg:bottom-4">
+        <Boton type="submit" tamano="lg" className="w-full" disabled={guardando}>
+          {guardando
+          ? 'Guardando…'
+          : horometroBase?.id
+            ? 'Guardar cambios'
+            : 'Guardar y registrar labores'}
+        </Boton>
       </div>
-
-      <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-        Horas hombre (si difiere de las horas máquina)
-        <input
-          type="text"
-          inputMode="decimal"
-          value={form.horas_hombre}
-          onChange={(e) => setForm({ ...form, horas_hombre: e.target.value })}
-          className="rounded-lg border border-slate-300 px-3 py-3 text-base"
-          placeholder="Ej. 8"
-        />
-      </label>
-
-      <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-        Operador
-        <select
-          value={form.operador_id}
-          onChange={(e) => setForm({ ...form, operador_id: e.target.value })}
-          className="rounded-lg border border-slate-300 px-3 py-3 text-base"
-        >
-          <option value="">Selecciona un operador…</option>
-          {operadores.map((op) => (
-            <option key={op.id} value={op.id}>
-              {op.nombre}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-        Comentarios (fallas, novedades)
-        <textarea
-          value={form.comentario}
-          onChange={(e) => setForm({ ...form, comentario: e.target.value })}
-          className="rounded-lg border border-slate-300 px-3 py-3 text-base"
-          rows={3}
-        />
-      </label>
-
-      {error && (
-        <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
-          {error}
-        </p>
-      )}
-
-      <button
-        type="submit"
-        disabled={saving}
-        className="sticky bottom-4 rounded-xl bg-emerald-700 px-4 py-4 text-base font-semibold text-white shadow-lg active:scale-[0.98] disabled:opacity-50"
-      >
-        {saving ? 'Guardando…' : 'Guardar horómetro'}
-      </button>
     </form>
   )
 }
