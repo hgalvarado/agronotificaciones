@@ -6,7 +6,7 @@
  * de direcciones, y la barra de direcciones la escribe cualquiera.
  */
 
-import { NIVELES_PROCESO, type FiltrosReporte, type NivelProceso } from './tipos'
+import { PROCESOS_TICKET, type FiltrosReporte, type ProcesoTicket } from './tipos'
 
 const ES_FECHA = /^\d{4}-\d{2}-\d{2}$/
 const ES_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -45,27 +45,45 @@ export function validarFiltros(entrada: Record<string, unknown>): FiltrosReporte
 /** Lo que el Administrador manda desde el panel, antes de guardarse. */
 export type EntradaConfiguracion = {
   activo: boolean
-  nivelProceso: string
+  procesos: string[]
   todosDepartamentos: boolean
   departamentos: string[]
 }
 
 export type ResultadoValidacion =
-  | { ok: true; valor: Omit<EntradaConfiguracion, 'nivelProceso'> & { nivelProceso: NivelProceso } }
+  | { ok: true; valor: Omit<EntradaConfiguracion, 'procesos'> & { procesos: ProcesoTicket[] } }
   | { ok: false; error: string }
 
-const NIVELES_VALIDOS = new Set<string>(NIVELES_PROCESO.map((n) => n.valor))
+const ORDEN_PROCESO = new Map<string, number>(PROCESOS_TICKET.map((p, i) => [p.valor, i]))
+
+/**
+ * Deja la lista de procesos en limpio: sin repetidos, sin inventados y
+ * en el orden en que ocurren, para que la pantalla los vuelva a leer
+ * siempre igual.
+ */
+export function normalizarProcesos(procesos: string[]): ProcesoTicket[] {
+  return [...new Set(procesos)]
+    .filter((p): p is ProcesoTicket => ORDEN_PROCESO.has(p))
+    .sort((a, b) => (ORDEN_PROCESO.get(a) ?? 0) - (ORDEN_PROCESO.get(b) ?? 0))
+}
 
 /**
  * Valida la configuración del Administrador.
  *
- * La regla que de verdad importa: publicar el reporte sin elegir ningún
- * departamento dejaría una página en blanco y parecería un fallo. Se
- * rechaza aquí y no en la base, que no sabe explicar por qué.
+ * Las dos reglas que de verdad importan: publicar el reporte sin ningún
+ * proceso marcado, o sin ningún departamento, deja una página en blanco
+ * y parece un fallo del sistema. Se rechaza aquí y no en la base, que no
+ * sabe explicar por qué.
  */
 export function validarConfiguracion(entrada: EntradaConfiguracion): ResultadoValidacion {
-  if (!NIVELES_VALIDOS.has(entrada.nivelProceso)) {
-    return { ok: false, error: 'El nivel de proceso elegido no existe.' }
+  const procesos = normalizarProcesos(entrada.procesos)
+
+  if (entrada.activo && procesos.length === 0) {
+    return {
+      ok: false,
+      error:
+        'Marca al menos un proceso. Publicar el reporte sin ninguno no enseña ni un ticket.',
+    }
   }
 
   const departamentos = [...new Set(entrada.departamentos.map((d) => d.trim()).filter(Boolean))]
@@ -82,7 +100,7 @@ export function validarConfiguracion(entrada: EntradaConfiguracion): ResultadoVa
     ok: true,
     valor: {
       activo: entrada.activo,
-      nivelProceso: entrada.nivelProceso as NivelProceso,
+      procesos,
       todosDepartamentos: entrada.todosDepartamentos,
       departamentos,
     },

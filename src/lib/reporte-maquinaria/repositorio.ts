@@ -17,14 +17,14 @@ import type {
   FilaDetalle,
   FilaHorometro,
   FiltrosReporte,
-  NivelProceso,
+  ProcesoTicket,
 } from './tipos'
 
 export type Respuesta<T> = { datos: T; error: string | null }
 
 type FilaConfig = {
   activo: boolean
-  nivel_proceso: string
+  procesos: string[] | null
   todos_departamentos: boolean
   departamentos: string[] | null
   temporada_activa: string | null
@@ -32,7 +32,7 @@ type FilaConfig = {
 
 const CONFIG_APAGADA: ConfiguracionPublica = {
   activo: false,
-  nivelProceso: 'NOTIFICADO',
+  procesos: [],
   todosDepartamentos: false,
   departamentos: [],
   temporadaActiva: null,
@@ -50,7 +50,7 @@ export async function leerConfiguracionPublica(): Promise<Respuesta<Configuracio
   return {
     datos: {
       activo: fila.activo,
-      nivelProceso: fila.nivel_proceso as NivelProceso,
+      procesos: (fila.procesos ?? []) as ProcesoTicket[],
       todosDepartamentos: fila.todos_departamentos,
       departamentos: fila.departamentos ?? [],
       temporadaActiva: fila.temporada_activa,

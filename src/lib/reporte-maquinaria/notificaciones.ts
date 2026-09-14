@@ -14,6 +14,8 @@ export const AVISOS = {
     'El reporte público está desactivado. El Administrador lo habilita desde Configuración del reporte público.',
   sinDepartamentos:
     'El reporte está activo pero no tiene departamentos publicados, así que no hay nada que mostrar.',
+  sinProcesos:
+    'El reporte está activo pero no tiene ningún proceso marcado, así que no hay tickets que enseñar.',
   sinDatos: 'No hay actividad registrada para ese día con los filtros elegidos.',
 } as const
 

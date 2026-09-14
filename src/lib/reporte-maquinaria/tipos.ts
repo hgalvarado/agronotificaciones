@@ -6,20 +6,26 @@
  * pantalla dependan de los mismos tipos y no unas de otras.
  */
 
-/** Los cuatro procesos del ticket, del primero al último. */
-export const NIVELES_PROCESO = [
-  { valor: 'REGISTRADO', etiqueta: 'Registrado', orden: 0 },
-  { valor: 'REVISANDO', etiqueta: 'Revisando', orden: 1 },
-  { valor: 'PENDIENTE_APROBACION', etiqueta: 'Pendiente de aprobación', orden: 2 },
-  { valor: 'NOTIFICADO', etiqueta: 'Notificado (todos)', orden: 3 },
+/**
+ * Los cuatro procesos del ticket, en el orden en que ocurren.
+ *
+ * Son una LISTA de los que se publican, no un tope hasta el que se
+ * publica: el Administrador puede enseñar lo notificado y lo registrado
+ * y dejar fuera lo que está en revisión, que con un tope no se podía.
+ */
+export const PROCESOS_TICKET = [
+  { valor: 'REGISTRADO', etiqueta: 'Registrado' },
+  { valor: 'REVISANDO', etiqueta: 'Revisando' },
+  { valor: 'PENDIENTE_APROBACION', etiqueta: 'Pendiente de aprobación' },
+  { valor: 'NOTIFICADO', etiqueta: 'Notificado' },
 ] as const
 
-export type NivelProceso = (typeof NIVELES_PROCESO)[number]['valor']
+export type ProcesoTicket = (typeof PROCESOS_TICKET)[number]['valor']
 
 /** Reglas que fija el Administrador para el visor público. */
 export type ConfiguracionPublica = {
   activo: boolean
-  nivelProceso: NivelProceso
+  procesos: ProcesoTicket[]
   todosDepartamentos: boolean
   departamentos: string[]
   temporadaActiva: string | null

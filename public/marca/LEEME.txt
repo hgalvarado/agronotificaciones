@@ -1,0 +1,11 @@
+Pega aquí el logotipo con el nombre exacto:
+
+    logo.svg
+
+Ruta completa:  public/marca/logo.svg
+La aplicación lo sirve como /marca/logo.svg y lo usan la barra lateral, el
+encabezado del celular, la pantalla de Login y el icono de la pestaña del
+navegador. Mientras no esté, sale el recuadro verde «AN» en su lugar.
+
+Recomendaciones: SVG cuadrado (viewBox 1:1), fondo transparente y sin texto
+diminuto, porque también se dibuja a 32 px.

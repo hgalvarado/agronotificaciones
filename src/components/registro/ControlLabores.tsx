@@ -351,18 +351,27 @@ export function ControlLabores({
         valor: (f) => f.operacion_equipo,
         etiqueta: (f) => oper(f.operacion_equipo),
       },
+      // Se edita el CÓDIGO FÍSICO —el fierro que salió—; el implemento
+      // SAP va detrás y por eso no se puede tocar: lo deduce la base del
+      // código, igual que en la captura y en la importación.
+      {
+        campo: 'codigo_implemento',
+        label: 'Código impl.',
+        tipo: 'seleccion',
+        valor: (f) => f.codigo_implemento ?? null,
+        editable: true,
+        editor: 'seleccion',
+        valorEdicion: (f) => f.implemento_fisico_id ?? '',
+        opciones: catalogosEdicion.implementosFisicos.map((i) => ({
+          value: i.id,
+          label: `${i.codigo} · ${i.descripcion}`,
+        })),
+      },
       {
         campo: 'implemento_codigo',
         label: 'Implemento',
         tipo: 'seleccion',
         valor: (f) => f.implemento_codigo,
-        editable: true,
-        editor: 'seleccion',
-        valorEdicion: (f) => f.implemento_id ?? '',
-        opciones: catalogosEdicion.implementos.map((i) => ({
-          value: i.id,
-          label: `${i.codigo} · ${i.nombre}`,
-        })),
       },
       {
         campo: 'operacion_implemento',
@@ -449,7 +458,7 @@ export function ControlLabores({
   const CAMPOS: Record<string, CampoLinea> = {
     tarea_codigo: 'tarea_id',
     labor_nombre: 'labor_id',
-    implemento_codigo: 'implemento_id',
+    codigo_implemento: 'implemento_fisico_id',
     avance_mz: 'avance_mz',
     ut: 'lote_temporada_id',
   }
@@ -464,7 +473,7 @@ export function ControlLabores({
       return setError(
         mensajeDeError(
           e,
-          'No se pudo guardar el cambio. Si dice que no existe «fn_editar_linea_labor», falta correr la migración 30.'
+          'No se pudo guardar el cambio. Si dice que no existe «fn_editar_linea_labor», falta correr la migración 31.'
         )
       )
     }

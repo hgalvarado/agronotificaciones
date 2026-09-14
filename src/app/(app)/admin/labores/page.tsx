@@ -22,7 +22,7 @@ export default async function LaboresPage() {
       // corrida, y cuando no, la consulta no falla.
       supabase
         .from('labores')
-        .select('*, labores_tareas(tarea_id), labores_implementos(implemento_id)')
+        .select('*, labores_tareas(tarea_id)')
         .order('nombre'),
       supabase.from('categorias_labor').select('*').eq('activo', true).order('nombre'),
       supabase.from('tareas_sap').select('*').eq('activo', true).order('codigo'),
@@ -38,7 +38,7 @@ export default async function LaboresPage() {
       // sirviendo para lo demás.
       supabase
         .from('implementos_fisicos')
-        .select('id, codigo, descripcion')
+        .select('id, codigo, descripcion, implemento_id')
         .eq('activo', true)
         .order('codigo'),
       supabase.from('labores_implementos_fisicos').select('labor_id, implemento_fisico_id'),
@@ -68,9 +68,10 @@ export default async function LaboresPage() {
       <div>
         <h1 className="text-xl font-bold tracking-tight text-slate-900">Vinculación de labores</h1>
         <p className="text-sm text-slate-400">
-          Define qué tareas SAP, implementos y códigos físicos (ROMSR-01, ROMSR-08…) aplican a
-          cada labor, a qué categoría pertenece y si pide proveedor de plástico o manguera. Para cargarlas en masa, usa el botón «Importar» de
-          la pestaña Labores en Catálogos.
+          Define qué tareas SAP y qué códigos físicos (ROMSR-01, ROMSR-08…) aplican a cada labor,
+          a qué categoría pertenece y si pide proveedor de plástico o manguera. El implemento SAP
+          ya no se elige aquí: sale del tipo que tenga el código físico en Catálogos. Para
+          cargarlas en masa, usa el botón «Importar» de la pestaña Labores en Catálogos.
         </p>
       </div>
 

@@ -16,6 +16,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { Boton, EstadoVacio } from './Primitivos'
 import { FiltroColumna } from './FiltroColumna'
+import { SelectorCelda } from './SelectorCelda'
 import { IconCheck, IconInbox, IconSearch } from './Icons'
 import { construirXlsx, descargar, type CeldaHoja } from '@/lib/hojas'
 import {
@@ -458,21 +459,15 @@ function Celda<T extends { id: string }>({
 
   if (columna.editor === 'seleccion') {
     return (
-      <select
-        value={borrador}
-        onChange={(e) => {
-          setBorrador(e.target.value)
-          if (e.target.value !== inicial) onGuardar(e.target.value || null)
+      <SelectorCelda
+        valor={borrador}
+        opciones={columna.opciones ?? []}
+        className={clase}
+        onElegir={(v) => {
+          setBorrador(v)
+          if (v !== inicial) onGuardar(v || null)
         }}
-        className={`${clase} bg-transparent`}
-      >
-        <option value="">—</option>
-        {(columna.opciones ?? []).map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
+      />
     )
   }
 

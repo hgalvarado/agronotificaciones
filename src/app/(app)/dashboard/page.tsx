@@ -1,19 +1,18 @@
 import { createClient } from '@/lib/supabase/server'
-import { getPermisos, puede } from '@/lib/auth'
 import { Alerta } from '@/components/ui/Primitivos'
-import {
-  TableroAvance,
-  type OpcionLabor,
-  type OpcionLote,
-  type OpcionProceso,
-  type OpcionSimple,
-  type OpcionTemporada,
-} from '@/components/dashboard/TableroAvance'
+import { TableroAvance } from '@/components/dashboard/TableroAvance'
+import type {
+  OpcionLabor,
+  OpcionLote,
+  OpcionSimple,
+  OpcionTemporada,
+} from '@/lib/tablero/tipos'
 
 type LoteRow = {
   id: string
   temporada_id: string
   zona_id: string | null
+  ciclo: number | null
   lotes:
     | { nomenclatura: string; nombre: string | null }
     | { nomenclatura: string; nombre: string | null }[]
@@ -22,11 +21,12 @@ type LoteRow = {
 
 export default async function DashboardPage() {
   const supabase = await createClient()
-  const permisos = await getPermisos()
 
+  // El catálogo de procesos ya no se pide: el tablero no distingue entre
+  // APS, LEV y CAT. Un lote es un lote y su plan es el área que hay que
+  // recorrer, sea cual sea el proceso que la recorra.
   const [
     { data: temporadas },
-    { data: procesos, error: errorProcesos },
     { data: zonas },
     { data: lotes },
     { data: labores },
@@ -36,15 +36,10 @@ export default async function DashboardPage() {
       .from('temporadas')
       .select('id, nombre, activa')
       .order('fecha_inicio', { ascending: false }),
-    supabase
-      .from('procesos_sap')
-      .select('id, codigo, nombre')
-      .eq('activo', true)
-      .order('orden'),
     supabase.from('zonas').select('id, nombre').eq('activo', true).order('nombre'),
     supabase
       .from('lotes_temporada')
-      .select('id, temporada_id, zona_id, lotes(nomenclatura, nombre)')
+      .select('id, temporada_id, zona_id, ciclo, lotes(nomenclatura, nombre)')
       .eq('activo', true),
     supabase
       .from('labores')
@@ -53,17 +48,6 @@ export default async function DashboardPage() {
       .order('nombre'),
     supabase.from('categorias_labor').select('id, nombre').eq('activo', true).order('nombre'),
   ])
-
-  if (errorProcesos) {
-    return (
-      <div className="mx-auto max-w-4xl p-4 lg:p-6">
-        <Alerta>
-          No se pudo leer el catálogo de procesos: {errorProcesos.message}. Si dice que no existe
-          «procesos_sap», falta ejecutar la migración 13 en el SQL Editor de Supabase.
-        </Alerta>
-      </div>
-    )
-  }
 
   const listaTemporadas = (temporadas as OpcionTemporada[] | null) ?? []
 
@@ -83,36 +67,28 @@ export default async function DashboardPage() {
         id: lt.id,
         temporada_id: lt.temporada_id,
         zona_id: lt.zona_id,
+        ciclo: lt.ciclo,
         etiqueta: lote?.nombre ? `${ut} · ${lote.nombre}` : ut,
       }
     })
     .sort((a, b) => a.etiqueta.localeCompare(b.etiqueta, 'es', { numeric: true }))
-
-  // Los permisos se resuelven en el servidor y bajan como una lista de
-  // códigos: el componente del tablero es de cliente y no puede leer la
-  // sesión ni la tabla de permisos.
-  const permisosPlan = ['plan_aps'].filter(
-    (p) => puede(permisos, p, 'ver') || puede(permisos, 'plan', 'ver')
-  )
 
   return (
     <div className="anim-aparecer mx-auto flex max-w-5xl flex-col gap-4 p-4 lg:p-6">
       <div>
         <h1 className="text-xl font-bold tracking-tight text-slate-900">Avance</h1>
         <p className="text-sm text-slate-400">
-          Manzanas trabajadas contra el área planificada. Filtra por lote, zona, labor, categoría o
-          fechas y todo el tablero se recalcula.
+          Manzanas trabajadas y gasto contra el área planificada. Filtra por zona, ciclo, lote,
+          labor, categoría o fechas, y agrupa el detalle como lo necesites.
         </p>
       </div>
 
       <TableroAvance
         temporadas={listaTemporadas}
-        procesos={(procesos as OpcionProceso[] | null) ?? []}
         zonas={(zonas as OpcionSimple[] | null) ?? []}
         lotes={opcionesLote}
         labores={(labores as OpcionLabor[] | null) ?? []}
         categorias={(categorias as OpcionSimple[] | null) ?? []}
-        permisosPlan={permisosPlan}
       />
     </div>
   )

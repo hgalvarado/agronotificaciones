@@ -26,7 +26,6 @@ export type CatalogosTicket = {
     id: string
     nombre: string
     labores_tareas: { tarea_id: string }[]
-    labores_implementos: { implemento_id: string }[]
     labores_implementos_fisicos?: { implemento_fisico_id: string }[]
   }[]
   tareasSap: { id: string; codigo: string; nombre: string }[]
@@ -296,20 +295,17 @@ export function ImportarDetalleTicket({
         }
       }
 
-      // La tarea y el implemento tienen que aplicar a la labor, igual que
-      // en la captura a mano. Sin esta comprobación entrarían
+      // La tarea y el código físico tienen que aplicar a la labor, igual
+      // que en la captura a mano. Sin esta comprobación entrarían
       // combinaciones que la pantalla nunca permitiría y que después no
-      // se pueden editar sin cambiar la labor.
+      // se pueden editar sin cambiar la labor. El implemento SAP ya no se
+      // valida: no se elige, lo deduce la base del código físico.
       const laborId = valores['labor_id'] as string | undefined
       if (laborId) {
         const labor = catalogos.labores.find((l) => l.id === laborId)
         const tareaId = valores['tarea_id'] as string | undefined
-        const implId = valores['implemento_id'] as string | undefined
         if (labor && tareaId && !labor.labores_tareas.some((t) => t.tarea_id === tareaId)) {
           errores.push(`esa tarea SAP no está vinculada a «${labor.nombre}»`)
-        }
-        if (labor && implId && !labor.labores_implementos.some((x) => x.implemento_id === implId)) {
-          errores.push(`ese implemento no está vinculado a «${labor.nombre}»`)
         }
         const fisId = valores['implemento_fisico_id'] as string | undefined
         if (

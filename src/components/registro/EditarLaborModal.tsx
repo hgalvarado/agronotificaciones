@@ -38,6 +38,7 @@ import { CICLOS } from '@/lib/estados'
 import { mensajeDeError } from '@/lib/errores'
 import type { Implemento, TareaSap, TurnoTipo } from '@/lib/types'
 import type { ImplementoFisico, Proveedor } from '@/lib/datosRegistro'
+import { fisicosDeLabor, textoImplementoDeducido } from '@/lib/implementos/derivacion'
 
 /** Lo que el modal necesita de la fila. Coincide con `v_labores_control`. */
 export type FilaEditable = {
@@ -84,7 +85,6 @@ export type LaborCompleta = {
   id: string
   nombre: string
   labores_tareas: { tarea_id: string }[]
-  labores_implementos: { implemento_id: string }[]
   /* Opcionales: llegan según la migración que esté corrida. */
   usa_proveedor_plastico?: boolean | null
   usa_proveedor_manguera?: boolean | null
@@ -238,26 +238,36 @@ function Formulario({
     return catalogos.tareasSap.filter((t) => ids.has(t.id) || t.id === form.tarea_id)
   }, [catalogos.tareasSap, labor, form.tarea_id])
 
-  const implementosPermitidos = useMemo(() => {
-    const ids = new Set(labor?.labores_implementos.map((i) => i.implemento_id) ?? [])
-    return catalogos.implementos.filter((i) => ids.has(i.id) || i.id === form.implemento_id)
-  }, [catalogos.implementos, labor, form.implemento_id])
-
+  // Los códigos de la labor, más el que ya trae la línea aunque hoy no
+  // esté vinculado: si no, editar otra cosa le borraría el implemento a
+  // una captura vieja sin que nadie lo hubiera tocado.
   const fisicosPermitidos = useMemo(() => {
-    const ids = new Set(
-      catalogos.vinculosFisicos
-        .filter((v) => v.labor_id === form.labor_id)
-        .map((v) => v.implemento_fisico_id)
+    const deLabor = fisicosDeLabor(
+      catalogos.implementosFisicos,
+      catalogos.vinculosFisicos,
+      form.labor_id
     )
-    return catalogos.implementosFisicos.filter(
-      (i) => ids.has(i.id) || i.id === form.implemento_fisico_id
-    )
+    if (!form.implemento_fisico_id || deLabor.some((f) => f.id === form.implemento_fisico_id)) {
+      return deLabor
+    }
+    const actual = catalogos.implementosFisicos.find((f) => f.id === form.implemento_fisico_id)
+    return actual ? [actual, ...deLabor] : deLabor
   }, [
     catalogos.vinculosFisicos,
     catalogos.implementosFisicos,
     form.labor_id,
     form.implemento_fisico_id,
   ])
+
+  const implementoDeducido = useMemo(
+    () =>
+      textoImplementoDeducido(
+        catalogos.implementos,
+        catalogos.implementosFisicos,
+        form.implemento_fisico_id
+      ),
+    [catalogos.implementos, catalogos.implementosFisicos, form.implemento_fisico_id]
+  )
 
   // Los lotes se limitan a la temporada de la línea: cambiar de lote aquí
   // es corregir una captura, no mover la línea de temporada (para eso
@@ -293,9 +303,8 @@ function Formulario({
   function cambiarLabor(id: string) {
     const nueva = catalogos.labores.find((l) => l.id === id)
     const tareasOk = new Set(nueva?.labores_tareas.map((t) => t.tarea_id) ?? [])
-    const implOk = new Set(nueva?.labores_implementos.map((i) => i.implemento_id) ?? [])
     const fisicosOk = new Set(
-      catalogos.vinculosFisicos.filter((v) => v.labor_id === id).map((v) => v.implemento_fisico_id)
+      fisicosDeLabor(catalogos.implementosFisicos, catalogos.vinculosFisicos, id).map((f) => f.id)
     )
     // Los campos que la labor nueva ya no pide se vacían aquí y no al
     // guardar: si se dejaran con su valor viejo, el formulario mostraría
@@ -310,7 +319,6 @@ function Formulario({
       ...f,
       labor_id: id,
       tarea_id: tareasOk.has(f.tarea_id) ? f.tarea_id : ([...tareasOk][0] ?? f.tarea_id),
-      implemento_id: implOk.has(f.implemento_id) ? f.implemento_id : '',
       implemento_fisico_id: fisicosOk.has(f.implemento_fisico_id) ? f.implemento_fisico_id : '',
       etapa: nuevaPideEtapa ? f.etapa : '',
       proveedor_plastico_id:
@@ -351,9 +359,13 @@ function Formulario({
     const deRegistro: Record<string, unknown> = {}
     if (cambio('labor_id')) deRegistro.labor_id = form.labor_id
     if (cambio('tarea_id')) deRegistro.tarea_id = form.tarea_id
-    if (cambio('implemento_id')) deRegistro.implemento_id = form.implemento_id || null
-    if (hayImplementoFisico && cambio('implemento_fisico_id'))
+    // El implemento no se edita: va detrás del código físico. Se manda
+    // vacío para que el disparador de la base lo vuelva a deducir, que es
+    // la misma regla que aplica la captura y la importación.
+    if (hayImplementoFisico && cambio('implemento_fisico_id')) {
       deRegistro.implemento_fisico_id = form.implemento_fisico_id || null
+      deRegistro.implemento_id = null
+    }
     if (cambio('horas_notificadas')) deRegistro.horas_notificadas = numero(form.horas_notificadas)
     if (cambio('comentarios')) deRegistro.comentarios = form.comentarios || null
 
@@ -582,57 +594,62 @@ function Formulario({
           }
         >
           <Campo etiqueta="Labor">
-            <Selector value={form.labor_id} onChange={(e) => cambiarLabor(e.target.value)}>
-              {catalogos.labores.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.nombre}
-                </option>
-              ))}
-            </Selector>
+            <SelectorBuscable
+              valor={form.labor_id}
+              onCambiar={cambiarLabor}
+              permitirVacio={false}
+              placeholder="Buscar labor…"
+              etiquetaBusqueda="Escribe el nombre de la labor"
+              opciones={catalogos.labores.map((l) => ({ id: l.id, titulo: l.nombre }))}
+            />
           </Campo>
 
           <Campo etiqueta="Tarea SAP">
-            <Selector value={form.tarea_id} onChange={(e) => set('tarea_id', e.target.value)}>
-              {tareasPermitidas.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.codigo} · {t.nombre}
-                </option>
-              ))}
-            </Selector>
-          </Campo>
-
-          <Campo etiqueta="Implemento (tarifa)">
-            <Selector
-              value={form.implemento_id}
-              onChange={(e) => set('implemento_id', e.target.value)}
-            >
-              <option value="">Sin implemento</option>
-              {implementosPermitidos.map((i) => (
-                <option key={i.id} value={i.id}>
-                  {i.codigo} · {i.nombre}
-                </option>
-              ))}
-            </Selector>
+            <SelectorBuscable
+              valor={form.tarea_id}
+              onCambiar={(id) => set('tarea_id', id)}
+              permitirVacio={false}
+              placeholder="Buscar tarea…"
+              etiquetaBusqueda="Escribe el código o el nombre"
+              opciones={tareasPermitidas.map((t) => ({
+                id: t.id,
+                titulo: t.codigo,
+                subtitulo: t.nombre,
+              }))}
+            />
           </Campo>
 
           {hayImplementoFisico && (
             <Campo
-              etiqueta="Código de implemento"
-              ayuda="El equipo exacto que se usó, p. ej. ROMSR-01."
+              etiqueta="Código físico del implemento"
+              ayuda="El fierro exacto que se usó, p. ej. ROMSR-01. El implemento se completa solo."
             >
-              <Selector
-                value={form.implemento_fisico_id}
-                onChange={(e) => set('implemento_fisico_id', e.target.value)}
-              >
-                <option value="">Sin código</option>
-                {fisicosPermitidos.map((i) => (
-                  <option key={i.id} value={i.id}>
-                    {i.codigo} · {i.descripcion}
-                  </option>
-                ))}
-              </Selector>
+              <SelectorBuscable
+                valor={form.implemento_fisico_id}
+                onCambiar={(id) => set('implemento_fisico_id', id)}
+                placeholder="Buscar código…"
+                etiquetaBusqueda="Escribe el código o la descripción"
+                textoVacio="Sin implemento"
+                opciones={fisicosPermitidos.map((i) => ({
+                  id: i.id,
+                  titulo: i.codigo,
+                  subtitulo: i.descripcion,
+                }))}
+              />
             </Campo>
           )}
+
+          <Campo etiqueta="Implemento (tarifa)">
+            <p
+              className={`rounded-xl border px-3.5 py-3 text-base ${
+                implementoDeducido.pendiente
+                  ? 'border-amber-200 bg-amber-50 text-amber-800'
+                  : 'border-slate-200 bg-slate-50 text-slate-600'
+              }`}
+            >
+              {implementoDeducido.texto}
+            </p>
+          </Campo>
 
           <Campo
             etiqueta="Horas notificadas"

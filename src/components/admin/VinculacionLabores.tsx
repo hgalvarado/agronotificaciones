@@ -27,7 +27,6 @@ export type LaborVinculada = {
   usa_proveedor_plastico?: boolean | null
   usa_proveedor_manguera?: boolean | null
   labores_tareas: { tarea_id: string }[]
-  labores_implementos: { implemento_id: string }[]
   /** Códigos físicos vinculados. Llegan con la migración 19. */
   labores_implementos_fisicos?: { implemento_fisico_id: string }[]
 }
@@ -36,6 +35,8 @@ export type ImplementoFisicoOpcion = {
   id: string
   codigo: string
   descripcion: string
+  /** Tipo SAP del que cuelga. De aquí sale la tarifa al capturar. */
+  implemento_id?: string | null
 }
 
 const LABOR_NUEVA: LaborVinculada = {
@@ -46,7 +47,6 @@ const LABOR_NUEVA: LaborVinculada = {
   usa_proveedor_plastico: false,
   usa_proveedor_manguera: false,
   labores_tareas: [],
-  labores_implementos: [],
   labores_implementos_fisicos: [],
 }
 
@@ -118,7 +118,7 @@ export function VinculacionLabores({
             descripcion={
               busqueda
                 ? 'Prueba con otro nombre.'
-                : 'Crea la primera labor con el botón de arriba: nombre, categoría, tareas SAP e implementos, todo de una vez.'
+                : 'Crea la primera labor con el botón de arriba: nombre, categoría, tareas SAP y códigos físicos, todo de una vez.'
             }
           />
         </Tarjeta>
@@ -127,7 +127,7 @@ export function VinculacionLabores({
           {filtradas.map((labor) => {
             const categoria = categorias.find((c) => c.id === labor.categoria_labor_id)
             const nTareas = labor.labores_tareas.length
-            const nImpl = labor.labores_implementos.length
+            const nCodigos = labor.labores_implementos_fisicos?.length ?? 0
 
             return (
               <button
@@ -147,15 +147,9 @@ export function VinculacionLabores({
                     <Insignia tono={nTareas > 0 ? 'verde' : 'rojo'}>
                       {nTareas} {nTareas === 1 ? 'tarea SAP' : 'tareas SAP'}
                     </Insignia>
-                    <Insignia tono={nImpl > 0 ? 'azul' : 'gris'}>
-                      {nImpl} {nImpl === 1 ? 'implemento' : 'implementos'}
+                    <Insignia tono={nCodigos > 0 ? 'azul' : 'gris'}>
+                      {nCodigos} {nCodigos === 1 ? 'código físico' : 'códigos físicos'}
                     </Insignia>
-                    {(labor.labores_implementos_fisicos?.length ?? 0) > 0 && (
-                      <Insignia tono="violeta">
-                        {labor.labores_implementos_fisicos!.length} código
-                        {labor.labores_implementos_fisicos!.length === 1 ? '' : 's'}
-                      </Insignia>
-                    )}
                     {labor.usa_proveedor_plastico && <Insignia tono="ambar">Plástico</Insignia>}
                     {labor.usa_proveedor_manguera && <Insignia tono="ambar">Manguera</Insignia>}
                   </div>
@@ -183,7 +177,7 @@ export function VinculacionLabores({
 }
 
 /* ------------------------------------------------------------------ */
-/* Modal: categoría + tareas SAP + implementos                         */
+/* Modal: categoría, tareas SAP y códigos físicos de implemento        */
 /* ------------------------------------------------------------------ */
 
 function ModalVinculacion({
@@ -211,10 +205,6 @@ function ModalVinculacion({
     () => new Set(labor.labores_tareas.map((t) => t.tarea_id)),
     [labor]
   )
-  const implIniciales = useMemo(
-    () => new Set(labor.labores_implementos.map((i) => i.implemento_id)),
-    [labor]
-  )
   const fisicosIniciales = useMemo(
     () => new Set((labor.labores_implementos_fisicos ?? []).map((i) => i.implemento_fisico_id)),
     [labor]
@@ -226,7 +216,6 @@ function ModalVinculacion({
   const [pidePlastico, setPidePlastico] = useState(Boolean(labor.usa_proveedor_plastico))
   const [pideManguera, setPideManguera] = useState(Boolean(labor.usa_proveedor_manguera))
   const [tareas, setTareas] = useState<Set<string>>(new Set(tareasIniciales))
-  const [impl, setImpl] = useState<Set<string>>(new Set(implIniciales))
   const [fisicos, setFisicos] = useState<Set<string>>(new Set(fisicosIniciales))
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -272,12 +261,6 @@ function ModalVinculacion({
             .insert([...tareas].map((tarea_id) => ({ labor_id: creada.id, tarea_id })))
           if (e2) throw e2
         }
-        if (impl.size > 0) {
-          const { error: e3 } = await supabase
-            .from('labores_implementos')
-            .insert([...impl].map((implemento_id) => ({ labor_id: creada.id, implemento_id })))
-          if (e3) throw e3
-        }
         if (fisicos.size > 0) {
           const { error: e4 } = await supabase
             .from('labores_implementos_fisicos')
@@ -299,8 +282,6 @@ function ModalVinculacion({
       // ---------- Edición: sólo se tocan las filas que cambiaron ----------
       const tareasAgregar = [...tareas].filter((id) => !tareasIniciales.has(id))
       const tareasQuitar = [...tareasIniciales].filter((id) => !tareas.has(id))
-      const implAgregar = [...impl].filter((id) => !implIniciales.has(id))
-      const implQuitar = [...implIniciales].filter((id) => !impl.has(id))
       const fisAgregar = [...fisicos].filter((id) => !fisicosIniciales.has(id))
       const fisQuitar = [...fisicosIniciales].filter((id) => !fisicos.has(id))
 
@@ -345,20 +326,6 @@ function ModalVinculacion({
           .delete()
           .eq('labor_id', labor.id)
           .in('tarea_id', tareasQuitar)
-        if (e) throw e
-      }
-      if (implAgregar.length > 0) {
-        const { error: e } = await supabase
-          .from('labores_implementos')
-          .insert(implAgregar.map((implemento_id) => ({ labor_id: labor.id, implemento_id })))
-        if (e) throw e
-      }
-      if (implQuitar.length > 0) {
-        const { error: e } = await supabase
-          .from('labores_implementos')
-          .delete()
-          .eq('labor_id', labor.id)
-          .in('implemento_id', implQuitar)
         if (e) throw e
       }
       if (fisAgregar.length > 0) {
@@ -443,15 +410,6 @@ function ModalVinculacion({
           onToggle={(id) => alternar(tareas, setTareas, id)}
         />
 
-        <ListaSeleccion
-          titulo="Implementos permitidos"
-          ayuda="Herramientas que se pueden acoplar al equipo para esta labor."
-          vacio="No hay implementos en el catálogo."
-          seleccionados={impl}
-          items={implementos.map((i) => ({ id: i.id, titulo: i.nombre, subtitulo: i.codigo }))}
-          onToggle={(id) => alternar(impl, setImpl, id)}
-        />
-
         {/* «cada codigo de implemento se asignara por las labores, en la
             pestaña vinculacion de labores». Con esto la captura ofrece
             sólo los fierros de la labor —ROMSR-01, ROMSR-08— y no los 94
@@ -460,14 +418,16 @@ function ModalVinculacion({
         {implementosFisicos.length > 0 && (
           <ListaSeleccion
             titulo="Códigos físicos de implemento"
-            ayuda="La máquina concreta que puede hacer esta labor. Al capturarla, el digitador elegirá entre estas y no entre todo el catálogo. La tarifa no depende del código: sale del implemento de arriba."
+            ayuda="La máquina concreta que puede hacer esta labor. Al capturarla, el digitador elige el código y el implemento SAP —con su tarifa— se completa solo. Los marcados «sin tipo» no traen tarifa: empárejalos en Catálogos → Implementos."
             vacio="No hay códigos físicos en el catálogo."
             buscable
             seleccionados={fisicos}
             items={implementosFisicos.map((i) => ({
               id: i.id,
               titulo: i.codigo,
-              subtitulo: i.descripcion,
+              subtitulo: `${i.descripcion} · ${
+                implementos.find((t) => t.id === i.implemento_id)?.nombre ?? 'sin tipo'
+              }`,
             }))}
             onToggle={(id) => alternar(fisicos, setFisicos, id)}
           />

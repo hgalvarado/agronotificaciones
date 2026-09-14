@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { Alerta, Boton, Campo, Entrada } from '@/components/ui/Primitivos'
+import { Logo } from '@/components/ui/Logo'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -39,9 +40,7 @@ export default function LoginPage() {
 
       <div className="anim-aparecer w-full max-w-sm">
         <div className="mb-7 flex flex-col items-center text-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-700 text-lg font-bold text-white shadow-[var(--shadow-float)]">
-            AN
-          </div>
+          <Logo tamano={56} className="rounded-2xl shadow-[var(--shadow-float)]" />
           <h1 className="mt-4 text-2xl font-bold tracking-tight text-slate-900">AgroNotificaciones</h1>
           <p className="mt-1 text-sm text-slate-500">Control operativo de maquinaria agrícola</p>
         </div>

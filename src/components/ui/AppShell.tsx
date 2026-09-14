@@ -19,6 +19,7 @@ import {
   IconUser,
 } from './Icons'
 import { CampanaNotificaciones } from './CampanaNotificaciones'
+import { Logo } from './Logo'
 
 type ItemNav = {
   href: string
@@ -166,9 +167,7 @@ export function AppShell({
       {/* ---------------- Barra lateral (escritorio) ---------------- */}
       <aside className="no-imprimir sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r border-slate-200 bg-white lg:flex">
         <div className="flex items-center gap-2.5 px-5 py-5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-700 text-sm font-bold text-white">
-            AN
-          </div>
+          <Logo tamano={36} />
           <div>
             <p className="text-sm font-bold leading-tight text-slate-900">AgroNotificaciones</p>
             <p className="text-[11px] text-slate-400">Maquinaria agrícola</p>
@@ -273,9 +272,7 @@ export function AppShell({
         {/* Encabezado móvil */}
         <header className="no-imprimir sticky top-0 z-20 flex items-center justify-between border-b border-slate-200 bg-white/85 px-4 py-3 backdrop-blur-md lg:hidden">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-700 text-xs font-bold text-white">
-              AN
-            </div>
+            <Logo tamano={32} className="rounded-lg" />
             <div>
               <p className="text-sm font-bold leading-tight text-slate-900">{nombre}</p>
               <p className="text-[11px] text-slate-400">{rolNombre}</p>

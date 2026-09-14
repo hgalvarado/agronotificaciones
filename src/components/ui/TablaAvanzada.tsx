@@ -1,6 +1,7 @@
 'use client'
 
 import { Fragment, useMemo, useState, type ReactNode } from 'react'
+import { SelectorCelda } from './SelectorCelda'
 import { Modal } from './Modal'
 import { Alerta, Boton, Campo, Entrada, EstadoVacio, Selector } from './Primitivos'
 import { FiltroColumna } from './FiltroColumna'
@@ -717,18 +718,12 @@ function Celda({
       return <span className="text-slate-600">{etiqueta ?? '—'}</span>
     }
     return (
-      <select
-        value={valor === null || valor === undefined ? '' : String(valor)}
-        onChange={(e) => onGuardar(e.target.value || null)}
+      <SelectorCelda
+        valor={valor === null || valor === undefined ? '' : String(valor)}
+        opciones={columna.opciones ?? []}
+        onElegir={(v) => onGuardar(v || null)}
         className="w-full min-w-[120px] rounded-lg border border-transparent px-2 py-1.5 transition-colors hover:border-slate-200 focus:border-brand-600 focus:bg-white focus:outline-none"
-      >
-        <option value="">—</option>
-        {(columna.opciones ?? []).map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
+      />
     )
   }
 

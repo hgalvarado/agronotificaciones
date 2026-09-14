@@ -13,18 +13,18 @@
 'use client'
 
 import { createClient } from '@/lib/supabase/client'
-import type { ConfiguracionPublica, NivelProceso } from './tipos'
+import type { ConfiguracionPublica, ProcesoTicket } from './tipos'
 
 type FilaConfig = {
   activo: boolean
-  nivel_proceso: string
+  procesos: string[] | null
   todos_departamentos: boolean
   departamentos: string[] | null
 }
 
 export type GuardarConfig = {
   activo: boolean
-  nivelProceso: NivelProceso
+  procesos: ProcesoTicket[]
   todosDepartamentos: boolean
   departamentos: string[]
 }
@@ -38,7 +38,7 @@ export async function guardarConfiguracionEnBase(
     .from('reporte_publico_config')
     .update({
       activo: entrada.activo,
-      nivel_proceso: entrada.nivelProceso,
+      procesos: entrada.procesos,
       todos_departamentos: entrada.todosDepartamentos,
       departamentos: entrada.departamentos,
       actualizado_por: usuarioId,
@@ -55,7 +55,7 @@ export async function releerConfiguracion(): Promise<{
   const supabase = createClient()
   const { data, error } = await supabase
     .from('reporte_publico_config')
-    .select('activo, nivel_proceso, todos_departamentos, departamentos')
+    .select('activo, procesos, todos_departamentos, departamentos')
     .eq('id', true)
     .maybeSingle()
 
@@ -66,7 +66,7 @@ export async function releerConfiguracion(): Promise<{
   return {
     datos: {
       activo: fila.activo,
-      nivelProceso: fila.nivel_proceso as NivelProceso,
+      procesos: (fila.procesos ?? []) as ProcesoTicket[],
       todosDepartamentos: fila.todos_departamentos,
       departamentos: fila.departamentos ?? [],
     },

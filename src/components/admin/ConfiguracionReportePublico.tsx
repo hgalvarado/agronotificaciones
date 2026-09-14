@@ -12,13 +12,14 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Alerta, Boton, Campo, Selector, Tarjeta } from '@/components/ui/Primitivos'
+import { Alerta, Boton, Tarjeta } from '@/components/ui/Primitivos'
+import { GrupoCasillas } from '@/components/ui/GrupoCasillas'
 import { guardarConfiguracion } from '@/lib/reporte-maquinaria/servicioConfig'
-import { NIVELES_PROCESO, type NivelProceso } from '@/lib/reporte-maquinaria/tipos'
+import { PROCESOS_TICKET, type ProcesoTicket } from '@/lib/reporte-maquinaria/tipos'
 
 export type ConfigInicial = {
   activo: boolean
-  nivelProceso: NivelProceso
+  procesos: ProcesoTicket[]
   todosDepartamentos: boolean
   departamentos: string[]
 }
@@ -38,7 +39,7 @@ export function ConfiguracionReportePublico({
 }) {
   const router = useRouter()
   const [activo, setActivo] = useState(inicial.activo)
-  const [nivel, setNivel] = useState<string>(inicial.nivelProceso)
+  const [procesos, setProcesos] = useState<string[]>(inicial.procesos)
   const [todos, setTodos] = useState(inicial.todosDepartamentos)
   const [elegidos, setElegidos] = useState<Set<string>>(new Set(inicial.departamentos))
   const [guardando, setGuardando] = useState(false)
@@ -59,7 +60,7 @@ export function ConfiguracionReportePublico({
     const resultado = await guardarConfiguracion(
       {
         activo,
-        nivelProceso: nivel,
+        procesos,
         todosDepartamentos: todos,
         departamentos: [...elegidos],
       },
@@ -73,8 +74,8 @@ export function ConfiguracionReportePublico({
   if (faltaMigracion) {
     return (
       <Alerta tono="ambar">
-        El reporte público todavía no está instalado. Corre la migración 23 en el SQL Editor de
-        Supabase y vuelve a entrar.
+        El reporte público todavía no está al día. Corre las migraciones 23 y 31 en el SQL Editor
+        de Supabase y vuelve a entrar.
       </Alerta>
     )
   }
@@ -120,21 +121,26 @@ export function ConfiguracionReportePublico({
         )}
       </Tarjeta>
 
-      {/* ----------------------- Hasta qué proceso ---------------------- */}
+      {/* ------------------------ Qué procesos -------------------------- */}
       <Tarjeta className="p-4">
-        <Campo
-          etiqueta="Hasta qué proceso se publica"
-          ayuda="Un ticket se ve si su proceso está en este nivel o antes. «Notificado» publica todos."
-          className="max-w-sm"
-        >
-          <Selector value={nivel} disabled={!puedeEditar} onChange={(e) => setNivel(e.target.value)}>
-            {NIVELES_PROCESO.map((n) => (
-              <option key={n.valor} value={n.valor}>
-                {n.etiqueta}
-              </option>
-            ))}
-          </Selector>
-        </Campo>
+        <h2 className="text-sm font-semibold text-slate-900">Procesos que se publican</h2>
+        <p className="mb-3 text-xs text-slate-400">
+          Un ticket se ve sólo si su proceso está marcado. Marca los que quieras, en cualquier
+          combinación: no es un tope, es una lista.
+        </p>
+
+        <GrupoCasillas
+          opciones={PROCESOS_TICKET.map((p) => ({ valor: p.valor, etiqueta: p.etiqueta }))}
+          marcados={procesos}
+          onCambiar={setProcesos}
+          disabled={!puedeEditar}
+        />
+
+        {activo && procesos.length === 0 && (
+          <p className="mt-3 text-xs font-semibold text-amber-700">
+            Sin ningún proceso marcado el reporte no enseña un solo ticket.
+          </p>
+        )}
       </Tarjeta>
 
       {/* ------------------------ Departamentos ------------------------- */}

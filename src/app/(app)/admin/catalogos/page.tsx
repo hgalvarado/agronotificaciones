@@ -264,7 +264,7 @@ export default async function CatalogosPage() {
         { key: 'activo', label: 'Activo', tipo: 'checkbox' },
       ],
       // Las labores no son un catálogo plano: su utilidad está en las
-      // tareas SAP y los implementos que tienen vinculados. Sin esto,
+      // tareas SAP y los códigos físicos que tienen vinculados. Sin esto,
       // cargar labores desde Excel las dejaría sin tareas y la captura
       // no ofrecería ninguna.
       relaciones: [
@@ -274,13 +274,6 @@ export default async function CatalogosPage() {
           columnaPadre: 'labor_id',
           columnaHijo: 'tarea_id',
           opciones: opcionesTarea,
-        },
-        {
-          label: 'Implementos',
-          tabla: 'labores_implementos',
-          columnaPadre: 'labor_id',
-          columnaHijo: 'implemento_id',
-          opciones: opcionesImplemento,
         },
         ...(opcionesImplementoFisico.length > 0
           ? [

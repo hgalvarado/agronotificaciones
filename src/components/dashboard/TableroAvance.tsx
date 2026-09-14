@@ -1,127 +1,77 @@
 'use client'
 
+/**
+ * El tablero de avance.
+ *
+ * Su trabajo es uno: recoger filtros, pedir los datos y repartirlos
+ * entre los módulos que dibujan. Ni agrupa (lo hace
+ * `lib/tablero/agrupacion`), ni consulta a mano (lo hace
+ * `lib/tablero/repositorio`), ni formatea números (`lib/tablero/formato`).
+ *
+ * Del proceso SAP ya no sabe nada: «Eliminar cualquier lógica o
+ * distinción subyacente entre APS, LEV o CAT». Un lote es un lote, y su
+ * plan es el área que hay que recorrer, no una por proceso.
+ */
+
 import { useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
-import { createClient } from '@/lib/supabase/client'
 import { Alerta, Tarjeta } from '@/components/ui/Primitivos'
-import { IconChevronRight, IconSearch, IconX } from '@/components/ui/Icons'
+import { IconSearch, IconX } from '@/components/ui/Icons'
+import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
+import { SelectorMultiple } from '@/components/ui/SelectorMultiple'
+import { GrupoCasillas } from '@/components/ui/GrupoCasillas'
+import { ArbolAvance } from './ArbolAvance'
+import { ResumenCostosZona } from './ResumenCostosZona'
 import { mensajeDeError } from '@/lib/errores'
+import { agrupar, costosPorZona, ordenar, totalesDe } from '@/lib/tablero/agrupacion'
+import { leerTablero } from '@/lib/tablero/repositorio'
+import { colorAvance, dinero, fechaCorta, numero, porcentaje } from '@/lib/tablero/formato'
+import {
+  AGRUPACIONES,
+  AGRUPACION_POR_OMISION,
+  CICLOS_TABLERO,
+  FILTROS_VACIOS,
+  type Agrupacion,
+  type FilaLabor,
+  type FilaLote,
+  type FilaZona,
+  type Filtros,
+  type OpcionLabor,
+  type OpcionLote,
+  type OpcionSimple,
+  type OpcionTemporada,
+} from '@/lib/tablero/tipos'
 
-/* ------------------------------------------------------------------ */
-/* Tipos                                                              */
-/* ------------------------------------------------------------------ */
-
-export type OpcionSimple = { id: string; nombre: string }
-export type OpcionProceso = { id: string; codigo: string; nombre: string }
-export type OpcionTemporada = { id: string; nombre: string; activa: boolean }
-export type OpcionLabor = { id: string; nombre: string; categoria_labor_id: string | null }
-export type OpcionLote = {
-  id: string
-  temporada_id: string
-  zona_id: string | null
-  etiqueta: string
-}
-
-type FilaLabor = {
-  labor_id: string
-  labor_nombre: string
-  categoria_id: string | null
-  categoria_labor: string | null
-  proceso_id: string | null
-  proceso_codigo: string | null
-  area_plan: number
-  mz_avance: number
-  mz_pendiente: number
-  pct_avance: number | null
-  lotes_con_plan: number
-  lotes_tocados: number
-  lineas: number
-  primera_fecha: string | null
-  ultima_fecha: string | null
-}
-
-type FilaZona = {
-  zona_id: string | null
-  zona: string | null
-  encargado: string | null
-  area_plan: number
-  mz_avance: number
-  mz_pendiente: number
-  pct_avance: number | null
-  lotes_tocados: number
-  ultima_fecha: string | null
-}
-
-type Filtros = {
-  temporada: string
-  proceso: string
-  zona: string
-  lote: string
-  categoria: string
-  labor: string
-  desde: string
-  hasta: string
-}
-
-const num = new Intl.NumberFormat('es-HN', {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-})
-
-function fechaCorta(iso: string | null) {
-  if (!iso) return '—'
-  return new Date(iso + 'T00:00:00').toLocaleDateString('es-HN', {
-    day: '2-digit',
-    month: 'short',
-  })
-}
-
-function color(pct: number) {
-  if (pct >= 99) return 'bg-emerald-500'
-  if (pct >= 50) return 'bg-brand-600'
-  return 'bg-amber-500'
-}
-
-/** Permiso de pantalla que corresponde a cada proceso. */
-const RUTA: Record<string, string> = { APS: 'plan_aps' }
-
-/* ------------------------------------------------------------------ */
+export type {
+  OpcionLabor,
+  OpcionLote,
+  OpcionSimple,
+  OpcionTemporada,
+} from '@/lib/tablero/tipos'
 
 export function TableroAvance({
   temporadas,
-  procesos,
   zonas,
   lotes,
   labores,
   categorias,
-  permisosPlan,
 }: {
   temporadas: OpcionTemporada[]
-  procesos: OpcionProceso[]
   zonas: OpcionSimple[]
   lotes: OpcionLote[]
   labores: OpcionLabor[]
   categorias: OpcionSimple[]
-  /** Códigos de pantalla de plan que este usuario puede ver. */
-  permisosPlan: string[]
 }) {
-  const supabase = createClient()
-
   const temporadaInicial = temporadas.find((t) => t.activa)?.id ?? temporadas[0]?.id ?? ''
 
   const [filtros, setFiltros] = useState<Filtros>({
     temporada: temporadaInicial,
-    proceso: '',
-    zona: '',
-    lote: '',
-    categoria: '',
-    labor: '',
-    desde: '',
-    hasta: '',
+    ...FILTROS_VACIOS,
   })
+  const [porAgrupar, setPorAgrupar] = useState<Agrupacion[]>(AGRUPACION_POR_OMISION)
 
   const [porLabor, setPorLabor] = useState<FilaLabor[]>([])
   const [porZona, setPorZona] = useState<FilaZona[]>([])
+  const [porLote, setPorLote] = useState<FilaLote[]>([])
   // Arranca en «cargando» sólo si de verdad hay algo que pedir. Ponerlo
   // en true y apagarlo dentro del efecto haría un `setState` sincrónico
   // en el cuerpo del efecto, que React 19 marca como error.
@@ -130,6 +80,11 @@ export function TableroAvance({
   const [abrirFiltros, setAbrirFiltros] = useState(false)
 
   /* ----------------------------- Consulta ---------------------------- */
+
+  // Las listas van serializadas en las dependencias: un arreglo nuevo con
+  // el mismo contenido dispararía el efecto en cada render.
+  const zonasClave = filtros.zonas.join(',')
+  const ciclosClave = filtros.ciclos.join(',')
 
   useEffect(() => {
     if (!filtros.temporada) return
@@ -142,36 +97,23 @@ export function TableroAvance({
       setCargando(true)
       setError(null)
 
-      const parametros = {
-        p_temporada_id: filtros.temporada,
-        p_proceso_id: filtros.proceso || null,
-        p_zona_id: filtros.zona || null,
-        p_lote_temporada_id: filtros.lote || null,
-        p_labor_id: filtros.labor || null,
-        p_categoria_labor_id: filtros.categoria || null,
-        p_desde: filtros.desde || null,
-        p_hasta: filtros.hasta || null,
-      }
-
-      const [avance, zona] = await Promise.all([
-        supabase.rpc('fn_tablero_avance', parametros),
-        supabase.rpc('fn_tablero_por_zona', parametros),
-      ])
-
+      const datos = await leerTablero(filtros)
       if (!vivo) return
 
-      if (avance.error || zona.error) {
+      if (datos.error) {
         setPorLabor([])
         setPorZona([])
+        setPorLote([])
         setError(
           mensajeDeError(
-            avance.error ?? zona.error,
-            'No se pudo leer el avance. Si dice que la función no existe, falta correr la migración 15 en el SQL Editor de Supabase.',
-          ),
+            datos.error,
+            'No se pudo leer el avance. Si dice que la función no existe o que le sobran argumentos, falta correr la migración 31 en el SQL Editor de Supabase.'
+          )
         )
       } else {
-        setPorLabor((avance.data as FilaLabor[] | null) ?? [])
-        setPorZona((zona.data as FilaZona[] | null) ?? [])
+        setPorLabor(datos.porLabor)
+        setPorZona(datos.porZona)
+        setPorLote(datos.porLote)
       }
       setCargando(false)
     }
@@ -180,14 +122,12 @@ export function TableroAvance({
     return () => {
       vivo = false
     }
-    // `supabase` es estable entre renders (el cliente del navegador es
-    // uno solo), así que no entra en las dependencias.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     filtros.temporada,
-    filtros.proceso,
-    filtros.zona,
+    zonasClave,
     filtros.lote,
+    ciclosClave,
     filtros.labor,
     filtros.categoria,
     filtros.desde,
@@ -196,76 +136,75 @@ export function TableroAvance({
 
   /* ------------------------- Listas dependientes --------------------- */
 
-  // Los lotes se recortan a la temporada y a la zona elegidas: una lista
-  // de 400 lotes de todas las temporadas no sirve de filtro.
+  // Los lotes se recortan a la temporada, a las zonas y a los ciclos
+  // elegidos: una lista de 400 lotes de todas las temporadas no sirve de
+  // filtro.
   const lotesVisibles = useMemo(
     () =>
       lotes.filter(
         (l) =>
-          l.temporada_id === filtros.temporada && (!filtros.zona || l.zona_id === filtros.zona),
+          l.temporada_id === filtros.temporada &&
+          (filtros.zonas.length === 0 || (l.zona_id !== null && filtros.zonas.includes(l.zona_id))) &&
+          (filtros.ciclos.length === 0 || (l.ciclo !== null && filtros.ciclos.includes(l.ciclo)))
       ),
-    [lotes, filtros.temporada, filtros.zona],
+    [lotes, filtros.temporada, filtros.zonas, filtros.ciclos]
   )
 
   // Y las labores, a la categoría elegida.
   const laboresVisibles = useMemo(
     () => labores.filter((l) => !filtros.categoria || l.categoria_labor_id === filtros.categoria),
-    [labores, filtros.categoria],
+    [labores, filtros.categoria]
   )
 
   function cambiar(cambios: Partial<Filtros>) {
     setFiltros((prev) => {
       const siguiente = { ...prev, ...cambios }
-      // Coherencia: si cambia la zona o la temporada, el lote elegido
-      // puede quedar fuera de la lista; si cambia la categoría, la labor.
-      if (cambios.zona !== undefined || cambios.temporada !== undefined) siguiente.lote = ''
+      // Coherencia: si cambia la zona, el ciclo o la temporada, el lote
+      // elegido puede quedar fuera de la lista; si cambia la categoría,
+      // la labor.
+      if (
+        cambios.zonas !== undefined ||
+        cambios.temporada !== undefined ||
+        cambios.ciclos !== undefined
+      ) {
+        siguiente.lote = ''
+      }
       if (cambios.categoria !== undefined) siguiente.labor = ''
       return siguiente
     })
   }
 
   const activos = [
-    filtros.proceso && 'proceso',
-    filtros.zona && 'zona',
+    filtros.zonas.length > 0 && 'zona',
     filtros.lote && 'lote',
+    filtros.ciclos.length > 0 && 'ciclo',
     filtros.categoria && 'categoría',
     filtros.labor && 'labor',
     (filtros.desde || filtros.hasta) && 'fechas',
   ].filter(Boolean).length
 
   function limpiar() {
-    setFiltros({
-      temporada: filtros.temporada,
-      proceso: '',
-      zona: '',
-      lote: '',
-      categoria: '',
-      labor: '',
-      desde: '',
-      hasta: '',
-    })
+    setFiltros({ temporada: filtros.temporada, ...FILTROS_VACIOS })
   }
 
-  /* ------------------------------ Totales ---------------------------- */
+  /* ------------------------------ Derivados -------------------------- */
 
-  // El plan es el MISMO para todas las labores del proceso, así que no se
-  // suma: se toma el mayor de los que vinieron (hay uno por proceso).
-  const plan = porLabor.reduce((m, l) => Math.max(m, Number(l.area_plan)), 0)
-  // Si en la lista hay labores de varios procesos, ese «mayor» es el de
-  // uno solo de ellos. Se dice, en vez de dejar creer que es el total.
-  const variosProcesos = new Set(porLabor.map((l) => l.proceso_id ?? 'sin')).size > 1
-  // Esta sí es una suma de pasadas distintas, y se rotula como tal para
-  // que nadie la lea como «área terminada».
-  const pasadas = porLabor.reduce((a, l) => a + Number(l.mz_avance), 0)
+  const niveles = useMemo(() => ordenar(porAgrupar), [porAgrupar])
+  const arbol = useMemo(() => agrupar(porLote, niveles), [porLote, niveles])
+  const costos = useMemo(() => costosPorZona(porLote), [porLote])
+  const totales = useMemo(() => totalesDe(porLote), [porLote])
+
   const ultima = porLabor.reduce<string | null>(
     (m, l) => (l.ultima_fecha && (!m || l.ultima_fecha > m) ? l.ultima_fecha : m),
-    null,
+    null
   )
 
-  const procesoElegido = procesos.find((p) => p.id === filtros.proceso)
-  const puedeVerPlan = procesoElegido
-    ? permisosPlan.includes(RUTA[procesoElegido.codigo] ?? '')
-    : false
+  // El plan de la tarjeta sale del avance por labor y NO de la
+  // cuadrícula: la cuadrícula sólo trae lotes con trabajo capturado, así
+  // que un lote planificado y todavía sin tocar quedaría fuera y el plan
+  // saldría más chico que el que miden las barras de abajo.
+  const planFiltrado = porLabor.length > 0 ? Number(porLabor[0].area_plan) : 0
+  const pctGlobal = planFiltrado > 0 ? (totales.mz * 100) / planFiltrado : null
 
   return (
     <div className="flex flex-col gap-4">
@@ -304,123 +243,117 @@ export function TableroAvance({
           </div>
         </div>
 
-        <div
-          className={`mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3 ${
-            abrirFiltros ? '' : 'hidden sm:grid'
-          }`}
-        >
-          <Filtro etiqueta="Temporada">
-            <select
-              value={filtros.temporada}
-              onChange={(e) => cambiar({ temporada: e.target.value })}
-              className={CLASE_SELECT}
-            >
-              {temporadas.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.nombre}
-                  {t.activa ? ' (activa)' : ''}
-                </option>
-              ))}
-            </select>
-          </Filtro>
-
-          <Filtro etiqueta="Proceso">
-            <select
-              value={filtros.proceso}
-              onChange={(e) => cambiar({ proceso: e.target.value })}
-              className={CLASE_SELECT}
-            >
-              <option value="">Todos</option>
-              {procesos.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.codigo} · {p.nombre}
-                </option>
-              ))}
-            </select>
-          </Filtro>
-
-          <Filtro etiqueta="Zona">
-            <select
-              value={filtros.zona}
-              onChange={(e) => cambiar({ zona: e.target.value })}
-              className={CLASE_SELECT}
-            >
-              <option value="">Todas</option>
-              {zonas.map((z) => (
-                <option key={z.id} value={z.id}>
-                  {z.nombre}
-                </option>
-              ))}
-            </select>
-          </Filtro>
-
-          <Filtro etiqueta={`Lote${lotesVisibles.length > 0 ? ` (${lotesVisibles.length})` : ''}`}>
-            <select
-              value={filtros.lote}
-              onChange={(e) => cambiar({ lote: e.target.value })}
-              className={CLASE_SELECT}
-            >
-              <option value="">Todos</option>
-              {lotesVisibles.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.etiqueta}
-                </option>
-              ))}
-            </select>
-          </Filtro>
-
-          <Filtro etiqueta="Categoría de labor">
-            <select
-              value={filtros.categoria}
-              onChange={(e) => cambiar({ categoria: e.target.value })}
-              className={CLASE_SELECT}
-            >
-              <option value="">Todas</option>
-              {categorias.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nombre}
-                </option>
-              ))}
-            </select>
-          </Filtro>
-
-          <Filtro etiqueta="Labor">
-            <select
-              value={filtros.labor}
-              onChange={(e) => cambiar({ labor: e.target.value })}
-              className={CLASE_SELECT}
-            >
-              <option value="">Todas</option>
-              {laboresVisibles.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.nombre}
-                </option>
-              ))}
-            </select>
-          </Filtro>
-
-          <Filtro etiqueta="Desde">
-            <input
-              type="date"
-              value={filtros.desde}
-              onChange={(e) => cambiar({ desde: e.target.value })}
-              className={CLASE_SELECT}
-            />
-          </Filtro>
-
-          <Filtro etiqueta="Hasta">
-            <input
-              type="date"
-              value={filtros.hasta}
-              onChange={(e) => cambiar({ hasta: e.target.value })}
-              className={CLASE_SELECT}
-            />
-          </Filtro>
+        {/* La temporada va aparte y arriba: es la que manda sobre todo lo
+            demás y se ve siempre, también con los filtros plegados. */}
+        <div className="mt-3">
+          <Etiqueta>Temporada</Etiqueta>
+          <SelectorBuscable
+            valor={filtros.temporada}
+            onCambiar={(id) => cambiar({ temporada: id })}
+            permitirVacio={false}
+            placeholder="Elige la temporada"
+            etiquetaBusqueda="Escribe el nombre de la temporada"
+            opciones={temporadas.map((t) => ({
+              id: t.id,
+              titulo: t.nombre,
+              subtitulo: t.activa ? 'Activa' : undefined,
+            }))}
+          />
         </div>
 
-        {(filtros.zona || filtros.lote) && (
+        <div
+          className={`mt-3 flex flex-col gap-3 ${abrirFiltros ? '' : 'hidden sm:flex'}`}
+        >
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            <SelectorMultiple
+              etiqueta="Zona"
+              opciones={zonas.map((z) => ({ valor: z.id, etiqueta: z.nombre }))}
+              valores={filtros.zonas}
+              onCambiar={(v) => cambiar({ zonas: v })}
+            />
+            <SelectorMultiple
+              etiqueta="Ciclo"
+              opciones={CICLOS_TABLERO.map((c) => ({ valor: String(c), etiqueta: `Ciclo ${c}` }))}
+              valores={filtros.ciclos.map(String)}
+              onCambiar={(v) => cambiar({ ciclos: v.map(Number) })}
+            />
+
+            <div className="flex flex-col gap-1">
+              <Etiqueta>Categoría de labor</Etiqueta>
+              <SelectorBuscable
+                valor={filtros.categoria}
+                onCambiar={(id) => cambiar({ categoria: id })}
+                placeholder="Todas"
+                textoVacio="Todas"
+                etiquetaBusqueda="Escribe la categoría"
+                opciones={categorias.map((c) => ({ id: c.id, titulo: c.nombre }))}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <Etiqueta>Labor</Etiqueta>
+              <SelectorBuscable
+                valor={filtros.labor}
+                onCambiar={(id) => cambiar({ labor: id })}
+                placeholder="Todas"
+                textoVacio="Todas"
+                etiquetaBusqueda="Escribe el nombre de la labor"
+                opciones={laboresVisibles.map((l) => ({ id: l.id, titulo: l.nombre }))}
+              />
+            </div>
+
+            <div className="col-span-2 flex flex-col gap-1 sm:col-span-3 lg:col-span-2">
+              <Etiqueta>Lote ({lotesVisibles.length})</Etiqueta>
+              <SelectorBuscable
+                valor={filtros.lote}
+                onCambiar={(id) => cambiar({ lote: id })}
+                placeholder="Todos"
+                textoVacio="Todos"
+                etiquetaBusqueda="Escribe la ubicación técnica"
+                opciones={lotesVisibles.map((l) => ({ id: l.id, titulo: l.etiqueta }))}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <Etiqueta>Desde</Etiqueta>
+              <input
+                type="date"
+                value={filtros.desde}
+                onChange={(e) => cambiar({ desde: e.target.value })}
+                className={CLASE_CAMPO}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Etiqueta>Hasta</Etiqueta>
+              <input
+                type="date"
+                value={filtros.hasta}
+                onChange={(e) => cambiar({ hasta: e.target.value })}
+                className={CLASE_CAMPO}
+              />
+            </div>
+          </div>
+
+          {/* --------------------------- Agrupar por ------------------------- */}
+          <div className="border-t border-slate-100 pt-3">
+            <Etiqueta>Agrupar por</Etiqueta>
+            <p className="mb-2 text-[11px] text-slate-400">
+              Marca las que quieras. El árbol siempre se arma en el orden Encargado → Zona → Lote,
+              sin importar en qué orden las marques.
+            </p>
+            <GrupoCasillas
+              opciones={AGRUPACIONES.map((a) => ({ valor: a.valor, etiqueta: a.etiqueta }))}
+              marcados={porAgrupar}
+              onCambiar={(v) => setPorAgrupar(v as Agrupacion[])}
+              etiquetaTodos="Todas las agrupaciones"
+              columnas={3}
+            />
+          </div>
+        </div>
+
+        {(filtros.zonas.length > 0 || filtros.lote || filtros.ciclos.length > 0) && (
           <p className="mt-2.5 text-[11px] leading-relaxed text-slate-400">
-            Al filtrar por zona o por lote, el área planificada se recorta igual, así que el
+            Al filtrar por zona, lote o ciclo, el área planificada se recorta igual, así que el
             porcentaje sigue siendo el de lo filtrado. Los filtros de labor, categoría y fecha
             recortan sólo lo ejecutado: un plan no tiene labor ni fecha.
           </p>
@@ -431,33 +364,22 @@ export function TableroAvance({
 
       {/* ---------------------------- Resumen ----------------------------- */}
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-        <Kpi
-          etiqueta="Plan"
-          valor={plan > 0 ? `${num.format(plan)} mz` : '—'}
-          nota={variosProcesos ? 'del proceso con más área — filtra uno' : undefined}
-        />
-        <Kpi etiqueta="Labores con avance" valor={String(porLabor.length)} />
+        <Kpi etiqueta="Plan" valor={planFiltrado > 0 ? `${numero(planFiltrado)} mz` : '—'} />
         <Kpi
           etiqueta="Manzanas recorridas"
-          valor={`${num.format(pasadas)} mz`}
-          nota="suma de todas las labores"
+          valor={`${numero(totales.mz)} mz`}
+          nota={
+            pctGlobal !== null ? `${porcentaje(pctGlobal)} del plan` : 'suma de todas las labores'
+          }
         />
+        <Kpi etiqueta="Gasto" valor={dinero(totales.gasto)} nota={`${totales.lotes} lotes`} />
         <Kpi etiqueta="Última captura" valor={fechaCorta(ultima)} />
       </div>
 
       {/* --------------------------- Por labor ---------------------------- */}
       <Tarjeta>
-        <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+        <div className="border-b border-slate-100 px-4 py-3">
           <h2 className="text-sm font-bold text-slate-900">Avance por labor</h2>
-          {procesoElegido && puedeVerPlan && (
-            <Link
-              href={`/plan/${procesoElegido.codigo}?temporada=${filtros.temporada}`}
-              className="inline-flex shrink-0 items-center gap-0.5 rounded-lg px-2 py-1 text-xs font-semibold text-brand-700 transition-colors hover:bg-brand-50"
-            >
-              Ver el plan
-              <IconChevronRight className="h-3.5 w-3.5" />
-            </Link>
-          )}
         </div>
 
         {cargando ? (
@@ -466,28 +388,23 @@ export function TableroAvance({
           <p className="px-4 py-8 text-center text-sm text-slate-400">
             {activos > 0
               ? 'Nada capturado con esos filtros. Prueba a quitar alguno.'
-              : 'Todavía no hay labores capturadas en esta temporada. Si ya se capturaron, revisa que sus tareas SAP tengan proceso asignado en Catálogos → Tareas SAP.'}
+              : 'Todavía no hay labores capturadas en esta temporada.'}
           </p>
         ) : (
           <div className="divide-y divide-slate-50">
             {porLabor.map((l) => {
               const pct = l.pct_avance === null ? null : Number(l.pct_avance)
               return (
-                <div key={`${l.labor_id}-${l.proceso_id ?? 'sin'}`} className="px-4 py-3">
+                <div key={l.labor_id} className="px-4 py-3">
                   <div className="flex items-baseline justify-between gap-3">
                     <p className="min-w-0 truncate text-sm font-semibold text-slate-800">
                       {l.labor_nombre}
-                      {l.proceso_codigo && !filtros.proceso && (
-                        <span className="ml-1.5 text-[11px] font-medium text-slate-400">
-                          {l.proceso_codigo}
-                        </span>
-                      )}
                     </p>
                     <p className="shrink-0 text-xs tabular-nums text-slate-500">
-                      {num.format(Number(l.mz_avance))}
-                      {Number(l.area_plan) > 0 ? ` / ${num.format(Number(l.area_plan))}` : ''} mz
+                      {numero(l.mz_avance)}
+                      {Number(l.area_plan) > 0 ? ` / ${numero(l.area_plan)}` : ''} mz
                       {pct !== null && (
-                        <strong className="ml-1.5 text-slate-900">{pct.toFixed(0)}%</strong>
+                        <strong className="ml-1.5 text-slate-900">{porcentaje(pct)}</strong>
                       )}
                     </p>
                   </div>
@@ -495,14 +412,13 @@ export function TableroAvance({
                   {pct !== null ? (
                     <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-slate-100">
                       <div
-                        className={`h-full rounded-full ${color(pct)}`}
+                        className={`h-full rounded-full ${colorAvance(pct)}`}
                         style={{ width: `${Math.min(pct, 100)}%` }}
                       />
                     </div>
                   ) : (
                     <p className="mt-1 text-[11px] italic text-slate-400">
-                      Sin plan contra el que medir
-                      {l.proceso_codigo ? ` en ${l.proceso_codigo}` : ''}.
+                      Sin plan contra el que medir.
                     </p>
                   )}
 
@@ -511,7 +427,7 @@ export function TableroAvance({
                     {l.lotes_tocados === 1 ? '' : 's'}
                     {Number(l.lotes_con_plan) > 0 ? ` de ${l.lotes_con_plan} en el plan` : ''}
                     {Number(l.mz_pendiente) > 0
-                      ? ` · faltan ${num.format(Number(l.mz_pendiente))} mz`
+                      ? ` · faltan ${numero(l.mz_pendiente)} mz`
                       : ''}
                     {l.ultima_fecha ? ` · última ${fechaCorta(l.ultima_fecha)}` : ''}
                   </p>
@@ -521,6 +437,23 @@ export function TableroAvance({
           </div>
         )}
       </Tarjeta>
+
+      {/* ------------------------ Detalle agrupado ------------------------ */}
+      {!cargando && porLote.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-baseline justify-between gap-3 px-1">
+            <h2 className="text-sm font-bold text-slate-900">
+              {niveles.length === 0
+                ? 'Detalle por lote y labor'
+                : niveles.map((n) => AGRUPACIONES.find((a) => a.valor === n)?.etiqueta).join(' › ')}
+            </h2>
+            <p className="shrink-0 text-[11px] text-slate-400">
+              {porLote.length} {porLote.length === 1 ? 'línea' : 'líneas'}
+            </p>
+          </div>
+          <ArbolAvance nodos={arbol} plano={niveles.length === 0} />
+        </div>
+      )}
 
       {/* --------------------------- Por zona ----------------------------- */}
       {porZona.length > 0 && (
@@ -544,17 +477,17 @@ export function TableroAvance({
                       {z.zona ?? 'Sin zona'}
                     </p>
                     <p className="shrink-0 text-xs tabular-nums text-slate-500">
-                      {num.format(Number(z.mz_avance))}
-                      {Number(z.area_plan) > 0 ? ` / ${num.format(Number(z.area_plan))}` : ''} mz
+                      {numero(z.mz_avance)}
+                      {Number(z.area_plan) > 0 ? ` / ${numero(z.area_plan)}` : ''} mz
                       {pct !== null && (
-                        <strong className="ml-1.5 text-slate-900">{pct.toFixed(0)}%</strong>
+                        <strong className="ml-1.5 text-slate-900">{porcentaje(pct)}</strong>
                       )}
                     </p>
                   </div>
                   {pct !== null && (
                     <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-slate-100">
                       <div
-                        className={`h-full rounded-full ${color(pct)}`}
+                        className={`h-full rounded-full ${colorAvance(pct)}`}
                         style={{ width: `${Math.min(pct, 100)}%` }}
                       />
                     </div>
@@ -590,16 +523,16 @@ export function TableroAvance({
                       </td>
                       <td className="px-2 py-2 text-slate-500">{z.encargado ?? '—'}</td>
                       <td className="px-2 py-2 text-right tabular-nums text-slate-600">
-                        {num.format(Number(z.area_plan))}
+                        {numero(z.area_plan)}
                       </td>
                       <td className="px-2 py-2 text-right tabular-nums text-slate-600">
-                        {num.format(Number(z.mz_avance))}
+                        {numero(z.mz_avance)}
                       </td>
                       <td className="px-2 py-2 text-right tabular-nums text-amber-700">
-                        {num.format(Number(z.mz_pendiente))}
+                        {numero(z.mz_pendiente)}
                       </td>
                       <td className="px-4 py-2 text-right font-bold tabular-nums text-slate-900">
-                        {z.pct_avance !== null ? `${Number(z.pct_avance).toFixed(0)}%` : '—'}
+                        {porcentaje(z.pct_avance)}
                       </td>
                     </tr>
                   ))}
@@ -610,10 +543,13 @@ export function TableroAvance({
         </Tarjeta>
       )}
 
+      {/* ------------------ Resumen de costos por zona -------------------- */}
+      {!cargando && <ResumenCostosZona zonas={costos} />}
+
       <p className="px-1 text-xs leading-relaxed text-slate-400">
-        Cada labor de un proceso recorre la misma área planificada, así que sus porcentajes no se
-        suman entre sí: si el arado va al 100% y el emplasticado al 60%, el lote está arado completo
-        y emplasticado a medias.
+        Cada labor recorre la misma área planificada del lote, así que sus porcentajes no se suman
+        entre sí: si el arado va al 100% y el emplasticado al 60%, el lote está arado completo y
+        emplasticado a medias.
       </p>
     </div>
   )
@@ -621,17 +557,14 @@ export function TableroAvance({
 
 /* ------------------------------------------------------------------ */
 
-const CLASE_SELECT =
+const CLASE_CAMPO =
   'w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm text-slate-800 focus:border-brand-600 focus:outline-none focus:ring-4 focus:ring-brand-600/10'
 
-function Filtro({ etiqueta, children }: { etiqueta: string; children: React.ReactNode }) {
+function Etiqueta({ children }: { children: React.ReactNode }) {
   return (
-    <label className="flex flex-col gap-1">
-      <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
-        {etiqueta}
-      </span>
+    <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
       {children}
-    </label>
+    </span>
   )
 }
 

@@ -20,6 +20,7 @@ import type { Implemento, TareaSap } from '@/lib/types'
 import type { ImplementoFisico, Proveedor } from '@/lib/datosRegistro'
 import { mensajeDeError } from '@/lib/errores'
 import { ajustarHorasDelHorometro } from '@/lib/prorrateo/servicioProrrateo'
+import { fisicosDeLabor, textoImplementoDeducido } from '@/lib/implementos/derivacion'
 
 type LaborConReglas = {
   id: string
@@ -35,7 +36,6 @@ type LaborConReglas = {
   /** Llega con la migración 21: sólo el emplasticado lleva etapa. */
   seguimiento_emplasticado?: boolean | null
   labores_tareas: { tarea_id: string }[]
-  labores_implementos: { implemento_id: string }[]
 }
 
 type LoteOpcion = {
@@ -134,7 +134,7 @@ export function RegistroForm({
 
   const [laborId, setLaborId] = useState(registroBase?.labor_id ?? '')
   const [tareaId, setTareaId] = useState(registroBase?.tarea_id ?? '')
-  const [implementoId, setImplementoId] = useState(registroBase?.implemento_id ?? '')
+  // Ya no hay estado para el implemento: se deduce del código físico.
   const [implementoFisicoId, setImplementoFisicoId] = useState(
     registroBase?.implemento_fisico_id ?? ''
   )
@@ -190,22 +190,21 @@ export function RegistroForm({
     return tareasSap.filter((t) => ids.has(t.id))
   }, [laborActual, tareasSap])
 
-  const implementosPermitidos = useMemo(() => {
-    if (!laborActual) return []
-    const ids = new Set(laborActual.labores_implementos.map((i) => i.implemento_id))
-    return implementos.filter((i) => ids.has(i.id))
-  }, [laborActual, implementos])
-
   // Códigos físicos vinculados a ESTA labor. Se filtra por labor a
   // propósito: una lista de 94 fierros haría que el digitador eligiera
   // el equivocado, y de eso se trata tener la vinculación.
-  const fisicosPermitidos = useMemo(() => {
-    if (!laborActual) return []
-    const ids = new Set(
-      vinculosFisicos.filter((v) => v.labor_id === laborActual.id).map((v) => v.implemento_fisico_id)
-    )
-    return implementosFisicos.filter((i) => ids.has(i.id))
-  }, [laborActual, vinculosFisicos, implementosFisicos])
+  const fisicosPermitidos = useMemo(
+    () => fisicosDeLabor(implementosFisicos, vinculosFisicos, laborActual?.id),
+    [laborActual, vinculosFisicos, implementosFisicos]
+  )
+
+  // «Al hacerlo, el sistema debe autocompletar silenciosamente el
+  //  Implemento Usado.» Se enseña, no se edita: el dato que manda es el
+  //  código físico y el tipo va detrás.
+  const implementoDeducido = useMemo(
+    () => textoImplementoDeducido(implementos, implementosFisicos, implementoFisicoId),
+    [implementos, implementosFisicos, implementoFisicoId]
+  )
 
   // Se ordenan por nomenclatura para que la lista no salte de posición
   // cada vez que se agrega uno.
@@ -363,7 +362,11 @@ export function RegistroForm({
           .update({
             labor_id: laborId,
             tarea_id: tareaId,
-            implemento_id: implementoId || null,
+            // El implemento se manda VACÍO a propósito: el disparador de
+            // la base lo rellena desde el código físico. Es la misma
+            // regla para el formulario, la edición en línea y la
+            // importación del histórico, escrita una sola vez.
+            implemento_id: null,
             implemento_fisico_id: implementoFisicoId || null,
             comentarios: comentarios || null,
             horas_notificadas: horasNum,
@@ -405,7 +408,7 @@ export function RegistroForm({
           fecha,
           labor_id: laborId,
           tarea_id: tareaId,
-          implemento_id: implementoId || null,
+          implemento_id: null,
           implemento_fisico_id: implementoFisicoId || null,
           comentarios: comentarios || null,
           horas_notificadas: horasNum,
@@ -429,7 +432,7 @@ export function RegistroForm({
         const nombreGuardado = laborActual?.nombre ?? 'La labor'
         setLaborId('')
         setTareaId('')
-        setImplementoId('')
+        setImplementoFisicoId('')
         setComentarios('')
         // Las horas se reponen con lo que quedo del horometro, para que la
         // siguiente labor arranque con el saldo y no vuelva a cobrar el dia
@@ -483,7 +486,7 @@ export function RegistroForm({
             onCambiar={(id) => {
               setLaborId(id)
               setTareaId('')
-              setImplementoId('')
+              setImplementoFisicoId('')
             }}
             placeholder="Buscar labor…"
             etiquetaBusqueda="Escribe el nombre de la labor"
@@ -493,14 +496,19 @@ export function RegistroForm({
         </Campo>
 
         <Campo etiqueta="Tarea SAP a liquidar" requerido>
-          <Selector value={tareaId} onChange={(e) => setTareaId(e.target.value)} disabled={!laborId}>
-            <option value="">{laborId ? 'Selecciona una tarea…' : 'Primero elige la labor'}</option>
-            {tareasPermitidas.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.codigo} — {t.nombre}
-              </option>
-            ))}
-          </Selector>
+          <SelectorBuscable
+            valor={tareaId}
+            onCambiar={setTareaId}
+            disabled={!laborId}
+            placeholder={laborId ? 'Selecciona una tarea…' : 'Primero elige la labor'}
+            etiquetaBusqueda="Escribe el código o el nombre"
+            permitirVacio={false}
+            opciones={tareasPermitidas.map((t) => ({
+              id: t.id,
+              titulo: t.codigo,
+              subtitulo: t.nombre,
+            }))}
+          />
         </Campo>
 
         {laborId && tareasPermitidas.length === 0 && (
@@ -510,43 +518,39 @@ export function RegistroForm({
           </Alerta>
         )}
 
-        <Campo etiqueta="Implemento utilizado">
-          <Selector
-            value={implementoId}
-            onChange={(e) => setImplementoId(e.target.value)}
+        {/* Primero el fierro. El operador dice «salió el ROMSR-01», no
+            «salió un Romplow»: se pide lo que la gente sabe y el tipo
+            SAP —que es de donde sale la tarifa— se deduce solo. */}
+        <Campo
+          etiqueta="Código físico del implemento"
+          ayuda="La máquina exacta que salió a trabajar. Al elegirla se completa solo el implemento."
+        >
+          <SelectorBuscable
+            valor={implementoFisicoId}
+            onCambiar={setImplementoFisicoId}
             disabled={!laborId}
-          >
-            <option value="">Sin implemento / no aplica</option>
-            {implementosPermitidos.map((i) => (
-              <option key={i.id} value={i.id}>
-                {i.nombre}
-              </option>
-            ))}
-          </Selector>
+            placeholder={laborId ? 'Buscar código…' : 'Primero elige la labor'}
+            etiquetaBusqueda="Escribe el código o la descripción"
+            textoVacio="Sin implemento / no aplica"
+            opciones={fisicosPermitidos.map((i) => ({
+              id: i.id,
+              titulo: i.codigo,
+              subtitulo: i.descripcion,
+            }))}
+          />
         </Campo>
 
-        {/* Qué fierro salió. El tipo de arriba define la tarifa; esto
-            define la máquina: ROMSR-01 o ROMSR-08, no «Romplow». Sólo
-            aparece si la labor tiene códigos vinculados en Catálogos →
-            Labores, para no ofrecer los 94 del catálogo. */}
-        {fisicosPermitidos.length > 0 && (
-          <Campo
-            etiqueta="Código físico del implemento"
-            ayuda="La máquina exacta que salió a trabajar. La tarifa no cambia; esto sirve para saber qué equipo se usó."
+        <Campo etiqueta="Implemento utilizado">
+          <p
+            className={`rounded-xl border px-3.5 py-3 text-base ${
+              implementoDeducido.pendiente
+                ? 'border-amber-200 bg-amber-50 text-amber-800'
+                : 'border-slate-200 bg-slate-50 text-slate-600'
+            }`}
           >
-            <Selector
-              value={implementoFisicoId}
-              onChange={(e) => setImplementoFisicoId(e.target.value)}
-            >
-              <option value="">Sin especificar</option>
-              {fisicosPermitidos.map((i) => (
-                <option key={i.id} value={i.id}>
-                  {i.codigo} · {i.descripcion}
-                </option>
-              ))}
-            </Selector>
-          </Campo>
-        )}
+            {implementoDeducido.texto}
+          </p>
+        </Campo>
 
         {pideEtapa && (
           <Campo
@@ -935,18 +939,18 @@ function SelectorLotes({
             etiqueta="Temporada"
             ayuda="Cámbiala para alcanzar lotes que todavía están en la temporada anterior. Los lotes que ya agregaste no se pierden al cambiarla."
           >
-            <Selector
-              value={temporadaFiltro}
-              onChange={(e) => onCambiarTemporada(e.target.value)}
-            >
-              <option value="">Todas las temporadas</option>
-              {temporadas.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.nombre}
-                  {t.activa ? ' (activa)' : ''}
-                </option>
-              ))}
-            </Selector>
+            <SelectorBuscable
+              valor={temporadaFiltro}
+              onCambiar={onCambiarTemporada}
+              placeholder="Todas las temporadas"
+              etiquetaBusqueda="Escribe el nombre de la temporada"
+              textoVacio="Todas las temporadas"
+              opciones={temporadas.map((t) => ({
+                id: t.id,
+                titulo: t.nombre,
+                subtitulo: t.activa ? 'Activa' : undefined,
+              }))}
+            />
           </Campo>
         )}
 

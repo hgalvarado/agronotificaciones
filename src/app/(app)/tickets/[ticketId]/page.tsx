@@ -85,7 +85,7 @@ export default async function TicketDetailPage({
     supabase.from('operadores').select('id, codigo, nombre').eq('activo', true).order('nombre'),
     supabase
       .from('labores')
-      .select('id, nombre, labores_tareas(tarea_id), labores_implementos(implemento_id)')
+      .select('id, nombre, labores_tareas(tarea_id)')
       .eq('activo', true)
       .order('nombre'),
     supabase.from('tareas_sap').select('id, codigo, nombre').eq('activo', true).order('codigo'),

@@ -203,14 +203,11 @@ export function Entrada({ className = '', ...props }: ComponentProps<'input'>) {
   return <input className={`${baseCampo} ${className}`} {...props} />
 }
 
-export function Selector({ className = '', ...props }: ComponentProps<'select'>) {
-  return (
-    <select
-      className={`${baseCampo} appearance-none bg-[url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" stroke="%2394a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>')] bg-[length:20px_20px] bg-[right_0.75rem_center] bg-no-repeat pr-10 ${className}`}
-      {...props}
-    />
-  )
-}
+// El desplegable vive en su propio archivo porque lleva estado —el
+// buscador que se abre cuando la lista es larga— y esto es un módulo de
+// servidor. Se reexporta para que las pantallas lo sigan importando de
+// aquí, como siempre.
+export { Selector } from './Selector'
 
 export function AreaTexto({ className = '', ...props }: ComponentProps<'textarea'>) {
   return <textarea className={`${baseCampo} resize-none ${className}`} {...props} />

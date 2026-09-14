@@ -2,7 +2,16 @@ import { createClient } from '@/lib/supabase/server'
 
 export type Proveedor = { id: string; nombre: string; tipo: string }
 
-export type ImplementoFisico = { id: string; codigo: string; descripcion: string }
+export type ImplementoFisico = {
+  id: string
+  codigo: string
+  descripcion: string
+  /**
+   * Tipo SAP del que cuelga. Llega desde la migración 31 en adelante y
+   * es lo que permite autocompletar el implemento al elegir el código.
+   */
+  implemento_id?: string | null
+}
 
 type LoteTemporadaRow = {
   id: string
@@ -53,7 +62,9 @@ export async function cargarCatalogosRegistro() {
       // funcionando en vez de fallar por una columna que no existe.
       supabase
         .from('labores')
-        .select('*, labores_tareas(tarea_id), labores_implementos(implemento_id)')
+        // Ya no se piden los `labores_implementos`: desde la migración 31
+        // el implemento no se elige, se deduce del código físico.
+        .select('*, labores_tareas(tarea_id)')
         .eq('activo', true)
         .order('nombre'),
       supabase.from('tareas_sap').select('*').eq('activo', true).order('codigo'),
@@ -73,7 +84,7 @@ export async function cargarCatalogosRegistro() {
       // corrida la consulta falla y el selector simplemente no aparece.
       supabase
         .from('implementos_fisicos')
-        .select('id, codigo, descripcion')
+        .select('id, codigo, descripcion, implemento_id')
         .eq('activo', true)
         .order('codigo'),
       // La vinculación va en su propia consulta y no incrustada en

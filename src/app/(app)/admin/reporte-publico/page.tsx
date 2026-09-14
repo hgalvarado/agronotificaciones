@@ -5,11 +5,11 @@ import {
   ConfiguracionReportePublico,
   type ConfigInicial,
 } from '@/components/admin/ConfiguracionReportePublico'
-import type { NivelProceso } from '@/lib/reporte-maquinaria/tipos'
+import type { ProcesoTicket } from '@/lib/reporte-maquinaria/tipos'
 
 type FilaConfig = {
   activo: boolean
-  nivel_proceso: string
+  procesos: string[] | null
   todos_departamentos: boolean
   departamentos: string[] | null
 }
@@ -26,7 +26,7 @@ export default async function ReportePublicoPage() {
   const [configRes, deptosCatalogo, deptosUsados] = await Promise.all([
     supabase
       .from('reporte_publico_config')
-      .select('activo, nivel_proceso, todos_departamentos, departamentos')
+      .select('activo, procesos, todos_departamentos, departamentos')
       .eq('id', true)
       .maybeSingle(),
     supabase.from('departamentos').select('nombre').order('nombre'),
@@ -40,7 +40,7 @@ export default async function ReportePublicoPage() {
 
   const inicial: ConfigInicial = {
     activo: fila?.activo ?? false,
-    nivelProceso: (fila?.nivel_proceso as NivelProceso) ?? 'NOTIFICADO',
+    procesos: (fila?.procesos ?? []) as ProcesoTicket[],
     todosDepartamentos: fila?.todos_departamentos ?? false,
     departamentos: fila?.departamentos ?? [],
   }
@@ -64,8 +64,8 @@ export default async function ReportePublicoPage() {
           Reporte público de maquinaria
         </h1>
         <p className="text-sm text-slate-400">
-          Qué puede ver quien entra sin usuario desde el botón del Login: hasta qué proceso y de
-          qué departamentos.
+          Qué puede ver quien entra sin usuario desde el botón del Login: qué procesos y de qué
+          departamentos.
         </p>
       </div>
 

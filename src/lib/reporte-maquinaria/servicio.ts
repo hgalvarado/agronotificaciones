@@ -68,6 +68,7 @@ export async function obtenerReporte(filtros: FiltrosReporte): Promise<Reporte> 
 
   if (config.error) return { ...base, aviso: avisoDeError(config.error) }
   if (!config.datos.activo) return { ...base, aviso: AVISOS.inactivo }
+  if (config.datos.procesos.length === 0) return { ...base, aviso: AVISOS.sinProcesos }
   if (!config.datos.todosDepartamentos && config.datos.departamentos.length === 0) {
     return { ...base, aviso: AVISOS.sinDepartamentos }
   }
