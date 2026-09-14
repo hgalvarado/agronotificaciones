@@ -8,10 +8,19 @@ import type { Perfil, Rol } from '@/lib/types'
 // pantalla (getUser + perfil + rol, repetidos en layout y página).
 export const getUsuarioActual = cache(async () => {
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  return user
+  // Va en un try porque una sesión caducada hace que `getUser` LANCE, no
+  // que devuelva error, y una excepción aquí tumba la pantalla entera con
+  // un 500 en vez de mandar a entrar de nuevo. De limpiar la cookie y
+  // redirigir se encarga el middleware, que corre antes; esto sólo evita
+  // que el camino intermedio reviente.
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    return user
+  } catch {
+    return null
+  }
 })
 
 // Una sola consulta con JOIN embebido en vez de dos secuenciales.

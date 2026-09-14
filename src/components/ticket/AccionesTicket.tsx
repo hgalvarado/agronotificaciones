@@ -7,6 +7,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Alerta, Boton, Campo, Entrada } from '@/components/ui/Primitivos'
 import { IconLock, IconPencil, IconSend, IconTrash, IconUnlock } from '@/components/ui/Icons'
 import { PROCESOS } from '@/lib/estados'
+import { mensajeDeError } from '@/lib/errores'
 import type { ProcesoTicket, RolCodigo, Ticket } from '@/lib/types'
 
 export function AccionesTicket({
@@ -34,7 +35,7 @@ export function AccionesTicket({
     setCargando('cerrar')
     const { error } = await supabase.rpc('cerrar_ticket', { p_ticket_id: ticket.id })
     setCargando(null)
-    if (error) return setError(error.message)
+    if (error) return setError(mensajeDeError(error, 'No se pudo cerrar el ticket.'))
     router.refresh()
   }
 
@@ -42,18 +43,26 @@ export function AccionesTicket({
     setCargando('reabrir')
     const { error } = await supabase.rpc('reabrir_ticket', { p_ticket_id: ticket.id })
     setCargando(null)
-    if (error) return setError(error.message)
+    if (error) return setError(mensajeDeError(error, 'No se pudo reabrir el ticket.'))
     router.refresh()
   }
 
   async function enviarARevision() {
     setCargando('revision')
+    setError(null)
     const { error } = await supabase.rpc('cambiar_proceso_ticket', {
       p_ticket_id: ticket.id,
       p_proceso: 'REVISANDO' as ProcesoTicket,
     })
     setCargando(null)
-    if (error) return setError(error.message)
+    if (error) {
+      return setError(
+        mensajeDeError(
+          error,
+          'No se pudo enviar a revisión. Si el ticket está cerrado y el error persiste, falta correr la migración 32.'
+        )
+      )
+    }
     router.refresh()
   }
 
@@ -68,7 +77,7 @@ export function AccionesTicket({
     setCargando('eliminar')
     const { error } = await supabase.from('tickets').delete().eq('id', ticket.id)
     setCargando(null)
-    if (error) return setError(error.message)
+    if (error) return setError(mensajeDeError(error, 'No se pudo eliminar el ticket.'))
     // La lista vive en el layout, así que hay que refrescarla al volver.
     router.push('/tickets')
     router.refresh()
@@ -175,7 +184,7 @@ function EditarTicketModal({
       })
       if (errProceso) {
         setGuardando(false)
-        return setError(errProceso.message)
+        return setError(mensajeDeError(errProceso, 'No se pudo cambiar el proceso.'))
       }
     }
 
@@ -192,7 +201,7 @@ function EditarTicketModal({
     const { error: dbError } = await supabase.from('tickets').update(cambios).eq('id', ticket.id)
 
     setGuardando(false)
-    if (dbError) return setError(dbError.message)
+    if (dbError) return setError(mensajeDeError(dbError, 'No se pudo guardar el ticket.'))
     onCerrar()
     router.refresh()
   }
