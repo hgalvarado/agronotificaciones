@@ -44,6 +44,7 @@ export function DataGrid<T extends { id: string }>({
   minAncho = '1000px',
   resumen,
   acciones,
+  exportacionesExtra,
   accionesSeleccion,
   accionFila,
   resaltar,
@@ -65,6 +66,13 @@ export function DataGrid<T extends { id: string }>({
   resumen?: (visibles: T[]) => ReactNode
   /** Botones propios de la pantalla (Importar, Nuevo…). */
   acciones?: ReactNode
+  /**
+   * Botones de exportación propios de la pantalla, junto al Excel
+   * estándar. Reciben las filas TAL COMO SE VEN —filtradas y ordenadas—,
+   * que es lo único que la cuadrícula sabe y la pantalla no: qué formato
+   * espera SAP lo decide quien la usa, no este componente.
+   */
+  exportacionesExtra?: (visibles: T[]) => ReactNode
   /** Acciones en masa. Reciben lo marcado que está a la vista. */
   accionesSeleccion?: (ids: string[], limpiar: () => void) => ReactNode
   /** Botones de una fila (Editar, Eliminar). */
@@ -199,6 +207,8 @@ export function DataGrid<T extends { id: string }>({
         )}
 
         {acciones}
+
+        {exportacionesExtra?.(visibles)}
 
         {puedeExportar && (
           <Boton variante="secundario" tamano="sm" onClick={exportar} disabled={visibles.length === 0}>

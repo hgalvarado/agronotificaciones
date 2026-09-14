@@ -26,6 +26,8 @@ import { SelectorMultiple } from '@/components/ui/SelectorMultiple'
 import type { ColumnaGrid } from '@/lib/grid/tipos'
 import { mesEnCurso } from '@/lib/fechas'
 import { mensajeDeError } from '@/lib/errores'
+import { filasHorometrosSap } from '@/lib/sap/exportacion'
+import { BotonExportarSap } from '@/components/ui/BotonExportarSap'
 import { validarHorasHombre } from '@/lib/horometro/validacion'
 import { procesoInfo } from '@/lib/estados'
 import type { Equipo, Operador, ProcesoTicket, TurnoTipo } from '@/lib/types'
@@ -460,8 +462,22 @@ export function ControlHorometros({
             titulo: 'Sin registros',
             descripcion: 'Ajusta el rango de fechas y vuelve a consultar.',
           }}
+          exportacionesExtra={(visibles) => (
+            <BotonExportarSap
+              nombreArchivo={`horometros-sap-${consulta.desde}-a-${consulta.hasta}`}
+              hoja="Horometros"
+              filas={() => filasHorometrosSap(visibles)}
+              deshabilitado={visibles.length === 0}
+            />
+          )}
+          // El desfase tiene que saltar a la vista al recorrer la tabla:
+          // es una hora de máquina sin explicar, y antes era un tinte tan
+          // suave que había que buscarlo. Fondo ámbar sólido y una barra
+          // en el borde izquierdo, que es lo que se ve al hojear.
           resaltar={(f) =>
-            f.comparativo != null && Number(f.comparativo) !== 0 ? 'bg-amber-50/70' : null
+            f.comparativo != null && Number(f.comparativo) !== 0
+              ? 'bg-amber-100/80 shadow-[inset_4px_0_0_0_var(--color-amber-500)] hover:bg-amber-100'
+              : null
           }
           filtrosExternos={
             <PanelFiltros
@@ -557,7 +573,7 @@ export function ControlHorometros({
 
       <div className="flex flex-wrap items-center gap-3 px-1 text-xs text-slate-400">
         <span className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-sm bg-amber-100 ring-1 ring-amber-300" />
+          <span className="h-3 w-3 rounded-sm bg-amber-100 shadow-[inset_3px_0_0_0_var(--color-amber-500)] ring-1 ring-amber-400" />
           Fila con desfase
         </span>
         <span className="flex items-center gap-1.5">
@@ -590,9 +606,26 @@ function Comparativo({ valor }: { valor: number | null }) {
           ? `Traslape de ${Math.abs(valor)} horas con el registro anterior`
           : 'La secuencia calza'
 
+  // Con desfase deja de ser un número de color y pasa a ser una
+  // insignia: en una tabla de mil filas, un dígito rojo se pierde.
+  if (valor !== null && valor !== 0) {
+    return (
+      <span
+        title={titulo}
+        className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-bold ring-1 ring-inset tabular-nums ${
+          valor > 0
+            ? 'bg-red-100 text-red-800 ring-red-400'
+            : 'bg-violet-100 text-violet-800 ring-violet-400'
+        }`}
+      >
+        {valor > 0 ? `+${valor}` : valor}
+      </span>
+    )
+  }
+
   return (
     <span className={`font-bold ${tono}`} title={titulo}>
-      {valor === null ? '—' : valor === 0 ? '0' : valor > 0 ? `+${valor}` : valor}
+      {valor === null ? '—' : '0'}
     </span>
   )
 }

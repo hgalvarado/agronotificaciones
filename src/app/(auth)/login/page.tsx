@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Logo } from '@/components/ui/Logo'
 import { FormularioLogin } from '@/components/auth/FormularioLogin'
+import { SelectorTema } from '@/components/ui/SelectorTema'
 
 // De servidor a propósito: aquí se lee la dirección para saber si el
 // middleware nos mandó porque la sesión había caducado, y el formulario
@@ -14,6 +15,12 @@ export default async function LoginPage({
 
   return (
     <div className="relative flex min-h-dvh flex-col items-center justify-center overflow-hidden px-6">
+      {/* El tema se puede cambiar antes de entrar: quien captura de noche
+          llega aquí primero. */}
+      <div className="absolute right-4 top-4">
+        <SelectorTema compacto />
+      </div>
+
       {/* Fondo con degradado suave de marca */}
       <div className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-br from-brand-50 via-white to-slate-100" />
       <div className="pointer-events-none absolute -left-24 -top-24 -z-10 h-72 w-72 rounded-full bg-brand-200/40 blur-3xl" />

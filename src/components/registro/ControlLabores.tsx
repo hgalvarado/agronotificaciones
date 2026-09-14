@@ -30,6 +30,8 @@ import type { ColumnaVista } from '@/lib/grid/vistas'
 import { editarLinea, eliminarLineas, type CampoLinea } from '@/lib/registro/repositorioLinea'
 import { mesEnCurso } from '@/lib/fechas'
 import { mensajeDeError } from '@/lib/errores'
+import { filasLaboresSap } from '@/lib/sap/exportacion'
+import { BotonExportarSap } from '@/components/ui/BotonExportarSap'
 import { procesoInfo } from '@/lib/estados'
 import type { ProcesoTicket, TurnoTipo } from '@/lib/types'
 
@@ -619,6 +621,14 @@ export function ControlLabores({
             descripcion: 'Ajusta el rango de fechas y vuelve a consultar.',
           }}
           resaltar={(f) => (f.puesto_equipo ? null : 'bg-red-50/60')}
+          exportacionesExtra={(visibles) => (
+            <BotonExportarSap
+              nombreArchivo={`labores-sap-${consulta.desde}-a-${consulta.hasta}`}
+              hoja="Labores"
+              filas={() => filasLaboresSap(visibles)}
+              deshabilitado={visibles.length === 0}
+            />
+          )}
           acciones={
             <GestorVistas
               pantalla="labores"

@@ -189,3 +189,146 @@ h3 {
     animation: none;
   }
 }
+
+/* ================================================================== */
+/* MODO OSCURO                                                        */
+/* ================================================================== */
+/* Cómo funciona, porque no es obvio:
+ *
+ * Tailwind 4 compila `bg-white` a `background-color: var(--color-white)`
+ * y `border-slate-200` a `var(--color-slate-200)`. Es decir, TODA la
+ * aplicación ya pasa por variables CSS aunque el código escriba clases
+ * de siempre. Redefinir esas variables bajo `[data-tema='oscuro']` da
+ * vuelta la paleta entera sin tocar una sola pantalla.
+ *
+ * Lo que NO se hace es invertir la rampa de gris en bloque. `bg-slate-900
+ * text-white` es el botón «seleccionado» de media aplicación: si el 900
+ * se volviera claro, el texto blanco quedaría ilegible. Así que el
+ * extremo oscuro de la rampa se queda oscuro, el extremo claro se
+ * convierte en superficies, y el color del TEXTO se corrige aparte, con
+ * la lista de utilidades de más abajo. Son dos ejes distintos —fondo y
+ * letra— y tratarlos como uno solo es lo que hace que los modos oscuros
+ * salgan grises y con textos que no se leen.
+ *
+ * Los tonos se eligieron sobre fondo #11161d midiendo contraste: el
+ * texto principal pasa de 14:1, el secundario de 7:1 y el atenuado de
+ * 4.6:1, por encima del mínimo AA en los tres casos.
+ */
+
+html[data-tema='oscuro'] {
+  color-scheme: dark;
+
+  /* --- Superficies: lo que antes era blanco o casi --- */
+  --color-white: #171d26;
+  --color-slate-50: #1c2230;
+  --color-slate-100: #222a38;
+  --color-slate-200: #2c3545;
+  --color-slate-300: #3b4657;
+
+  /* --- El extremo oscuro se queda oscuro (ver nota de arriba) --- */
+
+  /* --- Marca ---
+     Los tonos 700/800 se quedan OSCUROS a propósito: son el fondo del
+     botón primario, que lleva letra blanca encima. Aclararlos dejaba
+     blanco sobre verde claro, por debajo del mínimo legible. Para
+     `text-brand-700` —el mismo tono usado como LETRA— hay una corrección
+     aparte más abajo: son dos papeles distintos del mismo número. */
+  --color-brand-50: #0f2a1b;
+  --color-brand-100: #133a25;
+  --color-brand-200: #1a4b30;
+  --color-brand-600: #1c9a4b;
+  --color-brand-700: #15803d;
+  --color-brand-800: #11692f;
+
+  /* --- Pasteles de estado: el mismo papel, en oscuro --- */
+  --color-amber-50: #2e2409;
+  --color-amber-100: #3d300c;
+  --color-red-50: #2e1416;
+  --color-red-100: #3d181c;
+  --color-emerald-50: #0f2a20;
+  --color-emerald-100: #12352a;
+  --color-sky-50: #10273a;
+  --color-sky-100: #143148;
+  --color-violet-50: #241a3a;
+  --color-violet-100: #2d2049;
+
+  /* --- Sombras: en oscuro se ven como manchas; casi se apagan --- */
+  --shadow-card: 0 1px 2px 0 rgb(0 0 0 / 0.4);
+  --shadow-raised: 0 4px 6px -1px rgb(0 0 0 / 0.45);
+  --shadow-float: 0 10px 25px -5px rgb(0 0 0 / 0.55);
+}
+
+html[data-tema='oscuro'] body {
+  background-color: #11161d;
+  color: #e8edf5;
+}
+
+/* ------------------------------------------------------------------ */
+/* El texto, corregido utilidad por utilidad                           */
+/* ------------------------------------------------------------------ */
+/* La rampa de gris sigue diciendo «oscuro = mucho contraste», y en modo
+ * oscuro eso se invierte: el texto principal es el MÁS CLARO. Se corrige
+ * aquí y no en las variables porque las mismas variables las usan los
+ * fondos, donde sí queremos que 900 siga siendo oscuro. */
+html[data-tema='oscuro'] .text-slate-900 { color: #f2f6fb; }
+html[data-tema='oscuro'] .text-slate-800 { color: #e4eaf3; }
+html[data-tema='oscuro'] .text-slate-700 { color: #d2dae6; }
+html[data-tema='oscuro'] .text-slate-600 { color: #bcc6d6; }
+html[data-tema='oscuro'] .text-slate-500 { color: #9fabbe; }
+html[data-tema='oscuro'] .text-slate-400 { color: #8d99ad; }
+html[data-tema='oscuro'] .text-slate-300 { color: #78849a; }
+
+/* `text-white` tiene que seguir siendo BLANCO. Es la letra del botón
+ * primario y de los estados seleccionados, que van sobre verde oscuro;
+ * como `--color-white` pasó a ser la superficie de las tarjetas, sin esta
+ * línea el botón «Guardar» salía con letra casi negra sobre verde. */
+html[data-tema='oscuro'] .text-white { color: #f8fafc; }
+
+/* El texto de los pasteles de estado: sobre fondo oscuro tiene que ser
+ * claro, no del tono 700/800 que se usa sobre papel. */
+html[data-tema='oscuro'] .text-brand-700,
+html[data-tema='oscuro'] .text-brand-800 { color: #5ee08c; }
+html[data-tema='oscuro'] .text-amber-700,
+html[data-tema='oscuro'] .text-amber-800 { color: #f0bb55; }
+html[data-tema='oscuro'] .text-red-600,
+html[data-tema='oscuro'] .text-red-700,
+html[data-tema='oscuro'] .text-red-800 { color: #fb8b8b; }
+html[data-tema='oscuro'] .text-emerald-700,
+html[data-tema='oscuro'] .text-emerald-800 { color: #56dda6; }
+html[data-tema='oscuro'] .text-sky-800 { color: #78c4f0; }
+html[data-tema='oscuro'] .text-violet-600,
+html[data-tema='oscuro'] .text-violet-800 { color: #b79bf5; }
+
+/* `bg-slate-900 text-white` es el «seleccionado» de los grupos de
+ * botones. En oscuro el 900 se confunde con el fondo, así que ese estado
+ * pasa a la marca, que es lo que de verdad quiere decir. */
+html[data-tema='oscuro'] .bg-slate-900 { background-color: #2f8f52; }
+html[data-tema='oscuro'] .border-slate-900 { border-color: #2f8f52; }
+
+/* Las tablas rayadas y los hover, que en claro son casi imperceptibles y
+ * en oscuro desaparecían del todo. */
+html[data-tema='oscuro'] .esqueleto { background-color: #273040; }
+html[data-tema='oscuro'] .scroll-suave { scrollbar-color: #3b4657 transparent; }
+html[data-tema='oscuro'] .scroll-suave::-webkit-scrollbar-thumb { background-color: #3b4657; }
+
+/* El degradado del login: en oscuro los halos verdes quedaban lechosos. */
+html[data-tema='oscuro'] .from-brand-50 { --tw-gradient-from: #11161d; }
+html[data-tema='oscuro'] .via-white { --tw-gradient-via: #141a22; }
+html[data-tema='oscuro'] .to-slate-100 { --tw-gradient-to: #11161d; }
+
+/* Los campos de fecha y hora traen icono propio del navegador, negro
+ * sobre negro si no se le dice nada. */
+html[data-tema='oscuro'] input[type='date']::-webkit-calendar-picker-indicator {
+  filter: invert(0.75);
+}
+
+/* En papel siempre se imprime en claro: la tinta no tiene modo oscuro. */
+@media print {
+  html[data-tema='oscuro'] {
+    color-scheme: light;
+  }
+  html[data-tema='oscuro'] body {
+    background: #fff;
+    color: #0f172a;
+  }
+}

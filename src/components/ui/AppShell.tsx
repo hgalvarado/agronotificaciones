@@ -20,6 +20,7 @@ import {
 } from './Icons'
 import { CampanaNotificaciones } from './CampanaNotificaciones'
 import { Logo } from './Logo'
+import { SelectorTema } from './SelectorTema'
 
 type ItemNav = {
   href: string
@@ -264,6 +265,7 @@ export function AppShell({
               <IconLogout />
             </button>
           </div>
+          <SelectorTema />
         </div>
       </aside>
 
@@ -279,6 +281,7 @@ export function AppShell({
             </div>
           </div>
           <div className="flex items-center gap-0.5">
+            <SelectorTema compacto />
             {verAvisos && <CampanaNotificaciones compacta />}
             <button
               onClick={salir}
