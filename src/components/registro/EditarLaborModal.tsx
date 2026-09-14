@@ -39,6 +39,7 @@ import { mensajeDeError } from '@/lib/errores'
 import type { Implemento, TareaSap, TurnoTipo } from '@/lib/types'
 import type { ImplementoFisico, Proveedor } from '@/lib/datosRegistro'
 import { fisicosDeLabor, textoImplementoDeducido } from '@/lib/implementos/derivacion'
+import { validarHorasHombre } from '@/lib/horometro/validacion'
 
 /** Lo que el modal necesita de la fila. Coincide con `v_labores_control`. */
 export type FilaEditable = {
@@ -338,6 +339,12 @@ function Formulario({
       Number(form.horometro_final) < Number(form.horometro_inicial)
     ) {
       return setError('El horómetro final no puede ser menor que el inicial.')
+    }
+    // Misma regla que el formulario de alta y que la cuadrícula: de esta
+    // columna sale el costo de mano de obra y no admite vacíos.
+    if (hayColumnas22) {
+      const horas = validarHorasHombre(form.horas_hombre)
+      if (!horas.ok) return setError(horas.error)
     }
 
     const original = aForm(fila)
@@ -719,7 +726,7 @@ function Formulario({
               </Selector>
             </Campo>
 
-            <Campo etiqueta="Horas hombre">
+            <Campo etiqueta="Horas hombre" requerido>
               <Entrada
                 type="number"
                 inputMode="decimal"
@@ -727,6 +734,7 @@ function Formulario({
                 min="0"
                 value={form.horas_hombre}
                 onChange={(e) => set('horas_hombre', e.target.value)}
+                required
               />
             </Campo>
 

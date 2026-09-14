@@ -9,6 +9,11 @@ import { IconMoon, IconSun } from '@/components/ui/Icons'
 import type { Equipo, Operador, TurnoTipo } from '@/lib/types'
 import { mensajeDeError } from '@/lib/errores'
 import { formatearFecha } from '@/lib/estados'
+import { validarHorometro } from '@/lib/horometro/validacion'
+import {
+  ultimoOperadorDeEquipo,
+  type OperadorSugerido,
+} from '@/lib/horometro/repositorioSugerencia'
 
 type Props = {
   ticketId: string
@@ -46,6 +51,11 @@ export function HorometroForm({
   // Copia local para que un operador recién creado aparezca de inmediato
   // sin recargar la página ni perder lo que ya se escribió en el formulario.
   const [listaOperadores, setListaOperadores] = useState(operadores)
+  // De dónde salió el operador que está puesto: sirve para enseñar el
+  // aviso «lo puso el sistema» y para no volver a pisar una elección
+  // hecha a mano si se cambia de equipo.
+  const [sugerido, setSugerido] = useState<OperadorSugerido | null>(null)
+  const [buscandoOperador, setBuscandoOperador] = useState(false)
   const [form, setForm] = useState({
     turno: (horometroBase?.turno ?? valoresIniciales?.turno ?? 'DIURNO') as TurnoTipo,
     equipo_id: horometroBase?.equipo_id ?? '',
@@ -66,6 +76,32 @@ export function HorometroForm({
     return Math.round((fin - ini) * 100) / 100
   }, [form.horometro_inicial, form.horometro_final])
 
+  /**
+   * «Al seleccionar un Equipo, preseleccionar automáticamente al Operador
+   *  asociado… El campo debe seguir siendo editable por si hubo rotación.»
+   *
+   * Se dispara en el CLIC de elegir equipo y no en un efecto: es una
+   * consecuencia de lo que el usuario acaba de hacer, no un valor
+   * derivado, y así React 19 no la marca como `setState` dentro de un
+   * efecto.
+   *
+   * Sólo rellena si el campo está vacío o si lo que hay lo puso la
+   * sugerencia anterior. Un operador elegido a mano no se toca: quien lo
+   * escribió sabe algo que la base no.
+   */
+  async function elegirEquipo(equipoId: string) {
+    const puestoAMano = form.operador_id !== '' && form.operador_id !== sugerido?.id
+    setForm((f) => ({ ...f, equipo_id: equipoId }))
+
+    if (!equipoId || puestoAMano) return
+
+    setBuscandoOperador(true)
+    const ultimo = await ultimoOperadorDeEquipo(equipoId)
+    setBuscandoOperador(false)
+    setSugerido(ultimo)
+    setForm((f) => ({ ...f, operador_id: ultimo?.id ?? '' }))
+  }
+
   async function crearOperador(valores: Record<string, string>) {
     const { data, error: dbError } = await supabase
       .from('operadores')
@@ -85,18 +121,15 @@ export function HorometroForm({
     e.preventDefault()
     setError(null)
 
-    const inicial = Number(form.horometro_inicial)
-    const final = Number(form.horometro_final)
-
-    if (Number.isNaN(inicial) || Number.isNaN(final)) {
-      return setError('Ingresa lecturas de horómetro válidas.')
-    }
-    if (final < inicial) {
-      return setError('El horómetro final no puede ser menor al inicial.')
-    }
-    if (!form.equipo_id) {
-      return setError('Selecciona un equipo.')
-    }
+    // Toda la validación en una llamada, y en el orden en que se llenan
+    // los campos: el primer problema que encuentra es el que se dice.
+    const revisado = validarHorometro({
+      equipoId: form.equipo_id,
+      horometroInicial: form.horometro_inicial,
+      horometroFinal: form.horometro_final,
+      horasHombre: form.horas_hombre,
+    })
+    if (!revisado.ok) return setError(revisado.error)
 
     setGuardando(true)
 
@@ -111,9 +144,9 @@ export function HorometroForm({
       fecha: fechaTicket,
       turno: form.turno,
       equipo_id: form.equipo_id,
-      horometro_inicial: inicial,
-      horometro_final: final,
-      horas_hombre: form.horas_hombre ? Number(form.horas_hombre) : null,
+      horometro_inicial: revisado.valor.horometroInicial,
+      horometro_final: revisado.valor.horometroFinal,
+      horas_hombre: revisado.valor.horasHombre,
       operador_id: form.operador_id || null,
       comentario: form.comentario || null,
     }
@@ -146,7 +179,12 @@ export function HorometroForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+    // `noValidate`: la validación la manda `lib/horometro/validacion` y
+    // nadie más. El globo del navegador sale en su propio idioma, dice
+    // «Completa este campo» sin explicar el rango y se salta el orden en
+    // que queremos avisar; con dos jueces, el usuario ve uno u otro según
+    // el navegador que le tocó.
+    <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
       <Tarjeta className="flex flex-col gap-4 p-5">
         {/* En celular cada campo ocupa el ancho completo: con Fecha y Turno
             compartiendo fila, cada botón de turno quedaba a un cuarto de
@@ -193,7 +231,7 @@ export function HorometroForm({
         <Campo etiqueta="Equipo" requerido>
           <SelectorBuscable
             valor={form.equipo_id}
-            onCambiar={(id) => setForm({ ...form, equipo_id: id })}
+            onCambiar={elegirEquipo}
             placeholder="Buscar equipo…"
             etiquetaBusqueda="Escribe el código, ej. A08"
             permitirVacio={false}
@@ -205,7 +243,16 @@ export function HorometroForm({
           />
         </Campo>
 
-        <Campo etiqueta="Operador">
+        <Campo
+          etiqueta="Operador"
+          ayuda={
+            buscandoOperador
+              ? 'Buscando quién llevó este equipo la última vez…'
+              : sugerido && form.operador_id === sugerido.id
+                ? `Lo puso el sistema: es quien manejó este equipo el ${formatearFecha(sugerido.fecha)}. Cámbialo si hubo rotación.`
+                : undefined
+          }
+        >
           <SelectorBuscable
             valor={form.operador_id}
             onCambiar={(id) => setForm({ ...form, operador_id: id })}
@@ -266,13 +313,20 @@ export function HorometroForm({
           </div>
         )}
 
-        <Campo etiqueta="Horas hombre" ayuda="Sólo si difiere de las horas máquina (ej. 4 h máquina, 8 h hombre).">
+        {/* Obligatorias: de esta columna sale el costo de mano de obra, y
+            un vacío se sumaba como cero sin que nadie lo notara. */}
+        <Campo
+          etiqueta="Horas hombre"
+          requerido
+          ayuda="Las que trabajó la persona, aunque no coincidan con las de la máquina (ej. 4 h máquina, 8 h hombre)."
+        >
           <Entrada
             type="text"
             inputMode="decimal"
             value={form.horas_hombre}
             onChange={(e) => setForm({ ...form, horas_hombre: e.target.value })}
             placeholder="8"
+            required
           />
         </Campo>
 

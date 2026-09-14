@@ -26,6 +26,7 @@ import { SelectorMultiple } from '@/components/ui/SelectorMultiple'
 import type { ColumnaGrid } from '@/lib/grid/tipos'
 import { mesEnCurso } from '@/lib/fechas'
 import { mensajeDeError } from '@/lib/errores'
+import { validarHorasHombre } from '@/lib/horometro/validacion'
 import { procesoInfo } from '@/lib/estados'
 import type { Equipo, Operador, ProcesoTicket, TurnoTipo } from '@/lib/types'
 
@@ -346,6 +347,20 @@ export function ControlHorometros({
           : campo
 
     setError(null)
+
+    // Las horas hombre pasan por la MISMA regla que el formulario de
+    // alta. Vaciar la celda dejaba la columna en nulo, y de ahí sale el
+    // costo de mano de obra: un nulo se suma como cero sin que nadie lo
+    // note, que es justo lo que se está cerrando.
+    if (columna === 'horas_hombre') {
+      const revisado = validarHorasHombre(valor === null || valor === undefined ? '' : String(valor))
+      if (!revisado.ok) {
+        setError(revisado.error)
+        await recargar()
+        return
+      }
+      valor = revisado.valor
+    }
     const { error: e } = await supabase
       .from('horometros')
       .update({ [columna]: valor })
