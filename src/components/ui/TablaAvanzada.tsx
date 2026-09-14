@@ -816,8 +816,18 @@ function Casilla({
   const contenido = marcada ? <IconCheck className="h-3 w-3" /> : null
 
   if (!onClick) return <span className={clases}>{contenido}</span>
+  // `role="checkbox"` con `aria-checked`, no un botón a secas: un lector
+  // de pantalla tiene que poder decir si la fila está marcada o no, que
+  // es la única información que da esta casilla.
   return (
-    <button type="button" onClick={onClick} className={clases} aria-label={etiqueta}>
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={marcada}
+      onClick={onClick}
+      className={clases}
+      aria-label={etiqueta}
+    >
       {contenido}
     </button>
   )

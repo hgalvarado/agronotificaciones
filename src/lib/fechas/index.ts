@@ -12,11 +12,13 @@
 
 export {
   ZONA,
+  aEntradaLocal,
   ahoraIso,
   ayerIso,
   esFechaIso,
   hoyIso,
   instanteDeFecha,
+  deEntradaLocal,
   isoDe,
   primerDiaDelMes,
   sumarDias,

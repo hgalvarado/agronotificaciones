@@ -58,6 +58,11 @@ export type FilaControl = {
   usuario_id: string | null
   /** Llega con la migración 30; sin ella el filtro de usuario no aparece. */
   usuario_nombre?: string | null
+  /** Llegan con la migración 38. Sin ella la columna no se dibuja. */
+  contador_sap?: string | null
+  /** La fila estrena tablero: no hay contra qué compararla, y es distinto
+   *  de ser la primera jornada del equipo. */
+  inicio_contador?: boolean | null
 }
 
 const VACIOS = { equipos: [] as string[], familias: [] as string[], operadores: [] as string[], usuarios: [] as string[] }
@@ -101,6 +106,10 @@ export function ControlHorometros({
       .lte('fecha', consulta.hasta)
       .order('equipo_codigo', { ascending: true })
       .order('fecha', { ascending: true })
+      // El mismo desempate que usa la vista para encadenar: dentro de un
+      // día el diurno va antes que el nocturno. Sin esto la pantalla
+      // ordenaba distinto que el cálculo y las filas parecían saltadas.
+      .order('turno', { ascending: true })
       .limit(5000)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [consulta.desde, consulta.hasta])
@@ -188,6 +197,14 @@ export function ControlHorometros({
         ) / 100,
     }
   }, [lista])
+
+  // La columna de contador sólo tiene sentido si hay contadores que
+  // enseñar. Se deduce de lo que llegó, no de una bandera de migración:
+  // si la vista todavía no trae el campo, la respuesta es la misma.
+  const hayContadores = useMemo(
+    () => (filas ?? []).some((f) => Boolean(f.contador_sap)),
+    [filas]
+  )
 
   /* ------------------------------ Columnas ----------------------------- */
 
@@ -322,6 +339,22 @@ export function ControlHorometros({
           </span>
         ),
       },
+      // Sólo aparece cuando la migración 38 está corrida Y hay al menos
+      // un equipo con contador registrado: en una finca que nunca ha
+      // cambiado un tablero es una columna vacía que estorba.
+      ...(hayContadores
+        ? [
+            {
+              campo: 'contador_sap',
+              label: 'Contador',
+              tipo: 'seleccion' as const,
+              valor: (f: FilaControl) => f.contador_sap ?? null,
+              render: (f: FilaControl) => (
+                <span className="font-mono text-xs text-slate-500">{f.contador_sap ?? '—'}</span>
+              ),
+            },
+          ]
+        : []),
       {
         campo: 'comparativo',
         label: 'Comparativo',
@@ -329,10 +362,15 @@ export function ControlHorometros({
         numero: true,
         valor: (f) => (f.comparativo === null ? null : Number(f.comparativo)),
         etiqueta: (f) => n2(f.comparativo),
-        render: (f) => <Comparativo valor={f.comparativo === null ? null : Number(f.comparativo)} />,
+        render: (f) => (
+          <Comparativo
+            valor={f.comparativo === null ? null : Number(f.comparativo)}
+            inicioContador={f.inicio_contador === true}
+          />
+        ),
       },
     ],
-    [equipos, operadores]
+    [equipos, operadores, hayContadores]
   )
 
   /* ------------------------------ Escritura ---------------------------- */
@@ -582,13 +620,28 @@ export function ControlHorometros({
         <span className="flex items-center gap-1.5">
           <span className="font-bold text-violet-600">-n</span> traslape entre registros
         </span>
+        {hayContadores && (
+          <span className="flex items-center gap-1.5">
+            <span className="rounded-sm bg-sky-100 px-1 font-bold text-sky-800 ring-1 ring-sky-400">
+              Tablero nuevo
+            </span>
+            estrena contador: la secuencia arranca ahí
+          </span>
+        )}
         <span>La fecha se corrige en el ticket, no aquí.</span>
       </div>
     </div>
   )
 }
 
-function Comparativo({ valor }: { valor: number | null }) {
+function Comparativo({
+  valor,
+  inicioContador = false,
+}: {
+  valor: number | null
+  /** La fila estrena tablero: la cadena empieza de cero a propósito. */
+  inicioContador?: boolean
+}) {
   const tono =
     valor === null
       ? 'text-slate-300'
@@ -597,9 +650,14 @@ function Comparativo({ valor }: { valor: number | null }) {
         : valor > 0
           ? 'text-red-600'
           : 'text-violet-600'
+  // Un guion sin explicación se lee como «falta el dato». Estrenar
+  // contador y ser la primera jornada del equipo se ven igual y no son lo
+  // mismo: el primero es una decisión registrada, el segundo un límite.
   const titulo =
     valor === null
-      ? 'Primer registro de este equipo'
+      ? inicioContador
+        ? 'Primera jornada con el contador nuevo: la secuencia arranca aquí, sin comparar contra el tablero anterior'
+        : 'Primer registro de este equipo'
       : valor > 0
         ? `Faltan ${valor} horas por notificar entre este registro y el anterior`
         : valor < 0
@@ -619,6 +677,17 @@ function Comparativo({ valor }: { valor: number | null }) {
         }`}
       >
         {valor > 0 ? `+${valor}` : valor}
+      </span>
+    )
+  }
+
+  if (valor === null && inicioContador) {
+    return (
+      <span
+        title={titulo}
+        className="inline-flex items-center rounded-md bg-sky-100 px-1.5 py-0.5 text-xs font-bold text-sky-800 ring-1 ring-inset ring-sky-400"
+      >
+        Tablero nuevo
       </span>
     )
   }

@@ -31,6 +31,7 @@ export default async function CatalogosPage() {
     { data: implementosFisicos },
     { data: variedades },
     { data: materiales },
+    sondaContador,
   ] = await Promise.all([
     supabase.from('zonas').select('*').order('nombre'),
     supabase.from('familias_equipo').select('*').order('nombre'),
@@ -64,8 +65,12 @@ export default async function CatalogosPage() {
     // vacía en vez de tumbar la pantalla completa.
     supabase.from('variedades').select('*').order('nombre'),
     supabase.from('materiales').select('*').order('codigo'),
+    // Sonda de la migración 38: enseñar una columna que la base no tiene
+    // sólo consigue que la celda falle al tocarla.
+    supabase.from('equipos').select('contador_sap').limit(1),
   ])
 
+  const soportaContador = !sondaContador.error
   const soportaProveedoresLabor = !sondaProveedoresLabor.error
   const soportaSeguimiento = !sondaSeguimiento.error
 
@@ -128,6 +133,12 @@ export default async function CatalogosPage() {
         { key: 'nombre', label: 'Nombre', tipo: 'text', requerido: true },
         { key: 'familia_id', label: 'Familia', tipo: 'select', opciones: opcionesFamilia },
         { key: 'distrito', label: 'Distrito', tipo: 'text' },
+        // Llega con la migración 38. Es sólo de consulta aquí: quien la
+        // mueve de verdad es el historial de contadores, que además deja
+        // constancia de cuándo se cambió y por qué.
+        ...(soportaContador
+          ? [{ key: 'contador_sap', label: 'Contador SAP', tipo: 'text' as const }]
+          : []),
         { key: 'comentario', label: 'Observaciones', tipo: 'text' },
         { key: 'activo', label: 'Activo', tipo: 'checkbox' },
       ],

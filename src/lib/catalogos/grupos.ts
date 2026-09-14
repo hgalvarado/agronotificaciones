@@ -59,6 +59,12 @@ export const GRUPOS: GrupoDeclarado[] = [
         descripcion: 'La operación SAP con la que se notifica cada equipo o apero.',
       },
       {
+        key: 'contadores',
+        etiqueta: 'Contadores de horómetro',
+        href: '/admin/contadores',
+        descripcion: 'Cambios de tablero: qué contador llevaba cada equipo y desde cuándo.',
+      },
+      {
         key: 'tarifas',
         etiqueta: 'Tarifas',
         href: '/admin/tarifas',

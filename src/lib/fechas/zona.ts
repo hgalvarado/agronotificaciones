@@ -104,3 +104,33 @@ export function instanteDeFecha(iso: string): Date {
 export function ahoraIso(momento: Date = new Date()): string {
   return `${isoDe(momento)}T${RELOJ.format(momento)}${DESFASE}`
 }
+
+/* ------------------------------------------------------------------ */
+/* Campos `datetime-local`                                             */
+/* ------------------------------------------------------------------ */
+/* El navegador entrega y espera «2026-09-05T14:30» SIN zona, y lo
+ * interpreta con el reloj del aparato. Si el jefe de taller abre la
+ * pantalla desde un teléfono con la zona mal puesta, la hora del cambio
+ * de tablero se guardaría corrida. Estas dos funciones fijan el puente:
+ * lo que se escribe es hora de Honduras, siempre. */
+
+const RELOJ_CORTO = new Intl.DateTimeFormat('en-GB', {
+  timeZone: ZONA,
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+})
+
+/** De un instante guardado al valor que espera `<input type="datetime-local">`. */
+export function aEntradaLocal(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  return `${isoDe(d)}T${RELOJ_CORTO.format(d)}`
+}
+
+/** Del valor del campo al instante que se guarda, leído en hora de Honduras. */
+export function deEntradaLocal(valor: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(valor)) return null
+  return `${valor.slice(0, 16)}:00${DESFASE}`
+}

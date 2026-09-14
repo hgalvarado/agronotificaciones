@@ -352,8 +352,14 @@ export function DataGrid<T extends { id: string }>({
                       >
                         {seleccionable && (
                           <td className="px-2 py-1.5">
+                            {/* `role="checkbox"` con `aria-checked`, no un
+                                botón a secas: un lector de pantalla tiene
+                                que poder decir si la fila está marcada,
+                                que es lo único que informa esta casilla. */}
                             <button
                               type="button"
+                              role="checkbox"
+                              aria-checked={marcadas.has(f.id)}
                               aria-label="Seleccionar fila"
                               onClick={() => alternarMarca(f.id)}
                               className={`flex h-4 w-4 items-center justify-center rounded border transition-all ${
