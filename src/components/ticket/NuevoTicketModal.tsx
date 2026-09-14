@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Modal } from '@/components/ui/Modal'
 import { Alerta, Boton, Campo, Entrada, Selector } from '@/components/ui/Primitivos'
 import { mensajeDeError } from '@/lib/errores'
+import { ayerIso, hoyIso } from '@/lib/fechas'
 
 export type UsuarioTicket = { id: string; nombre: string; departamento?: string | null }
 
@@ -52,8 +53,13 @@ export function NuevoTicketModal({
 }) {
   const supabase = createClient()
   const router = useRouter()
-  const hoy = new Date().toISOString().slice(0, 10)
-  const [fecha, setFecha] = useState(hoy)
+  // La jornada se captura al día siguiente: el operador entrega la boleta
+  // en la mañana, no al bajarse del tractor. Por eso el valor que viene
+  // puesto es AYER —lo que se está notificando— y no hoy, que casi
+  // siempre había que corregir a mano. Sigue siendo editable.
+  const hoy = hoyIso()
+  const ayer = ayerIso()
+  const [fecha, setFecha] = useState(ayer)
   const [duenoId, setDuenoId] = useState(usuarioId)
   const [temporadaId, setTemporadaId] = useState(temporadaActivaId ?? '')
   const [guardando, setGuardando] = useState(false)
@@ -62,7 +68,11 @@ export function NuevoTicketModal({
   // Una jornada de hace tres meses es un ticket histórico: se crea igual,
   // pero conviene entrar a su detalle para cargarle el Excel en vez de
   // capturar horómetro por horómetro.
-  const esHistorico = fecha < hoy
+  //
+  // El corte es AYER, no hoy. Desde que la fecha por omisión es la de
+  // ayer, tratar «ayer» como histórico habría mandado cada ticket normal
+  // a la pantalla de carga masiva en vez de a capturar horómetros.
+  const esHistorico = fecha < ayer
 
   const dueno = usuarios.find((u) => u.id === duenoId)
   const nombreDueno = dueno?.nombre ?? nombreUsuario
@@ -124,8 +134,19 @@ export function NuevoTicketModal({
           cargar una jornada vieja, escribe su fecha y elige de quién fue.
         </p>
 
-        <Campo etiqueta="Fecha de la jornada" requerido>
-          <Entrada type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} required />
+        <Campo
+          etiqueta="Fecha de la jornada"
+          ayuda="Viene puesta la de ayer, que es la jornada que se notifica. Cámbiala si es otra."
+          requerido
+        >
+          {/* No hay jornada mañana: el tope es hoy, en hora de Honduras. */}
+          <Entrada
+            type="date"
+            value={fecha}
+            max={hoy}
+            onChange={(e) => setFecha(e.target.value)}
+            required
+          />
         </Campo>
 
         {/* A nombre de quién. Sólo Administrador y Torre de Control lo

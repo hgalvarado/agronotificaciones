@@ -8,6 +8,7 @@ import { Alerta, Boton, Campo, Entrada } from '@/components/ui/Primitivos'
 import { IconLock, IconPencil, IconSend, IconTrash, IconUnlock } from '@/components/ui/Icons'
 import { PROCESOS } from '@/lib/estados'
 import { mensajeDeError } from '@/lib/errores'
+import { ahoraIso } from '@/lib/fechas'
 import type { ProcesoTicket, RolCodigo, Ticket } from '@/lib/types'
 
 export function AccionesTicket({
@@ -191,7 +192,7 @@ function EditarTicketModal({
     const cambios: Record<string, unknown> = { fecha }
     if (estado !== ticket.estado) {
       cambios.estado = estado
-      if (estado === 'CERRADO') cambios.cerrado_at = new Date().toISOString()
+      if (estado === 'CERRADO') cambios.cerrado_at = ahoraIso()
       else {
         cambios.cerrado_at = null
         cambios.cerrado_by = null

@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { ControlCostos, type LineaCosto } from '@/components/costos/ControlCostos'
 import { Alerta, BotonLink } from '@/components/ui/Primitivos'
 import { getPermisos, puede } from '@/lib/auth'
+import { hoyIso, sumarDias } from '@/lib/fechas'
 
 /**
  * Tope de líneas que se traen de una vez. Cada labor produce dos líneas
@@ -12,9 +13,7 @@ import { getPermisos, puede } from '@/lib/auth'
 const TOPE = 4000
 
 function haceUnMes() {
-  const d = new Date()
-  d.setDate(d.getDate() - 30)
-  return d.toISOString().slice(0, 10)
+  return sumarDias(hoyIso(), -30)
 }
 
 export default async function CostosPage({
@@ -38,7 +37,7 @@ export default async function CostosPage({
   }
 
   const desde = params.desde ?? haceUnMes()
-  const hasta = params.hasta ?? new Date().toISOString().slice(0, 10)
+  const hasta = params.hasta ?? hoyIso()
 
   const { data, error } = await supabase
     .from('v_costos_labores')

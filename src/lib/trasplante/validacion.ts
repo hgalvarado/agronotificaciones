@@ -4,17 +4,15 @@
  * castellano. Sin red, sin base y sin React.
  */
 
+import { esFechaIso, hoyIso } from '@/lib/fechas'
 import { CICLOS_SIEMBRA } from './tipos'
 
-const ES_FECHA = /^\d{4}-\d{2}-\d{2}$/
-
 export function esFecha(v: string | null | undefined): boolean {
-  return typeof v === 'string' && ES_FECHA.test(v)
+  return esFechaIso(v)
 }
 
-export function hoyIso(): string {
-  return new Date().toISOString().slice(0, 10)
-}
+/* El «hoy» del trasplante es el mismo «hoy» del resto: el de Honduras. */
+export { hoyIso }
 
 /**
  * La semana ISO de una fecha, tal como la calcula la base.

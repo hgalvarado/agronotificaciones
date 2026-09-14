@@ -17,6 +17,7 @@ import { Alerta, Boton, Selector } from '@/components/ui/Primitivos'
 import { IconCheck, IconCopy, IconPlus, IconTrash } from '@/components/ui/Icons'
 import { construirXlsx, descargar, type CeldaHoja } from '@/lib/hojas'
 import { mensajeDeError } from '@/lib/errores'
+import { hoyIso } from '@/lib/fechas'
 import { guardarRecepciones } from '@/lib/trasplante/repositorioCliente'
 import {
   aBorrador,
@@ -76,7 +77,7 @@ export function GridRecepcion({
   puedeEditar: boolean
 }) {
   const router = useRouter()
-  const hoy = new Date().toISOString().slice(0, 10)
+  const hoy = hoyIso()
 
   // `key` sobre la temporada remonta el borrador cuando cambian los datos
   // de origen; dentro de la pantalla el borrador manda.

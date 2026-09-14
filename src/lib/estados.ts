@@ -1,4 +1,5 @@
 import type { Tono } from '@/components/ui/Primitivos'
+import { instanteDeFecha, ZONA } from '@/lib/fechas'
 import type { EstadoTicket, ProcesoTicket } from '@/lib/types'
 
 // Etiquetas y colores de los dos ejes del ticket. Centralizado aquí para
@@ -52,9 +53,11 @@ export function estadoInfo(estado: EstadoTicket): { etiqueta: string; tono: Tono
 }
 
 export function formatearFecha(fecha: string) {
-  // Las fechas vienen como 'YYYY-MM-DD' (date de Postgres). Se le agrega la
-  // hora para que el navegador no la interprete en UTC y reste un día.
-  return new Date(fecha + 'T00:00:00').toLocaleDateString('es-HN', {
+  // Las fechas vienen como 'YYYY-MM-DD' (date de Postgres): son un día del
+  // calendario, no un instante. Se anclan al mediodía y se leen en la zona
+  // de la empresa para que ningún reloj les reste un día.
+  return instanteDeFecha(fecha).toLocaleDateString('es-HN', {
+    timeZone: ZONA,
     day: '2-digit',
     month: 'short',
     year: 'numeric',
@@ -63,6 +66,7 @@ export function formatearFecha(fecha: string) {
 
 export function formatearFechaHora(iso: string) {
   return new Date(iso).toLocaleString('es-HN', {
+    timeZone: ZONA,
     day: '2-digit',
     month: 'short',
     year: 'numeric',

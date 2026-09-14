@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getPermisos, puede } from '@/lib/auth'
+import { hoyIso, sumarDias } from '@/lib/fechas'
 import { PlanProceso } from '@/components/plan/PlanProceso'
 import type {
   AvanceRow,
@@ -43,9 +44,7 @@ type PlanRow = {
 const PANTALLA: Record<string, string> = { APS: 'plan_aps' }
 
 function haceUnMes() {
-  const d = new Date()
-  d.setDate(d.getDate() - 30)
-  return d.toISOString().slice(0, 10)
+  return sumarDias(hoyIso(), -30)
 }
 
 export default async function PlanProcesoPage({
@@ -111,7 +110,7 @@ export default async function PlanProcesoPage({
   }
 
   const desde = sp.desde ?? haceUnMes()
-  const hasta = sp.hasta ?? new Date().toISOString().slice(0, 10)
+  const hasta = sp.hasta ?? hoyIso()
 
   // Qué labores han trabajado en este proceso. Ya no se pregunta cuál
   // medir: el plan y las etapas son sólo del emplasticado, así que se

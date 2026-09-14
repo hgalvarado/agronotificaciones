@@ -13,6 +13,7 @@
 'use client'
 
 import { createClient } from '@/lib/supabase/client'
+import { ahoraIso } from '@/lib/fechas'
 import type { ConfiguracionPublica, EstadoTicketPublico, ProcesoTicket } from './tipos'
 
 type FilaConfig = {
@@ -45,7 +46,7 @@ export async function guardarConfiguracionEnBase(
       todos_departamentos: entrada.todosDepartamentos,
       departamentos: entrada.departamentos,
       actualizado_por: usuarioId,
-      updated_at: new Date().toISOString(),
+      updated_at: ahoraIso(),
     })
     .eq('id', true)
   return { error: error?.message ?? null }

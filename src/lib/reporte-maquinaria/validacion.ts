@@ -6,6 +6,7 @@
  * de direcciones, y la barra de direcciones la escribe cualquiera.
  */
 
+import { hoyIso } from '@/lib/fechas'
 import {
   ESTADOS_TICKET,
   PROCESOS_TICKET,
@@ -17,10 +18,10 @@ import {
 const ES_FECHA = /^\d{4}-\d{2}-\d{2}$/
 const ES_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-/** Hoy en formato ISO, sin arrastrar la hora ni la zona. */
-export function hoyIso(): string {
-  return new Date().toISOString().slice(0, 10)
-}
+/* El día por omisión del visor público es el de Honduras, no el del
+   servidor: a las 6 de la tarde un servidor UTC ya estaría enseñando el
+   reporte de mañana, vacío. */
+export { hoyIso }
 
 function texto(v: unknown): string | null {
   if (typeof v !== 'string') return null

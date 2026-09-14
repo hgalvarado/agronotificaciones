@@ -193,6 +193,20 @@ h3 {
 /* ================================================================== */
 /* MODO OSCURO                                                        */
 /* ================================================================== */
+/* TODO el bloque va dentro de `@media screen` a propósito.
+ *
+ * El modo oscuro es una preferencia de PANTALLA: la tinta no la tiene. Al
+ * encerrar aquí las reglas oscuras, el navegador simplemente no las
+ * aplica al imprimir, y el PDF sale con la paleta clara original sin que
+ * haya que volver a escribir un solo color. La alternativa —repetir los
+ * cuarenta valores claros dentro de un `@media print`— era la misma
+ * paleta mantenida en dos sitios, y el día que se tocara uno el otro
+ * quedaba viejo en silencio.
+ *
+ * Lo único que sí hay que forzar aparte, más abajo, es el `color-scheme`:
+ * va como estilo en línea en el `<html>` —lo pone el servidor para que no
+ * parpadee— y un estilo en línea se aplica también en papel. */
+@media screen {
 /* Cómo funciona, porque no es obvio:
  *
  * Tailwind 4 compila `bg-white` a `background-color: var(--color-white)`
@@ -322,13 +336,29 @@ html[data-tema='oscuro'] input[type='date']::-webkit-calendar-picker-indicator {
   filter: invert(0.75);
 }
 
-/* En papel siempre se imprime en claro: la tinta no tiene modo oscuro. */
+} /* fin de @media screen: lo de arriba es sólo para pantalla */
+
+/* ------------------------------------------------------------------ */
+/* En papel, siempre claro                                             */
+/* ------------------------------------------------------------------ */
+/* El `color-scheme: dark` viaja como estilo en línea en el `<html>`, y un
+ * estilo en línea no entiende de medios: sin esto Chrome seguiría
+ * pintando de gris los controles del formulario y el fondo de la hoja al
+ * exportar a PDF. `!important` es lo único que gana a un estilo en línea.
+ *
+ * El resto de la paleta ya vuelve sola a los valores claros porque las
+ * reglas oscuras viven dentro de `@media screen`. */
 @media print {
+  html,
   html[data-tema='oscuro'] {
-    color-scheme: light;
+    color-scheme: light !important;
   }
+
+  html,
+  html[data-tema='oscuro'],
+  body,
   html[data-tema='oscuro'] body {
-    background: #fff;
-    color: #0f172a;
+    background: #fff !important;
+    color: #0f172a !important;
   }
 }

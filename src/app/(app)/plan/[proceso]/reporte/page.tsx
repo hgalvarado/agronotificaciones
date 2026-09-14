@@ -5,6 +5,7 @@ import { Alerta } from '@/components/ui/Primitivos'
 import { IconChevronLeft } from '@/components/ui/Icons'
 import { BotonImprimir } from '@/components/plan/BotonImprimir'
 import type { AvanceRow, LaborDelProceso, Proceso, ZonaRow } from '@/components/plan/tipos'
+import { hoyIso as hoyEnHonduras, instanteDeFecha, ZONA } from '@/lib/fechas'
 
 /**
  * Una fila del avance diario: UN lote en UN día, con el desglose de
@@ -43,7 +44,8 @@ const num = new Intl.NumberFormat('es-HN', {
 })
 
 function fechaLarga(iso: string) {
-  return new Date(iso + 'T00:00:00').toLocaleDateString('es-HN', {
+  return instanteDeFecha(iso).toLocaleDateString('es-HN', {
+    timeZone: ZONA,
     day: '2-digit',
     month: 'long',
     year: 'numeric',
@@ -51,7 +53,8 @@ function fechaLarga(iso: string) {
 }
 
 function fechaCorta(iso: string) {
-  return new Date(iso + 'T00:00:00').toLocaleDateString('es-HN', {
+  return instanteDeFecha(iso).toLocaleDateString('es-HN', {
+    timeZone: ZONA,
     day: '2-digit',
     month: 'short',
   })
@@ -156,7 +159,7 @@ export default async function ReportePage({
   // `hasta` es además el corte: el reporte dice lo que decía ESE día, no
   // lo que dice hoy. Sin eso, reimprimir el correo del martes daría
   // números distintos a los que se enviaron el martes.
-  const hoyIso = new Date().toISOString().slice(0, 10)
+  const hoyIso = hoyEnHonduras()
   const hasta = params.hasta && ES_FECHA.test(params.hasta) ? params.hasta : hoyIso
   const desdePedido = params.desde && ES_FECHA.test(params.desde) ? params.desde : hasta
   const desde = desdePedido > hasta ? hasta : desdePedido

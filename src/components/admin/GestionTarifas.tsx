@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { hoyIso } from '@/lib/fechas'
 import { Modal } from '@/components/ui/Modal'
 import {
   Alerta,
@@ -82,10 +83,6 @@ function aFechaIso(bruto: string): string | null {
   if (/^\d{4}-\d{2}-\d{2}$/.test(bruto)) return bruto
   const m = bruto.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/)
   return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : null
-}
-
-function hoyIso() {
-  return new Date().toISOString().slice(0, 10)
 }
 
 const clasesArchivo =

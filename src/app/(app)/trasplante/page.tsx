@@ -12,15 +12,13 @@ import {
   leerRecepciones,
   leerSiembras,
 } from '@/lib/trasplante/repositorio'
-import { hoyIso } from '@/lib/trasplante/validacion'
+import { hoyIso, sumarDias } from '@/lib/fechas'
 
 type Temporada = { id: string; nombre: string; activa: boolean }
 
 /** Un mes atrás, que es lo que se mira normalmente al abrir. */
 function haceUnMes() {
-  const d = new Date()
-  d.setDate(d.getDate() - 30)
-  return d.toISOString().slice(0, 10)
+  return sumarDias(hoyIso(), -30)
 }
 
 export default async function TrasplantePage({

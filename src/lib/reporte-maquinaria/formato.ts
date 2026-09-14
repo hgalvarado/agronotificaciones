@@ -5,6 +5,8 @@
  * exactamente los mismos decimales.
  */
 
+import { instanteDeFecha, ZONA } from '@/lib/fechas'
+
 const NUMERO = new Intl.NumberFormat('es-HN', {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
@@ -34,7 +36,8 @@ export function n2Compacto(valor: number | null | undefined): string {
 }
 
 export function fechaLarga(iso: string): string {
-  return new Date(iso + 'T00:00:00').toLocaleDateString('es-HN', {
+  return instanteDeFecha(iso).toLocaleDateString('es-HN', {
+    timeZone: ZONA,
     day: '2-digit',
     month: 'long',
     year: 'numeric',

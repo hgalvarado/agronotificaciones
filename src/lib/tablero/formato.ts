@@ -6,6 +6,8 @@
  * moneda o de decimales sea un archivo y no una búsqueda.
  */
 
+import { instanteDeFecha, ZONA } from '@/lib/fechas'
+
 const NUM = new Intl.NumberFormat('es-HN', {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
@@ -33,7 +35,8 @@ export function porcentaje(v: number | null | undefined): string {
 
 export function fechaCorta(iso: string | null | undefined): string {
   if (!iso) return '—'
-  return new Date(iso + 'T00:00:00').toLocaleDateString('es-HN', {
+  return instanteDeFecha(iso).toLocaleDateString('es-HN', {
+    timeZone: ZONA,
     day: '2-digit',
     month: 'short',
   })

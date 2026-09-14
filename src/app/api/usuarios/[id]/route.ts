@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getPerfilActual } from '@/lib/auth'
+import { ahoraIso } from '@/lib/fechas'
 
 async function exigirAdmin() {
   const { perfil, rol } = await getPerfilActual()
@@ -58,7 +59,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     if (activo !== undefined) cambios.activo = activo
 
     if (Object.keys(cambios).length > 0) {
-      cambios.updated_at = new Date().toISOString()
+      cambios.updated_at = ahoraIso()
       const { error } = await admin.from('perfiles').update(cambios).eq('id', id)
       if (error) return NextResponse.json({ error: error.message }, { status: 400 })
     }

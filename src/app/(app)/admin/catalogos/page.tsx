@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
-import { TabsCatalogos, type PestanaCatalogo } from '@/components/catalogos/TabsCatalogos'
+import { MenuCatalogos } from '@/components/catalogos/MenuCatalogos'
+import type { PestanaCatalogo } from '@/components/catalogos/tipos'
 import { Alerta } from '@/components/ui/Primitivos'
 import { getPermisos, puede } from '@/lib/auth'
 
@@ -421,14 +422,15 @@ export default async function CatalogosPage() {
   ]
 
   return (
-    <div className="anim-aparecer mx-auto flex max-w-5xl flex-col gap-4 p-4 lg:p-6">
+    <div className="anim-aparecer mx-auto flex max-w-6xl flex-col gap-4 p-4 lg:p-6">
       <div>
         <h1 className="text-xl font-bold tracking-tight text-slate-900">Catálogos</h1>
         <p className="text-sm text-slate-400">
-          Datos maestros. Cada pestaña se puede ordenar, filtrar, cambiar en masa y cargar desde
-          Excel; la plantilla de cada una trae las <strong>listas desplegables</strong> ya puestas.
-          En <strong>Labores</strong> el archivo también carga las tareas SAP y los implementos de
-          cada labor, y con qué proveedores trabaja.
+          Datos maestros, agrupados por lo que configuran. Cada catálogo se puede ordenar, filtrar,
+          cambiar en masa y cargar desde Excel; la plantilla de cada uno trae las{' '}
+          <strong>listas desplegables</strong> ya puestas. En <strong>Labores</strong> el archivo
+          también carga las tareas SAP y los implementos de cada labor, y con qué proveedores
+          trabaja.
         </p>
       </div>
 
@@ -438,7 +440,7 @@ export default async function CatalogosPage() {
         </Alerta>
       )}
 
-      <TabsCatalogos pestanas={pestanas} soloLectura={soloLectura} />
+      <MenuCatalogos pestanas={pestanas} soloLectura={soloLectura} />
     </div>
   )
 }
