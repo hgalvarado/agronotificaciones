@@ -14,8 +14,23 @@ export const TEMAS = [
 
 export type Tema = (typeof TEMAS)[number]['valor']
 
-/** Dónde se recuerda la preferencia. Sólo en este navegador. */
+/**
+ * Dónde se recuerda la preferencia.
+ *
+ * Se guarda en DOS sitios y no es redundancia:
+ *
+ *   · `localStorage` lo lee el guion del `<head>` antes de pintar, que es
+ *     lo que evita el fogonazo blanco.
+ *   · La COOKIE viaja con la petición, así que el servidor puede pintar
+ *     el `<html>` ya con el tema puesto. Eso es lo que hace que el tema
+ *     sobreviva a recargar la página aunque el guion no llegue a correr
+ *     —una política de contenido estricta, un navegador con JavaScript
+ *     lento— y lo que arregla el «se reinicia al actualizar».
+ */
 export const CLAVE_TEMA = 'agro-tema'
+
+/** Un año: la preferencia de tema no caduca sola. */
+export const COOKIE_TEMA_MAX_AGE = 60 * 60 * 24 * 365
 
 export function esTema(v: unknown): v is Tema {
   return v === 'claro' || v === 'oscuro' || v === 'sistema'
@@ -47,3 +62,12 @@ var e=document.documentElement;
 e.dataset.tema=o?'oscuro':'claro';
 e.style.colorScheme=o?'dark':'light';
 }catch(_){}})()`
+
+/**
+ * Lee el tema de la cabecera `Cookie`. Para el servidor, que no tiene
+ * `localStorage` pero sí la cookie que el navegador le manda.
+ */
+export function temaDeCookies(valor: string | null | undefined): Tema | null {
+  if (!valor) return null
+  return esTema(valor) ? valor : null
+}

@@ -57,6 +57,12 @@ type FilaLabor = {
   horas_maquina: number
   horas_notificadas: number | null
   horas_costeadas: number | null
+  /**
+   * Las horas que le tocaron a ESTE lote, ya prorrateadas. Llega con la
+   * migración 35; antes la pantalla enseñaba `horas_costeadas`, que es
+   * de la labor entera y salía repetida en cada lote.
+   */
+  horas_linea?: number | null
   horas_hombre: number | null
   operador_codigo: string | null
   operador_nombre: string | null
@@ -106,6 +112,18 @@ const VACIOS = {
   ciclos: [] as string[],
   equipos: [] as string[],
   turnos: [] as string[],
+}
+
+/**
+ * Las horas de la línea, con respaldo.
+ *
+ * `horas_linea` llega con la migración 35. Mientras no esté corrida se
+ * usa lo de antes, que es menos exacto pero no deja la columna en blanco
+ * en mitad de una jornada de captura.
+ */
+function horasDeLinea(f: FilaLabor): number {
+  if (f.horas_linea !== null && f.horas_linea !== undefined) return Number(f.horas_linea)
+  return Number(f.horas_costeadas ?? f.horas_maquina)
 }
 
 /** La operación SAP como en su Excel: cuatro dígitos con ceros. */
@@ -313,6 +331,8 @@ export function ControlLabores({
         editor: 'numero',
       },
       { campo: 'equipo_codigo', label: 'Equipo', tipo: 'seleccion', valor: (f) => f.equipo_codigo },
+      // Las del HORÓMETRO completo: iguales en todos los lotes de la
+      // misma pasada, porque son de la pasada.
       {
         campo: 'horas_maquina',
         label: 'H. máquina',
@@ -321,18 +341,18 @@ export function ControlLabores({
         valor: (f) => Number(f.horas_maquina),
         etiqueta: (f) => n2(f.horas_maquina),
       },
+      // Las de ESTE lote. Es la parte prorrateada —6 h sobre 3 y 2 mz son
+      // 3.6 y 2.4— y es lo que se notifica a SAP. Si la migración 35 no
+      // está corrida no viene, y entonces se cae a la cifra de la labor
+      // en vez de dejar la columna vacía.
       {
-        campo: 'horas_costeadas',
+        campo: 'horas_linea',
         label: 'H. notificadas',
         tipo: 'numero',
         numero: true,
-        valor: (f) => Number(f.horas_costeadas ?? f.horas_maquina),
-        etiqueta: (f) => n2(f.horas_costeadas ?? f.horas_maquina),
-        render: (f) => (
-          <span className="font-bold text-brand-700">
-            {n2(f.horas_costeadas ?? f.horas_maquina)}
-          </span>
-        ),
+        valor: (f) => horasDeLinea(f),
+        etiqueta: (f) => n2(horasDeLinea(f)),
+        render: (f) => <span className="font-bold text-brand-700">{n2(horasDeLinea(f))}</span>,
       },
       {
         campo: 'puesto_equipo',

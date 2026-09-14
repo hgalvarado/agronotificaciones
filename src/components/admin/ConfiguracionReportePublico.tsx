@@ -15,11 +15,17 @@ import Link from 'next/link'
 import { Alerta, Boton, Tarjeta } from '@/components/ui/Primitivos'
 import { GrupoCasillas } from '@/components/ui/GrupoCasillas'
 import { guardarConfiguracion } from '@/lib/reporte-maquinaria/servicioConfig'
-import { PROCESOS_TICKET, type ProcesoTicket } from '@/lib/reporte-maquinaria/tipos'
+import {
+  ESTADOS_TICKET,
+  PROCESOS_TICKET,
+  type EstadoTicketPublico,
+  type ProcesoTicket,
+} from '@/lib/reporte-maquinaria/tipos'
 
 export type ConfigInicial = {
   activo: boolean
   procesos: ProcesoTicket[]
+  estados: EstadoTicketPublico[]
   todosDepartamentos: boolean
   departamentos: string[]
 }
@@ -40,6 +46,7 @@ export function ConfiguracionReportePublico({
   const router = useRouter()
   const [activo, setActivo] = useState(inicial.activo)
   const [procesos, setProcesos] = useState<string[]>(inicial.procesos)
+  const [estados, setEstados] = useState<string[]>(inicial.estados)
   const [todos, setTodos] = useState(inicial.todosDepartamentos)
   const [elegidos, setElegidos] = useState<Set<string>>(new Set(inicial.departamentos))
   const [guardando, setGuardando] = useState(false)
@@ -61,6 +68,7 @@ export function ConfiguracionReportePublico({
       {
         activo,
         procesos,
+        estados,
         todosDepartamentos: todos,
         departamentos: [...elegidos],
       },
@@ -74,7 +82,7 @@ export function ConfiguracionReportePublico({
   if (faltaMigracion) {
     return (
       <Alerta tono="ambar">
-        El reporte público todavía no está al día. Corre las migraciones 23 y 31 en el SQL Editor
+        El reporte público todavía no está al día. Corre las migraciones 23, 31 y 36 en el SQL Editor
         de Supabase y vuelve a entrar.
       </Alerta>
     )
@@ -139,6 +147,28 @@ export function ConfiguracionReportePublico({
         {activo && procesos.length === 0 && (
           <p className="mt-3 text-xs font-semibold text-amber-700">
             Sin ningún proceso marcado el reporte no enseña un solo ticket.
+          </p>
+        )}
+      </Tarjeta>
+
+      {/* ------------------ Estado del ticket --------------------------- */}
+      <Tarjeta className="p-4">
+        <h2 className="text-sm font-semibold text-slate-900">Estado del ticket</h2>
+        <p className="mb-3 text-xs text-slate-400">
+          Otra cosa que el proceso: el estado dice si el ticket todavía se está capturando. Lo
+          normal es publicar los dos.
+        </p>
+
+        <GrupoCasillas
+          opciones={ESTADOS_TICKET.map((e) => ({ valor: e.valor, etiqueta: e.etiqueta }))}
+          marcados={estados}
+          onCambiar={setEstados}
+          disabled={!puedeEditar}
+        />
+
+        {activo && estados.length === 0 && (
+          <p className="mt-3 text-xs font-semibold text-amber-700">
+            Sin ningún estado marcado el reporte no enseña un solo ticket.
           </p>
         )}
       </Tarjeta>

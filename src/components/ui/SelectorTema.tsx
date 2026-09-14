@@ -13,7 +13,13 @@
 
 import { useState } from 'react'
 import { IconMoon, IconSun } from './Icons'
-import { CLAVE_TEMA, esTema, temaEfectivo, type Tema } from '@/lib/tema/tema'
+import {
+  CLAVE_TEMA,
+  COOKIE_TEMA_MAX_AGE,
+  esTema,
+  temaEfectivo,
+  type Tema,
+} from '@/lib/tema/tema'
 
 /** Lo que el navegador tiene puesto AHORA, según el DOM y el almacén. */
 function temaGuardado(): Tema {
@@ -22,10 +28,14 @@ function temaGuardado(): Tema {
     const v = localStorage.getItem(CLAVE_TEMA)
     if (esTema(v)) return v
   } catch {
-    // Modo incógnito o almacenamiento bloqueado: se sigue con el del
-    // sistema, que es mejor que no dejar cambiar el tema.
+    // Modo incógnito o almacenamiento bloqueado: se cae a la cookie, que
+    // es la que de todos modos usa el servidor.
   }
-  return 'sistema'
+  const deCookie = document.cookie
+    .split('; ')
+    .find((c) => c.startsWith(`${CLAVE_TEMA}=`))
+    ?.slice(CLAVE_TEMA.length + 1)
+  return esTema(deCookie) ? deCookie : 'sistema'
 }
 
 function aplicar(tema: Tema) {
@@ -34,11 +44,15 @@ function aplicar(tema: Tema) {
   const raiz = document.documentElement
   raiz.dataset.tema = oscuro ? 'oscuro' : 'claro'
   raiz.style.colorScheme = oscuro ? 'dark' : 'light'
+  // Se escribe en los dos sitios: el almacén lo lee el guion del `<head>`
+  // antes de pintar, y la cookie viaja al servidor para que la siguiente
+  // recarga ya venga con el tema puesto desde el HTML.
   try {
     localStorage.setItem(CLAVE_TEMA, tema)
   } catch {
-    // Si no se puede recordar, al menos se aplica en esta sesión.
+    // Si no se puede recordar ahí, la cookie de abajo basta.
   }
+  document.cookie = `${CLAVE_TEMA}=${tema}; path=/; max-age=${COOKIE_TEMA_MAX_AGE}; samesite=lax`
 }
 
 export function SelectorTema({ compacto = false }: { compacto?: boolean }) {

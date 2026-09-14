@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
-import { GUION_TEMA } from '@/lib/tema/tema'
+import { cookies } from 'next/headers'
+import { CLAVE_TEMA, GUION_TEMA, temaDeCookies } from '@/lib/tema/tema'
 
 // Nota: se usa la pila de fuentes del sistema en vez de next/font/google
 // a propósito. Descargar Inter desde Google Fonts hace que el `build`
@@ -28,13 +29,24 @@ export const viewport: Viewport = {
   themeColor: '#15803d',
 }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // La cookie llega con la petición, así que el servidor ya puede pintar
+  // el tema. El guion del `<head>` sigue ahí para el caso «Automático»,
+  // que depende del sistema operativo y eso el servidor no lo sabe.
+  const guardado = temaDeCookies((await cookies()).get(CLAVE_TEMA)?.value)
+  const temaInicial = guardado === 'oscuro' ? 'oscuro' : guardado === 'claro' ? 'claro' : undefined
+
   return (
     // `suppressHydrationWarning` porque el guion de abajo escribe
     // `data-tema` antes de que React llegue: el servidor no puede saber
     // qué tema tiene guardado este navegador, y sin esto React avisaría
     // de una diferencia que es justamente la que queremos.
-    <html lang="es" suppressHydrationWarning>
+    <html
+      lang="es"
+      data-tema={temaInicial}
+      style={temaInicial ? { colorScheme: temaInicial === 'oscuro' ? 'dark' : 'light' } : undefined}
+      suppressHydrationWarning
+    >
       <head>
         {/* Corre ANTES de pintar: sin él, el primer cuadro sale en blanco
             y después salta a oscuro. Un fogonazo blanco a las cinco de la

@@ -17,6 +17,7 @@ import type {
   FilaDetalle,
   FilaHorometro,
   FiltrosReporte,
+  EstadoTicketPublico,
   ProcesoTicket,
 } from './tipos'
 
@@ -25,6 +26,7 @@ export type Respuesta<T> = { datos: T; error: string | null }
 type FilaConfig = {
   activo: boolean
   procesos: string[] | null
+  estados: string[] | null
   todos_departamentos: boolean
   departamentos: string[] | null
   temporada_activa: string | null
@@ -33,6 +35,7 @@ type FilaConfig = {
 const CONFIG_APAGADA: ConfiguracionPublica = {
   activo: false,
   procesos: [],
+  estados: [],
   todosDepartamentos: false,
   departamentos: [],
   temporadaActiva: null,
@@ -51,6 +54,7 @@ export async function leerConfiguracionPublica(): Promise<Respuesta<Configuracio
     datos: {
       activo: fila.activo,
       procesos: (fila.procesos ?? []) as ProcesoTicket[],
+      estados: (fila.estados ?? []) as EstadoTicketPublico[],
       todosDepartamentos: fila.todos_departamentos,
       departamentos: fila.departamentos ?? [],
       temporadaActiva: fila.temporada_activa,

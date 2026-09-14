@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { puedeCapturar } from '@/lib/permisos/captura'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual } from '@/lib/auth'
@@ -63,7 +64,11 @@ export default async function HorometroDetailPage({
       : { data: [] }
   const detalles = (detallesData as RegistroDetalle[] | null) ?? []
 
-  const abierto = ticket.estado === 'ABIERTO'
+  // Antes era `ticket.estado === 'ABIERTO'` a secas, y eso obligaba a
+  // Torre de Control a reabrir un ticket para corregir una cifra. La
+  // misma regla que aplica la base: los dos roles de mando editan
+  // siempre, el dueño sólo mientras esté abierto.
+  const abierto = puedeCapturar(rol?.codigo, ticket.estado)
   const esAdmin = rol?.codigo === 'ADMIN'
   const esDiurno = h.turno === 'DIURNO'
 

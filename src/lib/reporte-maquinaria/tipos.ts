@@ -22,10 +22,27 @@ export const PROCESOS_TICKET = [
 
 export type ProcesoTicket = (typeof PROCESOS_TICKET)[number]['valor']
 
+/**
+ * Los dos estados del ticket.
+ *
+ * Es otra pregunta que la del proceso y por eso es otro filtro: el
+ * PROCESO dice por dónde va el ticket camino de SAP; el ESTADO dice si
+ * todavía se puede capturar en él. Un ticket cerrado y notificado es lo
+ * normal al final del mes, y uno abierto y notificado es un descuido que
+ * conviene poder aislar.
+ */
+export const ESTADOS_TICKET = [
+  { valor: 'ABIERTO', etiqueta: 'Abierto' },
+  { valor: 'CERRADO', etiqueta: 'Cerrado' },
+] as const
+
+export type EstadoTicketPublico = (typeof ESTADOS_TICKET)[number]['valor']
+
 /** Reglas que fija el Administrador para el visor público. */
 export type ConfiguracionPublica = {
   activo: boolean
   procesos: ProcesoTicket[]
+  estados: EstadoTicketPublico[]
   todosDepartamentos: boolean
   departamentos: string[]
   temporadaActiva: string | null

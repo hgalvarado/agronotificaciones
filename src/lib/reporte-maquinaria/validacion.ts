@@ -6,7 +6,13 @@
  * de direcciones, y la barra de direcciones la escribe cualquiera.
  */
 
-import { PROCESOS_TICKET, type FiltrosReporte, type ProcesoTicket } from './tipos'
+import {
+  ESTADOS_TICKET,
+  PROCESOS_TICKET,
+  type EstadoTicketPublico,
+  type FiltrosReporte,
+  type ProcesoTicket,
+} from './tipos'
 
 const ES_FECHA = /^\d{4}-\d{2}-\d{2}$/
 const ES_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -46,15 +52,23 @@ export function validarFiltros(entrada: Record<string, unknown>): FiltrosReporte
 export type EntradaConfiguracion = {
   activo: boolean
   procesos: string[]
+  estados: string[]
   todosDepartamentos: boolean
   departamentos: string[]
 }
 
 export type ResultadoValidacion =
-  | { ok: true; valor: Omit<EntradaConfiguracion, 'procesos'> & { procesos: ProcesoTicket[] } }
+  | {
+      ok: true
+      valor: Omit<EntradaConfiguracion, 'procesos' | 'estados'> & {
+        procesos: ProcesoTicket[]
+        estados: EstadoTicketPublico[]
+      }
+    }
   | { ok: false; error: string }
 
 const ORDEN_PROCESO = new Map<string, number>(PROCESOS_TICKET.map((p, i) => [p.valor, i]))
+const ORDEN_ESTADO = new Map<string, number>(ESTADOS_TICKET.map((e, i) => [e.valor, i]))
 
 /**
  * Deja la lista de procesos en limpio: sin repetidos, sin inventados y
@@ -67,6 +81,13 @@ export function normalizarProcesos(procesos: string[]): ProcesoTicket[] {
     .sort((a, b) => (ORDEN_PROCESO.get(a) ?? 0) - (ORDEN_PROCESO.get(b) ?? 0))
 }
 
+/** Lo mismo para los estados: sin repetidos, sin inventados y en orden. */
+export function normalizarEstados(estados: string[]): EstadoTicketPublico[] {
+  return [...new Set(estados)]
+    .filter((e): e is EstadoTicketPublico => ORDEN_ESTADO.has(e))
+    .sort((a, b) => (ORDEN_ESTADO.get(a) ?? 0) - (ORDEN_ESTADO.get(b) ?? 0))
+}
+
 /**
  * Valida la configuración del Administrador.
  *
@@ -77,12 +98,20 @@ export function normalizarProcesos(procesos: string[]): ProcesoTicket[] {
  */
 export function validarConfiguracion(entrada: EntradaConfiguracion): ResultadoValidacion {
   const procesos = normalizarProcesos(entrada.procesos)
+  const estados = normalizarEstados(entrada.estados)
 
   if (entrada.activo && procesos.length === 0) {
     return {
       ok: false,
       error:
         'Marca al menos un proceso. Publicar el reporte sin ninguno no enseña ni un ticket.',
+    }
+  }
+
+  if (entrada.activo && estados.length === 0) {
+    return {
+      ok: false,
+      error: 'Marca al menos un estado de ticket, abierto o cerrado.',
     }
   }
 
@@ -101,6 +130,7 @@ export function validarConfiguracion(entrada: EntradaConfiguracion): ResultadoVa
     valor: {
       activo: entrada.activo,
       procesos,
+      estados,
       todosDepartamentos: entrada.todosDepartamentos,
       departamentos,
     },

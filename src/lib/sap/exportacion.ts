@@ -61,14 +61,25 @@ export type LineaLaborSap = {
   tarea_codigo: string
   labor_nombre: string
   ciclo: number
-  /** Horas ya prorrateadas a ESTA línea de lote. */
+  /**
+   * Las horas de ESTE lote, ya prorrateadas (`horas_linea` de la vista).
+   * Las dos alternativas son respaldo para cuando la migración 35 aún no
+   * está corrida; ninguna es la correcta y por eso van después.
+   */
+  horas_linea?: number | null
+  horas_costeadas?: number | null
   horas_maquina: number
+  /** El equipo del horómetro. Es el que va en las DOS filas. */
   equipo_codigo: string
   operacion_equipo: number | null
-  /** El fierro concreto (ROMSR-01); si no hay, el tipo SAP. */
-  codigo_implemento?: string | null
-  implemento_codigo?: string | null
   operacion_implemento: number | null
+}
+
+/** Las horas que se notifican por esta línea, con sus respaldos. */
+function horasDeLinea(l: LineaLaborSap): number {
+  if (l.horas_linea !== null && l.horas_linea !== undefined) return Number(l.horas_linea)
+  if (l.horas_costeadas !== null && l.horas_costeadas !== undefined) return Number(l.horas_costeadas)
+  return Number(l.horas_maquina)
 }
 
 export const COLUMNAS_LABORES_SAP = [
@@ -84,32 +95,39 @@ export const COLUMNAS_LABORES_SAP = [
 ] as const
 
 /**
- * Dos filas por línea de labor: la del tractor y la del implemento.
+ * Dos filas por línea de lote: la operación del tractor y la del
+ * implemento.
  *
- * «Por cada registro de labor, el Excel debe generar dos filas
- *  independientes: una para notificar la operación del Tractor y otra
- *  para la del Implemento.»
+ *     1001-010; T101; 0050; T6603-A98; 3.6
+ *     1001-010; T101; 0300; T6603-A98; 3.6
+ *     1001-020; T101; 0050; T6603-A98; 2.4
+ *     1001-020; T101; 0300; T6603-A98; 2.4
  *
- * Las dos llevan las MISMAS horas, y eso es correcto: en SAP son dos
- * puestos de trabajo que estuvieron ocupados el mismo tiempo, no una hora
- * partida en dos. Sumar esta columna da el doble de la jornada, que es lo
- * que SAP espera de este layout.
+ * Dos cosas que parecen detalles y no lo son:
+ *
+ *   · El EQUIPO es el mismo en las dos filas, y siempre es el del
+ *     horómetro. Lo que distingue una notificación de la otra es la
+ *     OPERACIÓN —0050 el tractor, 0300 el implemento—, no la máquina.
+ *     Poner ahí el código del implemento hacía que SAP buscara un equipo
+ *     que en su maestro no existe y rechazara la línea.
+ *
+ *   · Las dos llevan las MISMAS horas, las del lote. Son dos puestos de
+ *     trabajo ocupados el mismo tiempo, no una hora partida en dos.
  *
  * La fila del implemento se omite cuando la línea no llevaba ninguno:
- * mandar una operación en blanco crea en SAP una notificación huérfana.
+ * una operación en blanco crea en SAP una notificación huérfana.
  */
 export function filasLaboresSap(lineas: LineaLaborSap[]): CeldaHoja[][] {
   const filas: CeldaHoja[][] = [[...COLUMNAS_LABORES_SAP]]
 
   for (const l of lineas) {
-    const comunes = [l.fecha, l.ticket_codigo, soloCodigo(l.ut), soloCodigo(l.tarea_codigo)]
-    const cola = [num(l.horas_maquina), l.labor_nombre, l.ciclo]
+    const antes = [l.fecha, l.ticket_codigo, soloCodigo(l.ut), soloCodigo(l.tarea_codigo)]
+    const despues = [l.equipo_codigo, horasDeLinea(l), l.labor_nombre, l.ciclo]
 
-    filas.push([...comunes, operacion(l.operacion_equipo), l.equipo_codigo, ...cola])
+    filas.push([...antes, operacion(l.operacion_equipo), ...despues])
 
-    const implemento = l.codigo_implemento || l.implemento_codigo
-    if (implemento) {
-      filas.push([...comunes, operacion(l.operacion_implemento), implemento, ...cola])
+    if (l.operacion_implemento !== null && l.operacion_implemento !== undefined) {
+      filas.push([...antes, operacion(l.operacion_implemento), ...despues])
     }
   }
 
