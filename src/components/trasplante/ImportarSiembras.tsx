@@ -8,8 +8,8 @@
  * celdas es de `importacion` y la escritura de `repositorioCliente`.
  */
 
-import { ImportarHoja, type Preparada } from './ImportarHoja'
-import { aFecha, aNumero, resolver, type ColumnaHoja } from '@/lib/trasplante/importacion'
+import { ImportarHoja, type Preparada } from '@/components/ui/ImportarHoja'
+import { aFecha, aNumero, resolver, type ColumnaHoja } from '@/lib/importacion'
 import { insertarSiembras, type SiembraNueva } from '@/lib/trasplante/repositorioCliente'
 import type { LoteOpcion, Variedad } from '@/lib/trasplante/tipos'
 

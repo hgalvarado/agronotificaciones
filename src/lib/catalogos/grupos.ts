@@ -90,6 +90,10 @@ export const GRUPOS: GrupoDeclarado[] = [
       { key: 'zonas', descripcion: 'Las zonas de la finca y su encargado.' },
       { key: 'variedades', descripcion: 'Las variedades de melón que entran al trasplante.' },
       { key: 'materiales', descripcion: 'Plástico, manguera y demás insumos con su código.' },
+      {
+        key: 'planes_nutricionales',
+        descripcion: 'Los planes de nutrición que se aplican en cada turno de riego.',
+      },
     ],
   },
   {

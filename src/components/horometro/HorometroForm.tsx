@@ -9,7 +9,7 @@ import { IconMoon, IconSun } from '@/components/ui/Icons'
 import type { Equipo, Operador, TurnoTipo } from '@/lib/types'
 import { mensajeDeError } from '@/lib/errores'
 import { formatearFecha } from '@/lib/estados'
-import { validarHorometro } from '@/lib/horometro/validacion'
+import { HORAS_HOMBRE_POR_OMISION, validarHorometro } from '@/lib/horometro/validacion'
 import {
   ultimoOperadorDeEquipo,
   type OperadorSugerido,
@@ -48,9 +48,13 @@ export function HorometroForm({
   const router = useRouter()
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // Copia local para que un operador recién creado aparezca de inmediato
-  // sin recargar la página ni perder lo que ya se escribió en el formulario.
+  // Copias locales para que un operador o un equipo recién creados
+  // aparezcan de inmediato sin recargar la página ni perder lo que ya se
+  // escribió en el formulario. `router.refresh()` haría lo mismo con la
+  // lista pero devolvería el formulario en blanco, que es justo el
+  // problema: se crea un equipo A MITAD de capturar un horómetro.
   const [listaOperadores, setListaOperadores] = useState(operadores)
+  const [listaEquipos, setListaEquipos] = useState(equipos)
   // De dónde salió el operador que está puesto: sirve para enseñar el
   // aviso «lo puso el sistema» y para no volver a pisar una elección
   // hecha a mano si se cambia de equipo.
@@ -61,7 +65,10 @@ export function HorometroForm({
     equipo_id: horometroBase?.equipo_id ?? '',
     horometro_inicial: horometroBase?.horometro_inicial?.toString() ?? '',
     horometro_final: horometroBase?.horometro_final?.toString() ?? '',
-    horas_hombre: horometroBase?.horas_hombre?.toString() ?? '',
+    // Ocho es la jornada normal: venía en blanco y había que teclearlo
+    // en cada uno de los quince horómetros del día. Sigue a la vista y se
+    // corrige encima cuando la jornada fue otra.
+    horas_hombre: horometroBase?.horas_hombre?.toString() ?? HORAS_HOMBRE_POR_OMISION,
     operador_id: horometroBase?.operador_id ?? '',
     comentario: horometroBase?.comentario ?? '',
   })
@@ -100,6 +107,35 @@ export function HorometroForm({
     setBuscandoOperador(false)
     setSugerido(ultimo)
     setForm((f) => ({ ...f, operador_id: ultimo?.id ?? '' }))
+  }
+
+  /**
+   * Crear un equipo sin salir de la captura.
+   *
+   * Mismo trato que el operador: se inserta, se mete en la lista local y
+   * se devuelve para que el selector lo deje elegido. Lo único propio es
+   * que después se busca su último operador, igual que si se hubiera
+   * elegido de la lista —un equipo nuevo no tiene historial, así que la
+   * sugerencia vendrá vacía, pero la regla es la misma y no hay que
+   * acordarse de ella en dos sitios.
+   */
+  async function crearEquipo(valores: Record<string, string>) {
+    const { data, error: dbError } = await supabase
+      .from('equipos')
+      .insert({
+        codigo: valores.codigo.trim(),
+        nombre: valores.nombre?.trim() || valores.codigo.trim(),
+      })
+      .select('id, codigo, nombre')
+      .single()
+
+    if (dbError) throw new Error(dbError.message)
+
+    const equipo = data as Equipo
+    setListaEquipos((prev) =>
+      [...prev, equipo].sort((a, b) => a.codigo.localeCompare(b.codigo, 'es', { numeric: true }))
+    )
+    return { id: equipo.id, titulo: equipo.codigo, subtitulo: equipo.nombre ?? undefined }
   }
 
   async function crearOperador(valores: Record<string, string>) {
@@ -235,11 +271,19 @@ export function HorometroForm({
             placeholder="Buscar equipo…"
             etiquetaBusqueda="Escribe el código, ej. A08"
             permitirVacio={false}
-            opciones={equipos.map((eq) => ({
+            opciones={listaEquipos.map((eq) => ({
               id: eq.id,
               titulo: eq.codigo,
               subtitulo: eq.nombre,
             }))}
+            creacionRapida={{
+              etiqueta: 'Crear equipo nuevo',
+              campos: [
+                { key: 'codigo', label: 'Código del equipo', requerido: true },
+                { key: 'nombre', label: 'Nombre (opcional)' },
+              ],
+              onCrear: crearEquipo,
+            }}
           />
         </Campo>
 

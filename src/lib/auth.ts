@@ -72,6 +72,27 @@ export const getPermisos = cache(async (): Promise<Set<string>> => {
   return new Set(filas.map((f) => `${f.recurso}:${f.accion}`))
 })
 
+/**
+ * Qué accesos quiere el Administrador en la barra del teléfono para el
+ * rol de este usuario, ya en orden.
+ *
+ * Devuelve una lista vacía cuando no hay nada configurado O cuando la
+ * migración 39 todavía no se ha corrido: en los dos casos la barra vuelve
+ * al orden del código, que es exactamente lo que había antes. Una
+ * preferencia de presentación nunca puede dejar a nadie sin menú.
+ */
+export const getNavegacion = cache(async (): Promise<string[]> => {
+  const user = await getUsuarioActual()
+  if (!user) return []
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('fn_mi_navegacion')
+  if (error) return []
+
+  const filas = (data as { pantalla: string }[] | null) ?? []
+  return filas.map((f) => f.pantalla)
+})
+
 /** Ayuda para leer el conjunto sin repetir la plantilla en cada pantalla. */
 export function puede(permisos: Set<string>, pantalla: string, accion: string) {
   return permisos.has('__sin_migracion__') || permisos.has(`${pantalla}:${accion}`)

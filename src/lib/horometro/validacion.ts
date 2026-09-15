@@ -11,6 +11,14 @@
 
 export const HORAS_HOMBRE_MAXIMAS = 24
 
+/**
+ * La jornada normal. Viene puesta en el formulario de alta porque es lo
+ * que se escribe en catorce de cada quince horómetros del día; se corrige
+ * encima cuando la jornada fue otra. Es un valor por omisión, no un
+ * supuesto: el campo sigue siendo obligatorio y visible.
+ */
+export const HORAS_HOMBRE_POR_OMISION = '8'
+
 export type EntradaHorometro = {
   equipoId: string
   horometroInicial: string

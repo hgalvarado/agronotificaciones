@@ -374,7 +374,11 @@ export function DataGrid<T extends { id: string }>({
                         )}
 
                         {columnas.map((c) => {
-                          const editable = puedeEditarCelda && Boolean(c.editable) && Boolean(onEditarCelda)
+                          // `editable` puede ser una función: hay columnas
+                          // que sólo aplican a algunas filas.
+                          const seEdita =
+                            typeof c.editable === 'function' ? c.editable(f) : Boolean(c.editable)
+                          const editable = puedeEditarCelda && seEdita && Boolean(onEditarCelda)
                           return (
                             <td
                               key={c.campo}

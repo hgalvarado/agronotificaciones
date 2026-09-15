@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
-import { getPerfilActual, getPermisos, getUsuarioActual } from '@/lib/auth'
+import { getNavegacion, getPerfilActual, getPermisos, getUsuarioActual } from '@/lib/auth'
 import { AppShell } from '@/components/ui/AppShell'
 import { LogoutButton } from '@/components/ui/LogoutButton'
 
@@ -9,7 +9,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const user = await getUsuarioActual()
   if (!user) redirect('/login')
 
-  const [{ perfil, rol }, permisos] = await Promise.all([getPerfilActual(), getPermisos()])
+  const [{ perfil, rol }, permisos, navegacion] = await Promise.all([
+    getPerfilActual(),
+    getPermisos(),
+    getNavegacion(),
+  ])
 
   if (!perfil) {
     return (
@@ -36,6 +40,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       esAdmin={rol?.codigo === 'ADMIN'}
       esTorreControl={rol?.codigo === 'TORRE_CONTROL'}
       permisos={[...permisos]}
+      navegacion={navegacion}
     >
       {children}
     </AppShell>

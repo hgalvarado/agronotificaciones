@@ -1,5 +1,5 @@
 /**
- * Lectura de las hojas de Excel del trasplante.
+ * Lectura de hojas de Excel: de celdas de texto a valores.
  *
  * Puro: entra una matriz de celdas de texto y sale una lista de filas con
  * sus errores. No toca la base ni React, así que las reglas de «qué

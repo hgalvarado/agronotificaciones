@@ -3,7 +3,19 @@
 //   npx supabase gen types typescript --project-id <id> > src/lib/database.types.ts
 // Mientras tanto, estos tipos reflejan 1:1 las columnas de sql/01_schema.sql.
 
-export type RolCodigo = 'ADMIN' | 'TORRE_CONTROL' | 'DIGITADOR'
+/**
+ * Los roles. `INVITADO` es el único con una regla propia en la base:
+ * `fn_tiene_permiso` le deja pasar sólo las acciones de lectura, así que
+ * no puede escribir aunque alguien le marque casillas en Permisos.
+ */
+export type RolCodigo =
+  | 'ADMIN'
+  | 'TORRE_CONTROL'
+  | 'DIGITADOR'
+  | 'DIGITADOR_PARAMETRISTA'
+  | 'JEFE_ZONA'
+  | 'DIGITADOR_ANALISIS'
+  | 'INVITADO'
 export type EstadoTicket = 'ABIERTO' | 'CERRADO'
 export type TurnoTipo = 'DIURNO' | 'NOCTURNO'
 export type ProcesoTicket = 'REGISTRADO' | 'REVISANDO' | 'PENDIENTE_APROBACION' | 'NOTIFICADO'

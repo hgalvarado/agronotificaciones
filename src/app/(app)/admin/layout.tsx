@@ -21,7 +21,11 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     { pantalla: 'historico', href: '/admin/historico', etiqueta: 'Carga histórica' },
     { pantalla: 'tarifas', href: '/admin/tarifas', etiqueta: 'Tarifas' },
     { pantalla: 'usuarios', href: '/admin/usuarios', etiqueta: 'Usuarios' },
+    { pantalla: 'catalogos', href: '/admin/contadores', etiqueta: 'Contadores' },
     { pantalla: 'permisos', href: '/admin/permisos', etiqueta: 'Permisos' },
+    // La navegación va con Permisos: las dos deciden qué ve cada rol, y
+    // sólo el Administrador entra (la propia pantalla lo comprueba).
+    { pantalla: 'permisos', href: '/admin/navegacion', etiqueta: 'Navegación' },
   ].filter((s) => puede(permisos, s.pantalla, 'ver'))
 
   if (secciones.length === 0) redirect('/tickets')

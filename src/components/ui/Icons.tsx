@@ -44,6 +44,13 @@ export const IconChart = ({ className }: IconProps) => (
   </Svg>
 )
 
+/** La gota del riego. */
+export const IconGota = ({ className }: IconProps) => (
+  <Svg className={className}>
+    <path d="M12 2.7 6.9 8.9a7 7 0 1 0 10.2 0L12 2.7Z" />
+  </Svg>
+)
+
 export const IconSettings = ({ className }: IconProps) => (
   <Svg className={className}>
     <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />

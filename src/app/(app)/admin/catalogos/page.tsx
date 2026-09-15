@@ -32,6 +32,7 @@ export default async function CatalogosPage() {
     { data: variedades },
     { data: materiales },
     sondaContador,
+    { data: planesNutricionales },
   ] = await Promise.all([
     supabase.from('zonas').select('*').order('nombre'),
     supabase.from('familias_equipo').select('*').order('nombre'),
@@ -68,6 +69,9 @@ export default async function CatalogosPage() {
     // Sonda de la migración 38: enseñar una columna que la base no tiene
     // sólo consigue que la celda falle al tocarla.
     supabase.from('equipos').select('contador_sap').limit(1),
+    // Llegan con la migración 40. Si no está corrida, la pestaña sale
+    // vacía en vez de tumbar la pantalla completa.
+    supabase.from('planes_nutricionales').select('*').order('nombre'),
   ])
 
   const soportaContador = !sondaContador.error
@@ -416,6 +420,19 @@ export default async function CatalogosPage() {
         { key: 'activo', label: 'Activo', tipo: 'checkbox' },
       ],
       filas: proveedores ?? [],
+    },
+    {
+      key: 'planes_nutricionales',
+      clave: 'nombre',
+      label: 'Planes nutricionales',
+      tabla: 'planes_nutricionales',
+      campos: [
+        { key: 'codigo', label: 'Código', tipo: 'text' },
+        { key: 'nombre', label: 'Plan nutricional', tipo: 'text', requerido: true },
+        { key: 'descripcion', label: 'Descripción', tipo: 'text' },
+        { key: 'activo', label: 'Activo', tipo: 'checkbox' },
+      ],
+      filas: planesNutricionales ?? [],
     },
     {
       key: 'temporadas',

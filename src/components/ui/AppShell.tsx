@@ -15,19 +15,27 @@ import {
   IconMas,
   IconPlan,
   IconSettings,
+  IconGota,
   IconTicket,
   IconUser,
 } from './Icons'
 import { CampanaNotificaciones } from './CampanaNotificaciones'
 import { Logo } from './Logo'
 import { SelectorTema } from './SelectorTema'
+import { repartir } from '@/lib/navegacion/barra'
 
 type ItemNav = {
   href: string
   etiqueta: string
   icono: React.ReactNode
   visible: boolean
-  /** Sub-secciones. Hoy sólo las usa «Avances». */
+  /**
+   * El código de pantalla. Es la llave con la que el Administrador
+   * configura qué sale en la barra del teléfono, así que tiene que
+   * coincidir con `pantallas.codigo`.
+   */
+  pantalla: string
+  /** Sub-secciones. Hoy las usa «Avances». */
   hijos?: ItemNav[]
 }
 
@@ -37,6 +45,7 @@ export function AppShell({
   esAdmin,
   esTorreControl,
   permisos,
+  navegacion = [],
   children,
 }: {
   nombre: string
@@ -45,6 +54,11 @@ export function AppShell({
   esTorreControl: boolean
   /** Claves «pantalla:accion» que el usuario tiene concedidas. */
   permisos: string[]
+  /**
+   * Qué accesos quiere el Administrador en la barra del teléfono para
+   * este rol, ya en orden. Vacío = el orden de siempre, el del código.
+   */
+  navegacion?: string[]
   children: React.ReactNode
 }) {
   const pathname = usePathname()
@@ -65,63 +79,97 @@ export function AppShell({
   const revisor = esAdmin || esTorreControl
 
   const items: ItemNav[] = [
-    { href: '/tickets', etiqueta: 'Tickets', icono: <IconTicket />, visible: ve('tickets', true) },
+    {
+      href: '/tickets',
+      pantalla: 'tickets',
+      etiqueta: 'Tickets',
+      icono: <IconTicket />,
+      visible: ve('tickets', true),
+    },
     {
       href: '/horometros',
+      pantalla: 'horometros',
       etiqueta: 'Horómetros',
       icono: <IconGauge />,
       visible: ve('horometros', revisor),
     },
     {
       href: '/labores',
+      pantalla: 'labores',
       etiqueta: 'Labores',
       icono: <IconMapPin />,
       visible: ve('labores', revisor),
     },
-    { href: '/dashboard', etiqueta: 'Avance', icono: <IconChart />, visible: ve('avance', true) },
+    {
+      href: '/dashboard',
+      pantalla: 'avance',
+      etiqueta: 'Avance',
+      icono: <IconChart />,
+      visible: ve('avance', true),
+    },
     {
       // «Avances» agrupa el seguimiento de cada proceso de campo: lo que
       // se planificó contra lo que se lleva hecho. Emplasticado vive en
-      // /plan/APS (el proceso APS de SAP) y trasplante en su propio
-      // módulo; las direcciones no cambian, sólo dónde se entra.
+      // /plan/APS (el proceso APS de SAP), trasplante y riego en los
+      // suyos; las direcciones no cambian, sólo dónde se entra.
       href: '/plan',
+      pantalla: 'plan',
       etiqueta: 'Avances',
       icono: <IconPlan />,
-      visible: ve('plan', revisor) || ve('trasplante', revisor),
+      visible:
+        ve('plan', revisor) || ve('trasplante', revisor) || ve('turnos_riego', revisor),
       hijos: [
         {
           href: '/plan/APS',
+          pantalla: 'plan_aps',
           etiqueta: 'Emplasticado',
           icono: <IconPlan />,
           visible: ve('plan_aps', revisor),
         },
         {
           href: '/trasplante',
+          pantalla: 'trasplante',
           etiqueta: 'Trasplante',
           icono: <IconChart />,
           visible: ve('trasplante', revisor),
+        },
+        {
+          href: '/avances/turnos-riego',
+          pantalla: 'turnos_riego',
+          etiqueta: 'Turnos de riego',
+          icono: <IconGota />,
+          visible: ve('turnos_riego', revisor),
         },
       ],
     },
     {
       href: '/costos',
+      pantalla: 'costos',
       etiqueta: 'Costos',
       icono: <IconDinero />,
       visible: ve('costos', revisor),
     },
     {
       href: '/admin/catalogos',
+      pantalla: 'catalogos',
       etiqueta: 'Catálogos',
       icono: <IconSettings />,
       visible: ve('catalogos', revisor),
     },
     {
       href: '/admin/reporte-publico',
+      pantalla: 'reporte_publico',
       etiqueta: 'Reporte público',
       icono: <IconSettings />,
       visible: ve('reporte_publico', esAdmin),
     },
-    { href: '/admin/usuarios', etiqueta: 'Usuarios', icono: <IconUser />, visible: ve('usuarios', esAdmin) },
+    {
+      href: '/admin/usuarios',
+      pantalla: 'usuarios',
+      etiqueta: 'Usuarios',
+      icono: <IconUser />,
+      visible: ve('usuarios', esAdmin),
+    },
   ]
   // Un grupo se muestra si él es visible y tiene al menos un hijo visible.
   const visibles = items
@@ -132,19 +180,18 @@ export function AppShell({
   // quien necesita enterarse de que le cerraron uno.
   const verAvisos = sinMigracion ? revisor : concedidos.has('tickets:editar')
 
-  // En el celular no caben más de cinco pestañas abajo sin que queden
-  // ilegibles. Si hay más, las últimas se agrupan en «Más»: el digitador ve
-  // dos y nunca lo alcanza, pero el administrador tiene siete.
-  const CUPO = 5
-  // En el celular los grupos se aplanan: cada plan es su propia entrada,
-  // que es más directo que un desplegable dentro de una hoja.
+  // En el celular los grupos se aplanan: cada avance es su propia
+  // entrada, que es más directo que un desplegable dentro de una hoja.
   const planos: ItemNav[] = visibles.flatMap((i) =>
     i.hijos && i.hijos.length > 0
       ? i.hijos.map((h) => ({ ...h, etiqueta: `${i.etiqueta}: ${h.etiqueta}` }))
       : [i]
   )
-  const cabenAbajo = planos.length > CUPO ? planos.slice(0, CUPO - 1) : planos
-  const enMas = planos.length > CUPO ? planos.slice(CUPO - 1) : []
+
+  // Qué va abajo y qué va en «Más» lo decide `lib/navegacion/barra`, con
+  // lo que el Administrador configuró para este rol. Sin configuración
+  // devuelve exactamente el reparto de siempre.
+  const { barra: cabenAbajo, mas: enMas } = repartir(planos, navegacion)
 
   function activo(href: string) {
     return pathname === href || pathname.startsWith(href + '/')

@@ -14,8 +14,8 @@
  * que no estén en el archivo no se toca.
  */
 
-import { ImportarHoja, type Preparada } from './ImportarHoja'
-import { aFecha, aNumero, resolver, type ColumnaHoja } from '@/lib/trasplante/importacion'
+import { ImportarHoja, type Preparada } from '@/components/ui/ImportarHoja'
+import { aFecha, aNumero, resolver, type ColumnaHoja } from '@/lib/importacion'
 import { guardarPlanesEnMasa, type PlanSiembraNuevo } from '@/lib/trasplante/repositorioCliente'
 import type { FilaPlanSiembra, LoteOpcion, Variedad } from '@/lib/trasplante/tipos'
 

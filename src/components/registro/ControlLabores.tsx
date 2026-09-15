@@ -93,6 +93,8 @@ type FilaLabor = {
   proveedor_manguera_id?: string | null
   proveedor_manguera?: string | null
   detalle_comentarios?: string | null
+  /** Llega con la migración 39: si esta labor lleva etapa o no. */
+  requiere_etapa?: boolean | null
   detalle_fecha?: string | null
   equipo_id?: string | null
   operador_id?: string | null
@@ -448,6 +450,96 @@ export function ControlLabores({
           </Insignia>
         ),
       },
+      // --------------------------------------------------------------
+      // Columnas de la línea. Existían en la base desde la 12 y en la
+      // vista desde la 22, pero no se podían ver ni corregir desde aquí:
+      // había que abrir el modal de cada fila para mirar una etapa.
+      // --------------------------------------------------------------
+      {
+        campo: 'etapa',
+        label: 'Etapa',
+        tipo: 'seleccion',
+        valor: (f) => (f.etapa === null || f.etapa === undefined ? null : String(f.etapa)),
+        etiqueta: (f) => (f.etapa ? `Etapa ${f.etapa}` : ''),
+        // Sólo donde la etapa significa algo. La bandera la pone el
+        // catálogo de labores (seguimiento de emplasticado), así que se
+        // configura sin tocar código.
+        editable: (f) => f.requiere_etapa === true,
+        editor: 'seleccion',
+        valorEdicion: (f) => (f.etapa ? String(f.etapa) : ''),
+        opciones: [
+          { value: '', label: 'Sin etapa' },
+          { value: '1', label: 'Etapa 1' },
+          { value: '2', label: 'Etapa 2' },
+          { value: '3', label: 'Etapa 3' },
+        ],
+        render: (f) =>
+          f.etapa ? (
+            <Insignia tono="azul">Etapa {f.etapa}</Insignia>
+          ) : (
+            // La raya distingue «no lleva etapa» de «lleva y está vacía»:
+            // lo segundo es algo que alguien tiene que ir a llenar.
+            <span className="text-xs text-slate-300">
+              {f.requiere_etapa === true ? 'Sin etapa' : '—'}
+            </span>
+          ),
+      },
+      {
+        campo: 'proveedor_plastico',
+        label: 'Prov. plástico',
+        tipo: 'seleccion',
+        valor: (f) => f.proveedor_plastico ?? null,
+        editable: puedeEditar,
+        editor: 'seleccion',
+        valorEdicion: (f) => f.proveedor_plastico_id ?? '',
+        opciones: [
+          { value: '', label: 'Sin proveedor' },
+          ...catalogosEdicion.proveedores
+            .filter((p) => p.tipo === 'PLASTICO' || p.tipo === 'OTRO')
+            .map((p) => ({ value: p.id, label: p.nombre })),
+        ],
+        render: (f) => (
+          <span className="block max-w-[160px] truncate text-xs">
+            {f.proveedor_plastico ?? '—'}
+          </span>
+        ),
+      },
+      {
+        campo: 'proveedor_manguera',
+        label: 'Prov. manguera',
+        tipo: 'seleccion',
+        valor: (f) => f.proveedor_manguera ?? null,
+        editable: puedeEditar,
+        editor: 'seleccion',
+        valorEdicion: (f) => f.proveedor_manguera_id ?? '',
+        opciones: [
+          { value: '', label: 'Sin proveedor' },
+          ...catalogosEdicion.proveedores
+            .filter((p) => p.tipo === 'MANGUERA' || p.tipo === 'OTRO')
+            .map((p) => ({ value: p.id, label: p.nombre })),
+        ],
+        render: (f) => (
+          <span className="block max-w-[160px] truncate text-xs">
+            {f.proveedor_manguera ?? '—'}
+          </span>
+        ),
+      },
+      {
+        campo: 'detalle_comentarios',
+        label: 'Comentarios',
+        tipo: 'texto',
+        valor: (f) => f.detalle_comentarios ?? null,
+        editable: puedeEditar,
+        editor: 'texto',
+        render: (f) => (
+          <span
+            className="block max-w-[220px] truncate text-xs text-slate-500"
+            title={f.detalle_comentarios ?? undefined}
+          >
+            {f.detalle_comentarios ?? '—'}
+          </span>
+        ),
+      },
       {
         campo: 'usuario_nombre',
         label: 'Capturó',
@@ -471,7 +563,7 @@ export function ControlLabores({
       })
     }
     return cols
-  }, [hayTemporada, catalogosEdicion])
+  }, [hayTemporada, catalogosEdicion, puedeEditar])
 
   const visibles = useMemo(() => aplicarVista(columnas, vista), [columnas, vista])
 
@@ -483,6 +575,11 @@ export function ControlLabores({
     codigo_implemento: 'implemento_fisico_id',
     avance_mz: 'avance_mz',
     ut: 'lote_temporada_id',
+    // Éstos viven en la línea, así que nunca la separan del registro.
+    etapa: 'etapa',
+    proveedor_plastico: 'proveedor_plastico_id',
+    proveedor_manguera: 'proveedor_manguera_id',
+    detalle_comentarios: 'comentarios',
   }
 
   async function editarCelda(fila: Fila, campo: string, valor: unknown) {

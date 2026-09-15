@@ -1,7 +1,13 @@
 'use client'
 
 /**
- * Importador de hojas del trasplante.
+ * Importador de hojas con llave compuesta.
+ *
+ * Vive en `ui` y no en un módulo concreto porque lo usan tres: el
+ * trasplante, el plan de siembra y los turnos de riego. Cuando estaba
+ * dentro de `trasplante/` el tercero que lo necesitó tuvo que importar
+ * desde el módulo de otro, que es como empiezan las dependencias
+ * cruzadas.
  *
  * Es la misma UX del importador de catálogos —plantilla, archivo o
  * pegado, vista previa fila por fila, agregar o actualizar— pero
@@ -25,7 +31,7 @@ import {
   partirTextoTabular,
   type CeldaHoja,
 } from '@/lib/hojas'
-import { mapearColumnas, type ColumnaHoja } from '@/lib/trasplante/importacion'
+import { mapearColumnas, type ColumnaHoja } from '@/lib/importacion'
 import { mensajeDeError } from '@/lib/errores'
 
 export type Preparada<T> = {

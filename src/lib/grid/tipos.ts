@@ -67,8 +67,13 @@ export type ColumnaGrid<T> = {
    * La celda se escribe sobre la tabla, estilo hoja de cálculo. Una
    * columna sin esto es de sólo lectura aunque la pantalla permita
    * editar: es lo que protege la fecha, que la manda el ticket.
+   *
+   * Admite una función porque hay columnas que sólo aplican a ALGUNAS
+   * filas: la etapa existe en el emplasticado y en ninguna otra labor, y
+   * dejar escribirla donde no significa nada es guardar un dato que
+   * después nadie sabe leer. Con una función, la propia fila decide.
    */
-  editable?: boolean
+  editable?: boolean | ((fila: T) => boolean)
   /** Qué control se dibuja al editar. Por omisión, texto. */
   editor?: 'texto' | 'numero' | 'fecha' | 'seleccion'
   /** Sólo para el editor 'seleccion'. */

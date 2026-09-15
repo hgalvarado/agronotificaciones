@@ -22,6 +22,12 @@ export type CampoLinea =
   | 'implemento_fisico_id'
   | 'avance_mz'
   | 'lote_temporada_id'
+  // Éstos viven en `registro_detalle`, así que la función los aplica
+  // directo y NUNCA separan la línea del registro.
+  | 'etapa'
+  | 'proveedor_plastico_id'
+  | 'proveedor_manguera_id'
+  | 'comentarios'
 
 export async function editarLinea(
   detalleId: string,
@@ -50,6 +56,26 @@ export async function editarLinea(
       break
     case 'lote_temporada_id':
       args.p_lote_temporada_id = valor
+      break
+    // Vaciar no es «no lo toques»: en una llamada con parámetros
+    // opcionales, quitar un valor hay que decirlo aparte. Es la misma
+    // regla que ya usaba el implemento.
+    case 'etapa':
+      if (valor === null || valor === '') args.p_quitar_etapa = true
+      else args.p_etapa = Number(valor)
+      break
+    case 'proveedor_plastico_id':
+      if (valor === null || valor === '') args.p_quitar_plastico = true
+      else args.p_proveedor_plastico_id = valor
+      break
+    case 'proveedor_manguera_id':
+      if (valor === null || valor === '') args.p_quitar_manguera = true
+      else args.p_proveedor_manguera_id = valor
+      break
+    case 'comentarios':
+      // Un comentario vacío SÍ es «bórralo», y la función ya lo convierte
+      // en nulo: no hace falta una bandera aparte.
+      args.p_comentarios = valor === null ? '' : String(valor)
       break
   }
 
