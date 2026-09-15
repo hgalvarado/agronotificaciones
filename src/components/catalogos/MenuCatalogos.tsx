@@ -15,6 +15,11 @@
  * En teléfono funciona como cualquier pantalla de configuración: lista →
  * detalle, con una vuelta atrás. En escritorio el menú se queda a la
  * izquierda y el catálogo se abre al lado, porque ahí sí sobra ancho.
+ *
+ * Los bloques van PLEGADOS. Con seis bloques y veinte catálogos, la lista
+ * abierta era medio metro de scroll para llegar al último, y en un
+ * teléfono peor. Se ve el título de cada bloque, qué contiene y cuántos
+ * son; se despliega el que se necesita.
  */
 
 import { useMemo, useState } from 'react'
@@ -22,7 +27,12 @@ import Link from 'next/link'
 import { CatalogoTable } from './CatalogoTable'
 import type { PestanaCatalogo } from './tipos'
 import { Entrada, EstadoVacio } from '@/components/ui/Primitivos'
-import { IconChevronLeft, IconChevronRight, IconSearch } from '@/components/ui/Icons'
+import {
+  IconChevronDown,
+  IconChevronLeft,
+  IconChevronRight,
+  IconSearch,
+} from '@/components/ui/Icons'
 import { filtrar, organizar, type ItemMenu } from '@/lib/catalogos/grupos'
 
 export function MenuCatalogos({
@@ -34,6 +44,10 @@ export function MenuCatalogos({
 }) {
   const [abierta, setAbierta] = useState<string | null>(null)
   const [busqueda, setBusqueda] = useState('')
+  // Qué bloques están desplegados. Arranca todo cerrado: con seis
+  // bloques y veinte catálogos, la lista abierta era medio metro de
+  // scroll para llegar a «Temporadas». Se abre el que se necesita.
+  const [desplegados, setDesplegados] = useState<Set<string>>(new Set())
 
   const grupos = useMemo(() => organizar(pestanas), [pestanas])
   const visibles = useMemo(() => filtrar(grupos, busqueda), [grupos, busqueda])
@@ -66,26 +80,61 @@ export function MenuCatalogos({
           </p>
         )}
 
-        {visibles.map((g) => (
-          <section key={g.key} className="flex flex-col gap-1.5">
-            <div className="px-1">
-              <h2 className="text-sm font-bold tracking-tight text-slate-900">{g.titulo}</h2>
-              <p className="text-xs text-slate-400">{g.descripcion}</p>
-            </div>
+        {visibles.map((g) => {
+          // Buscando, los bloques se despliegan solos: si hay que abrir
+          // uno por uno para ver los resultados, la búsqueda no sirve de
+          // nada. El bloque del catálogo abierto también, para no perder
+          // de vista dónde se está.
+          const abiertoAhora =
+            busqueda.trim() !== '' ||
+            desplegados.has(g.key) ||
+            g.items.some((i) => i.key === abierta)
 
-            <ul className="overflow-hidden rounded-2xl bg-white ring-1 ring-inset ring-slate-200/80">
-              {g.items.map((i, indice) => (
-                <li key={i.key} className={indice > 0 ? 'border-t border-slate-100' : ''}>
-                  <FilaMenu
-                    item={i}
-                    activa={i.key === abierta}
-                    onAbrir={() => setAbierta(i.key)}
-                  />
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))}
+          return (
+            <section key={g.key} className="flex flex-col gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  const copia = new Set(desplegados)
+                  if (abiertoAhora) copia.delete(g.key)
+                  else copia.add(g.key)
+                  setDesplegados(copia)
+                }}
+                aria-expanded={abiertoAhora}
+                className="flex w-full items-start gap-2 rounded-xl px-1 py-1.5 text-left transition-colors hover:bg-white"
+              >
+                <IconChevronDown
+                  className={`mt-0.5 h-4 w-4 shrink-0 text-slate-400 transition-transform ${
+                    abiertoAhora ? '' : '-rotate-90'
+                  }`}
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-bold tracking-tight text-slate-900">
+                    {g.titulo}
+                  </span>
+                  <span className="block text-xs text-slate-400">{g.descripcion}</span>
+                </span>
+                <span className="mt-0.5 shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">
+                  {g.items.length}
+                </span>
+              </button>
+
+              {abiertoAhora && (
+                <ul className="anim-aparecer overflow-hidden rounded-2xl bg-white ring-1 ring-inset ring-slate-200/80">
+                  {g.items.map((i, indice) => (
+                    <li key={i.key} className={indice > 0 ? 'border-t border-slate-100' : ''}>
+                      <FilaMenu
+                        item={i}
+                        activa={i.key === abierta}
+                        onAbrir={() => setAbierta(i.key)}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )
+        })}
       </nav>
 
       {/* ---------------------------- Detalle ---------------------------- */}

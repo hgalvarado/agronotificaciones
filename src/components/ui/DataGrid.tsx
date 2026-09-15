@@ -276,7 +276,11 @@ export function DataGrid<T extends { id: string }>({
                         <th
                           key={c.campo}
                           className="px-3 py-2 align-top"
-                          style={c.ancho ? { width: c.ancho } : undefined}
+                          // `minWidth` y no `width`: en una tabla de ancho
+                          // automático el `width` es una sugerencia que el
+                          // navegador descarta en cuanto sobran columnas, y
+                          // el código del turno se quedaba en «T1001-T…».
+                          style={c.ancho ? { minWidth: c.ancho } : undefined}
                         >
                           <span
                             className={`flex items-center gap-1 ${c.numero ? 'justify-end' : ''}`}

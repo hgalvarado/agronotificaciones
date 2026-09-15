@@ -24,26 +24,55 @@ export function faltaMigracion(mensaje: string | null | undefined): boolean {
   return t.includes('does not exist') || t.includes('schema cache')
 }
 
+/**
+ * Los turnos de una temporada y, si se pide, de un ciclo.
+ *
+ * No hay rango de fechas a propósito: el riego se organiza por ciclo de
+ * cultivo, no por mes. Un turno con fecha de siembra en enero se
+ * programa en septiembre, así que un «desde/hasta» sobre la fecha de
+ * siembra escondía justo lo que se acababa de capturar.
+ */
 export async function leerTurnos(
   temporadaId: string | null,
-  desde: string,
-  hasta: string
+  ciclo: number | null
 ): Promise<{ datos: FilaTurnoRiego[]; error: string | null }> {
   let q = createClient()
     .from('v_turnos_riego')
     .select('*')
-    .gte('fecha_siembra', desde)
-    .lte('fecha_siembra', hasta)
     .order('fecha_siembra', { ascending: false })
     .order('turno', { ascending: true })
     .order('ut', { ascending: true })
     .limit(5000)
 
   if (temporadaId) q = q.eq('temporada_id', temporadaId)
+  if (ciclo) q = q.eq('ciclo', ciclo)
 
   const { data, error } = await q
   if (error) return { datos: [], error: error.message }
   return { datos: (data as FilaTurnoRiego[]) ?? [], error: null }
+}
+
+/**
+ * Corrige UN campo sobre la cuadrícula.
+ *
+ * Pasa por `fn_editar_turno_riego` y no por un `update` suelto porque
+ * hay campos que son del lote y otros del turno entero, y porque el área
+ * la sigue validando el disparador de siempre: escribirla con un update
+ * directo se saltaría el aviso de «no cabe».
+ */
+export async function editarCampo(
+  detalleId: string,
+  campo: string,
+  valor: unknown
+): Promise<Resultado> {
+  const { error } = await createClient().rpc('fn_editar_turno_riego', {
+    p_detalle_id: detalleId,
+    p_campo: campo,
+    p_valor: valor === null || valor === undefined ? '' : String(valor),
+  })
+
+  if (error) return { ok: false, mensaje: mensajeDeError(error, 'No se pudo guardar el cambio.') }
+  return { ok: true, mensaje: '' }
 }
 
 /**
@@ -83,6 +112,8 @@ export async function guardarTurno(e: EntradaTurno, lineas: LineaTurno[]): Promi
     p_responsable: e.responsable.trim() || null,
     p_comentarios: e.comentarios.trim() || null,
     p_lotes: lineasParaGuardar(lineas),
+    p_turno_catalogo_id: e.turnoCatalogoId || null,
+    p_estacion_riego_id: e.estacionRiegoId || null,
   })
 
   if (error) return { ok: false, mensaje: mensajeDeError(error, 'No se pudo guardar el turno.') }

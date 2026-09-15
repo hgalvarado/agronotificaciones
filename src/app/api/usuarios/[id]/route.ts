@@ -28,7 +28,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
 
   try {
     const body = await request.json()
-    const { nombre, rol_id, departamento, whatsapp, activo, password } = body
+    const { nombre, rol_id, departamento, whatsapp, activo, password, zonas } = body
 
     const admin = createAdminClient()
 
@@ -62,6 +62,25 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       cambios.updated_at = ahoraIso()
       const { error } = await admin.from('perfiles').update(cambios).eq('id', id)
       if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+
+    // 1b) Zonas asignadas. Se reemplazan enteras: diferenciar altas y
+    //     bajas desde el navegador es cómo se acaba con una zona pegada
+    //     que nadie sabe de dónde salió. Una lista vacía DESRESTRINGE:
+    //     el usuario vuelve a ver toda la finca.
+    if (Array.isArray(zonas)) {
+      const { error } = await admin.from('perfiles_zonas').delete().eq('perfil_id', id)
+      // Si la migración 41 no está corrida la tabla no existe: se ignora
+      // en vez de tumbar el guardado del resto del perfil.
+      if (error && !/does not exist|schema cache/i.test(error.message)) {
+        return NextResponse.json({ error: error.message }, { status: 400 })
+      }
+      if (!error && zonas.length > 0) {
+        const { error: e2 } = await admin
+          .from('perfiles_zonas')
+          .insert(zonas.map((z: string) => ({ perfil_id: id, zona_id: z })))
+        if (e2) return NextResponse.json({ error: e2.message }, { status: 400 })
+      }
     }
 
     // 2) Bloqueo real en Auth al desactivar.

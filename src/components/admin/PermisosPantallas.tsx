@@ -3,8 +3,9 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { Alerta, Insignia, Tarjeta } from '@/components/ui/Primitivos'
+import { Alerta, Boton, Entrada, Insignia, Tarjeta } from '@/components/ui/Primitivos'
 import { IconCheck, IconLock } from '@/components/ui/Icons'
+import { mensajeDeError } from '@/lib/errores'
 
 export type Pantalla = {
   codigo: string
@@ -14,7 +15,13 @@ export type Pantalla = {
   acciones: string[]
 }
 
-export type RolFila = { id: number; codigo: string; nombre: string }
+export type RolFila = {
+  id: number
+  codigo: string
+  nombre: string
+  /** Rol de fábrica: la aplicación lo nombra por código y no se elimina. */
+  de_sistema?: boolean | null
+}
 export type PermisoFila = { rol_id: number; recurso: string; accion: string }
 
 const ETIQUETAS: Record<string, string> = {
@@ -49,6 +56,9 @@ export function PermisosPantallas({
   )
   const [guardando, setGuardando] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [creando, setCreando] = useState(false)
+  const [nombreNuevo, setNombreNuevo] = useState('')
+  const [ocupado, setOcupado] = useState(false)
 
   // El Administrador no se lista: su acceso total no sale de esta tabla
   // sino de `fn_es_admin()`, y dejarlo editable haría creer que se le
@@ -97,10 +107,46 @@ export function PermisosPantallas({
 
   const cuenta = pantallas.filter((p) => tiene(p.codigo, 'ver')).length
 
+  /* --------------------------- Roles: alta y baja -------------------- */
+
+  async function crearRol() {
+    if (!nombreNuevo.trim()) return setError('Escribe el nombre del rol.')
+    setOcupado(true)
+    setError(null)
+    const { error: e } = await supabase.rpc('fn_crear_rol', {
+      p_nombre: nombreNuevo.trim(),
+      p_codigo: null,
+      p_descripcion: null,
+    })
+    setOcupado(false)
+    if (e) {
+      return setError(
+        mensajeDeError(e, 'No se pudo crear. Si dice que no existe «fn_crear_rol», falta la migración 41.')
+      )
+    }
+    setNombreNuevo('')
+    setCreando(false)
+    router.refresh()
+  }
+
+  async function eliminarRol(r: RolFila) {
+    // La base vuelve a comprobarlo todo; esto sólo evita el viaje y el
+    // susto de ver desaparecer un rol de la lista sin querer.
+    if (!window.confirm(`¿Eliminar el rol «${r.nombre}»? Se van también sus permisos.`)) return
+
+    setOcupado(true)
+    setError(null)
+    const { error: e } = await supabase.rpc('fn_eliminar_rol', { p_rol_id: r.id })
+    setOcupado(false)
+    if (e) return setError(mensajeDeError(e, 'No se pudo eliminar el rol.'))
+    setRolActivo(editables.find((x) => x.id !== r.id)?.id ?? 0)
+    router.refresh()
+  }
+
   return (
     <div className="flex flex-col gap-4">
       {/* ------------------------- Selector de rol ------------------------ */}
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
         {editables.map((r) => (
           <button
             key={r.id}
@@ -114,16 +160,63 @@ export function PermisosPantallas({
             {r.nombre}
           </button>
         ))}
+
+        {creando ? (
+          <span className="flex items-center gap-1.5">
+            <Entrada
+              value={nombreNuevo}
+              onChange={(e) => setNombreNuevo(e.target.value)}
+              placeholder="Nombre del rol"
+              className="h-10 w-48 py-2"
+              autoFocus
+            />
+            <Boton tamano="sm" onClick={() => void crearRol()} disabled={ocupado}>
+              Guardar
+            </Boton>
+            <Boton
+              variante="secundario"
+              tamano="sm"
+              onClick={() => {
+                setCreando(false)
+                setNombreNuevo('')
+              }}
+            >
+              Cancelar
+            </Boton>
+          </span>
+        ) : (
+          <button
+            onClick={() => setCreando(true)}
+            className="rounded-full bg-white px-3.5 py-2 text-sm font-semibold text-brand-700 ring-1 ring-inset ring-brand-200 transition-colors hover:ring-brand-400"
+          >
+            + Rol nuevo
+          </button>
+        )}
       </div>
 
-      <Tarjeta className="flex items-center justify-between gap-3 p-4">
+      <Tarjeta className="flex flex-wrap items-center justify-between gap-3 p-4">
         <div>
           <p className="text-sm font-bold text-slate-900">{rol?.nombre}</p>
           <p className="text-xs text-slate-400">
             Ve {cuenta} de {pantallas.length} pantallas
           </p>
         </div>
-        <Insignia tono="gris">{rol?.codigo}</Insignia>
+        <div className="flex items-center gap-2">
+          <Insignia tono="gris">{rol?.codigo}</Insignia>
+          {/* Los de fábrica no se eliminan: la aplicación los nombra por
+              código en policies y funciones, y borrar ADMIN deja la
+              instalación sin administrador. */}
+          {rol && !rol.de_sistema && (
+            <Boton
+              variante="secundario"
+              tamano="sm"
+              disabled={ocupado}
+              onClick={() => void eliminarRol(rol)}
+            >
+              Eliminar
+            </Boton>
+          )}
+        </div>
       </Tarjeta>
 
       {error && <Alerta>{error}</Alerta>}

@@ -33,6 +33,8 @@ export default async function CatalogosPage() {
     { data: materiales },
     sondaContador,
     { data: planesNutricionales },
+    { data: turnosCatalogo },
+    { data: estacionesRiego },
   ] = await Promise.all([
     supabase.from('zonas').select('*').order('nombre'),
     supabase.from('familias_equipo').select('*').order('nombre'),
@@ -72,11 +74,21 @@ export default async function CatalogosPage() {
     // Llegan con la migración 40. Si no está corrida, la pestaña sale
     // vacía en vez de tumbar la pantalla completa.
     supabase.from('planes_nutricionales').select('*').order('nombre'),
+    // Llegan con la migración 41.
+    supabase.from('turnos').select('*').order('codigo'),
+    supabase.from('estaciones_riego').select('*').order('nombre'),
   ])
 
   const soportaContador = !sondaContador.error
   const soportaProveedoresLabor = !sondaProveedoresLabor.error
   const soportaSeguimiento = !sondaSeguimiento.error
+
+  // Las zonas alimentan el selector del catálogo de turnos: cada turno
+  // riega normalmente en una, y es la que la captura propone.
+  const opcionesZona = (zonas ?? []).map((z) => ({
+    value: z.id as string,
+    label: z.nombre as string,
+  }))
 
   // Las familias alimentan el selector dentro del catálogo de equipos,
   // para poder asignarla en el mismo momento en que se crea el equipo.
@@ -433,6 +445,33 @@ export default async function CatalogosPage() {
         { key: 'activo', label: 'Activo', tipo: 'checkbox' },
       ],
       filas: planesNutricionales ?? [],
+    },
+    {
+      key: 'turnos',
+      clave: 'codigo',
+      label: 'Turnos de riego',
+      tabla: 'turnos',
+      campos: [
+        { key: 'codigo', label: 'Turno', tipo: 'text', requerido: true },
+        { key: 'nombre', label: 'Descripción', tipo: 'text' },
+        // La zona habitual: al elegir el turno en la captura, se propone.
+        { key: 'zona_id', label: 'Zona', tipo: 'select', opciones: opcionesZona },
+        { key: 'activo', label: 'Activo', tipo: 'checkbox' },
+      ],
+      filas: turnosCatalogo ?? [],
+    },
+    {
+      key: 'estaciones_riego',
+      clave: 'nombre',
+      label: 'Estaciones de riego',
+      tabla: 'estaciones_riego',
+      campos: [
+        { key: 'codigo', label: 'Código', tipo: 'text' },
+        { key: 'nombre', label: 'Estación', tipo: 'text', requerido: true },
+        { key: 'descripcion', label: 'Descripción', tipo: 'text' },
+        { key: 'activo', label: 'Activo', tipo: 'checkbox' },
+      ],
+      filas: estacionesRiego ?? [],
     },
     {
       key: 'temporadas',

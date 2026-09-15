@@ -14,8 +14,9 @@
  * regla y metería turnos que riegan tierra que no existe.
  */
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { ImportarHoja, type Preparada } from '@/components/ui/ImportarHoja'
+import type { ListaPlantilla } from '@/lib/hojas'
 import { guardarTurno } from '@/lib/riego/repositorioCliente'
 import {
   COLUMNAS_RIEGO,
@@ -24,7 +25,13 @@ import {
   resolver,
   type LineaImportada,
 } from '@/lib/riego/importacion'
-import { ESTADOS_TURNO, type CatalogosRiego, type EstadoTurno } from '@/lib/riego/tipos'
+import {
+  CICLOS_RIEGO,
+  ESTADOS_TURNO,
+  FUENTES_AGUA,
+  type CatalogosRiego,
+  type EstadoTurno,
+} from '@/lib/riego/tipos'
 
 const CABECERAS = ['Fecha siembra', 'UT', 'Zona', 'Turno', 'Área', 'Variedad', 'Plan']
 
@@ -49,6 +56,25 @@ export function ImportarTurnos({
   // temporada. Se resuelven contra lo que la propia hoja trae, pidiendo
   // los saldos de la temporada elegida en el momento de guardar.
   const [, setNada] = useState(0)
+
+  // La plantilla que se descarga lleva los catálogos DENTRO, como
+  // desplegables de Excel: es la única forma de que no vuelva una hoja
+  // con «Congolón» y otra con «congolon» y el importador rebotando filas
+  // por una tilde. El número es la columna de `COLUMNAS_RIEGO`.
+  const listas = useMemo<ListaPlantilla[]>(
+    () => [
+      { columna: 0, titulo: 'Temporada', valores: catalogos.temporadas.map((t) => t.nombre) },
+      { columna: 1, titulo: 'Ciclo', valores: CICLOS_RIEGO.map((c) => `Ciclo ${c}`) },
+      { columna: 5, titulo: 'Zona', valores: catalogos.zonas.map((z) => z.nombre) },
+      { columna: 6, titulo: 'Turno', valores: catalogos.turnos.map((t) => t.codigo) },
+      { columna: 8, titulo: 'Variedad', valores: catalogos.variedades.map((v) => v.nombre) },
+      { columna: 9, titulo: 'Plan nutricional', valores: catalogos.planes.map((p) => p.nombre) },
+      { columna: 11, titulo: 'Estación de riego', valores: catalogos.estaciones.map((e) => e.nombre) },
+      { columna: 12, titulo: 'Fuente de agua', valores: FUENTES_AGUA.map((x) => x.etiqueta) },
+      { columna: 14, titulo: 'Estado', valores: ESTADOS_TURNO.map((e) => e.etiqueta) },
+    ],
+    [catalogos]
+  )
 
   function interpretar(celdas: string[], numero: number): Preparada<LineaImportada> {
     const mapa: Record<string, string> = {}
@@ -149,6 +175,10 @@ export function ImportarTurnos({
       const r = await guardarTurno(
         {
           turnoId: null,
+          // El importador trae turnos que todavía pueden no estar en el
+          // catálogo, así que manda el texto y deja las llaves vacías.
+          turnoCatalogoId: '',
+          estacionRiegoId: '',
           temporadaId: temporada,
           ciclo: String(c.ciclo),
           fechaSiembra: c.fechaSiembra,
@@ -190,6 +220,7 @@ export function ImportarTurnos({
       columnas={COLUMNAS_RIEGO}
       cabecerasResumen={CABECERAS}
       ejemplo={EJEMPLO}
+      listas={listas}
       interpretar={interpretar}
       guardar={guardar}
     />

@@ -25,11 +25,17 @@ export function PanelFiltros({
   ayuda,
   children,
 }: {
-  desde: string
-  hasta: string
-  onDesde: (v: string) => void
-  onHasta: (v: string) => void
-  onConsultar: () => void
+  /**
+   * El rango es OPCIONAL. Hay módulos que no se consultan por fecha:
+   * el riego se organiza por ciclo de cultivo, y un «desde/hasta» sobre
+   * la fecha de siembra escondía justo lo que se acababa de capturar.
+   * Sin `desde`/`hasta` el panel sale sólo con sus selectores.
+   */
+  desde?: string
+  hasta?: string
+  onDesde?: (v: string) => void
+  onHasta?: (v: string) => void
+  onConsultar?: () => void
   cargando?: boolean
   /** Cuántos selectores están recortando algo ahora mismo. */
   activos: number
@@ -38,21 +44,29 @@ export function PanelFiltros({
   /** Los selectores de la pantalla. */
   children: ReactNode
 }) {
+  const hayRango = desde !== undefined && hasta !== undefined
+
   return (
     <Tarjeta className="flex flex-col gap-3 p-4">
-      <div className="flex flex-wrap items-end gap-3">
-        <Campo etiqueta="Desde" className="min-w-[150px]">
-          <Entrada type="date" value={desde} onChange={(e) => onDesde(e.target.value)} />
-        </Campo>
-        <Campo etiqueta="Hasta" className="min-w-[150px]">
-          <Entrada type="date" value={hasta} onChange={(e) => onHasta(e.target.value)} />
-        </Campo>
-        <Boton onClick={onConsultar} disabled={cargando}>
-          {cargando ? 'Consultando…' : 'Consultar'}
-        </Boton>
-      </div>
+      {hayRango && (
+        <div className="flex flex-wrap items-end gap-3">
+          <Campo etiqueta="Desde" className="min-w-[150px]">
+            <Entrada type="date" value={desde} onChange={(e) => onDesde?.(e.target.value)} />
+          </Campo>
+          <Campo etiqueta="Hasta" className="min-w-[150px]">
+            <Entrada type="date" value={hasta} onChange={(e) => onHasta?.(e.target.value)} />
+          </Campo>
+          <Boton onClick={onConsultar} disabled={cargando}>
+            {cargando ? 'Consultando…' : 'Consultar'}
+          </Boton>
+        </div>
+      )}
 
-      <div className="grid grid-cols-2 gap-3 border-t border-slate-100 pt-3 sm:grid-cols-3 lg:grid-cols-5">
+      <div
+        className={`grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 ${
+          hayRango ? 'border-t border-slate-100 pt-3' : ''
+        }`}
+      >
         {children}
       </div>
 

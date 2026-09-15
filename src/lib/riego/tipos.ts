@@ -52,6 +52,9 @@ export type FilaTurnoRiego = {
   variedad_id: string | null
   variedad: string | null
   detalle_comentarios: string | null
+  /** Llegan con la migración 41: las llaves de los catálogos nuevos. */
+  turno_catalogo_id?: string | null
+  estacion_riego_id?: string | null
   /** Días desde la siembra. Lo calcula la base contra el día de Honduras. */
   ddt_actual: number | null
   area_disponible_total: number | null
@@ -63,6 +66,9 @@ export type FilaTurnoRiego = {
 /** Lo que el formulario escribe en la cabecera. Todo texto: viene de campos. */
 export type EntradaTurno = {
   turnoId: string | null
+  /** El turno del catálogo. El texto `turno` sale de él. */
+  turnoCatalogoId: string
+  estacionRiegoId: string
   temporadaId: string
   ciclo: string
   fechaSiembra: string
@@ -98,15 +104,25 @@ export type OpcionCatalogo = { id: string; nombre: string }
 
 export type ZonaOpcion = OpcionCatalogo & { responsable: string | null }
 
+/**
+ * Un turno del catálogo. Lleva su zona habitual: elegirlo la propone,
+ * pero el turno de riego puede guardarse en otra si ese día se movió.
+ */
+export type TurnoOpcion = { id: string; codigo: string; zona_id: string | null }
+
 export type CatalogosRiego = {
   temporadas: { id: string; nombre: string; activa: boolean }[]
   zonas: ZonaOpcion[]
   planes: OpcionCatalogo[]
   variedades: OpcionCatalogo[]
+  turnos: TurnoOpcion[]
+  estaciones: OpcionCatalogo[]
 }
 
 export const TURNO_VACIO: EntradaTurno = {
   turnoId: null,
+  turnoCatalogoId: '',
+  estacionRiegoId: '',
   temporadaId: '',
   ciclo: '1',
   fechaSiembra: '',
@@ -122,3 +138,30 @@ export const TURNO_VACIO: EntradaTurno = {
 }
 
 export const LINEA_VACIA: LineaTurno = { loteTemporadaId: '', areaTurno: '', variedadId: '' }
+
+/**
+ * Qué campo de la base toca cada columna de la cuadrícula.
+ *
+ * La columna se llama como lo que se LEE —«Zona», «Turno», «Variedad»,
+ * que en la vista son texto— pero lo que se GUARDA es el id del
+ * catálogo. Sin esta traducción `fn_editar_turno_riego` recibía «zona» y
+ * respondía «campo no editable»: la celda se dejaba escribir y el cambio
+ * se perdía en silencio.
+ *
+ * Las columnas que no aparecen aquí ya se llaman igual en los dos lados
+ * (`area_turno`, `ciclo`, `fecha_siembra`, `responsable`, `fuente_agua`,
+ * `orden_sap`, `estado`).
+ */
+export const CAMPO_GUARDADO: Record<string, string> = {
+  ut: 'lote_temporada_id',
+  zona: 'zona_id',
+  turno: 'turno_id',
+  variedad: 'variedad_id',
+  plan_nutricional: 'plan_nutricional_id',
+  estacion_riego: 'estacion_riego_id',
+}
+
+/** El nombre con el que la base conoce esa columna. */
+export function campoGuardado(columna: string): string {
+  return CAMPO_GUARDADO[columna] ?? columna
+}

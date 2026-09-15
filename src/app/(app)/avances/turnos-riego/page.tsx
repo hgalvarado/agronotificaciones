@@ -13,22 +13,36 @@ export default async function TurnosRiegoPage() {
   // Los lotes NO se traen aquí: son miles y su saldo depende del turno
   // que se esté editando. Los pide el formulario a `fn_lotes_regables`
   // cuando hace falta, que es la única que sabe cuánto queda libre.
-  const [{ data: temporadas }, { data: zonas }, { data: planes }, { data: variedades }] =
-    await Promise.all([
-      supabase.from('temporadas').select('id, nombre, activa').order('fecha_inicio', { ascending: false }),
-      supabase.from('zonas').select('id, nombre, responsable').eq('activo', true).order('nombre'),
-      // Llega con la migración 40. Si no está corrida, la pantalla se
-      // abre igual y es el aviso del módulo —no un error de tabla— el que
-      // lo explica.
-      supabase.from('planes_nutricionales').select('id, nombre').eq('activo', true).order('nombre'),
-      supabase.from('variedades').select('id, nombre').eq('activo', true).order('nombre'),
-    ])
+  const [
+    { data: temporadas },
+    { data: zonas },
+    { data: planes },
+    { data: variedades },
+    { data: turnos },
+    { data: estaciones },
+  ] = await Promise.all([
+    supabase.from('temporadas').select('id, nombre, activa').order('fecha_inicio', { ascending: false }),
+    // `zonas` ya viene recortada por las zonas asignadas al usuario: la
+    // RLS de la migración 41 lo hace sola, así que aquí no hay filtro.
+    supabase.from('zonas').select('id, nombre, responsable').eq('activo', true).order('nombre'),
+    // Llega con la migración 40. Si no está corrida, la pantalla se
+    // abre igual y es el aviso del módulo —no un error de tabla— el que
+    // lo explica.
+    supabase.from('planes_nutricionales').select('id, nombre').eq('activo', true).order('nombre'),
+    supabase.from('variedades').select('id, nombre').eq('activo', true).order('nombre'),
+    // Llegan con la 41. Vacíos, la pantalla cae a los campos de texto de
+    // antes en vez de quedarse sin poder capturar.
+    supabase.from('turnos').select('id, codigo, zona_id').eq('activo', true).order('codigo'),
+    supabase.from('estaciones_riego').select('id, nombre').eq('activo', true).order('nombre'),
+  ])
 
   const catalogos: CatalogosRiego = {
     temporadas: (temporadas ?? []) as CatalogosRiego['temporadas'],
     zonas: (zonas ?? []) as CatalogosRiego['zonas'],
     planes: (planes ?? []) as CatalogosRiego['planes'],
     variedades: (variedades ?? []) as CatalogosRiego['variedades'],
+    turnos: (turnos ?? []) as CatalogosRiego['turnos'],
+    estaciones: (estaciones ?? []) as CatalogosRiego['estaciones'],
   }
 
   return (

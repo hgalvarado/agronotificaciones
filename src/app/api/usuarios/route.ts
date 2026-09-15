@@ -26,14 +26,27 @@ export async function GET() {
   try {
     const admin = createAdminClient()
 
-    const [{ data: perfiles, error: errPerfiles }, { data: authData, error: errAuth }] =
-      await Promise.all([
-        admin.from('perfiles').select('*, roles(*)').order('nombre'),
-        admin.auth.admin.listUsers({ page: 1, perPage: 1000 }),
-      ])
+    const [
+      { data: perfiles, error: errPerfiles },
+      { data: authData, error: errAuth },
+      { data: asignadas },
+    ] = await Promise.all([
+      admin.from('perfiles').select('*, roles(*)').order('nombre'),
+      admin.auth.admin.listUsers({ page: 1, perPage: 1000 }),
+      // Llega con la migración 41. Sin ella, `asignadas` viene nulo y
+      // todos salen sin zonas, que es exactamente «ven todo»: el
+      // comportamiento de siempre.
+      admin.from('perfiles_zonas').select('perfil_id, zona_id'),
+    ])
 
     if (errPerfiles) throw errPerfiles
     if (errAuth) throw errAuth
+
+    const zonasPorPerfil = new Map<string, string[]>()
+    for (const f of asignadas ?? []) {
+      const id = f.perfil_id as string
+      zonasPorPerfil.set(id, [...(zonasPorPerfil.get(id) ?? []), f.zona_id as string])
+    }
 
     // El correo vive en auth.users, no en perfiles: se cruzan por id.
     const correos = new Map(authData.users.map((u) => [u.id, u.email ?? '']))
@@ -52,6 +65,7 @@ export async function GET() {
       ...p,
       email: correos.get(p.id) ?? '',
       bloqueado: baneados.get(p.id) ?? false,
+      zonas: zonasPorPerfil.get(p.id) ?? [],
     }))
 
     return NextResponse.json({ usuarios })
@@ -69,7 +83,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { email, password, nombre, rol_id, departamento, whatsapp } = body
+    const { email, password, nombre, rol_id, departamento, whatsapp, zonas } = body
 
     if (!email || !password || !nombre || !rol_id) {
       return NextResponse.json(
@@ -116,6 +130,15 @@ export async function POST(request: NextRequest) {
     if (errPerfil) {
       await admin.auth.admin.deleteUser(creado.user.id)
       return NextResponse.json({ error: errPerfil.message }, { status: 400 })
+    }
+
+    // Las zonas van después del perfil porque apuntan a él. Una lista
+    // vacía no inserta nada, y eso es lo correcto: sin zonas asignadas
+    // el usuario ve toda la finca.
+    if (Array.isArray(zonas) && zonas.length > 0) {
+      await admin
+        .from('perfiles_zonas')
+        .insert(zonas.map((z: string) => ({ perfil_id: creado.user.id, zona_id: z })))
     }
 
     return NextResponse.json({ ok: true, id: creado.user.id })

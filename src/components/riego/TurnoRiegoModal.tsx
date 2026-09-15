@@ -111,6 +111,33 @@ export function TurnoRiegoModal({
     // el saldo se vuelve a pedir y la validación avisará.
   }
 
+  /**
+   * Elegir el turno del catálogo.
+   *
+   * «Al seleccionar un Turno el sistema debe autoseleccionar su Zona
+   *  asignada, permitiendo cambiarla si el turno se movió temporalmente.»
+   *
+   * Por eso la zona se PROPONE y no se bloquea: el catálogo dice dónde
+   * está ese turno normalmente, y el registro dice dónde estuvo ese día.
+   * El responsable viene detrás, que es lo que cambia al cambiar de zona.
+   */
+  function cambiarTurno(turnoCatalogoId: string) {
+    const turno = catalogos.turnos.find((t) => t.id === turnoCatalogoId)
+    const zonaId = turno?.zona_id ?? entrada.zonaId
+    const zona = catalogos.zonas.find((z) => z.id === zonaId)
+
+    onCambiarEntrada({
+      ...entrada,
+      turnoCatalogoId,
+      turno: turno?.codigo ?? entrada.turno,
+      zonaId,
+      responsable:
+        entrada.responsable && entrada.responsable !== zonaAnterior(catalogos, entrada.zonaId)
+          ? entrada.responsable
+          : (zona?.responsable ?? ''),
+    })
+  }
+
   function cambiarLinea(i: number, cambios: Partial<LineaTurno>) {
     onCambiarLineas(lineas.map((l, j) => (i === j ? { ...l, ...cambios } : l)))
   }
@@ -185,12 +212,31 @@ export function TurnoRiegoModal({
             />
           </Campo>
 
-          <Campo etiqueta="Turno" requerido>
-            <Entrada
-              value={entrada.turno}
-              onChange={(e) => onCambiarEntrada({ ...entrada, turno: e.target.value })}
-              placeholder="T1001-T05"
-            />
+          <Campo
+            etiqueta="Turno"
+            ayuda={
+              catalogos.turnos.length > 0
+                ? 'Elegirlo pone su zona. Cámbiala si ese día se movió.'
+                : 'Todavía no hay turnos en el catálogo: se escribe a mano.'
+            }
+            requerido
+          >
+            {catalogos.turnos.length > 0 ? (
+              <Selector value={entrada.turnoCatalogoId} onChange={(e) => cambiarTurno(e.target.value)}>
+                <option value="">Elige el turno…</option>
+                {catalogos.turnos.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.codigo}
+                  </option>
+                ))}
+              </Selector>
+            ) : (
+              <Entrada
+                value={entrada.turno}
+                onChange={(e) => onCambiarEntrada({ ...entrada, turno: e.target.value })}
+                placeholder="T1001-T05"
+              />
+            )}
           </Campo>
 
           <Campo etiqueta="Zona" requerido>
@@ -229,11 +275,32 @@ export function TurnoRiegoModal({
           </Campo>
 
           <Campo etiqueta="Estación de riego">
-            <Entrada
-              value={entrada.estacionRiego}
-              onChange={(e) => onCambiarEntrada({ ...entrada, estacionRiego: e.target.value })}
-              placeholder="Congolon"
-            />
+            {catalogos.estaciones.length > 0 ? (
+              <Selector
+                value={entrada.estacionRiegoId}
+                onChange={(e) => {
+                  const est = catalogos.estaciones.find((x) => x.id === e.target.value)
+                  onCambiarEntrada({
+                    ...entrada,
+                    estacionRiegoId: e.target.value,
+                    estacionRiego: est?.nombre ?? '',
+                  })
+                }}
+              >
+                <option value="">Sin estación</option>
+                {catalogos.estaciones.map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.nombre}
+                  </option>
+                ))}
+              </Selector>
+            ) : (
+              <Entrada
+                value={entrada.estacionRiego}
+                onChange={(e) => onCambiarEntrada({ ...entrada, estacionRiego: e.target.value })}
+                placeholder="Congolon"
+              />
+            )}
           </Campo>
 
           <Campo etiqueta="Fuente de agua">
@@ -283,8 +350,8 @@ export function TurnoRiegoModal({
 
         {/* -------------------------- Lotes -------------------------- */}
         <div className="border-t border-slate-100 pt-3">
-          <div className="mb-2 flex items-center justify-between">
-            <div>
+          <div className="mb-2 flex items-start justify-between gap-3">
+            <div className="min-w-0">
               <h3 className="text-sm font-semibold text-slate-900">Lotes del turno</h3>
               <p className="text-xs text-slate-400">
                 {cargandoSaldos
@@ -310,10 +377,18 @@ export function TurnoRiegoModal({
                     pasado ? 'bg-red-50 ring-red-300' : 'bg-slate-50 ring-slate-200'
                   }`}
                 >
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-[2fr_1fr_1.5fr_auto]">
+                  {/* La rejilla se deformaba al elegir un lote: el texto
+                      de la opción («1001-040 · Guanacaste — 8.99 mz
+                      libres») estiraba el `select`, y con `1fr` el resto
+                      de columnas se encogía hasta que Área y Variedad
+                      quedaban ilegibles. Se arregla con `minmax(0, …)`
+                      —un `select` sin mínimo propio— y anchos fijos para
+                      las dos columnas que no deben moverse nunca. */}
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_7rem_minmax(0,11rem)_2.5rem] sm:items-start">
                     <Selector
                       value={l.loteTemporadaId}
                       onChange={(e) => cambiarLinea(i, { loteTemporadaId: e.target.value })}
+                      className="w-full min-w-0"
                     >
                       <option value="">Elige el lote…</option>
                       {saldos.map((s) => (
@@ -329,11 +404,13 @@ export function TurnoRiegoModal({
                       value={l.areaTurno}
                       onChange={(e) => cambiarLinea(i, { areaTurno: e.target.value })}
                       placeholder="Área"
+                      className="w-full min-w-0"
                     />
 
                     <Selector
                       value={l.variedadId}
                       onChange={(e) => cambiarLinea(i, { variedadId: e.target.value })}
+                      className="w-full min-w-0"
                     >
                       <option value="">Sin variedad</option>
                       {catalogos.variedades.map((v) => (
@@ -348,9 +425,10 @@ export function TurnoRiegoModal({
                       aria-label={`Eliminar renglón ${i + 1}`}
                       onClick={() => onCambiarLineas(lineas.filter((_, j) => j !== i))}
                       disabled={lineas.length === 1}
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-white hover:text-red-600 disabled:opacity-30"
+                      className="flex h-11 w-full shrink-0 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-white hover:text-red-600 disabled:opacity-30 sm:w-10"
                     >
                       <IconTrash className="h-4 w-4" />
+                      <span className="ml-1.5 text-sm font-semibold sm:hidden">Eliminar</span>
                     </button>
                   </div>
 

@@ -13,7 +13,7 @@ import {
   Selector,
   Tarjeta,
 } from '@/components/ui/Primitivos'
-import { IconPencil, IconPlus, IconSearch, IconUser } from '@/components/ui/Icons'
+import { IconCheck, IconPencil, IconPlus, IconSearch, IconUser } from '@/components/ui/Icons'
 import type { Rol } from '@/lib/types'
 import { mensajeDeError } from '@/lib/errores'
 
@@ -27,6 +27,13 @@ type UsuarioAdmin = {
   activo: boolean
   bloqueado: boolean
   roles?: Rol | Rol[] | null
+  /**
+   * Zonas a las que se le recortan los datos. VACÍO significa SIN
+   * RESTRICCIÓN —ve todas—, no «no ve ninguna»: asignar zonas es
+   * restringir, y lo contrario habría dejado a todo el mundo sin datos el
+   * día que se instaló.
+   */
+  zonas?: string[]
 }
 
 const TONO_ROL: Record<number, 'violeta' | 'azul' | 'gris'> = {
@@ -38,10 +45,12 @@ const TONO_ROL: Record<number, 'violeta' | 'azul' | 'gris'> = {
 export function GestionUsuarios({
   roles,
   departamentos,
+  zonas,
   miId,
 }: {
   roles: Rol[]
   departamentos: { id: string; nombre: string }[]
+  zonas: { id: string; nombre: string }[]
   miId: string
 }) {
   const [usuarios, setUsuarios] = useState<UsuarioAdmin[] | null>(null)
@@ -190,6 +199,7 @@ export function GestionUsuarios({
           onGuardado={cargar}
           roles={roles}
           departamentos={departamentos}
+          zonas={zonas}
         />
       )}
 
@@ -203,6 +213,7 @@ export function GestionUsuarios({
           onGuardado={cargar}
           roles={roles}
           departamentos={departamentos}
+          zonas={zonas}
         />
       )}
     </div>
@@ -221,6 +232,7 @@ function ModalUsuario({
   onGuardado,
   roles,
   departamentos,
+  zonas,
 }: {
   abierto: boolean
   usuario?: UsuarioAdmin
@@ -229,6 +241,7 @@ function ModalUsuario({
   onGuardado: () => void
   roles: Rol[]
   departamentos: { id: string; nombre: string }[]
+  zonas: { id: string; nombre: string }[]
 }) {
   const esEdicion = Boolean(usuario)
   const [form, setForm] = useState({
@@ -238,6 +251,7 @@ function ModalUsuario({
     rol_id: String(usuario?.rol_id ?? 3),
     departamento: usuario?.departamento ?? '',
     whatsapp: usuario?.whatsapp ?? '',
+    zonas: usuario?.zonas ?? [],
     activo: usuario?.activo ?? true,
   })
   const [guardando, setGuardando] = useState(false)
@@ -273,6 +287,7 @@ function ModalUsuario({
           departamento: form.departamento,
           whatsapp: form.whatsapp,
           activo: form.activo,
+          zonas: form.zonas,
           ...(form.password ? { password: form.password } : {}),
         }
       : {
@@ -282,6 +297,7 @@ function ModalUsuario({
           rol_id: Number(form.rol_id),
           departamento: form.departamento,
           whatsapp: form.whatsapp,
+          zonas: form.zonas,
         }
 
     const res = await fetch(url, {
@@ -391,6 +407,73 @@ function ModalUsuario({
             />
           </Campo>
         </div>
+
+        {/* ------------------------- Zonas -------------------------- */}
+        {/* Sin ninguna marcada NO se restringe: ve toda la finca. Se dice
+            con todas las letras porque lo natural es leer una lista vacía
+            como «no ve nada», y aquí es lo contrario. */}
+        <Campo
+          etiqueta="Zonas asignadas"
+          ayuda={
+            form.zonas.length === 0
+              ? 'Sin ninguna marcada ve TODAS las zonas. Marca alguna sólo si quieres restringirlo.'
+              : `Sólo verá datos de ${form.zonas.length} zona(s): lotes, labores, riego, siembra y reportes.`
+          }
+        >
+          <div className="flex flex-col gap-1.5">
+            <div className="max-h-44 overflow-y-auto rounded-xl ring-1 ring-inset ring-slate-200">
+              {zonas.length === 0 ? (
+                <p className="px-3 py-3 text-sm text-slate-400">
+                  No hay zonas en el catálogo.
+                </p>
+              ) : (
+                zonas.map((z, i) => {
+                  const marcada = form.zonas.includes(z.id)
+                  return (
+                    <button
+                      key={z.id}
+                      type="button"
+                      role="checkbox"
+                      aria-checked={marcada}
+                      onClick={() =>
+                        setForm({
+                          ...form,
+                          zonas: marcada
+                            ? form.zonas.filter((x) => x !== z.id)
+                            : [...form.zonas, z.id],
+                        })
+                      }
+                      className={`flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors ${
+                        i > 0 ? 'border-t border-slate-100' : ''
+                      } ${marcada ? 'bg-brand-50' : 'hover:bg-slate-50'}`}
+                    >
+                      <span
+                        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                          marcada
+                            ? 'border-brand-700 bg-brand-700 text-white'
+                            : 'border-slate-300 bg-white'
+                        }`}
+                      >
+                        {marcada && <IconCheck className="h-3 w-3" />}
+                      </span>
+                      <span className="truncate text-sm text-slate-700">{z.nombre}</span>
+                    </button>
+                  )
+                })
+              )}
+            </div>
+
+            {form.zonas.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, zonas: [] })}
+                className="w-fit rounded-lg px-1 py-0.5 text-xs font-semibold text-slate-400 transition-colors hover:text-slate-900"
+              >
+                Limpiar · vuelve a ver todas
+              </button>
+            )}
+          </div>
+        </Campo>
 
         {esEdicion && (
           <Campo

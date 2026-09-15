@@ -26,10 +26,12 @@ import { Alerta, Boton } from '@/components/ui/Primitivos'
 import { IconCheck, IconPencil, IconPlus, IconX } from '@/components/ui/Icons'
 import {
   construirXlsx,
+  construirXlsxPlantilla,
   descargar,
   leerArchivoTabular,
   partirTextoTabular,
   type CeldaHoja,
+  type ListaPlantilla,
 } from '@/lib/hojas'
 import { mapearColumnas, type ColumnaHoja } from '@/lib/importacion'
 import { mensajeDeError } from '@/lib/errores'
@@ -51,6 +53,7 @@ export function ImportarHoja<T>({
   columnas,
   cabecerasResumen,
   ejemplo,
+  listas = [],
   etiquetaActualizar = 'Actualiza',
   interpretar,
   guardar,
@@ -64,6 +67,15 @@ export function ImportarHoja<T>({
   cabecerasResumen: string[]
   /** Una fila de ejemplo para la plantilla. */
   ejemplo: CeldaHoja[]
+  /**
+   * Desplegables de la plantilla, por índice de columna.
+   *
+   * Sin esto la plantilla es una hoja en blanco con encabezados y quien
+   * la llena tiene que adivinar cómo se escribe «Preparación de suelo».
+   * Con esto, Excel sólo deja elegir de la lista y el importador deja de
+   * rebotar filas por una tilde.
+   */
+  listas?: ListaPlantilla[]
   /** Qué dice la vista previa cuando la fila pisa algo que ya existe. */
   etiquetaActualizar?: string
   /** Convierte una fila de texto en valores, o en un error. */
@@ -82,8 +94,19 @@ export function ImportarHoja<T>({
   const [resultado, setResultado] = useState<string | null>(null)
 
   function plantilla() {
-    const hoja: CeldaHoja[][] = [columnas.map((c) => c.alias[0]), ejemplo]
-    descargar(construirXlsx('Plantilla', hoja), `plantilla-${titulo.toLowerCase().replace(/\s+/g, '-')}.xlsx`)
+    const encabezados = columnas.map((c) => c.alias[0])
+    const nombre = `plantilla-${titulo.toLowerCase().replace(/\s+/g, '-')}.xlsx`
+
+    // Con catálogos, la plantilla lleva los desplegables puestos. Sin
+    // ellos se cae a la hoja simple con una fila de ejemplo, que es lo
+    // que hacía antes: la plantilla inteligente no admite fila de
+    // ejemplo —se importaría junto con los datos de verdad—.
+    if (listas.length > 0) {
+      return descargar(construirXlsxPlantilla(titulo, encabezados, listas), nombre)
+    }
+
+    const hoja: CeldaHoja[][] = [encabezados, ejemplo]
+    descargar(construirXlsx('Plantilla', hoja), nombre)
   }
 
   function procesar(matriz: string[][]) {
@@ -144,7 +167,7 @@ export function ImportarHoja<T>({
     router.refresh()
   }
 
-  const listas = (preparadas ?? []).filter((p) => p.accion !== 'omitir').length
+  const aImportar = (preparadas ?? []).filter((p) => p.accion !== 'omitir').length
   const conError = (preparadas ?? []).filter((p) => p.accion === 'omitir').length
 
   return (
@@ -161,8 +184,8 @@ export function ImportarHoja<T>({
             <Boton variante="secundario" onClick={onCerrar} disabled={importando}>
               Cerrar
             </Boton>
-            <Boton onClick={confirmar} disabled={importando || listas === 0}>
-              {importando ? 'Importando…' : `Importar ${listas}`}
+            <Boton onClick={confirmar} disabled={importando || aImportar === 0}>
+              {importando ? 'Importando…' : `Importar ${aImportar}`}
             </Boton>
           </div>
         </div>
@@ -211,7 +234,7 @@ export function ImportarHoja<T>({
           <div className="flex flex-col gap-2">
             <p className="text-sm text-slate-600">
               <IconCheck className="mr-1 inline h-4 w-4 text-emerald-600" />
-              {listas} {listas === 1 ? 'fila lista' : 'filas listas'}
+              {aImportar} {aImportar === 1 ? 'fila lista' : 'filas listas'}
               {conError > 0 && (
                 <span className="ml-2 text-amber-700">
                   <IconX className="mr-1 inline h-4 w-4" />

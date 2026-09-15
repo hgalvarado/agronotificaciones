@@ -94,6 +94,15 @@ export const GRUPOS: GrupoDeclarado[] = [
         key: 'planes_nutricionales',
         descripcion: 'Los planes de nutrición que se aplican en cada turno de riego.',
       },
+      {
+        key: 'turnos',
+        etiqueta: 'Turnos de riego',
+        descripcion: 'Cada turno y la zona en la que riega normalmente; al elegirlo la propone.',
+      },
+      {
+        key: 'estaciones_riego',
+        descripcion: 'Las estaciones de bombeo desde las que se riega.',
+      },
     ],
   },
   {
