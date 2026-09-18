@@ -26,12 +26,12 @@ export function TablaHorometros({
   horometros,
   ticketId,
   ticketAbierto,
-  esAdmin,
+  puedeEliminar,
 }: {
   horometros: Fila[]
   ticketId: string
   ticketAbierto: boolean
-  esAdmin: boolean
+  puedeEliminar: boolean
 }) {
   const [busqueda, setBusqueda] = useState('')
 
@@ -81,7 +81,7 @@ export function TablaHorometros({
                 horometro={h}
                 ticketId={ticketId}
                 ticketAbierto={ticketAbierto}
-                esAdmin={esAdmin}
+                puedeEliminar={puedeEliminar}
               />
             ))}
           </div>
@@ -110,7 +110,7 @@ export function TablaHorometros({
                       horometro={h}
                       ticketId={ticketId}
                       ticketAbierto={ticketAbierto}
-                      esAdmin={esAdmin}
+                      puedeEliminar={puedeEliminar}
                     />
                   ))}
                 </tbody>
@@ -200,12 +200,12 @@ function FilaCompacta({
   horometro: h,
   ticketId,
   ticketAbierto,
-  esAdmin,
+  puedeEliminar,
 }: {
   horometro: Fila
   ticketId: string
   ticketAbierto: boolean
-  esAdmin: boolean
+  puedeEliminar: boolean
 }) {
   const { duplicar, eliminar, ocupado } = useAcciones(h, ticketId)
   const esDiurno = h.turno === 'DIURNO'
@@ -244,14 +244,14 @@ function FilaCompacta({
         <IconChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
       </Link>
 
-      {(ticketAbierto || esAdmin) && (
+      {(ticketAbierto || puedeEliminar) && (
         <div className="flex shrink-0 gap-1">
           {ticketAbierto && (
             <BotonAccion onClick={duplicar} disabled={ocupado} titulo="Duplicar horómetro">
               <IconCopy className="h-4 w-4" />
             </BotonAccion>
           )}
-          {esAdmin && (
+          {puedeEliminar && (
             <BotonAccion onClick={eliminar} disabled={ocupado} titulo="Eliminar horómetro" peligro>
               <IconTrash className="h-4 w-4" />
             </BotonAccion>
@@ -270,12 +270,12 @@ function FilaTabla({
   horometro: h,
   ticketId,
   ticketAbierto,
-  esAdmin,
+  puedeEliminar,
 }: {
   horometro: Fila
   ticketId: string
   ticketAbierto: boolean
-  esAdmin: boolean
+  puedeEliminar: boolean
 }) {
   const router = useRouter()
   const { duplicar, eliminar, ocupado } = useAcciones(h, ticketId)
@@ -315,7 +315,7 @@ function FilaTabla({
               <IconCopy className="h-4 w-4" />
             </BotonAccion>
           )}
-          {esAdmin && (
+          {puedeEliminar && (
             <BotonAccion onClick={eliminar} disabled={ocupado} titulo="Eliminar horómetro" peligro>
               <IconTrash className="h-4 w-4" />
             </BotonAccion>

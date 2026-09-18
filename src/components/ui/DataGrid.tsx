@@ -391,11 +391,28 @@ export function DataGrid<T extends { id: string }>({
                               }`}
                             >
                               {editable ? (
-                                <Celda
-                                  fila={f}
-                                  columna={c}
-                                  onGuardar={(v) => onEditarCelda?.(f, c.campo, v)}
-                                />
+                                // Con `sufijo`, la marca va AL LADO del
+                                // campo. Una celda editable no dibuja su
+                                // `render`, así que sin esto no habría
+                                // forma de enseñar nada sobre una celda
+                                // que se escribe —por ejemplo, que esas
+                                // horas las puso alguien a mano—.
+                                c.sufijo ? (
+                                  <span className="flex items-center justify-end gap-1">
+                                    <Celda
+                                      fila={f}
+                                      columna={c}
+                                      onGuardar={(v) => onEditarCelda?.(f, c.campo, v)}
+                                    />
+                                    {c.sufijo(f)}
+                                  </span>
+                                ) : (
+                                  <Celda
+                                    fila={f}
+                                    columna={c}
+                                    onGuardar={(v) => onEditarCelda?.(f, c.campo, v)}
+                                  />
+                                )
                               ) : c.render ? (
                                 c.render(f)
                               ) : (

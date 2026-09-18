@@ -29,7 +29,7 @@ import { mensajeDeError } from '@/lib/errores'
 import { filasHorometrosSap } from '@/lib/sap/exportacion'
 import { BotonExportarSap } from '@/components/ui/BotonExportarSap'
 import { validarHorasHombre } from '@/lib/horometro/validacion'
-import { procesoInfo } from '@/lib/estados'
+import { PROCESOS, procesoInfo } from '@/lib/estados'
 import type { Equipo, Operador, ProcesoTicket, TurnoTipo } from '@/lib/types'
 
 export type FilaControl = {
@@ -65,7 +65,25 @@ export type FilaControl = {
   inicio_contador?: boolean | null
 }
 
-const VACIOS = { equipos: [] as string[], familias: [] as string[], operadores: [] as string[], usuarios: [] as string[] }
+const VACIOS = {
+  equipos: [] as string[],
+  familias: [] as string[],
+  operadores: [] as string[],
+  usuarios: [] as string[],
+  procesos: [] as string[],
+}
+
+/**
+ * ¿Esta jornada ya se liquidó en SAP?
+ *
+ * El proceso 3 —Notificado— la cierra: corregirla aquí dejaría la base
+ * diciendo una cosa y SAP otra. Se corrige devolviendo el ticket a un
+ * proceso anterior. El Administrador sí puede, porque alguien tiene que
+ * poder arreglar una notificación mal hecha.
+ */
+function liquidada(f: { ticket_proceso: ProcesoTicket }): boolean {
+  return f.ticket_proceso === 'NOTIFICADO'
+}
 
 const n2 = (v: number | null | undefined) =>
   v === null || v === undefined ? '' : String(Math.round(Number(v) * 100) / 100)
@@ -156,6 +174,13 @@ export function ControlHorometros({
         cargadas.map((f) => [f.operador_codigo, f.operador_nombre].filter(Boolean).join(' ') || null)
       ),
       usuarios: distintos(cargadas.map((f) => f.usuario_nombre ?? null)),
+      // Del catálogo y no de las filas: se filtra por «Notificado»
+      // también cuando no hay ninguna todavía, que es justo cuando se
+      // quiere comprobar que no quedó nada sin notificar.
+      procesos: PROCESOS.map((p) => ({
+        valor: p.valor,
+        etiqueta: `${p.numero}. ${p.etiqueta}`,
+      })),
     }),
     [cargadas]
   )
@@ -165,7 +190,9 @@ export function ControlHorometros({
     const fa = new Set(externos.familias)
     const op = new Set(externos.operadores)
     const us = new Set(externos.usuarios)
+    const pr = new Set(externos.procesos)
     return cargadas.filter((f) => {
+      if (pr.size && !pr.has(f.ticket_proceso)) return false
       if (eq.size && !eq.has(f.equipo_codigo)) return false
       if (fa.size && !fa.has(f.familia ?? '')) return false
       if (
@@ -179,11 +206,7 @@ export function ControlHorometros({
     })
   }, [cargadas, externos])
 
-  const activos =
-    (externos.equipos.length ? 1 : 0) +
-    (externos.familias.length ? 1 : 0) +
-    (externos.operadores.length ? 1 : 0) +
-    (externos.usuarios.length ? 1 : 0)
+  const activos = Object.values(externos).filter((v) => v.length > 0).length
 
   const resumen = useMemo(() => {
     const conDesfase = lista.filter((f) => f.comparativo != null && Number(f.comparativo) !== 0)
@@ -217,7 +240,7 @@ export function ControlHorometros({
         label: 'Equipo',
         tipo: 'seleccion',
         valor: (f) => f.equipo_codigo,
-        editable: true,
+        editable: (f: FilaControl) => !liquidada(f),
         editor: 'seleccion',
         valorEdicion: (f) => f.equipo_id,
         opciones: equipos.map((e) => ({ value: e.id, label: e.codigo })),
@@ -230,7 +253,7 @@ export function ControlHorometros({
         tipo: 'numero',
         numero: true,
         valor: (f) => Number(f.horometro_inicial),
-        editable: true,
+        editable: (f: FilaControl) => !liquidada(f),
         editor: 'numero',
       },
       {
@@ -239,7 +262,7 @@ export function ControlHorometros({
         tipo: 'numero',
         numero: true,
         valor: (f) => Number(f.horometro_final),
-        editable: true,
+        editable: (f: FilaControl) => !liquidada(f),
         editor: 'numero',
       },
       {
@@ -248,7 +271,7 @@ export function ControlHorometros({
         tipo: 'seleccion',
         valor: (f) => f.turno,
         etiqueta: (f) => (f.turno === 'DIURNO' ? 'Diurno' : 'Nocturno'),
-        editable: true,
+        editable: (f: FilaControl) => !liquidada(f),
         editor: 'seleccion',
         valorEdicion: (f) => f.turno,
         opciones: [
@@ -289,7 +312,7 @@ export function ControlHorometros({
         tipo: 'seleccion',
         valor: (f) => f.operador_nombre,
         etiqueta: (f) => [f.operador_codigo, f.operador_nombre].filter(Boolean).join(' '),
-        editable: true,
+        editable: (f: FilaControl) => !liquidada(f),
         editor: 'seleccion',
         valorEdicion: (f) => f.operador_id ?? '',
         opciones: operadores.map((o) => ({
@@ -317,7 +340,7 @@ export function ControlHorometros({
         numero: true,
         valor: (f) => (f.horas_hombre === null ? null : Number(f.horas_hombre)),
         etiqueta: (f) => n2(f.horas_hombre),
-        editable: true,
+        editable: (f: FilaControl) => !liquidada(f),
         editor: 'numero',
       },
       {
@@ -325,7 +348,7 @@ export function ControlHorometros({
         label: 'Comentario',
         tipo: 'texto',
         valor: (f) => f.comentario,
-        editable: true,
+        editable: (f: FilaControl) => !liquidada(f),
         editor: 'texto',
       },
       {
@@ -547,6 +570,12 @@ export function ControlHorometros({
                 onCambiar={(v) => setExternos({ ...externos, operadores: v })}
               />
               <SelectorMultiple
+                etiqueta="Proceso"
+                opciones={opciones.procesos}
+                valores={externos.procesos}
+                onCambiar={(v) => setExternos({ ...externos, procesos: v })}
+              />
+              <SelectorMultiple
                 etiqueta="Usuario"
                 opciones={opciones.usuarios}
                 valores={externos.usuarios}
@@ -554,9 +583,23 @@ export function ControlHorometros({
               />
             </PanelFiltros>
           }
-          accionesSeleccion={(ids, limpiar) => (
+          accionesSeleccion={(marcadas, limpiar) => {
+            // Lo ya notificado se cae de la selección antes de cualquier
+            // acción en masa: si no, la base rechazaría esas filas a
+            // mitad del bucle y el cambio quedaría a medias.
+            const ids = marcadas.filter(
+              (id) => !lista.some((f) => f.id === id && liquidada(f))
+            )
+            const fuera = marcadas.length - ids.length
+            return (
             <>
-              {puedeEditar && (
+              {fuera > 0 && (
+                <span className="text-xs font-semibold text-slate-400">
+                  {fuera} ya {fuera === 1 ? 'notificada' : 'notificadas'}: no se{' '}
+                  {fuera === 1 ? 'toca' : 'tocan'}
+                </span>
+              )}
+              {puedeEditar && ids.length > 0 && (
                 <>
                   <select
                     aria-label="Turno en masa"
@@ -594,7 +637,7 @@ export function ControlHorometros({
                   </select>
                 </>
               )}
-              {puedeEliminar && (
+              {puedeEliminar && ids.length > 0 && (
                 <Boton
                   variante="peligro"
                   tamano="sm"
@@ -605,7 +648,8 @@ export function ControlHorometros({
                 </Boton>
               )}
             </>
-          )}
+            )
+          }}
         />
       )}
 

@@ -101,3 +101,22 @@ export async function eliminarLineas(
   }
   return { error: null }
 }
+
+/**
+ * Escribe a mano las horas notificadas de UNA línea.
+ *
+ * No va por `editarLinea` porque no es un campo más: la función de la
+ * base marca la línea como «puesta a mano» y vuelve a repartir el resto
+ * del horómetro entre las demás. Con `null` se quita la marca y la línea
+ * vuelve al reparto automático, que es la única forma de deshacerlo.
+ */
+export async function editarHorasDeLinea(
+  detalleId: string,
+  horas: number | null
+): Promise<{ error: string | null }> {
+  const { error } = await createClient().rpc('fn_horas_de_linea', {
+    p_detalle_id: detalleId,
+    p_horas: horas,
+  })
+  return { error: error?.message ?? null }
+}

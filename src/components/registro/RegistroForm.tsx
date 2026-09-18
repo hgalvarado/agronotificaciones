@@ -21,6 +21,10 @@ import type { ImplementoFisico, Proveedor } from '@/lib/datosRegistro'
 import { mensajeDeError } from '@/lib/errores'
 import { ajustarHorasDelHorometro } from '@/lib/prorrateo/servicioProrrateo'
 import { fisicosDeLabor, textoImplementoDeducido } from '@/lib/implementos/derivacion'
+import { LaborModal } from '@/components/labores/LaborModal'
+import { leerCategoriasLabor, leerLaborCompleta } from '@/lib/labores/repositorio'
+import { LABOR_NUEVA, type LaborVinculada } from '@/lib/labores/tipos'
+import type { CategoriaLabor } from '@/lib/types'
 
 type LaborConReglas = {
   id: string
@@ -132,6 +136,16 @@ export function RegistroForm({
   const [error, setError] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
 
+  // Las labores y sus vínculos viven en estado LOCAL, no en la prop.
+  // Crear una labor desde aquí tenía que poder meterla en la lista sin
+  // `router.refresh()`: refrescar la ruta le borraría al usuario todo lo
+  // que ya lleva escrito en el formulario, que es justo lo que no puede
+  // pasar a mitad de una captura.
+  const [laboresLocal, setLaboresLocal] = useState<LaborConReglas[]>(labores)
+  const [vinculosLocal, setVinculosLocal] = useState(vinculosFisicos)
+  const [editandoLabor, setEditandoLabor] = useState<LaborVinculada | null>(null)
+  const [categorias, setCategorias] = useState<CategoriaLabor[]>([])
+
   const [laborId, setLaborId] = useState(registroBase?.labor_id ?? '')
   const [tareaId, setTareaId] = useState(registroBase?.tarea_id ?? '')
   // Ya no hay estado para el implemento: se deduce del código físico.
@@ -179,7 +193,56 @@ export function RegistroForm({
     return mapa
   })
 
-  const laborActual = labores.find((l) => l.id === laborId)
+  const laborActual = laboresLocal.find((l) => l.id === laborId)
+
+  /**
+   * Abre el modal de labores sin salirse de la captura.
+   *
+   * Las categorías se piden aquí y no al cargar la pantalla porque la
+   * captura no las usa: traerlas siempre serían miles de consultas al
+   * año para un caso que ocurre de vez en cuando.
+   */
+  async function abrirLabor(labor: LaborVinculada) {
+    if (categorias.length === 0) setCategorias(await leerCategoriasLabor())
+    setEditandoLabor(labor)
+  }
+
+  /**
+   * La labor se guardó: se relee, se mete en la lista local y se
+   * selecciona. Nada de `router.refresh()`: lo ya escrito se queda.
+   */
+  async function laborGuardada(laborNuevaId: string) {
+    const leida = await leerLaborCompleta(laborNuevaId)
+    if (!leida) return
+
+    const labor = leida.labor as unknown as LaborConReglas
+    setLaboresLocal((antes) => {
+      const resto = antes.filter((l) => l.id !== laborNuevaId)
+      return [...resto, labor].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+    })
+    setVinculosLocal((antes) => [
+      ...antes.filter((v) => v.labor_id !== laborNuevaId),
+      ...leida.vinculos,
+    ])
+
+    // Si era otra labor la que estaba puesta, se cambia a la nueva y se
+    // limpian tarea e implemento: los de la labor anterior no aplican.
+    if (laborId !== laborNuevaId) {
+      setLaborId(laborNuevaId)
+      setTareaId('')
+      setImplementoFisicoId('')
+    } else {
+      // Es la misma: puede haber perdido la tarea o el código que estaban
+      // puestos, así que se comprueba en vez de dejar un id inválido.
+      const tareas = new Set(labor.labores_tareas.map((t) => t.tarea_id))
+      if (tareaId && !tareas.has(tareaId)) setTareaId('')
+      const fisicos = new Set(leida.vinculos.map((v) => v.implemento_fisico_id))
+      if (implementoFisicoId && fisicos.size > 0 && !fisicos.has(implementoFisicoId)) {
+        setImplementoFisicoId('')
+      }
+    }
+    setAviso(`Labor «${labor.nombre}» guardada y seleccionada.`)
+  }
 
   const plasticos = useMemo(() => proveedores.filter((p) => p.tipo === 'PLASTICO'), [proveedores])
   const mangueras = useMemo(() => proveedores.filter((p) => p.tipo === 'MANGUERA'), [proveedores])
@@ -194,8 +257,8 @@ export function RegistroForm({
   // propósito: una lista de 94 fierros haría que el digitador eligiera
   // el equivocado, y de eso se trata tener la vinculación.
   const fisicosPermitidos = useMemo(
-    () => fisicosDeLabor(implementosFisicos, vinculosFisicos, laborActual?.id),
-    [laborActual, vinculosFisicos, implementosFisicos]
+    () => fisicosDeLabor(implementosFisicos, vinculosLocal, laborActual?.id),
+    [laborActual, vinculosLocal, implementosFisicos]
   )
 
   // «Al hacerlo, el sistema debe autocompletar silenciosamente el
@@ -480,7 +543,11 @@ export function RegistroForm({
       {aviso && <Alerta tono="azul">{aviso}</Alerta>}
 
       <Tarjeta className="flex flex-col gap-4 p-5">
-        <Campo etiqueta="Labor" requerido>
+        <Campo
+          etiqueta="Labor"
+          requerido
+          ayuda="Si la labor que hizo el equipo no está en la lista, créala aquí mismo: no se pierde nada de lo que ya llevas escrito."
+        >
           <SelectorBuscable
             valor={laborId}
             onCambiar={(id) => {
@@ -491,8 +558,36 @@ export function RegistroForm({
             placeholder="Buscar labor…"
             etiquetaBusqueda="Escribe el nombre de la labor"
             permitirVacio={false}
-            opciones={labores.map((l) => ({ id: l.id, titulo: l.nombre }))}
+            opciones={laboresLocal.map((l) => ({ id: l.id, titulo: l.nombre }))}
           />
+          <div className="mt-1.5 flex flex-wrap gap-2">
+            <Boton
+              type="button"
+              variante="secundario"
+              tamano="sm"
+              onClick={() => abrirLabor({ ...LABOR_NUEVA })}
+            >
+              <IconPlus className="h-4 w-4" />
+              Nueva labor
+            </Boton>
+            {laborActual && (
+              <Boton
+                type="button"
+                variante="secundario"
+                tamano="sm"
+                onClick={() =>
+                  abrirLabor({
+                    ...(laborActual as unknown as LaborVinculada),
+                    labores_implementos_fisicos: vinculosLocal
+                      .filter((v) => v.labor_id === laborActual.id)
+                      .map((v) => ({ implemento_fisico_id: v.implemento_fisico_id })),
+                  })
+                }
+              >
+                Editar tareas e implementos
+              </Boton>
+            )}
+          </div>
         </Campo>
 
         <Campo etiqueta="Tarea SAP a liquidar" requerido>
@@ -513,8 +608,9 @@ export function RegistroForm({
 
         {laborId && tareasPermitidas.length === 0 && (
           <Alerta tono="ambar">
-            Esta labor no tiene tareas SAP configuradas. Vincúlalas en Catálogos → Labores antes de
-            registrarla.
+            Esta labor no tiene tareas SAP configuradas y sin una tarea no se puede liquidar.
+            Vincúlaselas con <strong>«Editar tareas e implementos»</strong>, aquí mismo: antes había
+            que irse a Catálogos y volver a empezar la captura.
           </Alerta>
         )}
 
@@ -856,6 +952,26 @@ export function RegistroForm({
               : 'Guardar y terminar'}
         </Boton>
       </div>
+      {/* Crear o corregir la labor sin salirse de la captura. Va DENTRO
+          del formulario a propósito: así el estado del formulario sigue
+          montado y nada de lo escrito se pierde. */}
+      {editandoLabor && (
+        <LaborModal
+          labor={editandoLabor}
+          categorias={categorias}
+          tareasSap={tareasSap}
+          implementos={implementos}
+          implementosFisicos={implementosFisicos.map((i) => ({
+            id: i.id,
+            codigo: i.codigo,
+            descripcion: i.descripcion ?? '',
+            implemento_id: i.implemento_id ?? null,
+          }))}
+          soportaProveedores={!sinMigracion}
+          onCerrar={() => setEditandoLabor(null)}
+          onGuardado={laborGuardada}
+        />
+      )}
     </form>
   )
 }

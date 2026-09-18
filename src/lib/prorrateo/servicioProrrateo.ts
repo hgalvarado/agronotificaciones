@@ -17,9 +17,17 @@ export const MENSAJES: Record<MotivoProrrateo, string | null> = {
   ya_cuadra: null,
   sin_lineas: null,
   sin_horometro: null,
-  sin_horas: 'Las horas del horómetro se repartieron entre los lotes según sus manzanas.',
+  sin_horas: 'Las horas del horómetro se repartieron entre los lotes del día.',
   suma_incorrecta:
-    'Las horas de los lotes no sumaban las del horómetro, así que se repartieron según sus manzanas.',
+    'Las horas de los lotes no sumaban las del horómetro, así que se repartieron de nuevo.',
+  manual_copa_el_total:
+    'Las horas que corregiste a mano ya cubren todo el horómetro: a los demás lotes les quedó el mínimo. Sube las horas del horómetro o baja las que pusiste a mano.',
+}
+
+/** Cómo se explica la regla con la que se repartió. */
+export const REGLAS: Record<'area' | 'partes', string> = {
+  area: 'por manzanas de cada lote',
+  partes: 'en partes iguales, porque algún lote no trae manzanas',
 }
 
 export type ResultadoAjuste = {
@@ -45,5 +53,11 @@ export async function ajustarHorasDelHorometro(horometroId: string): Promise<Res
   const { error: errorAplicar } = await aplicarProrrateo(horometroId)
   if (errorAplicar) return { ajustado: false, mensaje: null, error: errorAplicar }
 
-  return { ajustado: true, mensaje: MENSAJES[resultado.motivo], error: null }
+  const base = MENSAJES[resultado.motivo]
+  const mensaje =
+    base && resultado.regla && resultado.motivo !== 'manual_copa_el_total'
+      ? `${base.replace(/\.$/, '')} ${REGLAS[resultado.regla]}.`
+      : base
+
+  return { ajustado: true, mensaje, error: null }
 }

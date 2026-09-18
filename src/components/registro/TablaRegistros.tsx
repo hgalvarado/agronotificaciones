@@ -16,13 +16,13 @@ export function TablaRegistros({
   registros,
   ticketId,
   ticketAbierto,
-  esAdmin,
+  puedeEliminar,
   mostrarEquipo = false,
 }: {
   registros: FilaRegistro[]
   ticketId: string
   ticketAbierto: boolean
-  esAdmin: boolean
+  puedeEliminar: boolean
   mostrarEquipo?: boolean
 }) {
   const [busqueda, setBusqueda] = useState('')
@@ -75,7 +75,7 @@ export function TablaRegistros({
                 registro={r}
                 ticketId={ticketId}
                 ticketAbierto={ticketAbierto}
-                esAdmin={esAdmin}
+                puedeEliminar={puedeEliminar}
                 mostrarEquipo={mostrarEquipo}
               />
             ))}
@@ -103,7 +103,7 @@ export function TablaRegistros({
                       registro={r}
                       ticketId={ticketId}
                       ticketAbierto={ticketAbierto}
-                      esAdmin={esAdmin}
+                      puedeEliminar={puedeEliminar}
                       mostrarEquipo={mostrarEquipo}
                     />
                   ))}
@@ -173,12 +173,12 @@ function Acciones({
   registro,
   ticketId,
   ticketAbierto,
-  esAdmin,
+  puedeEliminar,
 }: {
   registro: FilaRegistro
   ticketId: string
   ticketAbierto: boolean
-  esAdmin: boolean
+  puedeEliminar: boolean
 }) {
   const { editar, duplicar, eliminar, ocupado } = useAcciones(registro, ticketId)
 
@@ -208,7 +208,7 @@ function Acciones({
           </button>
         </>
       )}
-      {esAdmin && (
+      {puedeEliminar && (
         <button
           onClick={eliminar}
           disabled={ocupado}
@@ -229,13 +229,13 @@ function FilaCompacta({
   registro: r,
   ticketId,
   ticketAbierto,
-  esAdmin,
+  puedeEliminar,
   mostrarEquipo,
 }: {
   registro: FilaRegistro
   ticketId: string
   ticketAbierto: boolean
-  esAdmin: boolean
+  puedeEliminar: boolean
   mostrarEquipo: boolean
 }) {
   const mz = totalMz(r)
@@ -281,7 +281,7 @@ function FilaCompacta({
         registro={r}
         ticketId={ticketId}
         ticketAbierto={ticketAbierto}
-        esAdmin={esAdmin}
+        puedeEliminar={puedeEliminar}
       />
     </div>
   )
@@ -291,13 +291,13 @@ function FilaTabla({
   registro: r,
   ticketId,
   ticketAbierto,
-  esAdmin,
+  puedeEliminar,
   mostrarEquipo,
 }: {
   registro: FilaRegistro
   ticketId: string
   ticketAbierto: boolean
-  esAdmin: boolean
+  puedeEliminar: boolean
   mostrarEquipo: boolean
 }) {
   const mz = totalMz(r)
@@ -341,7 +341,7 @@ function FilaTabla({
             registro={r}
             ticketId={ticketId}
             ticketAbierto={ticketAbierto}
-            esAdmin={esAdmin}
+            puedeEliminar={puedeEliminar}
           />
         </div>
       </td>

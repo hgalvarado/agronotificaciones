@@ -1,8 +1,8 @@
 import Link from 'next/link'
-import { puedeCapturar } from '@/lib/permisos/captura'
+import { estaNotificado, puedeCapturar } from '@/lib/permisos/captura'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getPerfilActual } from '@/lib/auth'
+import { getPerfilActual, getPermisos, puede } from '@/lib/auth'
 import { AccionesTicket } from '@/components/ticket/AccionesTicket'
 import { TablaHorometros } from '@/components/horometro/TablaHorometros'
 import { TablaRegistros } from '@/components/registro/TablaRegistros'
@@ -164,9 +164,21 @@ export default async function TicketDetailPage({
   // Antes era `ticket.estado === 'ABIERTO'` a secas, y eso obligaba a
   // Torre de Control a reabrir un ticket para corregir una cifra. La
   // misma regla que aplica la base: los dos roles de mando editan
-  // siempre, el dueño sólo mientras esté abierto.
-  const abierto = puedeCapturar(rol?.codigo, ticket.estado)
-  const esAdmin = rol?.codigo === 'ADMIN'
+  // siempre, el dueño sólo mientras esté abierto, y un ticket ya
+  // NOTIFICADO no lo toca nadie más que el Administrador.
+  const abierto = puedeCapturar(rol?.codigo, ticket.estado, ticket.proceso)
+
+  // Y además la MATRIZ de permisos, que es lo que faltaba: esta pantalla
+  // decidía sólo por el rol, así que a un rol al que se le había quitado
+  // «editar» o «eliminar» en Permisos le seguían saliendo los botones y
+  // sólo la base lo paraba —con un error de permisos en la cara—. Ahora
+  // esconde exactamente lo que la base rechaza.
+  const permisos = await getPermisos()
+  const puedeEditarHorometros = abierto && puede(permisos, 'horometros', 'editar')
+  const puedeEditarLabores = abierto && puede(permisos, 'labores', 'editar')
+  const puedeBorrarHorometros = abierto && puede(permisos, 'horometros', 'eliminar')
+  const puedeBorrarLabores = abierto && puede(permisos, 'labores', 'eliminar')
+  const puedeCrear = abierto && puede(permisos, 'tickets', 'crear')
   const estado = estadoInfo(ticket.estado)
   const proceso = procesoInfo(ticket.proceso)
 
@@ -209,6 +221,17 @@ export default async function TicketDetailPage({
 
         <p className="mt-3 text-xs text-slate-400">{proceso.descripcion}</p>
 
+        {/* Un ticket notificado se queda de sólo lectura y hay que decirlo:
+            si no, el usuario busca el botón de editar y cree que se
+            perdió. */}
+        {estaNotificado(ticket.proceso) && (
+          <p className="mt-3 rounded-lg bg-slate-100 px-3 py-2 text-xs text-slate-500">
+            Ya liquidado en SAP: horómetros y labores quedan de{' '}
+            <strong>sólo lectura</strong>. Para corregir algo, Torre de Control tiene que
+            devolver el ticket a un proceso anterior.
+          </p>
+        )}
+
         <div className="mt-4 border-t border-slate-100 pt-4">
           <AccionesTicket
             ticket={ticket}
@@ -236,7 +259,7 @@ export default async function TicketDetailPage({
           titulo="Horómetros"
           contador={horometros.length}
           accion={
-            abierto ? (
+            puedeEditarHorometros || puedeCrear ? (
               <div className="flex flex-wrap items-center gap-1.5">
                 {/* La carga por Excel es para el registro histórico: una
                     jornada vieja completa de golpe, en vez de horómetro
@@ -267,7 +290,7 @@ export default async function TicketDetailPage({
               titulo="Sin horómetros"
               descripcion="Registra el primer equipo de la jornada."
               accion={
-                abierto ? (
+                puedeEditarHorometros || puedeCrear ? (
                   <div className="flex flex-wrap items-center justify-center gap-2">
                     <BotonLink href={`/tickets/${ticketId}/horometros/nuevo`} tamano="sm">
                       <IconPlus className="h-4 w-4" />
@@ -286,8 +309,8 @@ export default async function TicketDetailPage({
           ) : (
             <TablaHorometros
               ticketId={ticketId}
-              ticketAbierto={abierto}
-              esAdmin={esAdmin}
+              ticketAbierto={puedeEditarHorometros}
+              puedeEliminar={puedeBorrarHorometros}
               horometros={horometros.map((h) => ({
                 ...h,
                 cantidadLabores: registros.filter((r) => r.horometro_id === h.id).length,
@@ -311,8 +334,8 @@ export default async function TicketDetailPage({
           ) : (
             <TablaRegistros
               ticketId={ticketId}
-              ticketAbierto={abierto}
-              esAdmin={esAdmin}
+              ticketAbierto={puedeEditarLabores}
+              puedeEliminar={puedeBorrarLabores}
               mostrarEquipo
               registros={registros.map((r) => ({
                 ...r,

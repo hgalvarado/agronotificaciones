@@ -19,7 +19,13 @@
 import { createClient } from '@/lib/supabase/client'
 import type { LineaHorometro } from './tipos'
 
-type FilaDetalle = { id: string; avance_mz: number | null; horas_maquina?: number | null }
+type FilaDetalle = {
+  id: string
+  avance_mz: number | null
+  horas_maquina?: number | null
+  /** Llega con la migración 42. Sin ella nada está marcado a mano. */
+  horas_manual?: boolean | null
+}
 type FilaRegistro = { registro_detalle: FilaDetalle[] | null }
 
 export type DatosHorometro = {
@@ -36,7 +42,10 @@ export async function leerHorometroParaProrrateo(
     supabase.from('horometros').select('horas_maquina').eq('id', horometroId).maybeSingle(),
     supabase
       .from('registros')
-      .select('registro_detalle(id, avance_mz, horas_maquina)')
+      // `*` y no una lista de columnas: `horas_manual` llega con la
+      // migración 42 y pedirla por nombre rompería la pantalla entera
+      // mientras no esté corrida.
+      .select('registro_detalle(*)')
       .eq('horometro_id', horometroId),
   ])
 
@@ -49,6 +58,7 @@ export async function leerHorometroParaProrrateo(
       mz: d.avance_mz === null ? null : Number(d.avance_mz),
       horasActuales:
         d.horas_maquina === null || d.horas_maquina === undefined ? null : Number(d.horas_maquina),
+      manual: Boolean(d.horas_manual),
     }))
   )
 

@@ -26,6 +26,10 @@ export type PermisoFila = { rol_id: number; recurso: string; accion: string }
 
 const ETIQUETAS: Record<string, string> = {
   ver: 'Ver',
+  // «Ver todo» va junto a «Ver» a propósito: son la misma pregunta con
+  // dos respuestas —lo mío o lo de la empresa— y separarlas en la fila
+  // es lo que hace que se note que son distintas.
+  ver_todo: 'Ver todo',
   crear: 'Crear',
   editar: 'Editar',
   eliminar: 'Eliminar',
@@ -34,6 +38,8 @@ const ETIQUETAS: Record<string, string> = {
 
 const AYUDA: Record<string, string> = {
   ver: 'La pantalla le aparece en el menú y puede consultarla.',
+  ver_todo:
+    'Ve lo que capturaron los demás, no sólo lo suyo. SIN esta casilla, el usuario ve únicamente los tickets que él abrió: es lo que corresponde a un digitador de campo. Con ella marcada ve toda la empresa, recortada por las zonas que tenga asignadas.',
   crear: 'Puede agregar registros nuevos.',
   editar: 'Puede modificar lo que ya existe.',
   eliminar: 'Puede borrar registros.',

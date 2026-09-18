@@ -55,6 +55,15 @@ export type ColumnaGrid<T> = {
   etiqueta?: (fila: T) => string
   /** Cómo se dibuja la celda. Si falta, se dibuja la etiqueta. */
   render?: (fila: T) => ReactNode
+  /**
+   * Una marca al lado del campo, en las celdas EDITABLES.
+   *
+   * Una celda editable enseña su editor y no su `render`, así que sin
+   * esto no hay forma de decir nada sobre lo que la celda contiene —por
+   * ejemplo, que esas horas las escribió una persona y el reparto
+   * automático no las toca—.
+   */
+  sufijo?: (fila: T) => ReactNode
   /** Alinea a la derecha y usa cifras tabulares. */
   numero?: boolean
   ancho?: string

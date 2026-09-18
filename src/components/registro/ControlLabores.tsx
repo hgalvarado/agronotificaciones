@@ -27,12 +27,17 @@ import { SelectorMultiple } from '@/components/ui/SelectorMultiple'
 import { EditarLaborModal, type CatalogosEdicion, type FilaEditable } from './EditarLaborModal'
 import type { ColumnaGrid } from '@/lib/grid/tipos'
 import type { ColumnaVista } from '@/lib/grid/vistas'
-import { editarLinea, eliminarLineas, type CampoLinea } from '@/lib/registro/repositorioLinea'
+import {
+  editarHorasDeLinea,
+  editarLinea,
+  eliminarLineas,
+  type CampoLinea,
+} from '@/lib/registro/repositorioLinea'
 import { mesEnCurso } from '@/lib/fechas'
 import { mensajeDeError } from '@/lib/errores'
 import { filasLaboresSap } from '@/lib/sap/exportacion'
 import { BotonExportarSap } from '@/components/ui/BotonExportarSap'
-import { procesoInfo } from '@/lib/estados'
+import { PROCESOS, procesoInfo } from '@/lib/estados'
 import type { ProcesoTicket, TurnoTipo } from '@/lib/types'
 
 type FilaLabor = {
@@ -95,6 +100,8 @@ type FilaLabor = {
   detalle_comentarios?: string | null
   /** Llega con la migración 39: si esta labor lleva etapa o no. */
   requiere_etapa?: boolean | null
+  /** Llega con la migración 42: las horas las puso una persona a mano. */
+  horas_manual?: boolean | null
   detalle_fecha?: string | null
   equipo_id?: string | null
   operador_id?: string | null
@@ -114,6 +121,21 @@ const VACIOS = {
   ciclos: [] as string[],
   equipos: [] as string[],
   turnos: [] as string[],
+  procesos: [] as string[],
+  usuarios: [] as string[],
+}
+
+/**
+ * ¿Esta línea está ya liquidada en SAP?
+ *
+ * El proceso 3 —Notificado— cierra la línea: corregirla aquí dejaría la
+ * base diciendo una cosa y SAP otra. Se corrige devolviendo el ticket a
+ * un proceso anterior, que es una decisión de Torre de Control y no un
+ * cambio de celda. El Administrador sí puede, porque alguien tiene que
+ * poder arreglar una notificación mal hecha.
+ */
+function liquidada(f: { ticket_proceso: ProcesoTicket }): boolean {
+  return f.ticket_proceso === 'NOTIFICADO'
 }
 
 /**
@@ -163,10 +185,15 @@ export function ControlLabores({
   const [ocupado, setOcupado] = useState(false)
   const [vista, setVista] = useState<ColumnaVista[] | null>(null)
 
-  const inicial = useMemo(() => ({ ...mesEnCurso(), temporada_id: '' }), [])
+  const inicial = useMemo(() => mesEnCurso(), [])
   const [rango, setRango] = useState(inicial)
   const [consulta, setConsulta] = useState(inicial)
   const [externos, setExternos] = useState(VACIOS)
+  // La temporada NO espera al botón «Consultar». El rango de fechas sí,
+  // porque ampliarlo son miles de filas y se cambia de dos en dos
+  // campos; elegir una temporada es un clic y tiene que contestar solo.
+  // Antes se guardaba junto al rango y por eso no disparaba nada.
+  const [temporadas_, setTemporadas] = useState<string[]>([])
 
   const leer = useCallback(async () => {
     let q = supabase
@@ -176,10 +203,10 @@ export function ControlLabores({
       .lte('fecha', consulta.hasta)
       .order('fecha', { ascending: true })
       .limit(5000)
-    if (consulta.temporada_id) q = q.eq('temporada_id', consulta.temporada_id)
+    if (temporadas_.length > 0) q = q.in('temporada_id', temporadas_)
     return q
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [consulta.desde, consulta.hasta, consulta.temporada_id])
+  }, [consulta.desde, consulta.hasta, temporadas_])
 
   const recargar = useCallback(async () => {
     const { data, error: e } = await leer()
@@ -231,6 +258,14 @@ export function ControlLabores({
         { valor: 'DIURNO', etiqueta: 'Diurno' },
         { valor: 'NOCTURNO', etiqueta: 'Nocturno' },
       ],
+      // El proceso sale del catálogo y no de las filas: se filtra por
+      // «Notificado» también cuando no hay ninguna todavía, que es
+      // justo cuando se quiere comprobar que no quedó nada sin notificar.
+      procesos: PROCESOS.map((p) => ({
+        valor: p.valor,
+        etiqueta: `${p.numero}. ${p.etiqueta}`,
+      })),
+      usuarios: distintos(cargadas.map((f) => f.usuario_nombre)),
     }),
     [cargadas]
   )
@@ -241,17 +276,22 @@ export function ControlLabores({
     const ci = new Set(externos.ciclos)
     const eq = new Set(externos.equipos)
     const tu = new Set(externos.turnos)
+    const pr = new Set(externos.procesos)
+    const us = new Set(externos.usuarios)
     return cargadas.filter((f) => {
       if (la.size && !la.has(f.labor_nombre)) return false
       if (lo.size && !lo.has(f.ut)) return false
       if (ci.size && !ci.has(String(f.ciclo))) return false
       if (eq.size && !eq.has(f.equipo_codigo)) return false
       if (tu.size && !tu.has(f.turno)) return false
+      if (pr.size && !pr.has(f.ticket_proceso)) return false
+      if (us.size && !us.has(f.usuario_nombre ?? '')) return false
       return true
     })
   }, [cargadas, externos])
 
-  const activos = Object.values(externos).filter((v) => v.length > 0).length
+  const activos =
+    Object.values(externos).filter((v) => v.length > 0).length + (temporadas_.length > 0 ? 1 : 0)
 
   const resumen = useMemo(
     () => ({
@@ -275,8 +315,11 @@ export function ControlLabores({
         campo: 'ut',
         label: 'UT',
         tipo: 'seleccion',
+        // La ubicación técnica es la clave con la que se habla en campo:
+        // cortada a «1001…» no sirve para nada.
+        ancho: '11rem',
         valor: (f) => f.ut,
-        editable: true,
+        editable: (f: Fila) => !liquidada(f),
         editor: 'seleccion',
         valorEdicion: (f) => f.lote_temporada_id,
         opciones: catalogosEdicion.lotes.map((l) => ({
@@ -290,9 +333,10 @@ export function ControlLabores({
         campo: 'tarea_codigo',
         label: 'Tarea',
         tipo: 'seleccion',
+        ancho: '12rem',
         valor: (f) => f.tarea_codigo,
         etiqueta: (f) => `${f.tarea_codigo} · ${f.tarea_nombre}`,
-        editable: true,
+        editable: (f: Fila) => !liquidada(f),
         editor: 'seleccion',
         valorEdicion: (f) => f.tarea_id,
         opciones: catalogosEdicion.tareasSap.map((t) => ({
@@ -309,8 +353,9 @@ export function ControlLabores({
         campo: 'labor_nombre',
         label: 'Labor',
         tipo: 'seleccion',
+        ancho: '12rem',
         valor: (f) => f.labor_nombre,
-        editable: true,
+        editable: (f: Fila) => !liquidada(f),
         editor: 'seleccion',
         valorEdicion: (f) => f.labor_id,
         opciones: catalogosEdicion.labores.map((l) => ({ value: l.id, label: l.nombre })),
@@ -329,7 +374,7 @@ export function ControlLabores({
         numero: true,
         valor: (f) => (f.avance_mz === null ? null : Number(f.avance_mz)),
         etiqueta: (f) => n2(f.avance_mz),
-        editable: true,
+        editable: (f: Fila) => !liquidada(f),
         editor: 'numero',
       },
       { campo: 'equipo_codigo', label: 'Equipo', tipo: 'seleccion', valor: (f) => f.equipo_codigo },
@@ -354,7 +399,39 @@ export function ControlLabores({
         numero: true,
         valor: (f) => horasDeLinea(f),
         etiqueta: (f) => n2(horasDeLinea(f)),
-        render: (f) => <span className="font-bold text-brand-700">{n2(horasDeLinea(f))}</span>,
+        // Se corrige a mano, y lo corregido NO se vuelve a pisar: la
+        // base lo marca y reparte el resto entre los demás lotes. Es el
+        // caso del operador que sabe que ese lote le llevó cuatro horas
+        // aunque el área diga otra cosa. Vaciar la celda lo devuelve al
+        // reparto automático.
+        editable: (f: Fila) => puedeEditar && !liquidada(f),
+        editor: 'numero',
+        valorEdicion: (f) => n2(horasDeLinea(f)),
+        // La marca va como `sufijo` y no dentro de `render`: una celda
+        // editable enseña su campo de escribir, no su `render`, así que
+        // ahí la marca no se vería nunca.
+        sufijo: (f) =>
+          f.horas_manual ? (
+            <span
+              title="Puesta a mano: el reparto automático no la toca"
+              className="rounded bg-amber-100 px-1 text-[10px] font-bold text-amber-700"
+            >
+              mano
+            </span>
+          ) : null,
+        render: (f) => (
+          <span className="inline-flex items-center gap-1">
+            <span className="font-bold text-brand-700">{n2(horasDeLinea(f))}</span>
+            {f.horas_manual && (
+              <span
+                title="Puesta a mano: el reparto automático no la toca"
+                className="rounded bg-amber-100 px-1 text-[10px] font-bold text-amber-700"
+              >
+                mano
+              </span>
+            )}
+          </span>
+        ),
       },
       {
         campo: 'puesto_equipo',
@@ -383,7 +460,7 @@ export function ControlLabores({
         label: 'Código impl.',
         tipo: 'seleccion',
         valor: (f) => f.codigo_implemento ?? null,
-        editable: true,
+        editable: (f: Fila) => !liquidada(f),
         editor: 'seleccion',
         valorEdicion: (f) => f.implemento_fisico_id ?? '',
         opciones: catalogosEdicion.implementosFisicos.map((i) => ({
@@ -464,7 +541,7 @@ export function ControlLabores({
         // Sólo donde la etapa significa algo. La bandera la pone el
         // catálogo de labores (seguimiento de emplasticado), así que se
         // configura sin tocar código.
-        editable: (f) => f.requiere_etapa === true,
+        editable: (f) => f.requiere_etapa === true && !liquidada(f),
         editor: 'seleccion',
         valorEdicion: (f) => (f.etapa ? String(f.etapa) : ''),
         opciones: [
@@ -489,7 +566,7 @@ export function ControlLabores({
         label: 'Prov. plástico',
         tipo: 'seleccion',
         valor: (f) => f.proveedor_plastico ?? null,
-        editable: puedeEditar,
+        editable: (f: Fila) => puedeEditar && !liquidada(f),
         editor: 'seleccion',
         valorEdicion: (f) => f.proveedor_plastico_id ?? '',
         opciones: [
@@ -509,7 +586,7 @@ export function ControlLabores({
         label: 'Prov. manguera',
         tipo: 'seleccion',
         valor: (f) => f.proveedor_manguera ?? null,
-        editable: puedeEditar,
+        editable: (f: Fila) => puedeEditar && !liquidada(f),
         editor: 'seleccion',
         valorEdicion: (f) => f.proveedor_manguera_id ?? '',
         opciones: [
@@ -529,7 +606,7 @@ export function ControlLabores({
         label: 'Comentarios',
         tipo: 'texto',
         valor: (f) => f.detalle_comentarios ?? null,
-        editable: puedeEditar,
+        editable: (f: Fila) => puedeEditar && !liquidada(f),
         editor: 'texto',
         render: (f) => (
           <span
@@ -583,6 +660,29 @@ export function ControlLabores({
   }
 
   async function editarCelda(fila: Fila, campo: string, valor: unknown) {
+    // Las horas notificadas no son un campo más de la línea: marcarlas a
+    // mano obliga a repartir de nuevo el resto del horómetro, y eso lo
+    // hace su propia función en una sola transacción.
+    if (campo === 'horas_linea') {
+      setError(null)
+      const horas = valor === null || valor === '' ? null : Number(valor)
+      const { error: e } = await editarHorasDeLinea(fila.detalle_id, horas)
+      if (e) {
+        return setError(
+          mensajeDeError(
+            e,
+            'No se pudieron guardar las horas. Si dice que no existe «fn_horas_de_linea», falta correr la migración 42.'
+          )
+        )
+      }
+      setAviso(
+        horas === null
+          ? 'Esa línea volvió al reparto automático.'
+          : 'Horas puestas a mano: el reparto ya no las toca y el resto se repartió entre los demás lotes.'
+      )
+      return recargar()
+    }
+
     const cual = CAMPOS[campo]
     if (!cual) return
 
@@ -763,8 +863,11 @@ export function ControlLabores({
               onHasta={(v) => setRango({ ...rango, hasta: v })}
               onConsultar={() => setConsulta({ ...rango })}
               activos={activos}
-              onLimpiar={() => setExternos(VACIOS)}
-              ayuda="Al entrar se carga el mes en curso. Amplía el rango sólo cuando necesites mirar atrás."
+              onLimpiar={() => {
+                setExternos(VACIOS)
+                setTemporadas([])
+              }}
+              ayuda="Al entrar se carga el mes en curso. La temporada, el proceso y los demás filtran al instante; el rango de fechas espera el botón, porque cada mes de más son miles de filas."
             >
               <SelectorMultiple
                 etiqueta="Labor"
@@ -796,27 +899,47 @@ export function ControlLabores({
                 valores={externos.turnos}
                 onCambiar={(v) => setExternos({ ...externos, turnos: v })}
               />
+              <SelectorMultiple
+                etiqueta="Proceso"
+                opciones={opciones.procesos}
+                valores={externos.procesos}
+                onCambiar={(v) => setExternos({ ...externos, procesos: v })}
+              />
+              <SelectorMultiple
+                etiqueta="Capturó"
+                opciones={opciones.usuarios}
+                valores={externos.usuarios}
+                onCambiar={(v) => setExternos({ ...externos, usuarios: v })}
+              />
               {temporadas.length > 0 && (
-                <Campo etiqueta="Temporada">
-                  <Selector
-                    value={rango.temporada_id}
-                    onChange={(e) => setRango({ ...rango, temporada_id: e.target.value })}
-                  >
-                    <option value="">Todas</option>
-                    {temporadas.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.nombre}
-                        {t.activa ? ' (activa)' : ''}
-                      </option>
-                    ))}
-                  </Selector>
-                </Campo>
+                <SelectorMultiple
+                  etiqueta="Temporada"
+                  opciones={temporadas.map((t) => ({
+                    valor: t.id,
+                    etiqueta: `${t.nombre}${t.activa ? ' (activa)' : ''}`,
+                  }))}
+                  valores={temporadas_}
+                  onCambiar={setTemporadas}
+                />
               )}
             </PanelFiltros>
           }
-          accionesSeleccion={(ids, limpiar) => (
+          accionesSeleccion={(marcadas, limpiar) => {
+            // Lo ya notificado se cae de la selección antes de cualquier
+            // acción en masa: si no, la base rechazaría esas líneas a
+            // mitad del bucle y el resultado quedaría a medias.
+            const ids = marcadas.filter(
+              (id) => !lista.some((f) => f.id === id && liquidada(f))
+            )
+            const fuera = marcadas.length - ids.length
+            return (
             <>
-              {puedeEditar && (
+              {fuera > 0 && (
+                <span className="text-xs font-semibold text-slate-400">
+                  {fuera} ya {fuera === 1 ? 'notificada' : 'notificadas'}: no se {fuera === 1 ? 'toca' : 'tocan'}
+                </span>
+              )}
+              {puedeEditar && ids.length > 0 && (
                 <>
                   <select
                     aria-label="Tarea en masa"
@@ -854,12 +977,12 @@ export function ControlLabores({
                   </select>
                 </>
               )}
-              {puedeCambiarTemporada && (
+              {puedeCambiarTemporada && ids.length > 0 && (
                 <Boton variante="secundario" tamano="sm" onClick={() => setEnTemporada(ids)}>
                   Cambiar temporada
                 </Boton>
               )}
-              {puedeEliminar && (
+              {puedeEliminar && ids.length > 0 && (
                 <Boton
                   variante="peligro"
                   tamano="sm"
@@ -875,10 +998,21 @@ export function ControlLabores({
                 </Boton>
               )}
             </>
-          )}
+            )
+          }}
           accionFila={
             puedeEditar
-              ? (f) => <BotonFila onClick={() => setEditando(f)}>Editar todo</BotonFila>
+              ? (f) =>
+                  liquidada(f) ? (
+                    <span
+                      title="Ya notificado a SAP: se corrige devolviendo el ticket a un proceso anterior"
+                      className="text-xs font-semibold text-slate-300"
+                    >
+                      Notificado
+                    </span>
+                  ) : (
+                    <BotonFila onClick={() => setEditando(f)}>Editar todo</BotonFila>
+                  )
               : undefined
           }
         />

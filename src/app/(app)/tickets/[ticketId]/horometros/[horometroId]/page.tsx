@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { puedeCapturar } from '@/lib/permisos/captura'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getPerfilActual } from '@/lib/auth'
+import { getPerfilActual, getPermisos, puede } from '@/lib/auth'
 import { TablaRegistros } from '@/components/registro/TablaRegistros'
 import {
   BotonLink,
@@ -67,9 +67,16 @@ export default async function HorometroDetailPage({
   // Antes era `ticket.estado === 'ABIERTO'` a secas, y eso obligaba a
   // Torre de Control a reabrir un ticket para corregir una cifra. La
   // misma regla que aplica la base: los dos roles de mando editan
-  // siempre, el dueño sólo mientras esté abierto.
-  const abierto = puedeCapturar(rol?.codigo, ticket.estado)
-  const esAdmin = rol?.codigo === 'ADMIN'
+  // siempre, el dueño sólo mientras esté abierto, y un ticket ya
+  // NOTIFICADO no lo toca nadie más que el Administrador.
+  const abierto = puedeCapturar(rol?.codigo, ticket.estado, ticket.proceso)
+
+  // La matriz de permisos, además del rol: es lo que faltaba para que la
+  // pantalla esconda exactamente lo que la base rechaza.
+  const permisos = await getPermisos()
+  const puedeEditarLabores = abierto && puede(permisos, 'labores', 'editar')
+  const puedeBorrarLabores = abierto && puede(permisos, 'labores', 'eliminar')
+  const puedeEditarHorometro = abierto && puede(permisos, 'horometros', 'editar')
   const esDiurno = h.turno === 'DIURNO'
 
   return (
@@ -128,7 +135,7 @@ export default async function HorometroDetailPage({
           </p>
         )}
 
-        {abierto && (
+        {puedeEditarHorometro && (
           <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
             <BotonLink
               href={`/tickets/${ticketId}/horometros/${horometroId}/editar`}
@@ -154,7 +161,7 @@ export default async function HorometroDetailPage({
           titulo="Labores de este equipo"
           contador={registros.length}
           accion={
-            abierto ? (
+            puedeEditarLabores ? (
               <BotonLink
                 href={`/tickets/${ticketId}/horometros/${horometroId}/registros/nuevo`}
                 variante="suave"
@@ -174,7 +181,7 @@ export default async function HorometroDetailPage({
               titulo="Sin labores registradas"
               descripcion="Desglosa qué hizo este equipo durante las horas trabajadas."
               accion={
-                abierto ? (
+                puedeEditarLabores ? (
                   <BotonLink
                     href={`/tickets/${ticketId}/horometros/${horometroId}/registros/nuevo`}
                     tamano="sm"
@@ -188,8 +195,8 @@ export default async function HorometroDetailPage({
           ) : (
             <TablaRegistros
               ticketId={ticketId}
-              ticketAbierto={abierto}
-              esAdmin={esAdmin}
+              ticketAbierto={puedeEditarLabores}
+              puedeEliminar={puedeBorrarLabores}
               registros={registros.map((r) => ({
                 ...r,
                 detalle: detalles.filter((d) => d.registro_id === r.id),
