@@ -76,4 +76,16 @@ export function formatearFechaHora(iso: string) {
 }
 
 /** Ciclos de cultivo válidos. Lista cerrada: la base también la valida. */
+/**
+ * Los dos estados del ticket, para los selectores.
+ *
+ * `estadoInfo` ya traducía uno a la vez; esto es la lista completa, que
+ * es lo que necesita un filtro para ofrecer las dos opciones aunque
+ * todavía no exista ningún ticket cerrado.
+ */
+export const ESTADOS_TICKET: { valor: EstadoTicket; etiqueta: string }[] = [
+  { valor: 'ABIERTO', etiqueta: 'Activo' },
+  { valor: 'CERRADO', etiqueta: 'Cerrado' },
+]
+
 export const CICLOS = [1, 2, 3] as const

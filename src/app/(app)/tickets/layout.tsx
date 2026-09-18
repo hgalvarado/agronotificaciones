@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getPerfilActual, getPermisos, puede } from '@/lib/auth'
 import { TicketsSplit } from '@/components/ticket/TicketsSplit'
 import { ListaTickets } from '@/components/ticket/ListaTickets'
-import type { Ticket } from '@/lib/types'
+import type { BloqueTickets, Capturador } from '@/lib/tickets/tipos'
 
 // La lista vive en el LAYOUT (no en la página) para que Next.js la
 // conserve entre navegaciones: al tocar otro ticket sólo se vuelve a
@@ -12,21 +12,24 @@ export default async function TicketsLayout({ children }: { children: React.Reac
   const [{ perfil }, permisos] = await Promise.all([getPerfilActual(), getPermisos()])
 
   // RLS decide el alcance: sin «Ver todo» en Tickets se reciben sólo los
-  // propios. Se piden SÓLO las columnas que la lista dibuja, y las dos
-  // consultas van en paralelo. Antes traía todas las columnas de 200
-  // tickets en cada navegación, que es la mayor parte de lo que se sentía
-  // lento.
-  //
-  // Antes esto era `rol?.codigo === 'ADMIN' || rol?.codigo === 'TORRE_CONTROL'`.
+  // propios, así que aquí no hay ni un filtro por usuario.
   const veTodo = puede(permisos, 'tickets', 'ver_todo')
 
-  const [{ data: tickets }, { data: temporadaActiva }, { data: usuarios }, { data: temporadas }] =
-    await Promise.all([
-    supabase
-      .from('tickets')
-      .select('id, codigo, fecha, estado, proceso, departamento, usuario_id')
-      .order('fecha', { ascending: false })
-      .limit(100),
+  // El ÍNDICE del historial, no los tickets. Antes esto traía las últimas
+  // cien filas y con eso marzo desaparecía; ahora trae una consulta
+  // agregada —un renglón por mes y proceso, unas cien en dos años de
+  // operación— y los tickets de cada bloque se bajan al abrirlo. El
+  // historial es infinito hacia atrás y la primera pantalla cuesta lo
+  // mismo el primer día que el último.
+  const [
+    { data: resumen },
+    { data: capturadores },
+    { data: temporadaActiva },
+    { data: usuarios },
+    { data: temporadas },
+  ] = await Promise.all([
+    supabase.rpc('fn_tickets_resumen'),
+    supabase.rpc('fn_tickets_capturadores'),
     supabase.from('temporadas').select('id').eq('activa', true).maybeSingle(),
     // Para el ticket histórico: sólo hace falta la lista si esta persona
     // puede crear a nombre de otro.
@@ -47,7 +50,8 @@ export default async function TicketsLayout({ children }: { children: React.Reac
     <TicketsSplit
       lista={
         <ListaTickets
-          tickets={(tickets as Ticket[] | null) ?? []}
+          resumenInicial={(resumen as BloqueTickets[] | null) ?? []}
+          capturadoresIniciales={(capturadores as Capturador[] | null) ?? []}
           usuarioId={perfil?.id ?? ''}
           nombreUsuario={perfil?.nombre ?? ''}
           departamento={perfil?.departamento ?? null}

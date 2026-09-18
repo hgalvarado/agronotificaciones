@@ -1,19 +1,30 @@
 'use client'
 
 import Link from 'next/link'
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
-import { Alerta, Boton, Campo, Insignia, EstadoVacio, Selector } from '@/components/ui/Primitivos'
+import { Alerta, Boton, Campo, Insignia, Selector } from '@/components/ui/Primitivos'
 import { Modal } from '@/components/ui/Modal'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { IconCheck, IconInbox, IconPlus, IconSearch, IconX } from '@/components/ui/Icons'
+import { IconCheck, IconPlus, IconSearch, IconX } from '@/components/ui/Icons'
 import { PROCESOS, estadoInfo, formatearFecha, procesoInfo } from '@/lib/estados'
 import { NuevoTicketModal, type UsuarioTicket } from './NuevoTicketModal'
-import type { EstadoTicket, ProcesoTicket, Ticket } from '@/lib/types'
+import { ArbolTickets } from './ArbolTickets'
+import { BotonFiltros } from './FiltrosTickets'
+import { leerCapturadores, leerResumen } from '@/lib/tickets/repositorio'
+import {
+  SIN_FILTROS,
+  type BloqueTickets,
+  type Capturador,
+  type FilaTicket as FilaTicketDato,
+  type FiltrosTickets,
+} from '@/lib/tickets/tipos'
+import type { EstadoTicket, ProcesoTicket } from '@/lib/types'
 
 export function ListaTickets({
-  tickets,
+  resumenInicial = [],
+  capturadoresIniciales = [],
   usuarioId,
   nombreUsuario,
   departamento,
@@ -22,7 +33,13 @@ export function ListaTickets({
   temporadas = [],
   puedeLotes = false,
 }: {
-  tickets: Ticket[]
+  /**
+   * El árbol mes → proceso que el servidor ya trajo. Es una consulta
+   * agregada de unas cien filas, no los tickets: los de cada bloque se
+   * bajan al abrirlo.
+   */
+  resumenInicial?: BloqueTickets[]
+  capturadoresIniciales?: Capturador[]
   usuarioId: string
   nombreUsuario: string
   departamento: string | null
@@ -34,11 +51,79 @@ export function ListaTickets({
   puedeLotes?: boolean
 }) {
   const params = useParams<{ ticketId?: string }>()
-  const [busqueda, setBusqueda] = useState('')
   const [abrirNuevo, setAbrirNuevo] = useState(false)
   const [modoSeleccion, setModoSeleccion] = useState(false)
   const [marcados, setMarcados] = useState<Set<string>>(new Set())
   const [abrirLote, setAbrirLote] = useState(false)
+
+  // Lo que se ha bajado hasta ahora. La selección vive aquí porque el
+  // árbol no sabe de acciones en masa, y «seleccionar todos» tiene que
+  // significar algo honesto: lo que la persona abrió, no los cinco mil
+  // del historial que nadie ha mirado.
+  const [cargadas, setCargadas] = useState<Set<string>>(new Set())
+  const anotarCargadas = useCallback((filas: FilaTicketDato[]) => {
+    setCargadas((antes) => {
+      const copia = new Set(antes)
+      for (const f of filas) copia.add(f.id)
+      return copia
+    })
+  }, [])
+
+  const [filtros, setFiltros] = useState<FiltrosTickets>(SIN_FILTROS)
+  const [bloques, setBloques] = useState<BloqueTickets[]>(resumenInicial)
+  const [capturadores, setCapturadores] = useState<Capturador[]>(capturadoresIniciales)
+  const [cargando, setCargando] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // El texto se escribe seguido, así que la consulta espera a que la
+  // persona termine: sin esto serían ocho viajes para escribir «TK-1024».
+  const [texto, setTexto] = useState('')
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setFiltros((antes) => (antes.busqueda === texto ? antes : { ...antes, busqueda: texto }))
+    }, 350)
+    return () => clearTimeout(t)
+  }, [texto])
+
+  const huella = JSON.stringify(filtros)
+  useEffect(() => {
+    let vivo = true
+    async function cargar() {
+      setCargando(true)
+      const { bloques: b, error: e } = await leerResumen(JSON.parse(huella) as FiltrosTickets)
+      if (!vivo) return
+      setBloques(b)
+      setError(e)
+      setCargando(false)
+      // Con otro filtro, lo bajado y lo marcado dejan de valer.
+      setCargadas(new Set())
+      setMarcados(new Set())
+    }
+    cargar()
+    return () => {
+      vivo = false
+    }
+  }, [huella])
+
+  useEffect(() => {
+    if (capturadoresIniciales.length > 0) return
+    let vivo = true
+    async function cargar() {
+      const c = await leerCapturadores()
+      if (vivo) setCapturadores(c)
+    }
+    cargar()
+    return () => {
+      vivo = false
+    }
+  }, [capturadoresIniciales.length])
+
+  const meses = useMemo(
+    () => [...new Set(bloques.map((b) => b.mes))].sort((a, b) => b.localeCompare(a)),
+    [bloques]
+  )
+  const total = useMemo(() => bloques.reduce((a, b) => a + Number(b.cuantos), 0), [bloques])
+
 
   function alternarMarcado(id: string) {
     setMarcados((prev) => {
@@ -54,24 +139,6 @@ export function ListaTickets({
     setMarcados(new Set())
   }
 
-  const filtrados = useMemo(() => {
-    const q = busqueda.trim().toLowerCase()
-    if (!q) return tickets
-    return tickets.filter(
-      (t) => t.codigo.toLowerCase().includes(q) || (t.departamento ?? '').toLowerCase().includes(q)
-    )
-  }, [tickets, busqueda])
-
-  // Agrupado por proceso, igual que en la app actual de AppSheet
-  const grupos = useMemo(
-    () =>
-      PROCESOS.map((p) => ({
-        ...p,
-        tickets: filtrados.filter((t) => (t.proceso ?? 'REGISTRADO') === p.valor),
-      })).filter((g) => g.tickets.length > 0),
-    [filtrados]
-  )
-
   return (
     <>
       <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur-md lg:px-4">
@@ -80,6 +147,14 @@ export function ListaTickets({
             {modoSeleccion ? `${marcados.size} seleccionados` : 'Tickets'}
           </h1>
           <div className="flex items-center gap-1.5">
+            {!modoSeleccion && (
+              <BotonFiltros
+                filtros={filtros}
+                meses={meses}
+                capturadores={capturadores}
+                onCambiar={setFiltros}
+              />
+            )}
             {puedeLotes &&
               (modoSeleccion ? (
                 <button
@@ -115,10 +190,10 @@ export function ListaTickets({
         {modoSeleccion && (
           <div className="mt-2 flex items-center gap-2">
             <button
-              onClick={() => setMarcados(new Set(filtrados.map((t) => t.id)))}
+              onClick={() => setMarcados(new Set(cargadas))}
               className="rounded-md px-2 py-1 text-xs font-semibold text-brand-700 hover:bg-brand-50"
             >
-              Seleccionar los {filtrados.length} visibles
+              Seleccionar los {cargadas.size} que ya abriste
             </button>
             {marcados.size > 0 && (
               <button
@@ -134,52 +209,37 @@ export function ListaTickets({
         <div className="relative mt-3">
           <IconSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-300" />
           <input
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-            placeholder="Buscar ticket…"
+            value={texto}
+            onChange={(e) => setTexto(e.target.value)}
+            placeholder="Buscar en todo el historial…"
             className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm transition-colors placeholder:text-slate-300 focus:border-brand-600 focus:bg-white focus:outline-none focus:ring-4 focus:ring-brand-600/10"
           />
         </div>
       </div>
 
       <div className="scroll-suave flex-1 overflow-y-auto px-3 py-3 lg:px-3">
-        {grupos.length === 0 ? (
-          <EstadoVacio
-            icono={<IconInbox />}
-            titulo={busqueda ? 'Sin resultados' : 'Todavía no hay tickets'}
-            descripcion={
-              busqueda
-                ? 'Prueba con otro código o departamento.'
-                : 'Genera el primer ticket de la jornada con el botón de arriba.'
-            }
-          />
-        ) : (
-          <div className="flex flex-col gap-4">
-            {grupos.map((grupo) => (
-              <section key={grupo.valor}>
-                <div className="flex items-center gap-2 px-1 pb-1.5">
-                  <Insignia tono={grupo.tono} punto>
-                    {grupo.numero} · {grupo.etiqueta}
-                  </Insignia>
-                  <span className="text-xs font-semibold text-slate-400">{grupo.tickets.length}</span>
-                </div>
+        <p className="px-1 pb-2 text-xs text-slate-400">
+          {total} {total === 1 ? 'ticket' : 'tickets'} en el historial. Abre un mes y un proceso para
+          verlos; se bajan de cuarenta en cuarenta.
+        </p>
 
-                <div className="flex flex-col gap-1.5">
-                  {grupo.tickets.map((ticket) => (
-                    <FilaTicket
-                      key={ticket.id}
-                      ticket={ticket}
-                      seleccionado={params?.ticketId === ticket.id}
-                      modoSeleccion={modoSeleccion}
-                      marcado={marcados.has(ticket.id)}
-                      onMarcar={() => alternarMarcado(ticket.id)}
-                    />
-                  ))}
-                </div>
-              </section>
-            ))}
-          </div>
-        )}
+        <ArbolTickets
+          bloques={bloques}
+          filtros={filtros}
+          cargandoResumen={cargando && bloques.length === 0}
+          error={error}
+          onFilasCargadas={anotarCargadas}
+          fila={(t) => (
+            <FilaTicket
+              key={t.id}
+              ticket={t}
+              seleccionado={params?.ticketId === t.id}
+              modoSeleccion={modoSeleccion}
+              marcado={marcados.has(t.id)}
+              onMarcar={() => alternarMarcado(t.id)}
+            />
+          )}
+        />
       </div>
 
       {modoSeleccion && marcados.size > 0 && (
@@ -220,7 +280,7 @@ function FilaTicket({
   marcado,
   onMarcar,
 }: {
-  ticket: Ticket
+  ticket: FilaTicketDato
   seleccionado: boolean
   modoSeleccion: boolean
   marcado: boolean
@@ -262,6 +322,12 @@ function FilaTicket({
           <>
             <span className="text-slate-200">·</span>
             <span className="truncate">{ticket.departamento}</span>
+          </>
+        )}
+        {ticket.usuario_nombre && (
+          <>
+            <span className="text-slate-200">·</span>
+            <span className="truncate">{ticket.usuario_nombre}</span>
           </>
         )}
       </div>
