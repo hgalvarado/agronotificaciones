@@ -66,9 +66,11 @@ export default async function HorometroDetailPage({
   // ticket. Cerrado es una marca de avance, no un candado; el único tope
   // es NOTIFICADO.
   const permisos = await getPermisos()
+  const puedeAgregarLabores = puedeEnTicket(permisos, 'labores', 'crear', ticket.proceso)
   const puedeEditarLabores = puedeEnTicket(permisos, 'labores', 'editar', ticket.proceso)
   const puedeBorrarLabores = puedeEnTicket(permisos, 'labores', 'eliminar', ticket.proceso)
   const puedeEditarHorometro = puedeEnTicket(permisos, 'horometros', 'editar', ticket.proceso)
+  const puedeAgregarHorometro = puedeEnTicket(permisos, 'horometros', 'crear', ticket.proceso)
   const esDiurno = h.turno === 'DIURNO'
 
   return (
@@ -127,22 +129,26 @@ export default async function HorometroDetailPage({
           </p>
         )}
 
-        {puedeEditarHorometro && (
+        {(puedeEditarHorometro || puedeAgregarHorometro) && (
           <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
-            <BotonLink
-              href={`/tickets/${ticketId}/horometros/${horometroId}/editar`}
-              variante="secundario"
-              tamano="sm"
-            >
-              <IconPencil className="h-4 w-4" />
-              Editar horómetro
-            </BotonLink>
+            {puedeEditarHorometro && (
+              <BotonLink
+                href={`/tickets/${ticketId}/horometros/${horometroId}/editar`}
+                variante="secundario"
+                tamano="sm"
+              >
+                <IconPencil className="h-4 w-4" />
+                Editar horómetro
+              </BotonLink>
+            )}
             {/* Cierra el ciclo equipo → labores → siguiente equipo sin
                 tener que devolverse a la pantalla del ticket. */}
-            <BotonLink href={`/tickets/${ticketId}/horometros/nuevo`} tamano="sm">
-              <IconPlus className="h-4 w-4" />
-              Siguiente equipo
-            </BotonLink>
+            {puedeAgregarHorometro && (
+              <BotonLink href={`/tickets/${ticketId}/horometros/nuevo`} tamano="sm">
+                <IconPlus className="h-4 w-4" />
+                Siguiente equipo
+              </BotonLink>
+            )}
           </div>
         )}
       </Tarjeta>
@@ -153,7 +159,7 @@ export default async function HorometroDetailPage({
           titulo="Labores de este equipo"
           contador={registros.length}
           accion={
-            puedeEditarLabores ? (
+            puedeAgregarLabores ? (
               <BotonLink
                 href={`/tickets/${ticketId}/horometros/${horometroId}/registros/nuevo`}
                 variante="suave"
@@ -173,7 +179,7 @@ export default async function HorometroDetailPage({
               titulo="Sin labores registradas"
               descripcion="Desglosa qué hizo este equipo durante las horas trabajadas."
               accion={
-                puedeEditarLabores ? (
+                puedeAgregarLabores ? (
                   <BotonLink
                     href={`/tickets/${ticketId}/horometros/${horometroId}/registros/nuevo`}
                     tamano="sm"

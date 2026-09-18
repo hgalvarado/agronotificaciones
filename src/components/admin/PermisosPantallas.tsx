@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Alerta, Boton, Entrada, Insignia, Tarjeta } from '@/components/ui/Primitivos'
@@ -24,36 +24,52 @@ export type RolFila = {
 }
 export type PermisoFila = { rol_id: number; recurso: string; accion: string }
 
-const ETIQUETAS: Record<string, string> = {
-  ver: 'Ver',
-  // «Ver todo» va junto a «Ver» a propósito: son la misma pregunta con
-  // dos respuestas —lo mío o lo de la empresa— y separarlas en la fila
-  // es lo que hace que se note que son distintas.
-  ver_todo: 'Ver todo',
-  crear: 'Crear',
-  editar: 'Editar',
-  eliminar: 'Eliminar',
-  descargar: 'Descargar',
+/**
+ * Una acción del catálogo de la base.
+ *
+ * Las columnas de la matriz salen de aquí y NO de una lista escrita en
+ * el navegador. Con la lista escrita a mano pasó justo lo que no podía
+ * pasar: la base exigía `horometros:crear`, el navegador sólo dibujaba
+ * cinco columnas, y esa casilla no existía en ninguna parte. El
+ * Administrador se quedaba sin poder concederla y el Digitador sin poder
+ * capturar.
+ */
+export type AccionCatalogo = {
+  codigo: string
+  nombre: string
+  descripcion: string | null
+  orden: number
 }
 
-const AYUDA: Record<string, string> = {
-  ver: 'La pantalla le aparece en el menú y puede consultarla.',
-  ver_todo:
-    'Ve lo que capturaron los demás, no sólo lo suyo. SIN esta casilla, el usuario ve únicamente los tickets que él abrió: es lo que corresponde a un digitador de campo. Con ella marcada ve toda la empresa, recortada por las zonas que tenga asignadas.',
-  crear: 'Puede agregar registros nuevos.',
-  editar: 'Puede modificar lo que ya existe.',
-  eliminar: 'Puede borrar registros.',
-  descargar: 'Puede bajar la información a Excel.',
+/** Una llave que la base exige y la matriz no ofrece. Tiene que venir vacía. */
+export type LlaveSinCasilla = { pantalla: string; accion: string; motivo: string }
+
+/**
+ * Cómo se lee un código de acción que el catálogo todavía no conoce.
+ *
+ * No debería pasar —la migración siembra el catálogo y el guardián avisa
+ * si falta algo— pero si pasa, vale más una columna con el código crudo
+ * que una restricción invisible. Eso era el problema de origen.
+ */
+function comoSeLee(codigo: string): string {
+  const texto = codigo.replace(/_/g, ' ')
+  return texto.charAt(0).toUpperCase() + texto.slice(1)
 }
 
 export function PermisosPantallas({
   roles,
   pantallas,
   permisos,
+  acciones,
+  sinCasilla = [],
 }: {
   roles: RolFila[]
   pantallas: Pantalla[]
   permisos: PermisoFila[]
+  /** El catálogo de la base. Es lo que decide las columnas. */
+  acciones: AccionCatalogo[]
+  /** Lo que la base exige sin casilla. Se enseña como aviso, no se esconde. */
+  sinCasilla?: LlaveSinCasilla[]
 }) {
   const supabase = createClient()
   const router = useRouter()
@@ -71,6 +87,27 @@ export function PermisosPantallas({
   // puede quitar algo.
   const editables = roles.filter((r) => r.codigo !== 'ADMIN')
   const rol = editables.find((r) => r.id === rolActivo) ?? editables[0]
+
+  // Las columnas son TODAS las acciones que alguna pantalla declara. Si
+  // una pantalla trae una acción que el catálogo no conoce, se dibuja
+  // igual con su código: una llave sin casilla es peor que una columna
+  // fea.
+  const columnas = useMemo<AccionCatalogo[]>(() => {
+    const porCodigo = new Map(acciones.map((a) => [a.codigo, a]))
+    for (const p of pantallas) {
+      for (const codigo of p.acciones) {
+        if (!porCodigo.has(codigo)) {
+          porCodigo.set(codigo, {
+            codigo,
+            nombre: comoSeLee(codigo),
+            descripcion: 'Esta acción todavía no está en el catálogo de la base.',
+            orden: 999,
+          })
+        }
+      }
+    }
+    return [...porCodigo.values()].sort((a, b) => a.orden - b.orden || a.codigo.localeCompare(b.codigo))
+  }, [acciones, pantallas])
 
   function tiene(recurso: string, accion: string) {
     return permisos.some(
@@ -227,6 +264,32 @@ export function PermisosPantallas({
 
       {error && <Alerta>{error}</Alerta>}
 
+      {/* El guardián. Si la base exige una llave que la matriz no ofrece,
+          se dice AQUÍ en vez de que alguien lo descubra por un error de
+          permisos en mitad de la captura. Debería venir siempre vacío. */}
+      {sinCasilla.length > 0 && (
+        <Alerta tono="ambar">
+          <p className="font-semibold">
+            Hay {sinCasilla.length} {sinCasilla.length === 1 ? 'restricción' : 'restricciones'} en la
+            base sin casilla en esta pantalla:
+          </p>
+          <ul className="mt-1 list-disc pl-5">
+            {sinCasilla.map((l) => (
+              <li key={`${l.pantalla}:${l.accion}`}>
+                <code className="font-mono">
+                  {l.pantalla}:{l.accion}
+                </code>{' '}
+                — {l.motivo}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1">
+            Mientras estén así, nadie puede encenderlas ni apagarlas desde aquí. Hay que agregarlas
+            a <code className="font-mono">pantallas.acciones</code> en el SQL Editor.
+          </p>
+        </Alerta>
+      )}
+
       {/* ----------------------------- Matriz ----------------------------- */}
 
       {/* Celular: una tarjeta por pantalla con sus acciones como fichas.
@@ -250,16 +313,17 @@ export function PermisosPantallas({
               {p.descripcion && <p className="text-xs text-slate-400">{p.descripcion}</p>}
 
               <div className="mt-2 flex flex-wrap gap-1.5">
-                {Object.keys(ETIQUETAS)
-                  .filter((a) => p.acciones.includes(a))
-                  .map((accion) => {
-                    const activo = tiene(p.codigo, accion)
-                    const llave = `${p.codigo}:${accion}`
+                {columnas
+                  .filter((a) => p.acciones.includes(a.codigo))
+                  .map((a) => {
+                    const activo = tiene(p.codigo, a.codigo)
+                    const llave = `${p.codigo}:${a.codigo}`
                     return (
                       <button
-                        key={accion}
-                        onClick={() => alternar(p.codigo, accion)}
+                        key={a.codigo}
+                        onClick={() => alternar(p.codigo, a.codigo)}
                         disabled={guardando === llave}
+                        title={a.descripcion ?? undefined}
                         className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 text-xs font-semibold transition-all disabled:opacity-40 ${
                           activo
                             ? 'bg-brand-700 text-white'
@@ -267,7 +331,7 @@ export function PermisosPantallas({
                         }`}
                       >
                         {activo && <IconCheck className="h-3 w-3" />}
-                        {ETIQUETAS[accion]}
+                        {a.nombre}
                       </button>
                     )
                   })}
@@ -281,19 +345,19 @@ export function PermisosPantallas({
       <div className="hidden sm:block">
         <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[var(--shadow-card)]">
           <div className="scroll-suave overflow-x-auto">
-            <table className="w-full min-w-[620px] text-sm">
+            <table className="w-full min-w-[880px] text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50/70 text-left">
                   <th className="px-4 py-2.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">
                     Pantalla
                   </th>
-                  {Object.keys(ETIQUETAS).map((a) => (
+                  {columnas.map((a) => (
                     <th
-                      key={a}
-                      title={AYUDA[a]}
+                      key={a.codigo}
+                      title={a.descripcion ?? undefined}
                       className="w-24 px-2 py-2.5 text-center text-[11px] font-bold uppercase tracking-wide text-slate-500"
                     >
-                      {ETIQUETAS[a]}
+                      {a.nombre}
                     </th>
                   ))}
                 </tr>
@@ -321,7 +385,8 @@ export function PermisosPantallas({
                         )}
                       </td>
   
-                      {Object.keys(ETIQUETAS).map((accion) => {
+                      {columnas.map((a) => {
+                        const accion = a.codigo
                         const aplica = p.acciones.includes(accion)
                         const activo = tiene(p.codigo, accion)
                         const llave = `${p.codigo}:${accion}`
@@ -338,7 +403,7 @@ export function PermisosPantallas({
                               <button
                                 onClick={() => alternar(p.codigo, accion)}
                                 disabled={guardando === llave}
-                                aria-label={`${ETIQUETAS[accion]} en ${p.nombre}`}
+                                aria-label={`${a.nombre} en ${p.nombre}`}
                                 className={`mx-auto flex h-6 w-6 items-center justify-center rounded-md border transition-all disabled:opacity-40 ${
                                   activo
                                     ? 'border-brand-700 bg-brand-700 text-white'
@@ -373,8 +438,13 @@ export function PermisosPantallas({
           </p>
           <p>
             El <strong>Administrador</strong> no aparece en la lista porque siempre tiene acceso
-            total, y el <strong>Digitador</strong> sigue viendo únicamente sus propios registros
-            aunque le des permiso de ver una pantalla: eso es una regla de fila, no de pantalla.
+            total. Un rol <strong>sin «Ver todo»</strong> ve únicamente lo que capturó él, aunque le
+            des «Ver» en la pantalla: eso es una regla de fila, no de pantalla.
+          </p>
+          <p>
+            Las columnas salen del catálogo de la base, no del navegador: cuando se agregue un
+            módulo o una acción nueva, la casilla aparece sola aquí. Toda restricción que la base
+            aplique tiene su casilla; si alguna se quedara sin ella, arriba sale el aviso.
           </p>
         </div>
       </div>

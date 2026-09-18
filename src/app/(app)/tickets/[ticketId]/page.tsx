@@ -167,11 +167,15 @@ export default async function TicketDetailPage({
   // de permisos en la cara. Y el estado del ticket ya no bloquea: cerrado
   // es una marca de avance, no un candado.
   const permisos = await getPermisos()
+  // Agregar y corregir son casillas distintas desde la migración 44: los
+  // INSERT piden «crear» y los UPDATE «editar». Era lo que dejaba al
+  // Digitador sin poder agregar un horómetro.
+  const puedeAgregarHorometros = puedeEnTicket(permisos, 'horometros', 'crear', ticket.proceso)
   const puedeEditarHorometros = puedeEnTicket(permisos, 'horometros', 'editar', ticket.proceso)
   const puedeEditarLabores = puedeEnTicket(permisos, 'labores', 'editar', ticket.proceso)
   const puedeBorrarHorometros = puedeEnTicket(permisos, 'horometros', 'eliminar', ticket.proceso)
   const puedeBorrarLabores = puedeEnTicket(permisos, 'labores', 'eliminar', ticket.proceso)
-  const puedeCrear = puedeEnTicket(permisos, 'tickets', 'crear', ticket.proceso)
+  const puedeImportar = puedeEnTicket(permisos, 'horometros', 'importar', ticket.proceso)
   const estado = estadoInfo(ticket.estado)
   const proceso = procesoInfo(ticket.proceso)
 
@@ -252,25 +256,30 @@ export default async function TicketDetailPage({
           titulo="Horómetros"
           contador={horometros.length}
           accion={
-            puedeEditarHorometros || puedeCrear ? (
+            puedeAgregarHorometros || puedeImportar ? (
               <div className="flex flex-wrap items-center gap-1.5">
                 {/* La carga por Excel es para el registro histórico: una
                     jornada vieja completa de golpe, en vez de horómetro
-                    por horómetro. */}
-                <BotonImportarDetalle
-                  ticketId={ticketId}
-                  ticketCodigo={ticket.codigo}
-                  fechaTicket={formatearFecha(ticket.fecha)}
-                  catalogos={catalogos}
-                />
-                <BotonLink
-                  href={`/tickets/${ticketId}/horometros/nuevo`}
-                  variante="suave"
-                  tamano="sm"
-                >
-                  <IconPlus className="h-4 w-4" />
-                  Agregar
-                </BotonLink>
+                    por horómetro. Por eso lleva su propia casilla:
+                    entran cientos de filas de una vez. */}
+                {puedeImportar && (
+                  <BotonImportarDetalle
+                    ticketId={ticketId}
+                    ticketCodigo={ticket.codigo}
+                    fechaTicket={formatearFecha(ticket.fecha)}
+                    catalogos={catalogos}
+                  />
+                )}
+                {puedeAgregarHorometros && (
+                  <BotonLink
+                    href={`/tickets/${ticketId}/horometros/nuevo`}
+                    variante="suave"
+                    tamano="sm"
+                  >
+                    <IconPlus className="h-4 w-4" />
+                    Agregar
+                  </BotonLink>
+                )}
               </div>
             ) : undefined
           }
@@ -283,18 +292,22 @@ export default async function TicketDetailPage({
               titulo="Sin horómetros"
               descripcion="Registra el primer equipo de la jornada."
               accion={
-                puedeEditarHorometros || puedeCrear ? (
+                puedeAgregarHorometros || puedeImportar ? (
                   <div className="flex flex-wrap items-center justify-center gap-2">
-                    <BotonLink href={`/tickets/${ticketId}/horometros/nuevo`} tamano="sm">
-                      <IconPlus className="h-4 w-4" />
-                      Agregar horómetro
-                    </BotonLink>
-                    <BotonImportarDetalle
-                      ticketId={ticketId}
-                      ticketCodigo={ticket.codigo}
-                      fechaTicket={formatearFecha(ticket.fecha)}
-                      catalogos={catalogos}
-                    />
+                    {puedeAgregarHorometros && (
+                      <BotonLink href={`/tickets/${ticketId}/horometros/nuevo`} tamano="sm">
+                        <IconPlus className="h-4 w-4" />
+                        Agregar horómetro
+                      </BotonLink>
+                    )}
+                    {puedeImportar && (
+                      <BotonImportarDetalle
+                        ticketId={ticketId}
+                        ticketCodigo={ticket.codigo}
+                        fechaTicket={formatearFecha(ticket.fecha)}
+                        catalogos={catalogos}
+                      />
+                    )}
                   </div>
                 ) : undefined
               }

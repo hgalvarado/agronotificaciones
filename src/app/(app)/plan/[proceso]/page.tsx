@@ -230,7 +230,9 @@ export default async function PlanProcesoPage({
         puedeCrear={puede(permisos, pantalla, 'crear') || puede(permisos, 'plan', 'crear')}
         puedeEliminar={puede(permisos, pantalla, 'eliminar') || puede(permisos, 'plan', 'eliminar')}
         puedeDescargar={
-          puede(permisos, pantalla, 'descargar') || puede(permisos, 'plan', 'descargar')
+          // «descargar» pasó a llamarse «exportar» en la migración 44:
+          // una sola palabra para una sola casilla.
+          puede(permisos, pantalla, 'exportar') || puede(permisos, 'plan', 'exportar')
         }
       />
     </div>
