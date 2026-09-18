@@ -26,7 +26,7 @@ const EXPLICACIONES: Record<string, string> = {
   '23503': 'Hay movimientos que dependen de este registro, así que no se puede quitar.',
   '23502': 'Falta un dato obligatorio.',
   '23514': 'Un valor no está dentro de lo permitido.',
-  '42501': 'No tienes permiso para hacer este cambio.',
+  '42501': 'Tu rol no tiene esa acción en esta pantalla. Se concede en Permisos.',
   // Lo que devuelve PostgREST cuando RLS deja la operación sin filas.
   '42P01': 'Falta una tabla o vista en la base: seguramente hay una migración sin ejecutar.',
   PGRST116: 'No se encontró el registro, o no tienes permiso para verlo.',
@@ -45,8 +45,13 @@ export function mensajeDeError(e: unknown, respaldo = 'No se pudo guardar.'): st
 
     // Un `new row violates row-level security policy` no le dice nada a
     // nadie en campo. Se traduce a lo que realmente pasó.
+    //
+    // El texto ya NO nombra roles. Decía «sólo el Administrador o Torre de
+    // Control pueden modificarlo», y era mentira desde que los permisos se
+    // configuran por pantalla: mandaba la matriz, no el nombre del rol, y
+    // el mensaje mandaba a la persona a buscar a quien no era.
     if (p.message && /row-level security/i.test(p.message)) {
-      return 'La base rechazó el cambio por permisos. Si el ticket ya está cerrado, sólo el Administrador o Torre de Control pueden modificarlo.'
+      return 'La base rechazó el cambio: tu rol no tiene esa acción en esta pantalla. Se concede en Permisos. Si el ticket ya está notificado a SAP, no se puede corregir sin devolverlo a un proceso anterior.'
     }
 
     const piezas: string[] = []

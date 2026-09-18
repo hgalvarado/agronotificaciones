@@ -28,7 +28,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     return (
       <AvisoCuenta
         titulo="Cuenta desactivada"
-        mensaje="Tu acceso fue desactivado por el Administrador. Si crees que es un error, comunícate con Torre de Control."
+        mensaje="Tu acceso fue desactivado. Si crees que es un error, pídele a quien administra el sistema que lo revise en la pantalla de Usuarios."
       />
     )
   }
@@ -37,8 +37,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <AppShell
       nombre={perfil.nombre}
       rolNombre={rol?.nombre ?? 'Sin rol'}
-      esAdmin={rol?.codigo === 'ADMIN'}
-      esTorreControl={rol?.codigo === 'TORRE_CONTROL'}
       permisos={[...permisos]}
       navegacion={navegacion}
     >

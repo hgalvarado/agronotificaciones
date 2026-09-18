@@ -6,12 +6,11 @@ import type {
   LaborCompleta,
 } from '@/components/registro/EditarLaborModal'
 import { cargarCatalogosRegistro } from '@/lib/datosRegistro'
-import { getPerfilActual, getPermisos, puede } from '@/lib/auth'
+import { getPermisos, puede } from '@/lib/auth'
 
 export default async function LaboresControlPage() {
   const permisos = await getPermisos()
   if (!puede(permisos, 'labores', 'ver')) redirect('/tickets')
-  const { rol } = await getPerfilActual()
 
   const supabase = await createClient()
 
@@ -59,7 +58,7 @@ export default async function LaboresControlPage() {
         catalogosEdicion={catalogosEdicion}
         puedeEditar={puede(permisos, 'labores', 'editar')}
         puedeEliminar={puede(permisos, 'labores', 'eliminar')}
-        esAdmin={rol?.codigo === 'ADMIN'}
+        puedeEstandar={puede(permisos, 'permisos', 'editar')}
       />
     </div>
   )

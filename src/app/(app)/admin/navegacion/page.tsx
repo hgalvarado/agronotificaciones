@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getPerfilActual } from '@/lib/auth'
+import { getPermisos, puede } from '@/lib/auth'
 import { Alerta } from '@/components/ui/Primitivos'
 import {
   ConfigurarNavegacion,
@@ -9,11 +9,13 @@ import {
 } from '@/components/admin/ConfigurarNavegacion'
 
 export default async function NavegacionPage() {
-  // Esta pantalla NO pasa por la tabla de permisos: quien configura el
-  // menú de los demás manda sobre todos, y eso es el Administrador. La
-  // base aplica la misma regla en `fn_guardar_navegacion`.
-  const { rol } = await getPerfilActual()
-  if (rol?.codigo !== 'ADMIN') redirect('/tickets')
+  // Configurar la barra de otro rol es lo mismo que configurarle los
+  // permisos, así que se pregunta por esa casilla de la matriz. Antes era
+  // `rol?.codigo !== 'ADMIN'`, que es justo lo que se está quitando de
+  // todo el sistema. La base aplica su propia regla en
+  // `fn_guardar_navegacion`.
+  const permisos = await getPermisos()
+  if (!puede(permisos, 'permisos', 'editar')) redirect('/tickets')
 
   const supabase = await createClient()
 

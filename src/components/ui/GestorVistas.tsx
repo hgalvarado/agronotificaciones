@@ -41,7 +41,7 @@ export function GestorVistas<T>({
   columnas,
   vista,
   onVista,
-  esAdmin,
+  puedeEstandar,
 }: {
   /** Clave con la que se guardan las vistas de esta tabla. */
   pantalla: string
@@ -49,7 +49,13 @@ export function GestorVistas<T>({
   /** La vista de trabajo actual; `null` mientras carga. */
   vista: ColumnaVista[] | null
   onVista: (v: ColumnaVista[]) => void
-  esAdmin: boolean
+  /**
+   * Si puede guardar la vista como estándar de toda la empresa. Sale de
+   * la matriz —«Permisos: editar»— y no de un nombre de rol: es la misma
+   * persona que configura los permisos, pero preguntado por lo que puede
+   * y no por cómo se llama.
+   */
+  puedeEstandar: boolean
 }) {
   const [guardadas, setGuardadas] = useState<VistaTabla[]>([])
   const [elegida, setElegida] = useState<string>(FABRICA)
@@ -128,7 +134,7 @@ export function GestorVistas<T>({
           columnas={columnas}
           vista={vista}
           onVista={onVista}
-          esAdmin={esAdmin}
+          puedeEstandar={puedeEstandar}
           guardadas={guardadas}
           elegida={elegida}
           onCerrar={() => setAbierto(false)}
@@ -154,7 +160,7 @@ function ModalColumnas<T>({
   columnas,
   vista,
   onVista,
-  esAdmin,
+  puedeEstandar,
   guardadas,
   elegida,
   onCerrar,
@@ -164,7 +170,13 @@ function ModalColumnas<T>({
   columnas: ColumnaGrid<T>[]
   vista: ColumnaVista[]
   onVista: (v: ColumnaVista[]) => void
-  esAdmin: boolean
+  /**
+   * Si puede guardar la vista como estándar de toda la empresa. Sale de
+   * la matriz —«Permisos: editar»— y no de un nombre de rol: es la misma
+   * persona que configura los permisos, pero preguntado por lo que puede
+   * y no por cómo se llama.
+   */
+  puedeEstandar: boolean
   guardadas: VistaTabla[]
   elegida: string
   onCerrar: () => void
@@ -217,7 +229,7 @@ function ModalColumnas<T>({
     onCerrar()
   }
 
-  const puedeEliminarEsta = actual !== null && (!actual.es_estandar || esAdmin)
+  const puedeEliminarEsta = actual !== null && (!actual.es_estandar || puedeEstandar)
 
   return (
     <Modal
@@ -236,7 +248,7 @@ function ModalColumnas<T>({
             <Boton variante="secundario" onClick={onCerrar} disabled={guardando}>
               Cancelar
             </Boton>
-            {esAdmin && (
+            {puedeEstandar && (
               <Boton variante="secundario" onClick={() => guardar(true)} disabled={guardando}>
                 Guardar como estándar
               </Boton>
@@ -260,7 +272,7 @@ function ModalColumnas<T>({
         <Campo
           etiqueta="Nombre de la vista"
           ayuda={
-            esAdmin
+            puedeEstandar
               ? 'Con «Guardar como estándar» pasa a ser la vista por omisión de toda la empresa.'
               : 'Tu vista es sólo tuya. Nadie más la ve.'
           }

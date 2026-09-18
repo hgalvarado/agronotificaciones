@@ -1,8 +1,8 @@
 import Link from 'next/link'
-import { estaNotificado, puedeCapturar } from '@/lib/permisos/captura'
+import { estaNotificado, puedeEnTicket } from '@/lib/permisos/captura'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getPerfilActual, getPermisos, puede } from '@/lib/auth'
+import { getPermisos } from '@/lib/auth'
 import { AccionesTicket } from '@/components/ticket/AccionesTicket'
 import { TablaHorometros } from '@/components/horometro/TablaHorometros'
 import { TablaRegistros } from '@/components/registro/TablaRegistros'
@@ -33,7 +33,6 @@ export default async function TicketDetailPage({
 }) {
   const { ticketId } = await params
   const supabase = await createClient()
-  const { rol } = await getPerfilActual()
 
   // El nombre del creador viene en el mismo viaje nombrando la llave
   // foránea explícitamente: `tickets` tiene DOS hacia `perfiles`
@@ -161,24 +160,18 @@ export default async function TicketDetailPage({
       : { data: [] }
   const detalles = (detallesData as RegistroDetalle[] | null) ?? []
 
-  // Antes era `ticket.estado === 'ABIERTO'` a secas, y eso obligaba a
-  // Torre de Control a reabrir un ticket para corregir una cifra. La
-  // misma regla que aplica la base: los dos roles de mando editan
-  // siempre, el dueño sólo mientras esté abierto, y un ticket ya
-  // NOTIFICADO no lo toca nadie más que el Administrador.
-  const abierto = puedeCapturar(rol?.codigo, ticket.estado, ticket.proceso)
-
-  // Y además la MATRIZ de permisos, que es lo que faltaba: esta pantalla
-  // decidía sólo por el rol, así que a un rol al que se le había quitado
-  // «editar» o «eliminar» en Permisos le seguían saliendo los botones y
-  // sólo la base lo paraba —con un error de permisos en la cara—. Ahora
-  // esconde exactamente lo que la base rechaza.
+  // Decide la MATRIZ de permisos, y sólo ella. Esta pantalla decidía por
+  // el rol —`rol === 'ADMIN' || rol === 'TORRE_CONTROL'`— así que a un rol
+  // al que se le había quitado «editar» o «eliminar» en Permisos le
+  // seguían saliendo los botones y sólo la base lo paraba, con un error
+  // de permisos en la cara. Y el estado del ticket ya no bloquea: cerrado
+  // es una marca de avance, no un candado.
   const permisos = await getPermisos()
-  const puedeEditarHorometros = abierto && puede(permisos, 'horometros', 'editar')
-  const puedeEditarLabores = abierto && puede(permisos, 'labores', 'editar')
-  const puedeBorrarHorometros = abierto && puede(permisos, 'horometros', 'eliminar')
-  const puedeBorrarLabores = abierto && puede(permisos, 'labores', 'eliminar')
-  const puedeCrear = abierto && puede(permisos, 'tickets', 'crear')
+  const puedeEditarHorometros = puedeEnTicket(permisos, 'horometros', 'editar', ticket.proceso)
+  const puedeEditarLabores = puedeEnTicket(permisos, 'labores', 'editar', ticket.proceso)
+  const puedeBorrarHorometros = puedeEnTicket(permisos, 'horometros', 'eliminar', ticket.proceso)
+  const puedeBorrarLabores = puedeEnTicket(permisos, 'labores', 'eliminar', ticket.proceso)
+  const puedeCrear = puedeEnTicket(permisos, 'tickets', 'crear', ticket.proceso)
   const estado = estadoInfo(ticket.estado)
   const proceso = procesoInfo(ticket.proceso)
 
@@ -227,15 +220,15 @@ export default async function TicketDetailPage({
         {estaNotificado(ticket.proceso) && (
           <p className="mt-3 rounded-lg bg-slate-100 px-3 py-2 text-xs text-slate-500">
             Ya liquidado en SAP: horómetros y labores quedan de{' '}
-            <strong>sólo lectura</strong>. Para corregir algo, Torre de Control tiene que
-            devolver el ticket a un proceso anterior.
+            <strong>sólo lectura</strong>. Para corregir algo hay que devolver el ticket a un
+            proceso anterior; quien tenga «Ver todo» en Tickets puede hacerlo.
           </p>
         )}
 
         <div className="mt-4 border-t border-slate-100 pt-4">
           <AccionesTicket
             ticket={ticket}
-            rol={rol?.codigo ?? null}
+            permisos={[...permisos]}
             nombreUsuario={nombreCreador}
           />
         </div>

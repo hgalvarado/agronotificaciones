@@ -1,27 +1,13 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getPerfilActual } from '@/lib/auth'
+import { exigirPermiso } from '@/lib/permisos/portero'
 import { ahoraIso } from '@/lib/fechas'
-
-async function exigirAdmin() {
-  const { perfil, rol } = await getPerfilActual()
-  if (!perfil || !perfil.activo || rol?.codigo !== 'ADMIN') {
-    return {
-      denegado: NextResponse.json(
-        { error: 'Sólo el Administrador puede gestionar usuarios.' },
-        { status: 403 }
-      ),
-      yo: null,
-    }
-  }
-  return { denegado: null, yo: perfil.id }
-}
 
 /* ------------------------------------------------------------------ */
 /* PATCH · actualizar datos, rol, estado o contraseña                  */
 /* ------------------------------------------------------------------ */
 export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const { denegado, yo } = await exigirAdmin()
+  const { denegado, yo } = await exigirPermiso('usuarios', 'editar')
   if (denegado) return denegado
 
   const { id } = await context.params

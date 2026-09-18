@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { getPerfilActual } from '@/lib/auth'
+import { getPerfilActual, getPermisos, puede } from '@/lib/auth'
 import { TicketsSplit } from '@/components/ticket/TicketsSplit'
 import { ListaTickets } from '@/components/ticket/ListaTickets'
 import type { Ticket } from '@/lib/types'
@@ -9,14 +9,16 @@ import type { Ticket } from '@/lib/types'
 // renderizar el panel de detalle.
 export default async function TicketsLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
-  const { perfil, rol } = await getPerfilActual()
+  const [{ perfil }, permisos] = await Promise.all([getPerfilActual(), getPermisos()])
 
-  // RLS decide el alcance: el Digitador recibe sólo los suyos,
-  // Admin y Torre de Control reciben todos.
-  // Se piden SÓLO las columnas que la lista dibuja, y las dos consultas
-  // van en paralelo. Antes traía todas las columnas de 200 tickets en cada
-  // navegación, que es la mayor parte de lo que se sentía lento.
-  const esAdminOTorre = rol?.codigo === 'ADMIN' || rol?.codigo === 'TORRE_CONTROL'
+  // RLS decide el alcance: sin «Ver todo» en Tickets se reciben sólo los
+  // propios. Se piden SÓLO las columnas que la lista dibuja, y las dos
+  // consultas van en paralelo. Antes traía todas las columnas de 200
+  // tickets en cada navegación, que es la mayor parte de lo que se sentía
+  // lento.
+  //
+  // Antes esto era `rol?.codigo === 'ADMIN' || rol?.codigo === 'TORRE_CONTROL'`.
+  const veTodo = puede(permisos, 'tickets', 'ver_todo')
 
   const [{ data: tickets }, { data: temporadaActiva }, { data: usuarios }, { data: temporadas }] =
     await Promise.all([
@@ -28,7 +30,7 @@ export default async function TicketsLayout({ children }: { children: React.Reac
     supabase.from('temporadas').select('id').eq('activa', true).maybeSingle(),
     // Para el ticket histórico: sólo hace falta la lista si esta persona
     // puede crear a nombre de otro.
-    esAdminOTorre
+    veTodo
       ? supabase
           .from('perfiles')
           .select('id, nombre, departamento')
@@ -56,7 +58,7 @@ export default async function TicketsLayout({ children }: { children: React.Reac
           temporadas={
             (temporadas as { id: string; nombre: string; activa: boolean }[] | null) ?? []
           }
-          puedeLotes={esAdminOTorre}
+          puedeLotes={veTodo}
         />
       }
     >

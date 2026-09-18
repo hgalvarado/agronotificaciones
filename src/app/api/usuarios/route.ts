@@ -1,26 +1,14 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getPerfilActual } from '@/lib/auth'
-
-// Portero: toda ruta de este módulo exige que quien llama sea Administrador.
-// Se verifica contra la BASE DE DATOS con la sesión del usuario, no contra
-// nada que venga en el request — un usuario no puede auto-declararse admin.
-async function exigirAdmin() {
-  const { perfil, rol } = await getPerfilActual()
-  if (!perfil || !perfil.activo || rol?.codigo !== 'ADMIN') {
-    return NextResponse.json(
-      { error: 'Sólo el Administrador puede gestionar usuarios.' },
-      { status: 403 }
-    )
-  }
-  return null
-}
+import { exigirPermiso } from '@/lib/permisos/portero'
 
 /* ------------------------------------------------------------------ */
 /* GET · listar usuarios (perfil + correo de Supabase Auth)            */
 /* ------------------------------------------------------------------ */
 export async function GET() {
-  const denegado = await exigirAdmin()
+  // Quien pueda VER la pantalla de Usuarios puede listar. Antes exigía el
+  // rol ADMIN a mano y la matriz no decidía nada.
+  const { denegado } = await exigirPermiso('usuarios', 'ver')
   if (denegado) return denegado
 
   try {
@@ -78,7 +66,7 @@ export async function GET() {
 /* POST · crear usuario (Auth + perfil)                                */
 /* ------------------------------------------------------------------ */
 export async function POST(request: NextRequest) {
-  const denegado = await exigirAdmin()
+  const { denegado } = await exigirPermiso('usuarios', 'crear')
   if (denegado) return denegado
 
   try {

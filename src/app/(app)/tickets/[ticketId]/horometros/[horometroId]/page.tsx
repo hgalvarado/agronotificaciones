@@ -1,8 +1,8 @@
 import Link from 'next/link'
-import { puedeCapturar } from '@/lib/permisos/captura'
+import { puedeEnTicket } from '@/lib/permisos/captura'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getPerfilActual, getPermisos, puede } from '@/lib/auth'
+import { getPermisos } from '@/lib/auth'
 import { TablaRegistros } from '@/components/registro/TablaRegistros'
 import {
   BotonLink,
@@ -31,8 +31,6 @@ export default async function HorometroDetailPage({
 }) {
   const { ticketId, horometroId } = await params
   const supabase = await createClient()
-  const { rol } = await getPerfilActual()
-
   const [{ data: ticketData }, { data: horometroData }] = await Promise.all([
     supabase.from('tickets').select('*').eq('id', ticketId).single(),
     supabase
@@ -64,19 +62,13 @@ export default async function HorometroDetailPage({
       : { data: [] }
   const detalles = (detallesData as RegistroDetalle[] | null) ?? []
 
-  // Antes era `ticket.estado === 'ABIERTO'` a secas, y eso obligaba a
-  // Torre de Control a reabrir un ticket para corregir una cifra. La
-  // misma regla que aplica la base: los dos roles de mando editan
-  // siempre, el dueño sólo mientras esté abierto, y un ticket ya
-  // NOTIFICADO no lo toca nadie más que el Administrador.
-  const abierto = puedeCapturar(rol?.codigo, ticket.estado, ticket.proceso)
-
-  // La matriz de permisos, además del rol: es lo que faltaba para que la
-  // pantalla esconda exactamente lo que la base rechaza.
+  // Decide la MATRIZ de permisos y nada más: ni el rol ni el estado del
+  // ticket. Cerrado es una marca de avance, no un candado; el único tope
+  // es NOTIFICADO.
   const permisos = await getPermisos()
-  const puedeEditarLabores = abierto && puede(permisos, 'labores', 'editar')
-  const puedeBorrarLabores = abierto && puede(permisos, 'labores', 'eliminar')
-  const puedeEditarHorometro = abierto && puede(permisos, 'horometros', 'editar')
+  const puedeEditarLabores = puedeEnTicket(permisos, 'labores', 'editar', ticket.proceso)
+  const puedeBorrarLabores = puedeEnTicket(permisos, 'labores', 'eliminar', ticket.proceso)
+  const puedeEditarHorometro = puedeEnTicket(permisos, 'horometros', 'editar', ticket.proceso)
   const esDiurno = h.turno === 'DIURNO'
 
   return (

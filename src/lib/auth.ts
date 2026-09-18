@@ -93,7 +93,8 @@ export const getNavegacion = cache(async (): Promise<string[]> => {
   return filas.map((f) => f.pantalla)
 })
 
-/** Ayuda para leer el conjunto sin repetir la plantilla en cada pantalla. */
-export function puede(permisos: Set<string>, pantalla: string, accion: string) {
-  return permisos.has('__sin_migracion__') || permisos.has(`${pantalla}:${accion}`)
-}
+// `puede` vive en `lib/permisos/puede` —sin ninguna importación— porque
+// también la usan componentes de cliente, y este archivo abre el cliente
+// de Supabase del servidor. Se reexporta para no cambiar los cien sitios
+// que la importan de aquí.
+export { puede } from '@/lib/permisos/puede'

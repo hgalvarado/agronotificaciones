@@ -94,7 +94,8 @@ export function ConfiguracionReportePublico({
 
       {!puedeEditar && (
         <Alerta tono="ambar">
-          Sólo el Administrador puede cambiar estas reglas. Aquí las ves, pero no se guardan.
+          Tu rol no tiene «Editar» en esta pantalla, así que aquí ves las reglas pero no se
+          guardan. Se concede en Permisos.
         </Alerta>
       )}
 

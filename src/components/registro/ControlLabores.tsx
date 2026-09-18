@@ -167,13 +167,14 @@ export function ControlLabores({
   catalogosEdicion,
   puedeEditar,
   puedeEliminar,
-  esAdmin,
+  puedeEstandar,
 }: {
   temporadas?: TemporadaOpcion[]
   catalogosEdicion: CatalogosEdicion
   puedeEditar: boolean
   puedeEliminar: boolean
-  esAdmin: boolean
+  /** Si puede fijar la vista estándar de la empresa. Sale de la matriz. */
+  puedeEstandar: boolean
 }) {
   const supabase = createClient()
 
@@ -852,7 +853,7 @@ export function ControlLabores({
               columnas={columnas}
               vista={vista}
               onVista={setVista}
-              esAdmin={esAdmin}
+              puedeEstandar={puedeEstandar}
             />
           }
           filtrosExternos={

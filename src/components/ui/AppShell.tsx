@@ -42,16 +42,14 @@ type ItemNav = {
 export function AppShell({
   nombre,
   rolNombre,
-  esAdmin,
-  esTorreControl,
+
   permisos,
   navegacion = [],
   children,
 }: {
   nombre: string
   rolNombre: string
-  esAdmin: boolean
-  esTorreControl: boolean
+
   /** Claves «pantalla:accion» que el usuario tiene concedidas. */
   permisos: string[]
   /**
@@ -67,16 +65,15 @@ export function AppShell({
   const [abrirMas, setAbrirMas] = useState(false)
   const [grupoAbierto, setGrupoAbierto] = useState<string | null>(null)
 
-  // Mientras la migración 12 no se haya corrido, `fn_mis_permisos` no
-  // existe y el menú vuelve a decidirse por rol, como antes. Así el código
-  // nuevo y el SQL pueden llegar en momentos distintos sin dejar a nadie
-  // sin menú.
+  // El menú lo decide la MATRIZ y nada más. Antes había un respaldo por
+  // ROL para el caso de que `fn_mis_permisos` no existiera todavía, y era
+  // el último sitio donde un nombre de rol decidía lo que se ve. Si la
+  // función falta, `getPermisos` devuelve `__sin_migracion__` y aquí se
+  // enseña todo, igual que hace `puede()`: quedarse sin menú por una
+  // migración pendiente sería peor que ver un acceso de más.
   const sinMigracion = permisos.includes('__sin_migracion__')
   const concedidos = new Set(permisos)
-  const ve = (pantalla: string, siRol: boolean) =>
-    sinMigracion ? siRol : concedidos.has(`${pantalla}:ver`)
-
-  const revisor = esAdmin || esTorreControl
+  const ve = (pantalla: string) => sinMigracion || concedidos.has(`${pantalla}:ver`)
 
   const items: ItemNav[] = [
     {
@@ -84,28 +81,28 @@ export function AppShell({
       pantalla: 'tickets',
       etiqueta: 'Tickets',
       icono: <IconTicket />,
-      visible: ve('tickets', true),
+      visible: ve('tickets'),
     },
     {
       href: '/horometros',
       pantalla: 'horometros',
       etiqueta: 'Horómetros',
       icono: <IconGauge />,
-      visible: ve('horometros', revisor),
+      visible: ve('horometros'),
     },
     {
       href: '/labores',
       pantalla: 'labores',
       etiqueta: 'Labores',
       icono: <IconMapPin />,
-      visible: ve('labores', revisor),
+      visible: ve('labores'),
     },
     {
       href: '/dashboard',
       pantalla: 'avance',
       etiqueta: 'Avance',
       icono: <IconChart />,
-      visible: ve('avance', true),
+      visible: ve('avance'),
     },
     {
       // «Avances» agrupa el seguimiento de cada proceso de campo: lo que
@@ -117,28 +114,28 @@ export function AppShell({
       etiqueta: 'Avances',
       icono: <IconPlan />,
       visible:
-        ve('plan', revisor) || ve('trasplante', revisor) || ve('turnos_riego', revisor),
+        ve('plan') || ve('trasplante') || ve('turnos_riego'),
       hijos: [
         {
           href: '/plan/APS',
           pantalla: 'plan_aps',
           etiqueta: 'Emplasticado',
           icono: <IconPlan />,
-          visible: ve('plan_aps', revisor),
+          visible: ve('plan_aps'),
         },
         {
           href: '/trasplante',
           pantalla: 'trasplante',
           etiqueta: 'Trasplante',
           icono: <IconChart />,
-          visible: ve('trasplante', revisor),
+          visible: ve('trasplante'),
         },
         {
           href: '/avances/turnos-riego',
           pantalla: 'turnos_riego',
           etiqueta: 'Turnos de riego',
           icono: <IconGota />,
-          visible: ve('turnos_riego', revisor),
+          visible: ve('turnos_riego'),
         },
       ],
     },
@@ -147,28 +144,28 @@ export function AppShell({
       pantalla: 'costos',
       etiqueta: 'Costos',
       icono: <IconDinero />,
-      visible: ve('costos', revisor),
+      visible: ve('costos'),
     },
     {
       href: '/admin/catalogos',
       pantalla: 'catalogos',
       etiqueta: 'Catálogos',
       icono: <IconSettings />,
-      visible: ve('catalogos', revisor),
+      visible: ve('catalogos'),
     },
     {
       href: '/admin/reporte-publico',
       pantalla: 'reporte_publico',
       etiqueta: 'Reporte público',
       icono: <IconSettings />,
-      visible: ve('reporte_publico', esAdmin),
+      visible: ve('reporte_publico'),
     },
     {
       href: '/admin/usuarios',
       pantalla: 'usuarios',
       etiqueta: 'Usuarios',
       icono: <IconUser />,
-      visible: ve('usuarios', esAdmin),
+      visible: ve('usuarios'),
     },
   ]
   // Un grupo se muestra si él es visible y tiene al menos un hijo visible.
@@ -178,7 +175,7 @@ export function AppShell({
 
   // Los avisos son para quien revisa: quien puede corregir un ticket es
   // quien necesita enterarse de que le cerraron uno.
-  const verAvisos = sinMigracion ? revisor : concedidos.has('tickets:editar')
+  const verAvisos = sinMigracion || concedidos.has('tickets:editar')
 
   // En el celular los grupos se aplanan: cada avance es su propia
   // entrada, que es más directo que un desplegable dentro de una hoja.

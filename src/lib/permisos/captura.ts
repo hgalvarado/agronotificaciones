@@ -7,45 +7,48 @@
  * botón que al pulsarlo da un error de permisos, o —peor— no ve un botón
  * que sí le correspondía.
  *
- * Función pura. No consulta nada: recibe el rol, el estado y el proceso.
+ * ── Ya NO recibe el rol ──────────────────────────────────────────────
+ *
+ * Antes preguntaba `rol === 'ADMIN' || rol === 'TORRE_CONTROL'`, y era
+ * justo el problema: la pantalla de Permisos podía decir una cosa y esto
+ * otra, así que marcar o desmarcar una casilla no cambiaba nada. Ahora
+ * recibe el CONJUNTO DE PERMISOS del usuario, que es lo mismo que la
+ * base consulta.
+ *
+ * Y el estado del ticket tampoco decide: cerrar un ticket es una marca
+ * de avance, no un candado. Quien tenga la acción en la matriz la tiene
+ * también sobre un ticket cerrado. El único tope es NOTIFICADO.
+ *
+ * Funciones puras. No consultan nada.
  */
 
-import type { EstadoTicket, ProcesoTicket, RolCodigo } from '@/lib/types'
-
-/** Los dos roles que mandan sobre cualquier ticket, en cualquier estado. */
-export function mandaSobreTodo(rol: RolCodigo | null | undefined): boolean {
-  return rol === 'ADMIN' || rol === 'TORRE_CONTROL'
-}
+import type { ProcesoTicket } from '@/lib/types'
+import { puede } from './puede'
 
 /**
  * ¿Ya se liquidó en SAP?
  *
- * El proceso 3 —Notificado— cierra el ticket para todo el mundo menos
- * para el Administrador. Antes el proceso no era un candado: era sólo el
- * avance hacia SAP. Se cambió porque corregir una línea ya notificada
- * deja la base diciendo una cosa y SAP otra, y nadie se enteraba hasta
- * el cierre de mes. Se corrige devolviendo el ticket a un proceso
- * anterior, que es una decisión de Torre de Control y no un cambio de
- * celda.
+ * El proceso 3 —Notificado— cierra el ticket para todo el mundo. Se
+ * corrige devolviéndolo a un proceso anterior, que es una decisión de
+ * quien revisa y no un cambio de celda. Sólo el Administrador escribe
+ * encima, y eso lo decide la base: la pantalla se limita a esconder.
  */
 export function estaNotificado(proceso: ProcesoTicket | null | undefined): boolean {
   return proceso === 'NOTIFICADO'
 }
 
 /**
- * ¿Se pueden agregar, editar o quitar horómetros y labores de este ticket?
+ * ¿Se puede hacer `accion` sobre lo que cuelga de este ticket?
  *
- * «Administrador y Torre de Control pueden editar cualquier registro,
- *  labor u horómetro en cualquier momento. NO deben requerir cambiar el
- *  estado del ticket a abierto.» Eso se mantiene; lo que se agrega es el
- *  tope de arriba: ya notificado, sólo el Administrador.
+ * `pantalla` es la del dato que se va a tocar —`horometros`, `labores`,
+ * `tickets`— y `accion` la de la matriz: `editar`, `eliminar`, `crear`.
  */
-export function puedeCapturar(
-  rol: RolCodigo | null | undefined,
-  estado: EstadoTicket | null | undefined,
+export function puedeEnTicket(
+  permisos: Set<string>,
+  pantalla: string,
+  accion: string,
   proceso?: ProcesoTicket | null
 ): boolean {
-  if (rol === 'ADMIN') return true
   if (estaNotificado(proceso)) return false
-  return mandaSobreTodo(rol) || estado === 'ABIERTO'
+  return puede(permisos, pantalla, accion)
 }

@@ -41,7 +41,7 @@ export default function GlobalError({
           </h1>
           <p style={{ fontSize: '14px', lineHeight: 1.6, color: '#64748b', margin: '0 0 20px' }}>
             No se perdió nada de lo que ya habías guardado. Vuelve a intentarlo; si sigue pasando,
-            avísale a Torre de Control con el código de abajo.
+            avisa con el código de abajo a quien administra el sistema.
           </p>
           <button
             onClick={reset}

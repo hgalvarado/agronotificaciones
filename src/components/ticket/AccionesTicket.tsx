@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Modal } from '@/components/ui/Modal'
@@ -9,15 +9,24 @@ import { IconLock, IconPencil, IconSend, IconTrash, IconUnlock } from '@/compone
 import { PROCESOS } from '@/lib/estados'
 import { mensajeDeError } from '@/lib/errores'
 import { ahoraIso } from '@/lib/fechas'
-import type { ProcesoTicket, RolCodigo, Ticket } from '@/lib/types'
+import type { ProcesoTicket, Ticket } from '@/lib/types'
+import { puede } from '@/lib/permisos/puede'
+import { estaNotificado } from '@/lib/permisos/captura'
 
 export function AccionesTicket({
   ticket,
-  rol,
+  permisos,
   nombreUsuario,
 }: {
   ticket: Ticket
-  rol: RolCodigo | null
+  /**
+   * Los permisos efectivos, como `"pantalla:accion"`. Antes llegaba el
+   * ROL y esta barra comparaba nombres de rol a mano,
+   * así que la pantalla de Permisos no cambiaba nada de lo que se ve aquí:
+   * el botón de eliminar sólo salía para el Administrador aunque la matriz
+   * dijera otra cosa, y editar dependía de que el ticket estuviera abierto.
+   */
+  permisos: string[]
   nombreUsuario: string
 }) {
   const supabase = createClient()
@@ -27,9 +36,14 @@ export function AccionesTicket({
   const [error, setError] = useState<string | null>(null)
 
   const abierto = ticket.estado === 'ABIERTO'
-  const esAdmin = rol === 'ADMIN'
-  const esTorreOAdmin = esAdmin || rol === 'TORRE_CONTROL'
-  const puedeEditar = esTorreOAdmin || abierto
+  const concedidos = useMemo(() => new Set(permisos), [permisos])
+
+  // Lo que la base va a permitir, preguntado igual que ella lo pregunta.
+  // Un ticket ya notificado se queda de sólo lectura; el estado —abierto o
+  // cerrado— ya no decide nada.
+  const notificado = estaNotificado(ticket.proceso)
+  const puedeEditar = !notificado && puede(concedidos, 'tickets', 'editar')
+  const puedeBorrar = !notificado && puede(concedidos, 'tickets', 'eliminar')
 
   async function cerrarTicket() {
     if (!confirm('¿Cerrar este ticket? Ya no podrás editar sus horómetros ni labores.')) return
@@ -94,13 +108,13 @@ export function AccionesTicket({
           </Boton>
         )}
 
-        {abierto ? (
+        {abierto && puedeEditar ? (
           <Boton variante="secundario" tamano="sm" onClick={cerrarTicket} disabled={cargando === 'cerrar'}>
             <IconLock className="h-4 w-4" />
             {cargando === 'cerrar' ? 'Cerrando…' : 'Cerrar ticket'}
           </Boton>
         ) : (
-          esTorreOAdmin && (
+          puedeEditar && (
             <Boton variante="secundario" tamano="sm" onClick={reabrirTicket} disabled={cargando === 'reabrir'}>
               <IconUnlock className="h-4 w-4" />
               {cargando === 'reabrir' ? 'Reabriendo…' : 'Reabrir'}
@@ -108,14 +122,14 @@ export function AccionesTicket({
           )
         )}
 
-        {ticket.proceso === 'REGISTRADO' && (
+        {ticket.proceso === 'REGISTRADO' && puedeEditar && (
           <Boton variante="suave" tamano="sm" onClick={enviarARevision} disabled={cargando === 'revision'}>
             <IconSend className="h-4 w-4" />
             {cargando === 'revision' ? 'Enviando…' : 'Enviar a revisión'}
           </Boton>
         )}
 
-        {esAdmin && (
+        {puedeBorrar && (
           <Boton
             variante="peligro"
             tamano="sm"
@@ -138,7 +152,7 @@ export function AccionesTicket({
         abierto={editando}
         onCerrar={() => setEditando(false)}
         ticket={ticket}
-        rol={rol}
+        permisos={permisos}
         nombreUsuario={nombreUsuario}
       />
     </>
@@ -153,13 +167,13 @@ function EditarTicketModal({
   abierto,
   onCerrar,
   ticket,
-  rol,
+  permisos,
   nombreUsuario,
 }: {
   abierto: boolean
   onCerrar: () => void
   ticket: Ticket
-  rol: RolCodigo | null
+  permisos: string[]
   nombreUsuario: string
 }) {
   const supabase = createClient()
@@ -170,13 +184,16 @@ function EditarTicketModal({
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const esTorreOAdmin = rol === 'ADMIN' || rol === 'TORRE_CONTROL'
+  // Quien tiene «Ver todo» en Tickets mueve el ticket por todo el flujo;
+  // el resto sólo puede avisar de que terminó en campo. Es la misma regla
+  // que aplica `cambiar_proceso_ticket` en la base.
+  const mueveElFlujo = puede(new Set(permisos), 'tickets', 'ver_todo')
 
   async function guardar() {
     setGuardando(true)
     setError(null)
 
-    // El proceso se mueve por RPC porque tiene reglas por rol; el resto
+    // El proceso se mueve por RPC porque tiene reglas propias; el resto
     // va por UPDATE normal y lo filtra RLS.
     if (proceso !== ticket.proceso) {
       const { error: errProceso } = await supabase.rpc('cambiar_proceso_ticket', {
@@ -271,14 +288,14 @@ function EditarTicketModal({
         <Campo
           etiqueta="Proceso"
           ayuda={
-            esTorreOAdmin
+            mueveElFlujo
               ? undefined
-              : 'Tu rol sólo puede enviar el ticket a revisión; el resto lo mueve Torre de Control.'
+              : 'Sin «Ver todo» en Tickets sólo puedes enviarlo a revisión; el resto del flujo lo mueve quien revisa.'
           }
         >
           <div className="grid grid-cols-2 gap-2">
             {PROCESOS.map((p) => {
-              const bloqueado = !esTorreOAdmin && p.valor !== 'REGISTRADO' && p.valor !== 'REVISANDO'
+              const bloqueado = !mueveElFlujo && p.valor !== 'REGISTRADO' && p.valor !== 'REVISANDO'
               return (
                 <button
                   key={p.valor}
