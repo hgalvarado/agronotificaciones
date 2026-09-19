@@ -1,26 +1,38 @@
 'use client'
 
 /**
- * Las tres vistas del módulo en una sola pantalla: el cuadre, lo
- * capturado y el plan. Este componente sólo enruta entre ellas y lleva
- * los filtros de temporada y fechas; cada pestaña se dibuja sola.
+ * Las cuatro vistas del módulo en una sola pantalla, con el tablero
+ * arriba. Este componente sólo enruta entre ellas y lleva el filtro de
+ * temporada; cada pestaña se dibuja sola.
+ *
+ * El filtro de «Siembras desde–hasta» se quitó. La TEMPORADA es el
+ * recorte natural del trasplante —el plan, el cuadre y la liquidación
+ * siempre fueron de la temporada entera— y tener encima un rango de
+ * fechas que sólo afectaba a una de las cuatro pestañas hacía que los
+ * totales de la tabla no cuadraran con los de arriba sin que se viera
+ * por qué. Ahora la temporada manda todo y se elige de un clic.
  */
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Campo, Entrada, Selector, Tarjeta } from '@/components/ui/Primitivos'
+import { Campo, Selector, Tarjeta } from '@/components/ui/Primitivos'
 import { AvancePorUt } from './AvancePorUt'
 import { GridRecepcion } from './GridRecepcion'
 import { GridSiembras } from './GridSiembras'
+import { PanelEstadisticas } from './PanelEstadisticas'
 import { PanelLiquidacion } from './PanelLiquidacion'
 import { PlanSiembra } from './PlanSiembra'
 import type {
   FilaAvanceUt,
+  FilaEstadistica,
   FilaLiquidacion,
   FilaPlanSiembra,
   FilaRecepcion,
+  FilaSemana,
   FilaSiembra,
+  FilaVariedad,
   LoteOpcion,
+  Material,
   Variedad,
 } from '@/lib/trasplante/tipos'
 
@@ -29,76 +41,69 @@ type Pestana = 'avance' | 'diaria' | 'plan' | 'recepcion'
 export function TrasplanteTabs({
   temporadas,
   temporadaId,
-  desde,
-  hasta,
   avance,
+  estadisticas,
+  variedadesCuadre,
+  semanas,
   siembras,
   plan,
   recepciones,
   liquidacion,
   lotes,
   variedades,
+  materiales,
   puedeEditar,
   puedeEliminar,
 }: {
   temporadas: { id: string; nombre: string; activa: boolean }[]
   temporadaId: string
-  desde: string
-  hasta: string
   avance: FilaAvanceUt[]
+  estadisticas: FilaEstadistica[]
+  variedadesCuadre: FilaVariedad[]
+  semanas: FilaSemana[]
   siembras: FilaSiembra[]
   plan: FilaPlanSiembra[]
   recepciones: FilaRecepcion[]
   liquidacion: FilaLiquidacion[]
   lotes: LoteOpcion[]
   variedades: Variedad[]
+  materiales: Material[]
   puedeEditar: boolean
   puedeEliminar: boolean
 }) {
   const router = useRouter()
   const [pestana, setPestana] = useState<Pestana>('avance')
-  const [d, setD] = useState(desde)
-  const [h, setH] = useState(hasta)
-
-  function navegar(cambios: Record<string, string>) {
-    const p = new URLSearchParams({ temporada: temporadaId, desde: d, hasta: h, ...cambios })
-    router.push(`/trasplante?${p.toString()}`)
-  }
 
   return (
     <div className="flex flex-col gap-4">
       <Tarjeta className="p-4">
-        <div className="flex flex-wrap items-end gap-3">
-          <Campo etiqueta="Temporada" className="min-w-[160px] flex-1">
-            <Selector value={temporadaId} onChange={(e) => navegar({ temporada: e.target.value })}>
-              {temporadas.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.nombre}
-                  {t.activa ? ' (activa)' : ''}
-                </option>
-              ))}
-            </Selector>
-          </Campo>
-
-          <Campo etiqueta="Siembras desde" className="min-w-[140px]">
-            <Entrada type="date" value={d} onChange={(e) => setD(e.target.value)} />
-          </Campo>
-          <Campo etiqueta="Hasta" className="min-w-[140px]">
-            <Entrada type="date" value={h} onChange={(e) => setH(e.target.value)} />
-          </Campo>
-          <button
-            type="button"
-            onClick={() => navegar({ desde: d, hasta: h })}
-            className="h-11 rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
+        <Campo
+          etiqueta="Temporada"
+          ayuda="Todo el módulo —tablero, cuadre, siembra diaria, plan y liquidación— es de la temporada que elijas, completa."
+        >
+          {/* Cambia la dirección en vez de guardar estado local: así la
+              temporada que se está viendo se puede compartir por chat y la
+              página se vuelve a pedir al servidor con sus datos. */}
+          <Selector
+            value={temporadaId}
+            onChange={(e) => router.push(`/trasplante?temporada=${e.target.value}`)}
           >
-            Consultar
-          </button>
-        </div>
-        <p className="mt-3 border-t border-slate-100 pt-3 text-xs text-slate-400">
-          El plan y el cuadre son acumulados de toda la temporada; las fechas sólo recortan la lista
-          de siembras capturadas.
-        </p>
+            {temporadas.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.nombre}
+                {t.activa ? ' (activa)' : ''}
+              </option>
+            ))}
+          </Selector>
+        </Campo>
       </Tarjeta>
+
+      <PanelEstadisticas
+        estadisticas={estadisticas}
+        variedades={variedadesCuadre}
+        semanas={semanas}
+        avance={avance}
+      />
 
       <div className="flex gap-1.5 overflow-x-auto pb-1">
         {(
@@ -123,13 +128,20 @@ export function TrasplanteTabs({
         ))}
       </div>
 
-      {pestana === 'avance' && <AvancePorUt filas={avance} />}
+      {pestana === 'avance' && (
+        <AvancePorUt
+          filas={avance}
+          puedeEditar={puedeEditar}
+          onCambio={() => router.refresh()}
+        />
+      )}
       {pestana === 'diaria' && (
         <GridSiembras
           temporadaId={temporadaId}
           filas={siembras}
           lotes={lotes}
           variedades={variedades}
+          materiales={materiales}
           puedeEditar={puedeEditar}
           puedeEliminar={puedeEliminar}
         />

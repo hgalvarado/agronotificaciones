@@ -17,6 +17,7 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { leerTodo } from '@/lib/supabase/paginar'
 import { Alerta, Boton, Campo, Esqueleto, Insignia, Selector, Tarjeta } from '@/components/ui/Primitivos'
 import { DataGrid } from '@/components/ui/DataGrid'
 import { BotonFila } from '@/components/ui/BotonFila'
@@ -196,42 +197,54 @@ export function ControlLabores({
   // Antes se guardaba junto al rango y por eso no disparaba nada.
   const [temporadas_, setTemporadas] = useState<string[]>([])
 
+  // El rango de fechas manda TODO lo que hay en él.
+  //
+  // Antes terminaba en `.limit(5000)` y de enero a septiembre se pasa de
+  // cinco mil líneas: la pantalla enseñaba las primeras y no lo decía.
+  // Ahora se pide por tramos hasta agotarlo (`leerTodo`), porque quitar
+  // el límite a secas no sirve: Supabase corta igual en mil por respuesta.
+  //
+  // El orden lleva `detalle_id` de desempate: con dos líneas del mismo
+  // día, un orden inestable haría que un tramo repita una y se salte otra.
   const leer = useCallback(async () => {
-    let q = supabase
-      .from('v_labores_control')
-      .select('*')
-      .gte('fecha', consulta.desde)
-      .lte('fecha', consulta.hasta)
-      .order('fecha', { ascending: true })
-      .limit(5000)
-    if (temporadas_.length > 0) q = q.in('temporada_id', temporadas_)
-    return q
+    return leerTodo<FilaLabor>((desde, hasta) => {
+      let q = supabase
+        .from('v_labores_control')
+        .select('*')
+        .gte('fecha', consulta.desde)
+        .lte('fecha', consulta.hasta)
+        .order('fecha', { ascending: true })
+        .order('detalle_id', { ascending: true })
+        .range(desde, hasta)
+      if (temporadas_.length > 0) q = q.in('temporada_id', temporadas_)
+      return q
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [consulta.desde, consulta.hasta, temporadas_])
 
   const recargar = useCallback(async () => {
-    const { data, error: e } = await leer()
+    const { datos, error: e } = await leer()
     if (e) {
-      setError(e.message)
+      setError(e)
       setFilas([])
       return
     }
     setError(null)
-    setFilas((data as FilaLabor[]) ?? [])
+    setFilas(datos)
   }, [leer])
 
   useEffect(() => {
     let vivo = true
     async function cargar() {
-      const { data, error: e } = await leer()
+      const { datos, error: e } = await leer()
       if (!vivo) return
       if (e) {
-        setError(e.message)
+        setError(e)
         setFilas([])
         return
       }
       setError(null)
-      setFilas((data as FilaLabor[]) ?? [])
+      setFilas(datos)
     }
     cargar()
     return () => {
@@ -868,7 +881,7 @@ export function ControlLabores({
                 setExternos(VACIOS)
                 setTemporadas([])
               }}
-              ayuda="Al entrar se carga el mes en curso. La temporada, el proceso y los demás filtran al instante; el rango de fechas espera el botón, porque cada mes de más son miles de filas."
+              ayuda="Al entrar se carga el mes en curso. La temporada, el proceso y los demás filtran al instante; el rango de fechas espera el botón. El rango trae TODAS sus líneas, sin tope: la tabla las va dibujando al bajar y el Excel las exporta todas."
             >
               <SelectorMultiple
                 etiqueta="Labor"

@@ -82,7 +82,7 @@ export default async function ReporteTrasplantePage({
     leerPorVariedad(temporada.id, hasta),
     leerPorZona(temporada.id, hasta),
     leerPorSemana(temporada.id, hasta),
-    leerSiembras(temporada.id, desde, hasta),
+    leerSiembras(temporada.id, { desde, hasta }),
   ])
 
   const error =

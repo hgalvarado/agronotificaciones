@@ -31,14 +31,25 @@ export type ColumnaTabla = {
    * de casillas tendría mil valores distintos.
    */
   filtro?: TipoFiltro
-  /** Se puede editar en la celda y en los cambios en masa. */
-  editable?: boolean
+  /**
+   * Se puede editar en la celda y en los cambios en masa.
+   *
+   * Puede ser una función: hay columnas que sólo aplican a algunas filas.
+   * Un departamento administrativo no tiene área ni zona, así que esas
+   * celdas no se escriben en su fila —y no porque la pantalla lo esconda,
+   * sino porque la base se las vuelve a poner en blanco—.
+   */
+  editable?: boolean | ((fila: FilaTabla) => boolean)
   /** Se excluye de los cambios en masa aunque sea editable (ej. el código). */
   sinMasivo?: boolean
   alinear?: 'izquierda' | 'derecha'
   ancho?: string
-  /** Cómo se dibuja. Si falta, se dibuja el valor crudo. */
-  render?: (fila: FilaTabla) => ReactNode
+  /**
+   * Cómo se dibuja. Si falta —o si devuelve `undefined` para esta fila—
+   * se dibuja el valor crudo, que es lo que permite cambiar el aspecto
+   * de unas pocas filas sin reimplementar el de todas.
+   */
+  render?: (fila: FilaTabla) => ReactNode | undefined
 }
 
 export type PermisosTabla = {
@@ -50,6 +61,11 @@ export type PermisosTabla = {
 /* ================================================================== */
 /* Utilidades                                                          */
 /* ================================================================== */
+
+/** ¿Esta celda se escribe? La columna puede decidirlo por fila. */
+function seEdita(c: ColumnaTabla, fila: FilaTabla): boolean {
+  return typeof c.editable === 'function' ? c.editable(fila) : Boolean(c.editable)
+}
 
 function normalizar(texto: string) {
   return texto
@@ -392,7 +408,7 @@ export function TablaAvanzada({
                           fila={fila}
                           columna={principal}
                           editable={
-                            puedeEditar && Boolean(principal.editable) && Boolean(onEditarCelda)
+                            puedeEditar && seEdita(principal, fila) && Boolean(onEditarCelda)
                           }
                           onGuardar={(v) => onEditarCelda?.(fila.id, principal.key, v)}
                         />
@@ -410,7 +426,7 @@ export function TablaAvanzada({
                             <Celda
                               fila={fila}
                               columna={c}
-                              editable={puedeEditar && Boolean(c.editable) && Boolean(onEditarCelda)}
+                              editable={puedeEditar && seEdita(c, fila) && Boolean(onEditarCelda)}
                               onGuardar={(v) => onEditarCelda?.(fila.id, c.key, v)}
                             />
                           </dd>
@@ -484,7 +500,7 @@ export function TablaAvanzada({
                             <Celda
                               fila={fila}
                               columna={c}
-                              editable={puedeEditar && Boolean(c.editable) && Boolean(onEditarCelda)}
+                              editable={puedeEditar && seEdita(c, fila) && Boolean(onEditarCelda)}
                               onGuardar={(v) => onEditarCelda?.(fila.id, c.key, v)}
                             />
                           </td>
@@ -518,7 +534,10 @@ export function TablaAvanzada({
         <ModalMasivo
           abierto={abrirMasivo}
           onCerrar={() => setAbrirMasivo(false)}
-          columnas={columnas.filter((c) => c.editable && !c.sinMasivo)}
+          // En masa sólo van las columnas que se editan SIEMPRE: una que
+          // depende de la fila no se puede aplicar a una selección donde
+          // unas la admiten y otras no.
+          columnas={columnas.filter((c) => c.editable === true && !c.sinMasivo)}
           cantidad={marcadosVisibles.length}
           onAplicar={async (cambios) => {
             await onEditarMasivo(marcadosVisibles, cambios)
@@ -688,7 +707,14 @@ function Celda({
   editable: boolean
   onGuardar: (valor: unknown) => void
 }) {
-  if (columna.render) return <>{columna.render(fila)}</>
+  // `render` puede devolver `undefined` para decir «esta fila se dibuja
+  // como siempre». Sirve para columnas que sólo cambian de aspecto en
+  // algunas filas —un área que no aplica— sin tener que reimplementar el
+  // dibujo normal de las demás.
+  if (columna.render) {
+    const dibujo = columna.render(fila)
+    if (dibujo !== undefined) return <>{dibujo}</>
+  }
 
   const valor = fila[columna.key]
 

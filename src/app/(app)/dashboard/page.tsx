@@ -38,8 +38,11 @@ export default async function DashboardPage() {
       .order('fecha_inicio', { ascending: false }),
     supabase.from('zonas').select('id, nombre').eq('activo', true).order('nombre'),
     supabase
+      // Los departamentos administrativos no cuentan como lotes: no
+      // tienen área y sólo inflaban el contador de la portada.
       .from('lotes_temporada')
-      .select('id, temporada_id, zona_id, ciclo, lotes(nomenclatura, nombre)')
+      .select('id, temporada_id, zona_id, ciclo, lotes!inner(nomenclatura, nombre, tipo)')
+      .eq('lotes.tipo', 'AGRICOLA')
       .eq('activo', true),
     supabase
       .from('labores')

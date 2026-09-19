@@ -1,16 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
+import { leerTodo } from '@/lib/supabase/paginar'
 import { ControlCostos, type LineaCosto } from '@/components/costos/ControlCostos'
 import { Alerta, BotonLink } from '@/components/ui/Primitivos'
 import { getPermisos, puede } from '@/lib/auth'
 import { hoyIso, sumarDias } from '@/lib/fechas'
-
-/**
- * Tope de líneas que se traen de una vez. Cada labor produce dos líneas
- * (equipo e implemento), así que 4000 son unas 2000 labores: más que un mes
- * completo de operación. Si se pasa, se avisa en pantalla en vez de mentir
- * con totales incompletos.
- */
-const TOPE = 4000
 
 function haceUnMes() {
   return sumarDias(hoyIso(), -30)
@@ -39,15 +32,20 @@ export default async function CostosPage({
   const desde = params.desde ?? haceUnMes()
   const hasta = params.hasta ?? hoyIso()
 
-  const { data, error } = await supabase
-    .from('v_costos_labores')
-    .select('*')
-    .gte('fecha', desde)
-    .lte('fecha', hasta)
-    .order('fecha', { ascending: false })
-    .limit(TOPE)
-
-  const lineas = (data as LineaCosto[] | null) ?? []
+  // Sin tope. Antes se cortaba en 4000 líneas —unas 2000 labores— y un
+  // rango de tres meses dejaba los totales cortos sin que se notara en
+  // el número. Ahora se pide por tramos hasta agotar el rango, y
+  // `completo` sólo viene en falso si se alcanza el freno de seguridad.
+  const { datos: lineas, error, completo } = await leerTodo<LineaCosto>((d, h) =>
+    supabase
+      .from('v_costos_labores')
+      .select('*')
+      .gte('fecha', desde)
+      .lte('fecha', hasta)
+      .order('fecha', { ascending: false })
+      .order('detalle_id', { ascending: false })
+      .range(d, h)
+  )
 
   return (
     <div className="anim-aparecer mx-auto flex max-w-5xl flex-col gap-4 p-4 lg:p-6">
@@ -65,7 +63,7 @@ export default async function CostosPage({
 
       {error ? (
         <Alerta>
-          No se pudo consultar la vista de costos: {error.message}. Si dice que no existe
+          No se pudo consultar la vista de costos: {error}. Si dice que no existe
           «v_costos_labores», falta ejecutar la migración 11 en el SQL Editor de Supabase.
         </Alerta>
       ) : (
@@ -73,7 +71,7 @@ export default async function CostosPage({
           lineas={lineas}
           desde={desde}
           hasta={hasta}
-          truncado={lineas.length >= TOPE}
+          truncado={!completo}
         />
       )}
     </div>

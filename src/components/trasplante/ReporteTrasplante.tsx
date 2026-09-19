@@ -8,7 +8,7 @@
 
 import { Fragment } from 'react'
 import { GraficoSemanas } from './GraficoSemanas'
-import { Porcentaje } from './AvancePorUt'
+import { Porcentaje } from './Porcentaje'
 import {
   agruparPorFecha,
   agruparZonas,

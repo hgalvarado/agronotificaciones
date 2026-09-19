@@ -79,6 +79,57 @@ export async function insertarSiembras(filas: SiembraNueva[]) {
   return { error: error?.message ?? null }
 }
 
+/** Un producto tal como se manda a guardar: sólo lo que la base necesita. */
+export type ProductoParaGuardar = {
+  material_id: string
+  cantidad: string
+  unidad: string
+}
+
+/**
+ * Deja los productos de una siembra EXACTAMENTE como dice la lista.
+ *
+ * No es un alta ni una baja: es el estado final. Quitar dos, cambiarle la
+ * cantidad a uno y agregar otro es una sola llamada y una sola
+ * transacción; con tres llamadas sueltas, una red que se corta deja la
+ * siembra diciendo que se aplicó algo que ya no está.
+ */
+export async function guardarProductosSiembra(
+  siembraId: string,
+  productos: ProductoParaGuardar[]
+) {
+  const { error } = await createClient().rpc('fn_guardar_productos_siembra', {
+    p_siembra_id: siembraId,
+    p_productos: productos
+      .filter((p) => p.material_id)
+      .map((p) => ({
+        material_id: p.material_id,
+        cantidad: p.cantidad.trim(),
+        unidad: p.unidad.trim(),
+      })),
+  })
+  return { error: error?.message ?? null }
+}
+
+/**
+ * Marca o desmarca el fin de siembra de un lote y ciclo.
+ *
+ * Una sola llamada para los dos sentidos: el interruptor manda el estado
+ * al que quiere llegar y la base se encarga.
+ */
+export async function marcarSiembraTerminada(
+  loteTemporadaId: string,
+  ciclo: number,
+  terminado: boolean
+) {
+  const { error } = await createClient().rpc('fn_marcar_siembra_terminada', {
+    p_lote_temporada_id: loteTemporadaId,
+    p_ciclo: ciclo,
+    p_terminado: terminado,
+  })
+  return { error: error?.message ?? null }
+}
+
 export type CamposPlanSiembra = {
   lote_temporada_id?: string
   variedad_id?: string

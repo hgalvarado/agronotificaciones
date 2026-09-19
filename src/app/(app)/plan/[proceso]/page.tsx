@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { leerTodo } from '@/lib/supabase/paginar'
 import { getPermisos, puede } from '@/lib/auth'
 import { hoyIso, sumarDias } from '@/lib/fechas'
 import { PlanProceso } from '@/components/plan/PlanProceso'
@@ -129,14 +130,17 @@ export default async function PlanProcesoPage({
     { data: planes },
     { data: avance },
     { data: porZona },
-    { data: diario },
     { data: proveedores },
     { data: proveedorLote },
   ] = await Promise.all([
     supabase
+      // Sólo lotes agrícolas: un departamento administrativo no se ara
+      // ni se emplastica, y colarlo aquí metía filas de 0 mz en el plan
+      // que jamás iban a llegar al 100 %.
       .from('lotes_temporada')
-      .select('id, area_bruta, area_neta, lotes(nomenclatura, nombre), zonas(nombre, responsable)')
+      .select('id, area_bruta, area_neta, lotes!inner(nomenclatura, nombre, tipo), zonas(nombre, responsable)')
       .eq('temporada_id', temporadaId)
+      .eq('lotes.tipo', 'AGRICOLA')
       .eq('activo', true),
     supabase
       .from('planes')
@@ -153,6 +157,21 @@ export default async function PlanProcesoPage({
       p_proceso_id: proceso.id,
       p_labor_id: laborId,
     }),
+    supabase.rpc('fn_avance_por_proveedor', {
+      p_temporada_id: temporadaId,
+      p_proceso_id: proceso.id,
+      p_labor_id: laborId,
+    }),
+    supabase.rpc('fn_proveedor_por_lote', {
+      p_temporada_id: temporadaId,
+      p_proceso_id: proceso.id,
+      p_labor_id: laborId,
+    }),
+  ])
+
+  // El detalle diario, completo: antes se cortaba en 3000 filas y un
+  // rango largo perdía el arranque sin avisar. Se pide por tramos.
+  const { datos: diario } = await leerTodo((d, h) =>
     supabase
       .from('v_avance_diario')
       .select('*')
@@ -165,18 +184,9 @@ export default async function PlanProcesoPage({
       .gte('fecha', desde)
       .lte('fecha', hasta)
       .order('fecha', { ascending: false })
-      .limit(3000),
-    supabase.rpc('fn_avance_por_proveedor', {
-      p_temporada_id: temporadaId,
-      p_proceso_id: proceso.id,
-      p_labor_id: laborId,
-    }),
-    supabase.rpc('fn_proveedor_por_lote', {
-      p_temporada_id: temporadaId,
-      p_proceso_id: proceso.id,
-      p_labor_id: laborId,
-    }),
-  ])
+      .order('detalle_id', { ascending: false })
+      .range(d, h)
+  )
 
   const porLote = new Map<string, PlanRow>()
   for (const p of (planes as PlanRow[] | null) ?? []) porLote.set(p.lote_temporada_id, p)

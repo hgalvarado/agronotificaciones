@@ -13,7 +13,7 @@
  * eliminar lo hace quien la usa, a través de los huecos que deja.
  */
 
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useRef, useState, type ReactNode, type UIEvent } from 'react'
 import { Boton, EstadoVacio } from './Primitivos'
 import { FiltroColumna } from './FiltroColumna'
 import { SelectorCelda } from './SelectorCelda'
@@ -33,6 +33,23 @@ import {
 import type { ColumnaGrid, Filtro, Filtros, Orden } from '@/lib/grid/tipos'
 
 export type { ColumnaGrid } from '@/lib/grid/tipos'
+
+/**
+ * Filas dibujadas de entrada, y cuántas se añaden al llegar al final.
+ *
+ * No es una página de datos: los datos ya están todos aquí. Es cuántas
+ * FILAS DE HTML existen a la vez. Con nueve mil líneas de labores, el
+ * navegador tarda varios segundos en pintar la tabla y el teléfono se
+ * queda congelado; con doscientas es instantáneo y al bajar aparecen las
+ * siguientes sin pedirle nada a la base.
+ *
+ * Por eso el Excel NO usa esto: exporta `visibles`, que son todas las
+ * filas que pasan los filtros, se hayan pintado o no.
+ */
+const POR_TANDA = 200
+
+/** A cuántos píxeles del fondo se traen las siguientes. */
+const MARGEN_FONDO = 600
 
 export function DataGrid<T extends { id: string }>({
   filas,
@@ -104,6 +121,36 @@ export function DataGrid<T extends { id: string }>({
   )
 
   const activos = contarFiltros(filtros)
+
+  /* ------------------------- Carga progresiva ------------------------ */
+
+  // Cuántas filas están pintadas. Se reinicia cuando cambia LO QUE SE VE
+  // —otro filtro, otra búsqueda, otro orden, otra consulta—, porque
+  // conservar «voy por la fila 3.000» sobre una lista nueva dejaría la
+  // tabla arrancando por la mitad de algo que nadie ha desplazado.
+  //
+  // El reinicio va en el RENDER y no en un efecto: es el patrón que React
+  // documenta para reajustar estado cuando cambia una prop, y en React 19
+  // hacerlo desde un efecto además es error de lint.
+  const [pintadas, setPintadas] = useState(POR_TANDA)
+  const huella = `${filas.length}|${JSON.stringify(filtros)}|${busqueda}|${orden?.campo ?? ''}|${orden?.direccion ?? ''}`
+  const [huellaPrevia, setHuellaPrevia] = useState(huella)
+  if (huella !== huellaPrevia) {
+    setHuellaPrevia(huella)
+    setPintadas(POR_TANDA)
+  }
+
+  const contenedor = useRef<HTMLDivElement | null>(null)
+  const enPantalla = useMemo(() => visibles.slice(0, pintadas), [visibles, pintadas])
+  const faltanPorPintar = visibles.length - enPantalla.length
+
+  function alDesplazar(e: UIEvent<HTMLDivElement>) {
+    if (faltanPorPintar <= 0) return
+    const c = e.currentTarget
+    if (c.scrollHeight - c.scrollTop - c.clientHeight < MARGEN_FONDO) {
+      setPintadas((n) => n + POR_TANDA)
+    }
+  }
 
   // Las listas de casillas se calculan una vez para todas las columnas:
   // cada una mira las filas que pasan los filtros de LAS DEMÁS, como el
@@ -246,7 +293,11 @@ export function DataGrid<T extends { id: string }>({
           />
         ) : (
           <>
-            <div className="scroll-suave max-h-[70svh] overflow-auto">
+            <div
+              ref={contenedor}
+              onScroll={alDesplazar}
+              className="scroll-suave max-h-[70svh] overflow-auto"
+            >
               <table className="w-full text-sm" style={{ minWidth: minAncho }}>
                 <thead className="sticky top-0 z-10 bg-slate-50">
                   <tr className="border-b border-slate-200 text-left">
@@ -343,7 +394,7 @@ export function DataGrid<T extends { id: string }>({
                 </thead>
 
                 <tbody>
-                  {visibles.map((f) => {
+                  {enPantalla.map((f) => {
                     const extra = resaltar?.(f)
                     return (
                       <tr
@@ -432,6 +483,21 @@ export function DataGrid<T extends { id: string }>({
                   })}
                 </tbody>
               </table>
+
+              {/* El botón es el respaldo del desplazamiento: con teclado,
+                  o si el contenedor no llega a desbordar, seguir bajando
+                  tiene que ser posible sin ratón. */}
+              {faltanPorPintar > 0 && (
+                <div className="border-t border-slate-100 p-2">
+                  <button
+                    type="button"
+                    onClick={() => setPintadas((n) => n + POR_TANDA)}
+                    className="w-full rounded-lg border border-dashed border-slate-300 py-2 text-xs font-semibold text-slate-500 transition-colors hover:border-brand-400 hover:text-brand-700"
+                  >
+                    Cargar más ({enPantalla.length} de {visibles.length})
+                  </button>
+                </div>
+              )}
             </div>
 
             {visibles.length === 0 && (
@@ -447,6 +513,12 @@ export function DataGrid<T extends { id: string }>({
         {visibles.length === filas.length
           ? `${filas.length} ${filas.length === 1 ? 'fila' : 'filas'}`
           : `${visibles.length} de ${filas.length} filas`}
+        {faltanPorPintar > 0 && (
+          <span className="text-slate-500">
+            {' · '}
+            {enPantalla.length} dibujadas; baja para ver el resto. El Excel las exporta todas
+          </span>
+        )}
         <span className="hidden sm:inline">
           {' · toca un encabezado para ordenar, el embudo para filtrar'}
           {puedeEditarCelda && onEditarCelda

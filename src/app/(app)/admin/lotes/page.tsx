@@ -6,6 +6,7 @@ import {
   type TemporadaOpcion,
 } from '@/components/admin/LotesTemporada'
 import { Alerta } from '@/components/ui/Primitivos'
+import type { TipoLote } from '@/lib/types'
 
 type FilaAsignacion = {
   id: string
@@ -16,8 +17,8 @@ type FilaAsignacion = {
   ciclo: number | null
   activo: boolean
   lotes:
-    | { nomenclatura: string; nombre: string | null }
-    | { nomenclatura: string; nombre: string | null }[]
+    | { nomenclatura: string; nombre: string | null; tipo?: TipoLote }
+    | { nomenclatura: string; nombre: string | null; tipo?: TipoLote }[]
     | null
 }
 
@@ -59,7 +60,7 @@ export default async function LotesPage({
   const [{ data: asignadosRaw }, { data: todosLotes }, { data: zonas }] = await Promise.all([
     supabase
       .from('lotes_temporada')
-      .select('id, lote_id, zona_id, area_bruta, area_neta, ciclo, activo, lotes(nomenclatura, nombre)')
+      .select('id, lote_id, zona_id, area_bruta, area_neta, ciclo, activo, lotes(nomenclatura, nombre, tipo)')
       .eq('temporada_id', temporada.id),
     supabase
       .from('lotes')
@@ -82,6 +83,9 @@ export default async function LotesPage({
         activo: a.activo,
         nomenclatura: lote?.nomenclatura ?? '—',
         nombre: lote?.nombre ?? null,
+        // Sin la migración 46 la columna no viene: se trata como
+        // agrícola, que es como se comportaba todo hasta ahora.
+        tipo: lote?.tipo ?? 'AGRICOLA',
       }
     })
     .sort((a, b) => a.nomenclatura.localeCompare(b.nomenclatura))

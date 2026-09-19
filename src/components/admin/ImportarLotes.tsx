@@ -4,14 +4,36 @@ import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Modal } from '@/components/ui/Modal'
-import { leerArchivoTabular } from '@/lib/hojas'
+import { construirXlsxPlantilla, descargar, leerArchivoTabular } from '@/lib/hojas'
 import { Alerta, Boton, Campo, Insignia, Selector } from '@/components/ui/Primitivos'
-import type { Zona } from '@/lib/types'
+import { TIPOS_LOTE, type TipoLote, type Zona } from '@/lib/types'
 import { mensajeDeError } from '@/lib/errores'
+
+const ENCABEZADOS = ['Nomenclatura', 'Nombre', 'Tipo', 'Área bruta', 'Área neta', 'Zona']
+
+/**
+ * De la etiqueta que se escribe en Excel al valor que guarda la base.
+ *
+ * En la plantilla se elige «Departamento administrativo» de un
+ * desplegable; en la base es 'ADMINISTRATIVO'. Se acepta también el valor
+ * crudo por si alguien reutiliza un archivo viejo.
+ */
+function aTipo(bruto: string | undefined): TipoLote {
+  const t = (bruto ?? '').trim().toLowerCase()
+  if (!t) return 'AGRICOLA'
+  const porEtiqueta = TIPOS_LOTE.find(
+    (x) => x.etiqueta.toLowerCase() === t || x.valor.toLowerCase() === t
+  )
+  // «administrativo», «depto administrativo», «admin»: lo que la gente
+  // escribe cuando no usa el desplegable.
+  if (!porEtiqueta) return t.includes('admin') ? 'ADMINISTRATIVO' : 'AGRICOLA'
+  return porEtiqueta.valor
+}
 
 type FilaPegada = {
   nomenclatura: string
   nombre: string | null
+  tipo: TipoLote
   areaBruta: number | null
   areaNeta: number | null
   zonaNombre: string | null
@@ -28,7 +50,7 @@ function parsear(texto: string): FilaPegada[] {
     .filter(Boolean)
     .map((linea) => {
       const cols = linea.split(/\t|;|,(?=\s*\S)/).map((c) => c.trim())
-      const [nomenclatura, nombre, areaBruta, areaNeta, zonaNombre] = cols
+      const [nomenclatura, nombre, tipo, areaBruta, areaNeta, zonaNombre] = cols
 
       const numero = (v: string | undefined) => {
         if (!v) return null
@@ -37,12 +59,17 @@ function parsear(texto: string): FilaPegada[] {
         return Number.isNaN(n) ? null : n
       }
 
+      const cual = aTipo(tipo)
       const fila: FilaPegada = {
         nomenclatura: nomenclatura ?? '',
         nombre: nombre || null,
-        areaBruta: numero(areaBruta),
-        areaNeta: numero(areaNeta),
-        zonaNombre: zonaNombre || null,
+        tipo: cual,
+        // Un departamento administrativo no tiene área ni zona aunque el
+        // archivo las traiga: la base se las quitaría igual, y enseñarlas
+        // en la vista previa haría creer que se van a guardar.
+        areaBruta: cual === 'AGRICOLA' ? numero(areaBruta) : null,
+        areaNeta: cual === 'AGRICOLA' ? numero(areaNeta) : null,
+        zonaNombre: cual === 'AGRICOLA' ? zonaNombre || null : null,
       }
 
       if (!fila.nomenclatura) fila.error = 'Falta la nomenclatura'
@@ -94,6 +121,7 @@ export function ImportarLotes({
           nuevas.map((f) => ({
             nomenclatura: f.nomenclatura,
             nombre: f.nombre,
+            tipo: f.tipo,
           }))
         )
         .select('id, nomenclatura')
@@ -156,11 +184,32 @@ export function ImportarLotes({
             En Excel selecciona las columnas en este orden y pégalas abajo (Ctrl+V):
           </p>
           <p className="mt-1.5 font-mono text-[11px] text-slate-500">
-            Nomenclatura · Nombre · Área bruta · Área neta · Zona
+            {ENCABEZADOS.join(' · ')}
           </p>
           <p className="mt-1.5">
             Sólo la nomenclatura es obligatoria. Si omites la zona, se usa la que elijas aquí abajo.
+            En un <strong>departamento administrativo</strong> el área y la zona se ignoran.
           </p>
+          <Boton
+            variante="secundario"
+            tamano="sm"
+            className="mt-2"
+            onClick={() =>
+              descargar(
+                construirXlsxPlantilla('Lotes', ENCABEZADOS, [
+                  {
+                    columna: 2,
+                    titulo: 'Tipo',
+                    valores: TIPOS_LOTE.map((t) => t.etiqueta),
+                  },
+                  { columna: 5, titulo: 'Zona', valores: zonas.map((z) => z.nombre) },
+                ]),
+                'plantilla-lotes.xlsx'
+              )
+            }
+          >
+            Descargar plantilla
+          </Boton>
         </div>
 
         <Campo etiqueta="Zona por defecto" ayuda="Se aplica a los lotes que no traigan zona en la columna 5.">
@@ -198,7 +247,10 @@ export function ImportarLotes({
             value={texto}
             onChange={(e) => setTexto(e.target.value)}
             rows={6}
-            placeholder={'1001-010\tCarretillo\t29.84\t24.95\t1\n1001-020\tArenera\t13.05\t11.19\t1'}
+            placeholder={
+              '1001-010\tCarretillo\tLote agrícola\t29.84\t24.95\tZona 1\n' +
+              'OFI-001\tOficinas centrales\tDepartamento administrativo\t\t\t'
+            }
             className="w-full resize-y rounded-xl border border-slate-200 bg-white px-3.5 py-3 font-mono text-xs text-slate-900 placeholder:text-slate-300 focus:border-brand-600 focus:outline-none focus:ring-4 focus:ring-brand-600/10"
           />
         </Campo>
@@ -219,6 +271,7 @@ export function ImportarLotes({
                   <tr className="bg-slate-50 text-left text-[10px] font-bold uppercase text-slate-400">
                     <th className="px-2 py-1.5">Lote</th>
                     <th className="px-2 py-1.5">Nombre</th>
+                    <th className="px-2 py-1.5">Tipo</th>
                     <th className="px-2 py-1.5 text-right">Bruta</th>
                     <th className="px-2 py-1.5 text-right">Neta</th>
                     <th className="px-2 py-1.5">Zona</th>
@@ -240,6 +293,9 @@ export function ImportarLotes({
                           {duplicado && <span className="ml-1 text-amber-700">(ya existe)</span>}
                         </td>
                         <td className="px-2 py-1.5 text-slate-500">{f.nombre ?? '—'}</td>
+                        <td className="px-2 py-1.5 text-slate-500">
+                          {f.tipo === 'AGRICOLA' ? 'Agrícola' : 'Administrativo'}
+                        </td>
                         <td className="px-2 py-1.5 text-right text-slate-500">{f.areaBruta ?? '—'}</td>
                         <td className="px-2 py-1.5 text-right text-slate-500">{f.areaNeta ?? '—'}</td>
                         <td className="px-2 py-1.5 text-slate-500">{f.zonaNombre ?? '—'}</td>

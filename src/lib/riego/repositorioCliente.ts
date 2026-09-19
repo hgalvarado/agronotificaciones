@@ -10,6 +10,7 @@
  */
 
 import { createClient } from '@/lib/supabase/client'
+import { leerTodo } from '@/lib/supabase/paginar'
 import { mensajeDeError } from '@/lib/errores'
 import { lineasParaGuardar } from './validacion'
 import type { EntradaTurno, FilaTurnoRiego, LineaTurno, LoteRegable } from './tipos'
@@ -36,20 +37,21 @@ export async function leerTurnos(
   temporadaId: string | null,
   ciclo: number | null
 ): Promise<{ datos: FilaTurnoRiego[]; error: string | null }> {
-  let q = createClient()
-    .from('v_turnos_riego')
-    .select('*')
-    .order('fecha_siembra', { ascending: false })
-    .order('turno', { ascending: true })
-    .order('ut', { ascending: true })
-    .limit(5000)
+  const { datos, error } = await leerTodo<FilaTurnoRiego>((desde, hasta) => {
+    let q = createClient()
+      .from('v_turnos_riego')
+      .select('*')
+      .order('fecha_siembra', { ascending: false })
+      .order('turno', { ascending: true })
+      .order('ut', { ascending: true })
+      .order('detalle_id', { ascending: true })
+      .range(desde, hasta)
 
-  if (temporadaId) q = q.eq('temporada_id', temporadaId)
-  if (ciclo) q = q.eq('ciclo', ciclo)
-
-  const { data, error } = await q
-  if (error) return { datos: [], error: error.message }
-  return { datos: (data as FilaTurnoRiego[]) ?? [], error: null }
+    if (temporadaId) q = q.eq('temporada_id', temporadaId)
+    if (ciclo) q = q.eq('ciclo', ciclo)
+    return q
+  })
+  return { datos, error }
 }
 
 /**

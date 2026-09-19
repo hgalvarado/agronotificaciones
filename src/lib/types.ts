@@ -43,6 +43,31 @@ export type Temporada = {
   activa: boolean
 }
 
+/**
+ * Qué es un lote.
+ *
+ * Los departamentos administrativos —oficinas, taller, caminos— se dieron
+ * de alta como lotes para poder notificar a SAP el costo de la maquinaria
+ * que trabaja en ellos. Sirven para eso y sólo para eso: no tienen área ni
+ * zona, y no entran en ningún plan, siembra ni turno de riego. Llega con
+ * la migración 46.
+ */
+export const TIPOS_LOTE = [
+  { valor: 'AGRICOLA', etiqueta: 'Lote agrícola' },
+  { valor: 'ADMINISTRATIVO', etiqueta: 'Departamento administrativo' },
+] as const
+
+export type TipoLote = (typeof TIPOS_LOTE)[number]['valor']
+
+export function etiquetaTipoLote(tipo: TipoLote | null | undefined): string {
+  return TIPOS_LOTE.find((t) => t.valor === tipo)?.etiqueta ?? 'Lote agrícola'
+}
+
+/** ¿Este lote se siembra, se riega y se planifica? */
+export function esLoteAgricola(tipo: TipoLote | null | undefined): boolean {
+  return (tipo ?? 'AGRICOLA') === 'AGRICOLA'
+}
+
 export type Zona = {
   id: string
   nombre: string

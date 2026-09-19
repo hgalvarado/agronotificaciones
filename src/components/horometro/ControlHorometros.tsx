@@ -19,6 +19,7 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { leerTodo } from '@/lib/supabase/paginar'
 import { Alerta, Boton, Esqueleto, Insignia, Tarjeta } from '@/components/ui/Primitivos'
 import { DataGrid } from '@/components/ui/DataGrid'
 import { PanelFiltros } from '@/components/ui/PanelFiltros'
@@ -116,45 +117,50 @@ export function ControlHorometros({
   const [consulta, setConsulta] = useState(inicial)
   const [externos, setExternos] = useState(VACIOS)
 
+  // Sin tope: el rango trae todas sus lecturas, por tramos. Ver
+  // `lib/supabase/paginar`.
   const leer = useCallback(async () => {
-    return supabase
-      .from('v_horometros_control')
-      .select('*')
-      .gte('fecha', consulta.desde)
-      .lte('fecha', consulta.hasta)
-      .order('equipo_codigo', { ascending: true })
-      .order('fecha', { ascending: true })
-      // El mismo desempate que usa la vista para encadenar: dentro de un
-      // día el diurno va antes que el nocturno. Sin esto la pantalla
-      // ordenaba distinto que el cálculo y las filas parecían saltadas.
-      .order('turno', { ascending: true })
-      .limit(5000)
+    return leerTodo<FilaControl>((desde, hasta) =>
+      supabase
+        .from('v_horometros_control')
+        .select('*')
+        .gte('fecha', consulta.desde)
+        .lte('fecha', consulta.hasta)
+        .order('equipo_codigo', { ascending: true })
+        .order('fecha', { ascending: true })
+        // El mismo desempate que usa la vista para encadenar: dentro de un
+        // día el diurno va antes que el nocturno. Sin esto la pantalla
+        // ordenaba distinto que el cálculo y las filas parecían saltadas.
+        .order('turno', { ascending: true })
+        .order('id', { ascending: true })
+        .range(desde, hasta)
+    )
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [consulta.desde, consulta.hasta])
 
   const recargar = useCallback(async () => {
-    const { data, error: e } = await leer()
+    const { datos, error: e } = await leer()
     if (e) {
-      setError(e.message)
+      setError(e)
       setFilas([])
       return
     }
     setError(null)
-    setFilas((data as FilaControl[]) ?? [])
+    setFilas(datos)
   }, [leer])
 
   useEffect(() => {
     let vivo = true
     async function cargar() {
-      const { data, error: e } = await leer()
+      const { datos, error: e } = await leer()
       if (!vivo) return
       if (e) {
-        setError(e.message)
+        setError(e)
         setFilas([])
         return
       }
       setError(null)
-      setFilas((data as FilaControl[]) ?? [])
+      setFilas(datos)
     }
     cargar()
     return () => {

@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/TablaAvanzada'
 import { ImportarLotes } from './ImportarLotes'
 import { CICLOS } from '@/lib/estados'
-import type { Zona } from '@/lib/types'
+import { esLoteAgricola, TIPOS_LOTE, type TipoLote, type Zona } from '@/lib/types'
 import { mensajeDeError } from '@/lib/errores'
 
 export type AsignacionLote = {
@@ -35,11 +35,25 @@ export type AsignacionLote = {
   activo: boolean
   nomenclatura: string
   nombre: string | null
+  /** Llega con la migración 46. Sin ella todo se comporta como antes. */
+  tipo?: TipoLote
 }
 
 export type LoteDisponible = { id: string; nomenclatura: string; nombre: string | null }
 
 export type TemporadaOpcion = { id: string; nombre: string; activa: boolean }
+
+/** ¿Esta fila de la tabla es un lote que se siembra? */
+const agricola = (f: FilaTabla) => esLoteAgricola(f.tipo as TipoLote | undefined)
+
+/** Lo que se enseña donde un departamento administrativo no tiene dato. */
+function NoAplica() {
+  return (
+    <span title="Un departamento administrativo no tiene área ni zona" className="text-xs text-slate-300">
+      No aplica
+    </span>
+  )
+}
 
 export function LotesTemporada({
   temporadaId,
@@ -69,7 +83,12 @@ export function LotesTemporada({
   const [clonando, setClonando] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const areaTotal = asignados.reduce((acc, a) => acc + (a.area_neta ?? 0), 0)
+  // Sólo los agrícolas suman: un departamento administrativo tiene 0 mz
+  // por definición, y contarlo entre «los lotes» hacía creer que la
+  // temporada tiene más superficie de la que tiene.
+  const agricolas = asignados.filter((a) => esLoteAgricola(a.tipo))
+  const administrativos = asignados.length - agricolas.length
+  const areaTotal = agricolas.reduce((acc, a) => acc + (a.area_neta ?? 0), 0)
 
   const columnas: ColumnaTabla[] = useMemo(
     () => [
@@ -87,15 +106,40 @@ export function LotesTemporada({
         ),
       },
       { key: 'nombre', label: 'Nombre', tipo: 'texto', editable: true },
+      // El tipo es lo primero que hay que decidir: de él dependen las
+      // tres columnas siguientes.
+      {
+        key: 'tipo',
+        label: 'Tipo',
+        tipo: 'seleccion',
+        editable: true,
+        ancho: '12rem',
+        opciones: TIPOS_LOTE.map((t) => ({ value: t.valor, label: t.etiqueta })),
+      },
       {
         key: 'zona_id',
         label: 'Zona',
         tipo: 'seleccion',
-        editable: true,
+        editable: agricola,
         opciones: zonas.map((z) => ({ value: z.id, label: z.nombre })),
+        render: (f) => (agricola(f) ? undefined : <NoAplica />),
       },
-      { key: 'area_bruta', label: 'Área bruta', tipo: 'numero', editable: true, alinear: 'derecha' },
-      { key: 'area_neta', label: 'Área neta', tipo: 'numero', editable: true, alinear: 'derecha' },
+      {
+        key: 'area_bruta',
+        label: 'Área bruta',
+        tipo: 'numero',
+        editable: agricola,
+        alinear: 'derecha',
+        render: (f) => (agricola(f) ? undefined : <NoAplica />),
+      },
+      {
+        key: 'area_neta',
+        label: 'Área neta',
+        tipo: 'numero',
+        editable: agricola,
+        alinear: 'derecha',
+        render: (f) => (agricola(f) ? undefined : <NoAplica />),
+      },
       {
         key: 'ciclo',
         label: 'Ciclo',
@@ -118,17 +162,29 @@ export function LotesTemporada({
     router.refresh()
   }
 
-  // El nombre vive en `lotes` (es del lote físico), lo demás en
+  // El nombre y el TIPO viven en `lotes` (son del lote físico: un lote es
+  // agrícola o administrativo en todas las temporadas), lo demás en
   // `lotes_temporada`. Se manda cada cambio a su tabla.
+  const DEL_LOTE = new Set(['nombre', 'tipo'])
+
   async function editarCelda(id: string, key: string, valor: unknown) {
-    if (key === 'nombre') {
+    if (DEL_LOTE.has(key)) {
       const fila = asignados.find((a) => a.id === id)
       if (!fila) return
       const { error: e } = await supabase
         .from('lotes')
-        .update({ nombre: valor })
+        .update({ [key]: valor })
         .eq('id', fila.lote_id)
-      if (e) return setError(e.message)
+      if (e) {
+        return setError(
+          mensajeDeError(
+            e,
+            key === 'tipo'
+              ? 'No se pudo cambiar el tipo. Si dice que no existe la columna «tipo», falta correr la migración 46.'
+              : 'No se pudo guardar el cambio.'
+          )
+        )
+      }
       setError(null)
       router.refresh()
       return
@@ -137,7 +193,8 @@ export function LotesTemporada({
   }
 
   async function editarMasivo(ids: string[], cambios: Record<string, unknown>) {
-    if ('nombre' in cambios) {
+    const delLote = Object.keys(cambios).some((k) => DEL_LOTE.has(k))
+    if (delLote) {
       const loteIds = asignados.filter((a) => ids.includes(a.id)).map((a) => a.lote_id)
       const { error: e } = await supabase.from('lotes').update(cambios).in('id', loteIds)
       if (e) throw new Error(e.message)
@@ -218,8 +275,11 @@ export function LotesTemporada({
           </p>
         </Tarjeta>
         <Tarjeta className="px-3.5 py-3">
-          <p className="text-xl font-bold tracking-tight text-slate-900">{asignados.length}</p>
-          <p className="text-[11px] font-medium text-slate-400">Lotes asignados</p>
+          <p className="text-xl font-bold tracking-tight text-slate-900">{agricolas.length}</p>
+          <p className="text-[11px] font-medium text-slate-400">
+            Lotes agrícolas
+            {administrativos > 0 && ` · ${administrativos} admin.`}
+          </p>
         </Tarjeta>
         <Tarjeta className="px-3.5 py-3">
           <p className="text-xl font-bold tracking-tight text-brand-700">
@@ -284,6 +344,12 @@ export function LotesTemporada({
         El <strong>área neta</strong> es el área física del lote. El área que se va a trabajar se
         define aparte, en el <strong>Plan de mecanización</strong>, y es contra ese plan que se mide
         el avance. El <strong>ciclo</strong> se usa como valor por defecto al capturar labores.
+      </p>
+      <p className="px-1 text-xs text-slate-400">
+        Un <strong>departamento administrativo</strong> —oficinas, taller, caminos— se registra aquí
+        sólo para poder notificar a SAP el costo de la maquinaria que trabaja en él. No tiene área ni
+        zona, y queda fuera del plan de siembra, del trasplante y de los turnos de riego: la base
+        misma rechaza planificarlo.
       </p>
 
       <ModalNuevoLote
@@ -497,15 +563,19 @@ function ModalNuevoLote({
 }) {
   const supabase = createClient()
   const router = useRouter()
-  const [form, setForm] = useState({
+  const VACIO_FORM = {
     nomenclatura: '',
     nombre: '',
+    tipo: 'AGRICOLA' as TipoLote,
     zona_id: '',
     area_bruta: '',
     area_neta: '',
-  })
+  }
+  const [form, setForm] = useState(VACIO_FORM)
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const esAgricola = form.tipo === 'AGRICOLA'
 
   async function crear() {
     if (!form.nomenclatura.trim()) return setError('La nomenclatura es obligatoria.')
@@ -518,28 +588,37 @@ function ModalNuevoLote({
         .insert({
           nomenclatura: form.nomenclatura.trim(),
           nombre: form.nombre.trim() || null,
+          tipo: form.tipo,
         })
         .select('id')
         .single()
       if (e1) throw e1
 
+      // El área y la zona van vacías si es administrativo. La base lo
+      // haría igual con su disparador; mandarlo bien desde aquí evita
+      // que la pantalla enseñe un momento lo que no se guardó.
       const { error: e2 } = await supabase.from('lotes_temporada').insert({
         lote_id: lote.id,
         temporada_id: temporadaId,
-        zona_id: form.zona_id || null,
-        area_bruta: form.area_bruta ? Number(form.area_bruta) : null,
-        area_neta: form.area_neta ? Number(form.area_neta) : 0,
+        zona_id: esAgricola ? form.zona_id || null : null,
+        area_bruta: esAgricola && form.area_bruta ? Number(form.area_bruta) : null,
+        area_neta: esAgricola && form.area_neta ? Number(form.area_neta) : 0,
         activo: true,
       })
       if (e2) throw e2
 
       setGuardando(false)
-      setForm({ nomenclatura: '', nombre: '', zona_id: '', area_bruta: '', area_neta: '' })
+      setForm(VACIO_FORM)
       onCerrar()
       router.refresh()
     } catch (e) {
       setGuardando(false)
-      setError(mensajeDeError(e, 'No se pudo crear el lote.'))
+      setError(
+        mensajeDeError(
+          e,
+          'No se pudo crear el lote. Si dice que no existe la columna «tipo», falta correr la migración 46.'
+        )
+      )
     }
   }
 
@@ -582,14 +661,38 @@ function ModalNuevoLote({
           </Campo>
         </div>
 
-        <Campo etiqueta="Zona">
-          <Selector value={form.zona_id} onChange={(e) => setForm({ ...form, zona_id: e.target.value })}>
-            <option value="">Sin zona</option>
-            {zonas.map((z) => (
-              <option key={z.id} value={z.id}>
-                {z.nombre}
+        <Campo
+          etiqueta="Tipo"
+          requerido
+          ayuda="Un departamento administrativo (oficinas, taller, caminos) existe sólo para notificar a SAP el costo de la maquinaria que trabaja ahí. No tiene área ni zona y no entra en el plan de siembra, el trasplante ni los turnos de riego."
+        >
+          <Selector
+            value={form.tipo}
+            onChange={(e) => setForm({ ...form, tipo: e.target.value as TipoLote })}
+          >
+            {TIPOS_LOTE.map((t) => (
+              <option key={t.valor} value={t.valor}>
+                {t.etiqueta}
               </option>
             ))}
+          </Selector>
+        </Campo>
+
+        {/* Deshabilitados y en blanco, no escondidos: se ve que el campo
+            existe y por qué no aplica aquí. */}
+        <Campo etiqueta="Zona">
+          <Selector
+            value={esAgricola ? form.zona_id : ''}
+            disabled={!esAgricola}
+            onChange={(e) => setForm({ ...form, zona_id: e.target.value })}
+          >
+            <option value="">{esAgricola ? 'Sin zona' : 'No aplica'}</option>
+            {esAgricola &&
+              zonas.map((z) => (
+                <option key={z.id} value={z.id}>
+                  {z.nombre}
+                </option>
+              ))}
           </Selector>
         </Campo>
 
@@ -597,17 +700,19 @@ function ModalNuevoLote({
           <Campo etiqueta="Área bruta">
             <Entrada
               inputMode="decimal"
-              value={form.area_bruta}
+              value={esAgricola ? form.area_bruta : ''}
+              disabled={!esAgricola}
               onChange={(e) => setForm({ ...form, area_bruta: e.target.value })}
-              placeholder="29.84"
+              placeholder={esAgricola ? '29.84' : 'No aplica'}
             />
           </Campo>
           <Campo etiqueta="Área neta" ayuda="Meta del dashboard.">
             <Entrada
               inputMode="decimal"
-              value={form.area_neta}
+              value={esAgricola ? form.area_neta : ''}
+              disabled={!esAgricola}
               onChange={(e) => setForm({ ...form, area_neta: e.target.value })}
-              placeholder="24.95"
+              placeholder={esAgricola ? '24.95' : 'No aplica'}
             />
           </Campo>
         </div>

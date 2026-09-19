@@ -7,24 +7,22 @@ import { TrasplanteTabs } from '@/components/trasplante/TrasplanteTabs'
 import {
   leerAvanceUt,
   leerCatalogos,
+  leerEstadisticas,
   leerLiquidacion,
   leerPlan,
+  leerPorSemana,
+  leerPorVariedad,
   leerRecepciones,
   leerSiembras,
 } from '@/lib/trasplante/repositorio'
-import { hoyIso, sumarDias } from '@/lib/fechas'
+import { hoyIso } from '@/lib/fechas'
 
 type Temporada = { id: string; nombre: string; activa: boolean }
-
-/** Un mes atrás, que es lo que se mira normalmente al abrir. */
-function haceUnMes() {
-  return sumarDias(hoyIso(), -30)
-}
 
 export default async function TrasplantePage({
   searchParams,
 }: {
-  searchParams: Promise<{ temporada?: string; desde?: string; hasta?: string }>
+  searchParams: Promise<{ temporada?: string }>
 }) {
   const permisos = await getPermisos()
   if (!puede(permisos, 'trasplante', 'ver')) redirect('/tickets')
@@ -48,14 +46,30 @@ export default async function TrasplantePage({
     )
   }
 
-  const desde = sp.desde ?? haceUnMes()
-  const hasta = sp.hasta ?? hoyIso()
+  // El módulo es de la TEMPORADA entera. El rango «Siembras desde–hasta»
+  // se quitó: sólo recortaba una de las cuatro pestañas y hacía que sus
+  // totales no cuadraran con los del cuadre, que siempre fue acumulado.
+  // El corte del cuadre es hoy, que es lo que significa «cómo vamos».
+  const hasta = hoyIso()
 
-  const [catalogos, plan, siembras, avance, recepciones, liquidacion] = await Promise.all([
+  const [
+    catalogos,
+    plan,
+    siembras,
+    avance,
+    estadisticas,
+    variedadesCuadre,
+    semanas,
+    recepciones,
+    liquidacion,
+  ] = await Promise.all([
     leerCatalogos(temporada.id),
     leerPlan(temporada.id),
-    leerSiembras(temporada.id, desde, hasta),
+    leerSiembras(temporada.id),
     leerAvanceUt(temporada.id, hasta),
+    leerEstadisticas(temporada.id, hasta),
+    leerPorVariedad(temporada.id, hasta),
+    leerPorSemana(temporada.id, hasta),
     leerRecepciones(temporada.id),
     leerLiquidacion(temporada.id, null),
   ])
@@ -74,7 +88,7 @@ export default async function TrasplantePage({
         </div>
         <div className="flex flex-wrap gap-2">
           <Link
-            href={`/trasplante/reporte?temporada=${temporada.id}&desde=${desde}&hasta=${hasta}`}
+            href={`/trasplante/reporte?temporada=${temporada.id}`}
             className="inline-flex items-center rounded-lg bg-slate-900 px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
           >
             Reporte para gerencia
@@ -107,15 +121,17 @@ export default async function TrasplantePage({
       <TrasplanteTabs
         temporadas={lista}
         temporadaId={temporada.id}
-        desde={desde}
-        hasta={hasta}
         avance={avance.datos}
+        estadisticas={estadisticas.datos}
+        variedadesCuadre={variedadesCuadre.datos}
+        semanas={semanas.datos}
         siembras={siembras.datos}
         plan={plan.datos}
         recepciones={recepciones.datos}
         liquidacion={liquidacion.datos}
         lotes={catalogos.lotes}
         variedades={catalogos.variedades}
+        materiales={catalogos.materiales}
         puedeEditar={puede(permisos, 'trasplante', 'editar') || puede(permisos, 'trasplante', 'crear')}
         puedeEliminar={puede(permisos, 'trasplante', 'eliminar')}
       />

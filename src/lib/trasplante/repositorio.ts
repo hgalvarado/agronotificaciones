@@ -6,6 +6,7 @@
  */
 
 import { createClient } from '@/lib/supabase/server'
+import { leerTodo } from '@/lib/supabase/paginar'
 import type {
   FilaAvanceUt,
   FilaEstadistica,
@@ -40,10 +41,15 @@ export async function leerCatalogos(temporadaId: string | null) {
   const [{ data: variedades }, { data: materiales }, { data: lotes }] = await Promise.all([
     supabase.from('variedades').select('id, nombre, codigo_sap, producto').eq('activo', true).order('nombre'),
     supabase.from('materiales').select('id, codigo, descripcion, grupo').eq('activo', true).order('codigo'),
+    // `lotes!inner` con `tipo = AGRICOLA`: los departamentos
+    // administrativos existen para notificar costos de maquinaria a SAP,
+    // no para sembrarse. Ofrecerlos en el selector de siembra es lo que
+    // llenaba el plan de lotes de 0 mz que nunca se iban a cumplir.
     supabase
       .from('lotes_temporada')
-      .select('id, temporada_id, area_neta, lotes(nomenclatura, nombre), zonas(nombre)')
+      .select('id, temporada_id, area_neta, lotes!inner(nomenclatura, nombre, tipo), zonas(nombre)')
       .eq('activo', true)
+      .eq('lotes.tipo', 'AGRICOLA')
       .eq('temporada_id', temporadaId ?? ''),
   ])
 
@@ -80,15 +86,19 @@ type PlanFila = {
 
 export async function leerPlan(temporadaId: string) {
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('planes_siembra')
-    .select(
-      'id, lote_temporada_id, ciclo, variedad_id, fecha_siembra, area_plan, distancia_siembra,' +
-        ' lotes_temporada(lotes(nomenclatura, nombre), zonas(nombre)), variedades(nombre)'
-    )
-    .eq('temporada_id', temporadaId)
+  const { datos, error } = await leerTodo<PlanFila>((desde, hasta) =>
+    supabase
+      .from('planes_siembra')
+      .select(
+        'id, lote_temporada_id, ciclo, variedad_id, fecha_siembra, area_plan, distancia_siembra,' +
+          ' lotes_temporada(lotes(nomenclatura, nombre), zonas(nombre)), variedades(nombre)'
+      )
+      .eq('temporada_id', temporadaId)
+      .order('id', { ascending: true })
+      .range(desde, hasta)
+  )
 
-  const filas = ((data as unknown as PlanFila[] | null) ?? []).map((p) => ({
+  const filas = (datos as unknown as PlanFila[]).map((p) => ({
     id: p.id,
     lote_temporada_id: p.lote_temporada_id,
     ut: uno(p.lotes_temporada?.lotes ?? null)?.nomenclatura ?? '—',
@@ -108,24 +118,40 @@ export async function leerPlan(temporadaId: string) {
       a.ciclo - b.ciclo ||
       a.variedad.localeCompare(b.variedad, 'es')
   )
-  return { datos: filas, error: error?.message ?? null }
+  return { datos: filas, error }
 }
 
+/**
+ * Las siembras de la temporada.
+ *
+ * Sin tope y, en la pantalla, sin recorte de fechas: el filtro «Siembras
+ * desde–hasta» se quitó porque la TEMPORADA es el recorte, y esconder el
+ * arranque de febrero hacía que el acumulado de la tabla no cuadrara con
+ * el del cuadre, que siempre fue de la temporada entera.
+ *
+ * El `rango` sigue existiendo para el reporte de gerencia, que sí
+ * compara un detalle diario acotado contra el acumulado. Pedirlo o no es
+ * de quien llama; el tope no vuelve en ninguno de los dos casos: se pide
+ * por tramos, porque quitar el `.limit()` no basta —Supabase corta igual
+ * en mil filas por respuesta—.
+ */
 export async function leerSiembras(
   temporadaId: string,
-  desde: string,
-  hasta: string
+  rango?: { desde: string; hasta: string }
 ): Promise<Respuesta<FilaSiembra[]>> {
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('v_siembras')
-    .select('*')
-    .eq('temporada_id', temporadaId)
-    .gte('fecha_siembra', desde)
-    .lte('fecha_siembra', hasta)
-    .order('fecha_siembra', { ascending: false })
-    .limit(5000)
-  return { datos: (data as FilaSiembra[] | null) ?? [], error: error?.message ?? null }
+  const { datos, error } = await leerTodo<FilaSiembra>((desde, hasta) => {
+    let q = supabase
+      .from('v_siembras')
+      .select('*')
+      .eq('temporada_id', temporadaId)
+      .order('fecha_siembra', { ascending: false })
+      .order('id', { ascending: false })
+      .range(desde, hasta)
+    if (rango) q = q.gte('fecha_siembra', rango.desde).lte('fecha_siembra', rango.hasta)
+    return q
+  })
+  return { datos, error }
 }
 
 /** Las cuatro consultas de cuadre. Todas comparten forma: plan contra real. */
@@ -164,11 +190,14 @@ export const leerLiquidacion = (temporadaId: string, hasta: string | null) =>
  */
 export async function leerRecepciones(temporadaId: string): Promise<Respuesta<FilaRecepcion[]>> {
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('v_recepcion_plantulas')
-    .select('*')
-    .eq('temporada_id', temporadaId)
-    .order('fecha', { ascending: false })
-    .limit(5000)
-  return { datos: (data as FilaRecepcion[] | null) ?? [], error: error?.message ?? null }
+  const { datos, error } = await leerTodo<FilaRecepcion>((desde, hasta) =>
+    supabase
+      .from('v_recepcion_plantulas')
+      .select('*')
+      .eq('temporada_id', temporadaId)
+      .order('fecha', { ascending: false })
+      .order('id', { ascending: false })
+      .range(desde, hasta)
+  )
+  return { datos, error }
 }
