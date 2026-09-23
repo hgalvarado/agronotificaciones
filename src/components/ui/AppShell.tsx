@@ -105,16 +105,18 @@ export function AppShell({
       visible: ve('avance'),
     },
     {
-      // «Avances» agrupa el seguimiento de cada proceso de campo: lo que
-      // se planificó contra lo que se lleva hecho. Emplasticado vive en
-      // /plan/APS (el proceso APS de SAP), trasplante y riego en los
-      // suyos; las direcciones no cambian, sólo dónde se entra.
+      // «Controles» agrupa lo que se lleva controlado: el avance de cada
+      // proceso de campo —lo planificado contra lo hecho— y el control de
+      // activos, que es la misma idea aplicada a cosas en vez de a
+      // manzanas. Emplasticado vive en /plan/APS (el proceso APS de SAP),
+      // trasplante y riego en los suyos; las direcciones no cambian, sólo
+      // dónde se entra.
       href: '/plan',
       pantalla: 'plan',
-      etiqueta: 'Avances',
+      etiqueta: 'Controles',
       icono: <IconPlan />,
       visible:
-        ve('plan') || ve('trasplante') || ve('turnos_riego'),
+        ve('plan') || ve('trasplante') || ve('turnos_riego') || ve('telecom'),
       hijos: [
         {
           href: '/plan/APS',
@@ -136,6 +138,13 @@ export function AppShell({
           etiqueta: 'Turnos de riego',
           icono: <IconGota />,
           visible: ve('turnos_riego'),
+        },
+        {
+          href: '/telecom',
+          pantalla: 'telecom',
+          etiqueta: 'Líneas Corporativas',
+          icono: <IconTicket />,
+          visible: ve('telecom'),
         },
       ],
     },

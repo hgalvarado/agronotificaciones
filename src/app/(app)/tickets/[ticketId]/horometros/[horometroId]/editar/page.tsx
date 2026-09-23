@@ -16,7 +16,16 @@ export default async function EditarHorometroPage({
   const [{ data: horometro }, { data: equipos }, { data: operadores }] = await Promise.all([
     supabase.from('horometros').select('*').eq('id', horometroId).single(),
     supabase.from('equipos').select('*').eq('activo', true).eq('visible_app', true).order('codigo'),
-    supabase.from('operadores').select('*').eq('activo', true).order('nombre'),
+    // Sólo quien MANEJA. `tipo_perfil` es un array y se pregunta
+    // «contiene OPERADOR», así que quien lleva los dos perfiles sigue
+    // saliendo; el puramente administrativo —que recibe un teléfono
+    // pero no se sube a un tractor— se queda fuera.
+    supabase
+      .from('operadores')
+      .select('*')
+      .eq('activo', true)
+      .contains('tipo_perfil', ['OPERADOR'])
+      .order('nombre'),
   ])
 
   if (!horometro) notFound()

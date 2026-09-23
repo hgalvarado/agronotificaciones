@@ -141,7 +141,14 @@ export function HorometroForm({
   async function crearOperador(valores: Record<string, string>) {
     const { data, error: dbError } = await supabase
       .from('operadores')
-      .insert({ nombre: valores.nombre.trim(), codigo: valores.codigo?.trim() || null })
+      // Nace OPERADOR: se está dando de alta desde la captura de un
+      // horómetro, y sin ese perfil no volvería a salir en este mismo
+      // selector la próxima vez, que es donde acaba de hacer falta.
+      .insert({
+        nombre: valores.nombre.trim(),
+        codigo: valores.codigo?.trim() || null,
+        tipo_perfil: ['OPERADOR'],
+      })
       .select('id, nombre, codigo')
       .single()
 

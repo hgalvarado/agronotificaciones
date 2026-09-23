@@ -32,6 +32,7 @@ export default async function CatalogosPage() {
     { data: variedades },
     { data: materiales },
     sondaContador,
+    sondaPerfil,
     { data: planesNutricionales },
     { data: turnosCatalogo },
     { data: estacionesRiego },
@@ -71,6 +72,10 @@ export default async function CatalogosPage() {
     // Sonda de la migración 38: enseñar una columna que la base no tiene
     // sólo consigue que la celda falle al tocarla.
     supabase.from('equipos').select('contador_sap').limit(1),
+    // Sonda de la migración 47: sin ella la columna de perfil no se
+    // ofrece. Enseñar una columna que la base no tiene sólo consigue que
+    // la celda falle al tocarla.
+    supabase.from('operadores').select('tipo_perfil').limit(1),
     // Llegan con la migración 40. Si no está corrida, la pestaña sale
     // vacía en vez de tumbar la pantalla completa.
     supabase.from('planes_nutricionales').select('*').order('nombre'),
@@ -80,6 +85,7 @@ export default async function CatalogosPage() {
   ])
 
   const soportaContador = !sondaContador.error
+  const soportaPerfil = !sondaPerfil.error
   const soportaProveedoresLabor = !sondaProveedoresLabor.error
   const soportaSeguimiento = !sondaSeguimiento.error
 
@@ -320,11 +326,28 @@ export default async function CatalogosPage() {
     {
       key: 'operadores',
       clave: 'nombre',
-      label: 'Operadores',
+      // Ya no son sólo operadores de maquinaria: el teléfono lo lleva
+      // también la gente de oficina, y tener dos catálogos de personas
+      // sería tener dos listas del mismo señor que se desincronizan al
+      // primer cambio de puesto.
+      label: 'Personal',
       tabla: 'operadores',
       campos: [
         { key: 'codigo', label: 'Código', tipo: 'text' },
         { key: 'nombre', label: 'Nombre', tipo: 'text', requerido: true },
+        ...(soportaPerfil
+          ? [
+              {
+                key: 'tipo_perfil',
+                label: 'Perfil',
+                tipo: 'multiseleccion' as const,
+                opciones: [
+                  { value: 'OPERADOR', label: 'Operador' },
+                  { value: 'ADMINISTRATIVO', label: 'Administrativo' },
+                ],
+              },
+            ]
+          : []),
         { key: 'activo', label: 'Activo', tipo: 'checkbox' },
       ],
       filas: operadores ?? [],

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Modal } from '@/components/ui/Modal'
+import { SelectorMultiple } from '@/components/ui/SelectorMultiple'
 import { Alerta, Boton, Campo, Entrada, Selector } from '@/components/ui/Primitivos'
 import { IconPlus } from '@/components/ui/Icons'
 import {
@@ -17,9 +18,15 @@ import { ImportarExcel, type RelacionCatalogo } from './ImportarExcel'
 export type CampoCatalogo = {
   key: string
   label: string
-  tipo: 'text' | 'number' | 'date' | 'checkbox' | 'select'
+  /**
+   * `multiseleccion` guarda un ARRAY en la columna, no un valor suelto.
+   * Existe porque hay atributos que no son excluyentes: la misma persona
+   * maneja el tractor y lleva el teléfono de la finca, y obligarla a ser
+   * una cosa sola la sacaría de una de las dos listas.
+   */
+  tipo: 'text' | 'number' | 'date' | 'checkbox' | 'select' | 'multiseleccion'
   requerido?: boolean
-  /** Sólo para tipo 'select': catálogo relacionado (ej. familias de equipo). */
+  /** Para 'select' y 'multiseleccion': los valores que admite la columna. */
   opciones?: { value: string; label: string }[]
 }
 
@@ -32,7 +39,55 @@ const TIPOS = {
   date: 'fecha',
   checkbox: 'booleano',
   select: 'seleccion',
+  // Se filtra y se ordena como texto: es la lista de valores, legible.
+  multiseleccion: 'texto',
 } as const
+
+/**
+ * Una columna que guarda varios valores, editada en la celda.
+ *
+ * De sólo lectura son etiquetas; con permiso de editar es el mismo
+ * selector múltiple del resto del sistema —con buscador y con el
+ * interruptor de uno solo o varios—, así que quien lo usa ya sabe
+ * usarlo.
+ */
+function SelectorArray({
+  valores,
+  opciones,
+  editable,
+  onCambiar,
+}: {
+  valores: string[]
+  opciones: { value: string; label: string }[]
+  editable: boolean
+  onCambiar: (valores: string[]) => void
+}) {
+  if (!editable) {
+    if (valores.length === 0) return <span className="text-xs text-slate-300">—</span>
+    return (
+      <span className="flex flex-wrap gap-1">
+        {valores.map((v) => (
+          <span
+            key={v}
+            className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold text-slate-600"
+          >
+            {opciones.find((o) => o.value === v)?.label ?? v}
+          </span>
+        ))}
+      </span>
+    )
+  }
+
+  return (
+    <SelectorMultiple
+      etiqueta=""
+      opciones={opciones.map((o) => ({ valor: o.value, etiqueta: o.label }))}
+      valores={valores}
+      onCambiar={onCambiar}
+      className="min-w-[150px]"
+    />
+  )
+}
 
 export function CatalogoTable({
   tabla,
@@ -68,6 +123,9 @@ export function CatalogoTable({
   const [abrirNuevo, setAbrirNuevo] = useState(false)
   const [abrirImportar, setAbrirImportar] = useState(false)
   const [nuevaFila, setNuevaFila] = useState<Record<string, string>>({})
+  // Los campos de array van aparte: no son texto y no se pueden guardar
+  // en el mismo diccionario sin convertirlos al vuelo en cada lectura.
+  const [nuevos, setNuevos] = useState<Record<string, string[]>>({})
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -85,7 +143,20 @@ export function CatalogoTable({
     label: c.label,
     tipo: TIPOS[c.tipo],
     opciones: c.opciones,
-    editable: true,
+    // Un array no se escribe en una celda de una línea: se elige en el
+    // selector múltiple, que es el mismo control del resto del sistema.
+    editable: c.tipo !== 'multiseleccion',
+    render:
+      c.tipo === 'multiseleccion'
+        ? (f) => (
+            <SelectorArray
+              valores={Array.isArray(f[c.key]) ? (f[c.key] as string[]) : []}
+              opciones={c.opciones ?? []}
+              editable={efectivos.editar === true}
+              onCambiar={(v) => editarCelda(String(f.id), c.key, v)}
+            />
+          )
+        : undefined,
     // La clave natural no entra en los cambios en masa: poner el mismo
     // código en veinte filas sólo puede terminar mal.
     sinMasivo: c.key === clave,
@@ -130,11 +201,16 @@ export function CatalogoTable({
     if (faltante) return setError(`Falta «${faltante.label}».`)
 
     setGuardando(true)
-    const payload = Object.fromEntries(Object.entries(nuevaFila).filter(([, v]) => v !== ''))
+    const payload: Record<string, unknown> = Object.fromEntries(
+      Object.entries(nuevaFila).filter(([, v]) => v !== '')
+    )
+    for (const [k, v] of Object.entries(nuevos)) if (v.length > 0) payload[k] = v
+
     const { error: e } = await supabase.from(tabla).insert(payload)
     setGuardando(false)
     if (e) return setError(e.message)
     setNuevaFila({})
+    setNuevos({})
     setAbrirNuevo(false)
     router.refresh()
   }
@@ -186,7 +262,14 @@ export function CatalogoTable({
         <div className="flex flex-col gap-4">
           {camposTexto.map((c, i) => (
             <Campo key={c.key} etiqueta={c.label} requerido={c.requerido}>
-              {c.tipo === 'select' ? (
+              {c.tipo === 'multiseleccion' ? (
+                <SelectorMultiple
+                  etiqueta=""
+                  opciones={(c.opciones ?? []).map((o) => ({ valor: o.value, etiqueta: o.label }))}
+                  valores={nuevos[c.key] ?? []}
+                  onCambiar={(v) => setNuevos((prev) => ({ ...prev, [c.key]: v }))}
+                />
+              ) : c.tipo === 'select' ? (
                 <Selector
                   value={nuevaFila[c.key] ?? ''}
                   onChange={(e) => setNuevaFila((prev) => ({ ...prev, [c.key]: e.target.value }))}

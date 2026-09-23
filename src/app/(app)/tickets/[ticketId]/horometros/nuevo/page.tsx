@@ -20,7 +20,16 @@ export default async function NuevoHorometroPage({
         .eq('activo', true)
         .eq('visible_app', true)
         .order('codigo'),
-      supabase.from('operadores').select('*').eq('activo', true).order('nombre'),
+      // Sólo quien MANEJA. `tipo_perfil` es un array y se pregunta
+      // «contiene OPERADOR», así que quien lleva los dos perfiles sigue
+      // saliendo; el puramente administrativo —que recibe un teléfono
+      // pero no se sube a un tractor— se queda fuera.
+      supabase
+        .from('operadores')
+        .select('*')
+        .eq('activo', true)
+        .contains('tipo_perfil', ['OPERADOR'])
+        .order('nombre'),
       // El turno se repite en casi todos los equipos de una jornada, así
       // que se hereda del último capturado. La fecha ya no: la manda el
       // ticket.
