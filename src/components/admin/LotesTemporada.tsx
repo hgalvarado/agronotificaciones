@@ -23,6 +23,7 @@ import {
 import { ImportarLotes } from './ImportarLotes'
 import { CICLOS } from '@/lib/estados'
 import { esLoteAgricola, TIPOS_LOTE, type TipoLote, type Zona } from '@/lib/types'
+import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
 import { mensajeDeError } from '@/lib/errores'
 
 export type AsignacionLote = {
@@ -37,6 +38,14 @@ export type AsignacionLote = {
   nombre: string | null
   /** Llega con la migración 46. Sin ella todo se comporta como antes. */
   tipo?: TipoLote
+  /**
+   * De qué lote es un pedazo. Llega con la migración 52.
+   *
+   * El 1003-025 no es terreno nuevo: es una parte del 1003-020 que se
+   * trabaja aparte. Hasta ahora eso sólo vivía en la nomenclatura, que
+   * es una convención que sólo entiende quien la escribió.
+   */
+  lote_padre_id?: string | null
 }
 
 export type LoteDisponible = { id: string; nomenclatura: string; nombre: string | null }
@@ -62,6 +71,7 @@ export function LotesTemporada({
   temporadas = [],
   asignados,
   disponibles,
+  lotesParaPadre = [],
   zonas,
   permisos,
 }: {
@@ -72,6 +82,8 @@ export function LotesTemporada({
   temporadas?: TemporadaOpcion[]
   asignados: AsignacionLote[]
   disponibles: LoteDisponible[]
+  /** Todos los lotes del catálogo: cualquiera puede ser padre. */
+  lotesParaPadre?: LoteDisponible[]
   zonas: Zona[]
   permisos?: PermisosTabla
 }) {
@@ -90,6 +102,14 @@ export function LotesTemporada({
   const administrativos = asignados.length - agricolas.length
   const areaTotal = agricolas.reduce((acc, a) => acc + (a.area_neta ?? 0), 0)
 
+  // Un lote no puede ser su propio padre. Los ciclos más largos los
+  // rechaza la base —es lo único que puede verlos—; aquí sólo se quita
+  // el caso obvio para no ofrecer lo que se va a rechazar.
+  const opcionesPadre = useMemo(
+    () => lotesParaPadre.map((l) => ({ value: l.id, label: l.nomenclatura })),
+    [lotesParaPadre]
+  )
+
   const columnas: ColumnaTabla[] = useMemo(
     () => [
       {
@@ -106,6 +126,17 @@ export function LotesTemporada({
         ),
       },
       { key: 'nombre', label: 'Nombre', tipo: 'texto', editable: true },
+      // La jerarquía se ve en la tabla, no sólo al editar: es lo que
+      // permite darse cuenta de que las manzanas del 1003-025 ya están
+      // contadas dentro del 1003-020.
+      {
+        key: 'lote_padre_id',
+        label: 'Lote padre',
+        tipo: 'seleccion',
+        editable: true,
+        ancho: '12rem',
+        opciones: opcionesPadre,
+      },
       // El tipo es lo primero que hay que decidir: de él dependen las
       // tres columnas siguientes.
       {
@@ -149,7 +180,7 @@ export function LotesTemporada({
       },
       { key: 'activo', label: 'Activo', tipo: 'booleano', editable: true },
     ],
-    [zonas]
+    [zonas, opcionesPadre]
   )
 
   async function actualizar(id: string, cambios: Record<string, unknown>) {
@@ -165,7 +196,7 @@ export function LotesTemporada({
   // El nombre y el TIPO viven en `lotes` (son del lote físico: un lote es
   // agrícola o administrativo en todas las temporadas), lo demás en
   // `lotes_temporada`. Se manda cada cambio a su tabla.
-  const DEL_LOTE = new Set(['nombre', 'tipo'])
+  const DEL_LOTE = new Set(['nombre', 'tipo', 'lote_padre_id'])
 
   async function editarCelda(id: string, key: string, valor: unknown) {
     if (DEL_LOTE.has(key)) {
@@ -181,7 +212,9 @@ export function LotesTemporada({
             e,
             key === 'tipo'
               ? 'No se pudo cambiar el tipo. Si dice que no existe la columna «tipo», falta correr la migración 46.'
-              : 'No se pudo guardar el cambio.'
+              : key === 'lote_padre_id'
+                ? 'No se pudo asignar el lote padre. Si dice que no existe la columna «lote_padre_id», falta correr la migración 52.'
+                : 'No se pudo guardar el cambio.'
           )
         )
       }
@@ -357,6 +390,7 @@ export function LotesTemporada({
         onCerrar={() => setCreando(false)}
         temporadaId={temporadaId}
         zonas={zonas}
+        lotesParaPadre={lotesParaPadre}
       />
 
       <ImportarLotes
@@ -555,11 +589,13 @@ function ModalNuevoLote({
   onCerrar,
   temporadaId,
   zonas,
+  lotesParaPadre = [],
 }: {
   abierto: boolean
   onCerrar: () => void
   temporadaId: string
   zonas: Zona[]
+  lotesParaPadre?: LoteDisponible[]
 }) {
   const supabase = createClient()
   const router = useRouter()
@@ -570,6 +606,7 @@ function ModalNuevoLote({
     zona_id: '',
     area_bruta: '',
     area_neta: '',
+    lote_padre_id: '',
   }
   const [form, setForm] = useState(VACIO_FORM)
   const [guardando, setGuardando] = useState(false)
@@ -589,6 +626,7 @@ function ModalNuevoLote({
           nomenclatura: form.nomenclatura.trim(),
           nombre: form.nombre.trim() || null,
           tipo: form.tipo,
+          lote_padre_id: form.lote_padre_id || null,
         })
         .select('id')
         .single()
@@ -676,6 +714,26 @@ function ModalNuevoLote({
               </option>
             ))}
           </Selector>
+        </Campo>
+
+        {/* Opcional: un lote de primer nivel no tiene padre. Al elegirlo,
+            este lote pasa a ser un PEDAZO del otro —1003-025 dentro de
+            1003-020— y sus manzanas ya están contadas ahí. */}
+        <Campo
+          etiqueta="Lote padre"
+          ayuda="Déjalo vacío si es un lote completo. Elígelo si este lote es una parte de otro: así la jerarquía queda escrita y no sólo insinuada en la nomenclatura."
+        >
+          <SelectorBuscable
+            valor={form.lote_padre_id}
+            onCambiar={(v) => setForm({ ...form, lote_padre_id: v })}
+            placeholder="Sin lote padre"
+            textoVacio="Sin lote padre"
+            opciones={lotesParaPadre.map((l) => ({
+              id: l.id,
+              titulo: l.nomenclatura,
+              subtitulo: l.nombre ?? undefined,
+            }))}
+          />
         </Campo>
 
         {/* Deshabilitados y en blanco, no escondidos: se ve que el campo

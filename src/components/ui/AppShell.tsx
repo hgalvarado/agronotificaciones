@@ -116,7 +116,11 @@ export function AppShell({
       etiqueta: 'Controles',
       icono: <IconPlan />,
       visible:
-        ve('plan') || ve('trasplante') || ve('turnos_riego') || ve('telecom'),
+        ve('plan') ||
+        ve('trasplante') ||
+        ve('rotacion') ||
+        ve('turnos_riego') ||
+        ve('telecom'),
       hijos: [
         {
           href: '/plan/APS',
@@ -131,6 +135,13 @@ export function AppShell({
           etiqueta: 'Trasplante',
           icono: <IconChart />,
           visible: ve('trasplante'),
+        },
+        {
+          href: '/controles/rotacion',
+          pantalla: 'rotacion',
+          etiqueta: 'Cultivos de Rotación',
+          icono: <IconChart />,
+          visible: ve('rotacion'),
         },
         {
           href: '/avances/turnos-riego',

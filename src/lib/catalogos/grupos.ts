@@ -88,7 +88,19 @@ export const GRUPOS: GrupoDeclarado[] = [
     descripcion: 'El terreno, lo que se siembra en él y con qué se siembra.',
     items: [
       { key: 'zonas', descripcion: 'Las zonas de la finca y su encargado.' },
-      { key: 'variedades', descripcion: 'Las variedades de melón que entran al trasplante.' },
+      // El cultivo va PEGADO a la variedad porque se mantienen juntos:
+      // al dar de alta una variedad hay que elegirle su cultivo, y
+      // tenerlo en «Otros catálogos» obligaba a buscarlo al final de la
+      // pantalla cada vez.
+      {
+        key: 'catalogo_productos',
+        etiqueta: 'Productos (cultivos)',
+        descripcion: 'Melón, sandía, maíz… El cultivo al que pertenece cada variedad.',
+      },
+      {
+        key: 'variedades',
+        descripcion: 'Las variedades que se siembran, cada una con su cultivo.',
+      },
       { key: 'materiales', descripcion: 'Plástico, manguera y demás insumos con su código.' },
       {
         key: 'planes_nutricionales',

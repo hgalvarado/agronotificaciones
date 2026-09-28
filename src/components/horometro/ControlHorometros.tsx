@@ -521,7 +521,11 @@ export function ControlHorometros({
           columnas={columnas}
           titulo="Horometros"
           nombreArchivo={`horometros-${consulta.desde}-a-${consulta.hasta}`}
-          ordenInicial={{ campo: 'fecha', direccion: 'asc' }}
+          // HI de mayor a menor: la lectura más alta de cada equipo es la
+          // última que se capturó, y es la que se contrasta contra el
+          // tablero. Con la fecha ascendente había que bajar hasta el
+          // fondo para verla.
+          ordenInicial={{ campo: 'horometro_inicial', direccion: 'desc' }}
           minAncho="1560px"
           puedeEditarCelda={puedeEditar}
           onEditarCelda={editarCelda}

@@ -36,10 +36,23 @@ function uno<T>(v: T | T[] | null): T | null {
   return Array.isArray(v) ? (v[0] ?? null) : v
 }
 
+/** La variedad, como la devuelve Supabase con el cultivo incrustado. */
+type VariedadFila = {
+  id: string
+  nombre: string
+  codigo_sap: string | null
+  producto_id: string | null
+  catalogo_productos: { nombre: string } | { nombre: string }[] | null
+}
+
 export async function leerCatalogos(temporadaId: string | null) {
   const supabase = await createClient()
   const [{ data: variedades }, { data: materiales }, { data: lotes }] = await Promise.all([
-    supabase.from('variedades').select('id, nombre, codigo_sap, producto').eq('activo', true).order('nombre'),
+    supabase
+      .from('variedades')
+      .select('id, nombre, codigo_sap, producto_id, catalogo_productos(nombre)')
+      .eq('activo', true)
+      .order('nombre'),
     supabase.from('materiales').select('id, codigo, descripcion, grupo').eq('activo', true).order('codigo'),
     // `lotes!inner` con `tipo = AGRICOLA`: los departamentos
     // administrativos existen para notificar costos de maquinaria a SAP,
@@ -54,7 +67,13 @@ export async function leerCatalogos(temporadaId: string | null) {
   ])
 
   return {
-    variedades: (variedades as Variedad[] | null) ?? [],
+    variedades: ((variedades as unknown as VariedadFila[] | null) ?? []).map((v) => ({
+      id: v.id,
+      nombre: v.nombre,
+      codigo_sap: v.codigo_sap,
+      producto_id: v.producto_id,
+      producto: uno(v.catalogo_productos)?.nombre ?? null,
+    })) as Variedad[],
     materiales: (materiales as Material[] | null) ?? [],
     lotes: ((lotes as unknown as LoteFila[] | null) ?? [])
       .map((l) => ({

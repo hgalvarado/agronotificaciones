@@ -36,6 +36,7 @@ export default async function CatalogosPage() {
     { data: planesNutricionales },
     { data: turnosCatalogo },
     { data: estacionesRiego },
+    { data: productos },
   ] = await Promise.all([
     supabase.from('zonas').select('*').order('nombre'),
     supabase.from('familias_equipo').select('*').order('nombre'),
@@ -82,6 +83,9 @@ export default async function CatalogosPage() {
     // Llegan con la migración 41.
     supabase.from('turnos').select('*').order('codigo'),
     supabase.from('estaciones_riego').select('*').order('nombre'),
+    // Llegan con la migración 51. Si no está corrida, la pestaña sale
+    // vacía en vez de tumbar la pantalla completa.
+    supabase.from('catalogo_productos').select('*').order('nombre'),
   ])
 
   const soportaContador = !sondaContador.error
@@ -142,6 +146,13 @@ export default async function CatalogosPage() {
   const opcionesImplementoFisico = (implementosFisicos ?? []).map((i) => ({
     value: i.id as string,
     label: `${i.codigo} · ${i.descripcion}`,
+  }))
+
+  // El cultivo dejó de ser texto libre en la variedad: «Melon», «Melón» y
+  // «MELON» eran tres cultivos distintos para cualquier agrupación.
+  const opcionesProducto = (productos ?? []).map((p) => ({
+    value: p.id as string,
+    label: p.nombre as string,
   }))
 
   const pestanas: PestanaCatalogo[] = [
@@ -230,11 +241,30 @@ export default async function CatalogosPage() {
         { key: 'nombre', label: 'Variedad', tipo: 'text', requerido: true },
         { key: 'codigo_sap', label: 'Código SAP', tipo: 'text' },
         // El cultivo vive en la variedad y la siembra lo hereda: el
-        // digitador no lo escribe y no puede equivocarse.
-        { key: 'producto', label: 'Producto (cultivo)', tipo: 'text' },
+        // digitador no lo escribe y no puede equivocarse. Desde la 51 se
+        // elige del catálogo en vez de escribirse.
+        {
+          key: 'producto_id',
+          label: 'Producto (cultivo)',
+          tipo: 'select',
+          opciones: opcionesProducto,
+          catalogo: { tabla: 'catalogo_productos' },
+        },
         { key: 'activo', label: 'Activo', tipo: 'checkbox' },
       ],
       filas: variedades ?? [],
+    },
+    {
+      key: 'catalogo_productos',
+      clave: 'nombre',
+      label: 'Productos (cultivos)',
+      tabla: 'catalogo_productos',
+      campos: [
+        { key: 'nombre', label: 'Producto', tipo: 'text', requerido: true },
+        { key: 'codigo_sap', label: 'Código SAP', tipo: 'text' },
+        { key: 'activo', label: 'Activo', tipo: 'checkbox' },
+      ],
+      filas: productos ?? [],
     },
     {
       key: 'materiales',

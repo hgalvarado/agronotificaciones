@@ -17,6 +17,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { anclarA, type Anclaje } from '@/lib/ui/anclaje'
 import { Boton } from './Primitivos'
 import { IconCheck, IconChevronDown, IconSearch } from './Icons'
 import { estaActivo, filtroVacio, resumenFiltro } from '@/lib/grid/filtros'
@@ -41,17 +42,16 @@ export function FiltroColumna({
   // La posición se calcula en el CLIC, no al dibujar: leer `ref.current`
   // durante el render es lo que prohíbe `react-hooks/refs`, y con razón,
   // porque en ese momento el DOM todavía puede no estar donde quedará.
-  const [posicion, setPosicion] = useState<{ left: number; top: number } | null>(null)
+  const [posicion, setPosicion] = useState<Anclaje | null>(null)
   const boton = useRef<HTMLButtonElement>(null)
   const activo = estaActivo(filtro)
 
   function alternar(e: React.MouseEvent<HTMLButtonElement>) {
     if (posicion) return setPosicion(null)
-    const caja = e.currentTarget.getBoundingClientRect()
-    setPosicion({
-      left: Math.max(8, Math.min(caja.left - 40, window.innerWidth - ANCHO - 8)),
-      top: caja.bottom + 6,
-    })
+    // Dónde cabe lo decide `anclarPanel`, que mira los cuatro bordes.
+    // Antes era `caja.bottom + 6` a secas y el panel de un encabezado en
+    // la mitad baja de la pantalla se abría fuera de la ventana.
+    setPosicion(anclarA(e.currentTarget, { ancho: ANCHO, altoDeseado: 360 }))
   }
 
   return (
@@ -98,7 +98,7 @@ function Panel({
   onCerrar,
   onAplicar,
 }: {
-  posicion: { left: number; top: number }
+  posicion: Anclaje
   anclaje: React.RefObject<HTMLButtonElement | null>
   tipo: TipoFiltro
   etiqueta: string
@@ -132,8 +132,13 @@ function Panel({
   return createPortal(
     <div
       ref={panel}
-      style={{ left: posicion.left, top: posicion.top, width: ANCHO }}
-      className="fixed z-50 overflow-hidden rounded-xl border border-slate-200 bg-white text-left normal-case shadow-[var(--shadow-raised)]"
+      style={{
+        left: posicion.left,
+        top: posicion.top,
+        width: posicion.ancho,
+        maxHeight: posicion.maxAlto,
+      }}
+      className="scroll-suave fixed z-50 flex flex-col overflow-y-auto overscroll-contain rounded-xl border border-slate-200 bg-white text-left normal-case shadow-[var(--shadow-raised)]"
       onKeyDown={(e) => {
         if (e.key === 'Enter') onAplicar(borrador)
       }}

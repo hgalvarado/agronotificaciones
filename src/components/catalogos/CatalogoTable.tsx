@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Modal } from '@/components/ui/Modal'
 import { SelectorMultiple } from '@/components/ui/SelectorMultiple'
-import { Alerta, Boton, Campo, Entrada, Selector } from '@/components/ui/Primitivos'
+import { Alerta, Boton, Campo, Entrada } from '@/components/ui/Primitivos'
+import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
 import { IconPlus } from '@/components/ui/Icons'
 import {
   TablaAvanzada,
@@ -28,6 +29,15 @@ export type CampoCatalogo = {
   requerido?: boolean
   /** Para 'select' y 'multiseleccion': los valores que admite la columna. */
   opciones?: { value: string; label: string }[]
+  /**
+   * Para 'select': de qué catálogo salen las opciones, para poder crear
+   * ahí mismo lo que falte.
+   *
+   * Sin esto, poner una variedad de un cultivo nuevo obliga a salir a la
+   * pestaña de Productos, crearlo y volver a empezar. Con esto se
+   * escribe el nombre en el buscador del selector y se crea desde ahí.
+   */
+  catalogo?: { tabla: string; campo?: string }
 }
 
 type Fila = Record<string, string | number | boolean | null>
@@ -138,11 +148,34 @@ export function CatalogoTable({
     descargar: permisos?.descargar !== false,
   }
 
+  /**
+   * Crea la fila mínima en el catálogo del que cuelga la columna.
+   *
+   * Sólo el nombre: lo demás —código SAP, notas— se completa después en
+   * la pestaña de ese catálogo. Lo que aquí hace falta es que el valor
+   * exista para poder elegirlo y seguir con lo que se estaba haciendo.
+   */
+  async function crearEnCatalogo(destino: { tabla: string; campo?: string }, texto: string) {
+    const fila: Record<string, unknown> = { [destino.campo ?? 'nombre']: texto.trim() }
+    const { data, error: e } = await supabase
+      .from(destino.tabla)
+      .insert(fila as never)
+      .select('id')
+      .single()
+    if (e) throw new Error(e.message)
+    router.refresh()
+    return String((data as { id: string }).id)
+  }
+
   const columnas: ColumnaTabla[] = campos.map((c) => ({
     key: c.key,
     label: c.label,
     tipo: TIPOS[c.tipo],
     opciones: c.opciones,
+    onCrearOpcion:
+      c.tipo === 'select' && c.catalogo
+        ? (texto: string) => crearEnCatalogo(c.catalogo!, texto)
+        : undefined,
     // Un array no se escribe en una celda de una línea: se elige en el
     // selector múltiple, que es el mismo control del resto del sistema.
     editable: c.tipo !== 'multiseleccion',
@@ -270,17 +303,27 @@ export function CatalogoTable({
                   onCambiar={(v) => setNuevos((prev) => ({ ...prev, [c.key]: v }))}
                 />
               ) : c.tipo === 'select' ? (
-                <Selector
-                  value={nuevaFila[c.key] ?? ''}
-                  onChange={(e) => setNuevaFila((prev) => ({ ...prev, [c.key]: e.target.value }))}
-                >
-                  <option value="">—</option>
-                  {(c.opciones ?? []).map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </Selector>
+                <SelectorBuscable
+                  valor={nuevaFila[c.key] ?? ''}
+                  onCambiar={(v) => setNuevaFila((prev) => ({ ...prev, [c.key]: v }))}
+                  opciones={(c.opciones ?? []).map((o) => ({ id: o.value, titulo: o.label }))}
+                  placeholder="—"
+                  // La misma regla que en la celda: lo que falta se crea
+                  // aquí, sin perder lo que ya se llevaba escrito en el
+                  // formulario.
+                  creacionRapida={
+                    c.catalogo
+                      ? {
+                          etiqueta: `Crear ${c.label.toLowerCase()}`,
+                          campos: [{ key: 'nombre', label: 'Nombre', requerido: true }],
+                          onCrear: async (valores) => {
+                            const id = await crearEnCatalogo(c.catalogo!, valores.nombre ?? '')
+                            return { id, titulo: (valores.nombre ?? '').trim() }
+                          },
+                        }
+                      : undefined
+                  }
+                />
               ) : (
                 <Entrada
                   type={c.tipo}

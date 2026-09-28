@@ -17,6 +17,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { IconChevronDown } from './Icons'
 import { ANCHO_MINIMO, PanelOpciones, UMBRAL_BUSQUEDA, type CajaPanel } from './Selector'
+import { anclarA } from '@/lib/ui/anclaje'
 
 export type OpcionCelda = { value: string; label: string }
 
@@ -26,6 +27,7 @@ export function SelectorCelda({
   onElegir,
   className = '',
   textoVacio = '—',
+  onCrear,
 }: {
   valor: string
   opciones: OpcionCelda[]
@@ -33,6 +35,11 @@ export function SelectorCelda({
   onElegir: (valor: string) => void
   className?: string
   textoVacio?: string
+  /**
+   * Crear en el catálogo lo que falta, desde la celda, y dejarlo
+   * elegido. Devuelve el identificador de lo recién creado.
+   */
+  onCrear?: (texto: string) => Promise<string>
 }) {
   const [caja, setCaja] = useState<CajaPanel | null>(null)
   const buscador = useRef<HTMLInputElement>(null)
@@ -45,7 +52,10 @@ export function SelectorCelda({
     [opciones, textoVacio]
   )
 
-  if (opciones.length <= UMBRAL_BUSQUEDA) {
+  // Con creación en línea siempre va el panel: la rueda nativa del
+  // teléfono no tiene dónde poner un «Crear», y quedarse sin poder crear
+  // porque el catálogo todavía es corto es justo el caso del primer día.
+  if (!onCrear && opciones.length <= UMBRAL_BUSQUEDA) {
     return (
       <select
         value={valor}
@@ -62,17 +72,19 @@ export function SelectorCelda({
     )
   }
 
-  // La posición se calcula en el CLIC: leer `ref.current` durante el
-  // render es lo que prohíbe `react-hooks/refs`.
+  // La posición se calcula en el CLIC —leer `ref.current` durante el
+  // render es lo que prohíbe `react-hooks/refs`— y dónde CABE lo decide
+  // `anclarPanel`. Es el caso que más se notaba: la celda de la última
+  // fila de una tabla corta queda al pie de la pantalla, y su panel se
+  // abría por debajo del borde de la ventana.
   function abrir(e: React.MouseEvent<HTMLButtonElement>) {
     if (caja) return setCaja(null)
-    const r = e.currentTarget.getBoundingClientRect()
-    const ancho = Math.max(r.width, ANCHO_MINIMO)
-    setCaja({
-      left: Math.max(8, Math.min(r.left, window.innerWidth - ancho - 8)),
-      top: r.bottom + 4,
-      ancho,
-    })
+    setCaja(
+      anclarA(e.currentTarget, {
+        ancho: Math.max(e.currentTarget.getBoundingClientRect().width, ANCHO_MINIMO),
+        altoDeseado: 360,
+      })
+    )
     setTimeout(() => buscador.current?.focus({ preventScroll: true }), 60)
   }
 
@@ -102,6 +114,15 @@ export function SelectorCelda({
           }}
           onCerrar={() => setCaja(null)}
           refBuscador={buscador}
+          onCrear={
+            onCrear
+              ? async (texto) => {
+                  const nuevo = await onCrear(texto)
+                  setCaja(null)
+                  onElegir(nuevo)
+                }
+              : undefined
+          }
         />
       )}
     </>

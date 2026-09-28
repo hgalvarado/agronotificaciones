@@ -16,10 +16,15 @@ type FilaAsignacion = {
   area_neta: number
   ciclo: number | null
   activo: boolean
-  lotes:
-    | { nomenclatura: string; nombre: string | null; tipo?: TipoLote }
-    | { nomenclatura: string; nombre: string | null; tipo?: TipoLote }[]
-    | null
+  lotes: LoteIncrustado | LoteIncrustado[] | null
+}
+
+type LoteIncrustado = {
+  nomenclatura: string
+  nombre: string | null
+  tipo?: TipoLote
+  /** Llega con la migración 52. Sin ella la jerarquía no se enseña. */
+  lote_padre_id?: string | null
 }
 
 export default async function LotesPage({
@@ -57,16 +62,24 @@ export default async function LotesPage({
     )
   }
 
-  const [{ data: asignadosRaw }, { data: todosLotes }, { data: zonas }] = await Promise.all([
+  const [{ data: asignadosRaw }, { data: todosLotes }, { data: paraPadre }, { data: zonas }] =
+    await Promise.all([
     supabase
       .from('lotes_temporada')
-      .select('id, lote_id, zona_id, area_bruta, area_neta, ciclo, activo, lotes(nomenclatura, nombre, tipo)')
+      .select(
+        'id, lote_id, zona_id, area_bruta, area_neta, ciclo, activo,' +
+          ' lotes(nomenclatura, nombre, tipo, lote_padre_id)'
+      )
       .eq('temporada_id', temporada.id),
     supabase
       .from('lotes')
       .select('id, nomenclatura, nombre')
       .eq('activo', true)
       .order('nomenclatura'),
+    // TODOS los lotes, activos o no: el padre de un sublote puede estar
+    // desactivado y aun así seguir siendo su padre. Esconderlo dejaría
+    // la celda en blanco sin explicación.
+    supabase.from('lotes').select('id, nomenclatura, nombre').order('nomenclatura'),
     supabase.from('zonas').select('*').eq('activo', true).order('nombre'),
   ])
 
@@ -86,6 +99,7 @@ export default async function LotesPage({
         // Sin la migración 46 la columna no viene: se trata como
         // agrícola, que es como se comportaba todo hasta ahora.
         tipo: lote?.tipo ?? 'AGRICOLA',
+        lote_padre_id: lote?.lote_padre_id ?? null,
       }
     })
     .sort((a, b) => a.nomenclatura.localeCompare(b.nomenclatura))
@@ -113,6 +127,7 @@ export default async function LotesPage({
         asignados={asignados}
         disponibles={disponibles}
         zonas={zonas ?? []}
+        lotesParaPadre={(paraPadre as LoteDisponible[] | null) ?? []}
       />
     </div>
   )

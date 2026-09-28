@@ -25,6 +25,11 @@ export type ColumnaTabla = {
   /** Sólo para 'seleccion': catálogo relacionado. */
   opciones?: { value: string; label: string }[]
   /**
+   * Sólo para 'seleccion': crear en el catálogo lo que falta sin salir
+   * de la celda. Devuelve el id de lo recién creado, que queda elegido.
+   */
+  onCrearOpcion?: (texto: string) => Promise<string>
+  /**
    * Cómo se filtra esta columna. Por omisión lo decide el tipo: una fecha
    * por rango, un número por mínimo y máximo, y todo lo demás por lista de
    * casillas. Se pone a mano cuando la columna es descriptiva y la lista
@@ -747,6 +752,7 @@ function Celda({
       <SelectorCelda
         valor={valor === null || valor === undefined ? '' : String(valor)}
         opciones={columna.opciones ?? []}
+        onCrear={columna.onCrearOpcion}
         onElegir={(v) => onGuardar(v || null)}
         className="w-full min-w-[120px] rounded-lg border border-transparent px-2 py-1.5 transition-colors hover:border-slate-200 focus:border-brand-600 focus:bg-white focus:outline-none"
       />

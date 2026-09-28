@@ -38,6 +38,27 @@ export function estaNotificado(proceso: ProcesoTicket | null | undefined): boole
 }
 
 /**
+ * ¿El ticket ya salió de «0. Registrado»?
+ *
+ * A partir del paso 1 el ticket está en manos de quien revisa y se
+ * congela: lo que se revisó el lunes tiene que ser lo que se liquida el
+ * martes. Es el reflejo de `fn_ticket_en_revision` en la base.
+ */
+export function enRevision(proceso: ProcesoTicket | null | undefined): boolean {
+  return proceso != null && proceso !== 'REGISTRADO'
+}
+
+/**
+ * ¿A esta persona se le levanta el candado del proceso?
+ *
+ * La excepción se CONCEDE en la matriz —`tickets:editar_en_revision`—, no
+ * se deduce de un nombre de rol. NOTIFICADO no lo abre ni esta casilla.
+ */
+export function puedeEditarEnRevision(permisos: Set<string> | string[]): boolean {
+  return puede(permisos, 'tickets', 'editar_en_revision')
+}
+
+/**
  * ¿Se puede hacer `accion` sobre lo que cuelga de este ticket?
  *
  * `pantalla` es la del dato que se va a tocar —`horometros`, `labores`,
@@ -50,5 +71,6 @@ export function puedeEnTicket(
   proceso?: ProcesoTicket | null
 ): boolean {
   if (estaNotificado(proceso)) return false
+  if (enRevision(proceso) && !puedeEditarEnRevision(permisos)) return false
   return puede(permisos, pantalla, accion)
 }

@@ -576,6 +576,7 @@ function Celda<T extends { id: string }>({
         valor={borrador}
         opciones={columna.opciones ?? []}
         className={clase}
+        onCrear={columna.onCrearOpcion}
         onElegir={(v) => {
           setBorrador(v)
           if (v !== inicial) onGuardar(v || null)

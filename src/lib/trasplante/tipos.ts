@@ -13,7 +13,17 @@ export type Variedad = {
   id: string
   nombre: string
   codigo_sap: string | null
+  /**
+   * El cultivo al que pertenece, YA RESUELTO.
+   *
+   * Desde la migración 51 el cultivo es un catálogo y la variedad guarda
+   * `producto_id`. El nombre se resuelve en el repositorio —que es quien
+   * habla con la base— para que las cuatro pantallas que lo enseñan
+   * sigan leyendo una cadena y no tengan que ir a buscarla cada una por
+   * su cuenta.
+   */
   producto: string | null
+  producto_id: string | null
 }
 
 export type Material = {

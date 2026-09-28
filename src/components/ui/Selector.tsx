@@ -20,6 +20,7 @@
 
 import { Children, isValidElement, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { anclarA, type Anclaje } from '@/lib/ui/anclaje'
 import { IconCheck, IconChevronDown, IconSearch, IconX } from './Icons'
 
 /** A partir de cuántas opciones aparece el buscador. */
@@ -116,13 +117,13 @@ function SelectorBuscado({
 
   function abrir(e: React.MouseEvent<HTMLButtonElement>) {
     if (caja) return cerrar()
-    const r = e.currentTarget.getBoundingClientRect()
-    const ancho = Math.max(r.width, ANCHO_MINIMO)
-    setCaja({
-      left: Math.max(8, Math.min(r.left, window.innerWidth - ancho - 8)),
-      top: r.bottom + 6,
-      ancho,
-    })
+    // Dónde cabe lo decide `anclarPanel`, que mira los cuatro bordes.
+    setCaja(
+      anclarA(e.currentTarget, {
+        ancho: Math.max(e.currentTarget.getBoundingClientRect().width, ANCHO_MINIMO),
+        altoDeseado: 360,
+      })
+    )
     // El foco va después de pintar el panel; en el celular es lo que
     // levanta el teclado sin desplazar la página.
     setTimeout(() => buscador.current?.focus({ preventScroll: true }), 60)
@@ -178,7 +179,13 @@ function SelectorBuscado({
 /* formulario y la celda editable de la cuadrícula— y la búsqueda tiene */
 /* que comportarse igual en los dos.                                    */
 
-export type CajaPanel = { left: number; top: number; ancho: number }
+/**
+ * Dónde y con qué tope de alto se dibuja el panel.
+ *
+ * Lo calcula `lib/ui/anclaje`, que es el único sitio del sistema que
+ * decide si un panel se abre hacia abajo, hacia arriba o encogido.
+ */
+export type CajaPanel = Anclaje
 
 export function PanelOpciones({
   caja,
@@ -187,6 +194,7 @@ export function PanelOpciones({
   onElegir,
   onCerrar,
   refBuscador,
+  onCrear,
 }: {
   caja: CajaPanel
   opciones: Opcion[]
@@ -194,8 +202,18 @@ export function PanelOpciones({
   onElegir: (valor: string) => void
   onCerrar: () => void
   refBuscador?: React.RefObject<HTMLInputElement | null>
+  /**
+   * Crear lo que no está, sin salir de aquí.
+   *
+   * Es lo que evita el viaje a Catálogos a media captura: se escribe el
+   * nombre en el buscador y, si no existe, se ofrece crearlo. Quien lo
+   * pasa decide en qué tabla cae; el panel sólo pregunta.
+   */
+  onCrear?: (texto: string) => Promise<void>
 }) {
   const [busqueda, setBusqueda] = useState('')
+  const [creando, setCreando] = useState(false)
+  const [errorCrear, setErrorCrear] = useState<string | null>(null)
 
   const visibles = useMemo(() => {
     const q = normalizar(busqueda.trim())
@@ -203,13 +221,34 @@ export function PanelOpciones({
     return opciones.filter((o) => normalizar(o.texto).includes(q))
   }, [opciones, busqueda])
 
+  // Sólo se ofrece crear lo que NO existe ya con ese mismo nombre: si no,
+  // el botón invitaría a duplicar el catálogo, que es justo el problema
+  // que la creación en línea viene a evitar.
+  const texto = busqueda.trim()
+  const yaEsta = opciones.some((o) => normalizar(o.texto) === normalizar(texto))
+  const puedeCrear = Boolean(onCrear) && texto !== '' && !yaEsta
+
+  async function crear() {
+    if (!onCrear) return
+    setCreando(true)
+    setErrorCrear(null)
+    try {
+      await onCrear(texto)
+      setBusqueda('')
+    } catch (e) {
+      setErrorCrear(e instanceof Error ? e.message : 'No se pudo crear.')
+    } finally {
+      setCreando(false)
+    }
+  }
+
   return createPortal(
     <>
       <div className="fixed inset-0 z-50" onClick={onCerrar} />
       <div
         role="listbox"
-        className="scroll-suave fixed z-50 max-h-80 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-[var(--shadow-float)]"
-        style={{ left: caja.left, top: caja.top, width: caja.ancho }}
+        className="scroll-suave fixed z-50 overflow-y-auto overscroll-contain rounded-xl border border-slate-200 bg-white p-1.5 shadow-[var(--shadow-float)]"
+        style={{ left: caja.left, top: caja.top, width: caja.ancho, maxHeight: caja.maxAlto }}
       >
         <div className="sticky top-0 z-10 bg-white pb-1.5">
           <div className="relative">
@@ -235,9 +274,31 @@ export function PanelOpciones({
           </div>
         </div>
 
+        {puedeCrear && (
+          <button
+            type="button"
+            onClick={crear}
+            disabled={creando}
+            className="mb-1 flex w-full items-center gap-2 rounded-lg border border-dashed border-brand-300 px-2 py-2 text-left text-sm font-semibold text-brand-700 transition-colors hover:bg-brand-50 disabled:opacity-50"
+          >
+            <span className="flex h-4 w-4 shrink-0 items-center justify-center text-base leading-none">
+              +
+            </span>
+            <span className="min-w-0 flex-1 truncate">
+              {creando ? 'Creando…' : `Crear «${texto}»`}
+            </span>
+          </button>
+        )}
+
+        {errorCrear && (
+          <p className="mb-1 rounded-lg bg-red-50 px-2 py-1.5 text-xs text-red-700">{errorCrear}</p>
+        )}
+
         {visibles.length === 0 ? (
           <p className="px-2 py-6 text-center text-sm text-slate-400">
-            Ningún resultado para «{busqueda}».
+            {puedeCrear
+              ? `«${busqueda}» todavía no está en el catálogo.`
+              : `Ningún resultado para «${busqueda}».`}
           </p>
         ) : (
           visibles.map((o) => (

@@ -85,6 +85,30 @@ export function ListaTickets({
     return () => clearTimeout(t)
   }, [texto])
 
+  /**
+   * Cuántas veces el servidor ha vuelto a contar.
+   *
+   * El árbol se armaba una sola vez con lo que trajo el servidor y no
+   * volvía a mirarlo: cambiar el proceso de un ticket, cerrarlo o
+   * eliminarlo llamaba a `router.refresh()`, el layout volvía a
+   * consultar… y esta lista seguía enseñando el conteo viejo hasta que
+   * alguien recargaba la página a mano.
+   *
+   * Un `resumenInicial` nuevo es exactamente «el servidor volvió a
+   * contar». No se adopta tal cual —con un filtro puesto, lo que el
+   * servidor trae es el resumen SIN filtrar—: se sube la revisión y se
+   * vuelve a pedir lo que esta pantalla está mirando de verdad.
+   *
+   * Va en el render y no en un efecto: es el patrón que React documenta
+   * para reajustar estado cuando cambia una prop.
+   */
+  const [resumenPrevio, setResumenPrevio] = useState(resumenInicial)
+  const [revision, setRevision] = useState(0)
+  if (resumenInicial !== resumenPrevio) {
+    setResumenPrevio(resumenInicial)
+    setRevision((r) => r + 1)
+  }
+
   const huella = JSON.stringify(filtros)
   useEffect(() => {
     let vivo = true
@@ -95,7 +119,8 @@ export function ListaTickets({
       setBloques(b)
       setError(e)
       setCargando(false)
-      // Con otro filtro, lo bajado y lo marcado dejan de valer.
+      // Con otro filtro —o después de una modificación—, lo bajado y lo
+      // marcado dejan de valer.
       setCargadas(new Set())
       setMarcados(new Set())
     }
@@ -103,7 +128,7 @@ export function ListaTickets({
     return () => {
       vivo = false
     }
-  }, [huella])
+  }, [huella, revision])
 
   useEffect(() => {
     if (capturadoresIniciales.length > 0) return
@@ -228,6 +253,7 @@ export function ListaTickets({
           filtros={filtros}
           cargandoResumen={cargando && bloques.length === 0}
           error={error}
+          revision={revision}
           onFilasCargadas={anotarCargadas}
           fila={(t) => (
             <FilaTicket

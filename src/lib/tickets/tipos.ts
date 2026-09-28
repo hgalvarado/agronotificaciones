@@ -127,3 +127,32 @@ export function porMes(bloques: BloqueTickets[]): MesConProcesos[] {
   // el historial se baja desplazándose.
   return [...meses.values()].sort((a, b) => b.mes.localeCompare(a.mes))
 }
+
+/**
+ * Qué meses salen abiertos mientras nadie toque nada.
+ *
+ * Antes se abría sólo el más reciente y había que ir destapando meses a
+ * mano para encontrar lo que falta notificar, que es justo lo que se
+ * viene a buscar. Ahora se abre un mes si:
+ *
+ *   1. es el mes en curso en Honduras —ahí está el trabajo del día—, o
+ *   2. le queda algo que no esté «3. Notificado», es decir, trabajo
+ *      pendiente en ese mes.
+ *
+ * Lo demás —meses ya liquidados por completo— arranca cerrado: son la
+ * mayor parte del historial y no hay nada que hacerles.
+ *
+ * Función pura: recibe el mes en curso en vez de leer el reloj, para que
+ * se pueda comprobar sin esperar a que cambie el calendario.
+ */
+export function mesesPorDefecto(meses: MesConProcesos[], mesEnCurso: string): Set<string> {
+  return new Set(
+    meses
+      .filter(
+        (m) =>
+          m.mes === mesEnCurso ||
+          m.bloques.some((b) => b.proceso !== 'NOTIFICADO' && Number(b.cuantos) > 0)
+      )
+      .map((m) => m.mes)
+  )
+}

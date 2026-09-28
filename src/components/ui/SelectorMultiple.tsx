@@ -29,6 +29,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { anclarA, type Anclaje } from '@/lib/ui/anclaje'
 import { IconCheck, IconChevronDown, IconSearch } from './Icons'
 
 export type OpcionSelector = { valor: string; etiqueta: string }
@@ -52,7 +53,7 @@ export function SelectorMultiple({
 }) {
   // La posición se calcula en el CLIC: leer `ref.current` durante el
   // render es lo que prohíbe `react-hooks/refs`.
-  const [posicion, setPosicion] = useState<{ left: number; top: number } | null>(null)
+  const [posicion, setPosicion] = useState<Anclaje | null>(null)
   // Única por omisión. Si al abrir ya hay varios marcados, se respeta lo
   // que el usuario tenía en vez de tirárselo.
   const [modo, setModo] = useState<ModoSelector>(valores.length > 1 ? 'varios' : 'unica')
@@ -68,11 +69,10 @@ export function SelectorMultiple({
 
   function abrir(e: React.MouseEvent<HTMLButtonElement>) {
     if (posicion) return setPosicion(null)
-    const caja = e.currentTarget.getBoundingClientRect()
-    setPosicion({
-      left: Math.max(8, Math.min(caja.left, window.innerWidth - ANCHO - 8)),
-      top: caja.bottom + 6,
-    })
+    // Dónde cabe lo decide `anclarPanel`, que mira los cuatro bordes: un
+    // selector en la última fila de una tabla corta queda pegado al pie
+    // de la pantalla y su panel se abría por debajo del borde.
+    setPosicion(anclarA(e.currentTarget, { ancho: ANCHO, altoDeseado: 360 }))
   }
 
   /** Bajar a única deja sólo el primero: dos valores en modo único mienten. */
@@ -130,7 +130,7 @@ function Panel({
   onCambiar,
   onCerrar,
 }: {
-  posicion: { left: number; top: number }
+  posicion: Anclaje
   anclaje: React.RefObject<HTMLButtonElement | null>
   etiqueta: string
   opciones: OpcionSelector[]
@@ -181,8 +181,13 @@ function Panel({
   return createPortal(
     <div
       ref={panel}
-      style={{ left: posicion.left, top: posicion.top, width: ANCHO }}
-      className="fixed z-50 overflow-hidden rounded-xl border border-slate-200 bg-white text-left shadow-[var(--shadow-raised)]"
+      style={{
+        left: posicion.left,
+        top: posicion.top,
+        width: posicion.ancho,
+        maxHeight: posicion.maxAlto,
+      }}
+      className="scroll-suave fixed z-50 flex flex-col overflow-y-auto overscroll-contain rounded-xl border border-slate-200 bg-white text-left shadow-[var(--shadow-raised)]"
     >
       <div className="border-b border-slate-100 px-3 py-2">
         <p className="truncate text-xs font-bold uppercase tracking-wide text-slate-400">

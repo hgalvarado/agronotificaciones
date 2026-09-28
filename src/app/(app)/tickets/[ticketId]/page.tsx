@@ -1,5 +1,10 @@
 import Link from 'next/link'
-import { estaNotificado, puedeEnTicket } from '@/lib/permisos/captura'
+import {
+  enRevision,
+  estaNotificado,
+  puedeEditarEnRevision,
+  puedeEnTicket,
+} from '@/lib/permisos/captura'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getPermisos } from '@/lib/auth'
@@ -176,6 +181,10 @@ export default async function TicketDetailPage({
   const puedeBorrarHorometros = puedeEnTicket(permisos, 'horometros', 'eliminar', ticket.proceso)
   const puedeBorrarLabores = puedeEnTicket(permisos, 'labores', 'eliminar', ticket.proceso)
   const puedeImportar = puedeEnTicket(permisos, 'horometros', 'importar', ticket.proceso)
+  // Congelado = salió del paso 0 y esta persona no tiene la llave. Se
+  // calcula aquí para poder DECIRLO: un botón que desaparece sin
+  // explicación se reporta como «se perdió el botón de editar».
+  const congelado = enRevision(ticket.proceso) && !puedeEditarEnRevision(permisos)
   const estado = estadoInfo(ticket.estado)
   const proceso = procesoInfo(ticket.proceso)
 
@@ -221,12 +230,21 @@ export default async function TicketDetailPage({
         {/* Un ticket notificado se queda de sólo lectura y hay que decirlo:
             si no, el usuario busca el botón de editar y cree que se
             perdió. */}
-        {estaNotificado(ticket.proceso) && (
+        {estaNotificado(ticket.proceso) ? (
           <p className="mt-3 rounded-lg bg-slate-100 px-3 py-2 text-xs text-slate-500">
             Ya liquidado en SAP: horómetros y labores quedan de{' '}
             <strong>sólo lectura</strong>. Para corregir algo hay que devolver el ticket a un
             proceso anterior; quien tenga «Ver todo» en Tickets puede hacerlo.
           </p>
+        ) : (
+          congelado && (
+            <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              El ticket ya salió de «0. Registrado» y está en revisión: horómetros y labores
+              quedan de <strong>sólo lectura</strong> para que lo que se revisa no cambie
+              mientras se revisa. Corregirlo desde aquí necesita la casilla{' '}
+              <strong>«Editar en revisión»</strong> en Permisos.
+            </p>
+          )
         )}
 
         <div className="mt-4 border-t border-slate-100 pt-4">

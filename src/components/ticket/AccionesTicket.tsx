@@ -11,7 +11,7 @@ import { mensajeDeError } from '@/lib/errores'
 import { ahoraIso } from '@/lib/fechas'
 import type { ProcesoTicket, Ticket } from '@/lib/types'
 import { puede } from '@/lib/permisos/puede'
-import { estaNotificado } from '@/lib/permisos/captura'
+import { enRevision, estaNotificado, puedeEditarEnRevision } from '@/lib/permisos/captura'
 
 export function AccionesTicket({
   ticket,
@@ -39,11 +39,19 @@ export function AccionesTicket({
   const concedidos = useMemo(() => new Set(permisos), [permisos])
 
   // Lo que la base va a permitir, preguntado igual que ella lo pregunta.
-  // Un ticket ya notificado se queda de sólo lectura; el estado —abierto o
-  // cerrado— ya no decide nada.
+  // Notificado es de sólo lectura para todos; a partir de «1. Revisando»
+  // sólo escribe quien tenga la casilla. El estado —abierto o cerrado— no
+  // decide nada.
   const notificado = estaNotificado(ticket.proceso)
-  const puedeEditar = !notificado && puede(concedidos, 'tickets', 'editar')
-  const puedeBorrar = !notificado && puede(concedidos, 'tickets', 'eliminar')
+  const congelado = enRevision(ticket.proceso) && !puedeEditarEnRevision(concedidos)
+  const abre = !notificado && !congelado
+  const puedeEditar = abre && puede(concedidos, 'tickets', 'editar')
+  const puedeBorrar = abre && puede(concedidos, 'tickets', 'eliminar')
+
+  // Mandar a revisión es lo contrario de editar en revisión: se hace
+  // desde el paso 0 y es justamente lo último que hace quien captura.
+  const puedeEnviarARevision =
+    !notificado && ticket.proceso === 'REGISTRADO' && puede(concedidos, 'tickets', 'editar')
 
   async function cerrarTicket() {
     if (!confirm('¿Cerrar este ticket? Ya no podrás editar sus horómetros ni labores.')) return
@@ -122,7 +130,7 @@ export function AccionesTicket({
           )
         )}
 
-        {ticket.proceso === 'REGISTRADO' && puedeEditar && (
+        {puedeEnviarARevision && (
           <Boton variante="suave" tamano="sm" onClick={enviarARevision} disabled={cargando === 'revision'}>
             <IconSend className="h-4 w-4" />
             {cargando === 'revision' ? 'Enviando…' : 'Enviar a revisión'}

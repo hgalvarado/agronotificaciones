@@ -24,8 +24,10 @@ import { IconChevronDown, IconInbox } from '@/components/ui/Icons'
 import { EstadoVacio } from '@/components/ui/Primitivos'
 import { procesoInfo } from '@/lib/estados'
 import { cursorDe, leerPagina, type Cursor } from '@/lib/tickets/repositorio'
+import { hoyIso } from '@/lib/fechas'
 import {
   llaveBloque,
+  mesesPorDefecto,
   porMes,
   type BloqueTickets,
   type FilaTicket,
@@ -51,11 +53,21 @@ export function ArbolTickets({
   error,
   fila,
   onFilasCargadas,
+  revision = 0,
 }: {
   bloques: BloqueTickets[]
   filtros: FiltrosTickets
   cargandoResumen: boolean
   error: string | null
+  /**
+   * Sube uno cada vez que el servidor vuelve a contar los tickets.
+   *
+   * Cambiar el estado o el proceso de un ticket lo MUEVE de bloque, así
+   * que las páginas ya bajadas dejan de ser ciertas: el ticket seguiría
+   * apareciendo en «Registrado» después de mandarlo a revisar. Se olvida
+   * todo, igual que cuando cambia un filtro.
+   */
+  revision?: number
   /** Cómo se dibuja cada ticket. Lo decide quien usa el árbol. */
   fila: (t: FilaTicket) => React.ReactNode
   /**
@@ -69,16 +81,15 @@ export function ArbolTickets({
   onFilasCargadas?: (filas: FilaTicket[]) => void
 }) {
   const meses = porMes(bloques)
-  const primerMes = meses[0]?.mes
 
-  // Qué está desplegado. Mientras nadie toque nada, el mes más reciente
-  // sale abierto: es donde está el trabajo del día, y llegar a él con un
-  // clic de más sería peor que la lista de antes. `null` es justamente
-  // «nadie ha tocado nada todavía», y así el valor se DERIVA en vez de
-  // fijarse desde un efecto —que en React 19 es error de lint y además
-  // provoca un render de más—.
+  // Qué está desplegado. Mientras nadie toque nada, se abre el mes en
+  // curso y todo mes al que le quede trabajo sin notificar: es lo que se
+  // viene a buscar, y destaparlo a mano cada vez era el trabajo previo a
+  // empezar a trabajar. `null` es justamente «nadie ha tocado nada
+  // todavía», y así el valor se DERIVA en vez de fijarse desde un efecto
+  // —que en React 19 es error de lint y además provoca un render de más—.
   const [mesesTocados, setMesesTocados] = useState<Set<string> | null>(null)
-  const mesesAbiertos = mesesTocados ?? new Set(primerMes ? [primerMes] : [])
+  const mesesAbiertos = mesesTocados ?? mesesPorDefecto(meses, hoyIso().slice(0, 7))
 
   const [bloquesAbiertos, setBloquesAbiertos] = useState<Set<string>>(new Set())
   const [cargados, setCargados] = useState<Record<string, Cargado>>({})
@@ -88,7 +99,7 @@ export function ArbolTickets({
   // en un efecto: es el patrón que React documenta para reajustar estado
   // cuando cambia una prop, y evita el parpadeo de enseñar una página
   // vieja bajo un filtro nuevo.
-  const huella = JSON.stringify(filtros)
+  const huella = `${revision}·${JSON.stringify(filtros)}`
   const [huellaPrevia, setHuellaPrevia] = useState(huella)
   if (huella !== huellaPrevia) {
     setHuellaPrevia(huella)

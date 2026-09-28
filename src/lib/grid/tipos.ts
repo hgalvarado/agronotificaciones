@@ -88,6 +88,15 @@ export type ColumnaGrid<T> = {
   /** Sólo para el editor 'seleccion'. */
   opciones?: { value: string; label: string }[]
   /**
+   * Sólo para el editor 'seleccion': crear en el catálogo lo que falta
+   * sin salir de la celda, y dejarlo elegido. Devuelve el id nuevo.
+   *
+   * Es la regla de la casa —todo selector de catálogo deja crear— puesta
+   * donde la cuadrícula la puede cumplir: a media captura, ir a
+   * Catálogos y volver es perder lo que ya se llevaba escrito.
+   */
+  onCrearOpcion?: (texto: string) => Promise<string>
+  /**
    * El valor CRUDO que se edita, cuando no es el mismo que se enseña: la
    * celda dice «Arado» y lo que se guarda es el id de la tarea.
    */
