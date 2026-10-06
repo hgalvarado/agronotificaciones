@@ -30,11 +30,14 @@ export default async function PermisosPage() {
       .from('pantallas')
       .select('codigo, nombre, descripcion, ruta, acciones')
       .order('orden'),
-    supabase.from('permisos').select('rol_id, recurso, accion'),
+    // Desde la 53 la fila ya no es la respuesta: `permitido` puede venir
+    // en falso y la fila sigue ahí, guardando el alcance y la condición.
+    supabase.from('permisos').select('rol_id, recurso, accion, permitido, alcance, condicion'),
     // El catálogo de acciones manda las columnas. Llega con la migración
     // 44; sin ella la pantalla se dibuja igual, sacando las columnas de
-    // lo que declare cada pantalla.
-    supabase.from('acciones').select('codigo, nombre, descripcion, orden').order('orden'),
+    // lo que declare cada pantalla. `escribe` decide si la celda ofrece
+    // condición: en las de lectura la base la ignora.
+    supabase.from('acciones').select('codigo, nombre, descripcion, orden, escribe').order('orden'),
     // Y el guardián: lo que la base exige y la matriz no ofrece. Tiene que
     // venir vacío.
     supabase.rpc('fn_permisos_sin_casilla'),

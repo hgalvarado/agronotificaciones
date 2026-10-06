@@ -4,18 +4,15 @@
 // Mientras tanto, estos tipos reflejan 1:1 las columnas de sql/01_schema.sql.
 
 /**
- * Los roles. `INVITADO` es el único con una regla propia en la base:
- * `fn_tiene_permiso` le deja pasar sólo las acciones de lectura, así que
- * no puede escribir aunque alguien le marque casillas en Permisos.
+ * El código de un rol.
+ *
+ * Era una unión de siete nombres escritos a mano, y desde la 41 los
+ * roles se crean desde la pantalla de Permisos: un rol nuevo no entraba
+ * en el tipo. Las dos reglas que antes dependían del nombre —acceso
+ * total y sólo lectura— son desde la 54 dos banderas de la tabla
+ * `roles`, así que aquí ya no hay nada que enumerar.
  */
-export type RolCodigo =
-  | 'ADMIN'
-  | 'TORRE_CONTROL'
-  | 'DIGITADOR'
-  | 'DIGITADOR_PARAMETRISTA'
-  | 'JEFE_ZONA'
-  | 'DIGITADOR_ANALISIS'
-  | 'INVITADO'
+export type RolCodigo = string
 export type EstadoTicket = 'ABIERTO' | 'CERRADO'
 export type TurnoTipo = 'DIURNO' | 'NOCTURNO'
 export type ProcesoTicket = 'REGISTRADO' | 'REVISANDO' | 'PENDIENTE_APROBACION' | 'NOTIFICADO'
