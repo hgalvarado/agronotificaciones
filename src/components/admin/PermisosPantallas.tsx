@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Alerta, Boton, Entrada, Insignia, Tarjeta } from '@/components/ui/Primitivos'
@@ -67,6 +67,53 @@ export type AccionCatalogo = {
   orden: number
   /** La acción modifica datos: sólo entonces la condición significa algo. */
   escribe?: boolean | null
+}
+
+/**
+ * Cómo se parte la lista de pantallas en bloques.
+ *
+ * La 58 partió «Catálogos» en cinco casillas y la matriz pasó de veinte
+ * filas a veinticuatro, cinco de ellas casi iguales y seguidas. Sin
+ * separarlas, la columna de la izquierda es «Catálogos · Equipos»,
+ * «Catálogos · Labores», «Catálogos · Campo y cultivo»… y hay que leer
+ * entera cada una para saber en cuál se está.
+ *
+ * El criterio es el prefijo del código, no una lista escrita a mano: un
+ * `catalogo_` que se agregue mañana cae en su bloque solo.
+ */
+function bloqueDe(codigo: string): string {
+  return codigo.startsWith('catalogo_') ? 'catalogos' : 'operacion'
+}
+
+const TITULO_BLOQUE: Record<string, string> = {
+  operacion: 'Módulos',
+  catalogos: 'Catálogos',
+}
+
+const DETALLE_BLOQUE: Record<string, string> = {
+  operacion: 'Las pantallas de trabajo y de administración.',
+  catalogos:
+    'Los datos maestros, un bloque por tipo. Antes era una sola casilla para todos: quien podía tocar los equipos podía tocar también las tareas SAP.',
+}
+
+type Bloque = { key: string; titulo: string; detalle: string; pantallas: Pantalla[] }
+
+function agrupar(pantallas: Pantalla[]): Bloque[] {
+  const porBloque = new Map<string, Pantalla[]>()
+  for (const p of pantallas) {
+    const k = bloqueDe(p.codigo)
+    const lista = porBloque.get(k)
+    if (lista) lista.push(p)
+    else porBloque.set(k, [p])
+  }
+  // El orden de los bloques sale del de las pantallas: el primero que
+  // aparece manda, para que la matriz siga el mismo orden que el menú.
+  return [...porBloque.entries()].map(([key, lista]) => ({
+    key,
+    titulo: TITULO_BLOQUE[key] ?? key,
+    detalle: DETALLE_BLOQUE[key] ?? '',
+    pantallas: lista,
+  }))
 }
 
 /** Una llave que la base exige y la matriz no ofrece. Tiene que venir vacía. */
@@ -204,6 +251,7 @@ export function PermisosPantallas({
     router.refresh()
   }
 
+  const bloques = useMemo(() => agrupar(pantallas), [pantallas])
   const cuenta = pantallas.filter((p) => configDe(p.codigo, 'ver').permitido).length
 
   /* --------------------------- Roles: alta y baja -------------------- */
@@ -352,7 +400,15 @@ export function PermisosPantallas({
           Una matriz de seis columnas no cabe en un teléfono, y él dijo que
           casi todos van a usar la plataforma desde ahí. */}
       <div className="flex flex-col gap-2 sm:hidden">
-        {pantallas.map((p) => {
+        {bloques.map((b) => (
+          <div key={b.key} className="flex flex-col gap-2">
+            <div className="pt-2">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                {b.titulo}
+              </p>
+              {b.detalle && <p className="text-xs text-slate-400">{b.detalle}</p>}
+            </div>
+            {b.pantallas.map((p) => {
           const puedeVer = configDe(p.codigo, 'ver').permitido
           return (
             <div
@@ -386,7 +442,9 @@ export function PermisosPantallas({
               </div>
             </div>
           )
-        })}
+            })}
+          </div>
+        ))}
       </div>
 
       {/* Escritorio: la matriz completa */}
@@ -411,7 +469,25 @@ export function PermisosPantallas({
                 </tr>
               </thead>
               <tbody>
-                {pantallas.map((p) => {
+                {bloques.map((b) => (
+                  <Fragment key={b.key}>
+                    {/* El separador va DENTRO de la tabla y no como dos
+                        tablas: así las columnas siguen alineadas entre
+                        bloques, que es la razón de que esto sea una
+                        matriz y no dos listas. */}
+                    <tr className="border-b border-slate-200 bg-slate-50/70">
+                      <td colSpan={columnas.length + 1} className="px-4 py-2">
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                          {b.titulo}
+                        </p>
+                        {b.detalle && (
+                          <p className="text-xs font-normal normal-case text-slate-400">
+                            {b.detalle}
+                          </p>
+                        )}
+                      </td>
+                    </tr>
+                    {b.pantallas.map((p) => {
                   const puedeVer = configDe(p.codigo, 'ver').permitido
                   return (
                     <tr
@@ -460,7 +536,9 @@ export function PermisosPantallas({
                       })}
                     </tr>
                   )
-                })}
+                    })}
+                  </Fragment>
+                ))}
               </tbody>
             </table>
           </div>

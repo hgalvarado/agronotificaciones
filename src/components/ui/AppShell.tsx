@@ -23,6 +23,7 @@ import { CampanaNotificaciones } from './CampanaNotificaciones'
 import { Logo } from './Logo'
 import { SelectorTema } from './SelectorTema'
 import { repartir } from '@/lib/navegacion/barra'
+import { PANTALLAS_CATALOGO, veAlgunCatalogo } from '@/lib/catalogos/grupos'
 
 type ItemNav = {
   href: string
@@ -168,10 +169,12 @@ export function AppShell({
     },
     {
       href: '/admin/catalogos',
-      pantalla: 'catalogos',
+      // La entrada se enseña si puede ver AL MENOS UN bloque: desde la
+      // 59 «Catálogos» son cinco casillas, no una.
+      pantalla: PANTALLAS_CATALOGO[0],
       etiqueta: 'Catálogos',
       icono: <IconSettings />,
-      visible: ve('catalogos'),
+      visible: veAlgunCatalogo(ve),
     },
     {
       href: '/admin/reporte-publico',

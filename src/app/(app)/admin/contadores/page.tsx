@@ -7,7 +7,7 @@ export default async function ContadoresPage() {
   const supabase = await createClient()
   const permisos = await getPermisos()
 
-  if (!puede(permisos, 'catalogos', 'ver')) {
+  if (!puede(permisos, 'catalogo_equipos', 'ver')) {
     return (
       <div className="mx-auto max-w-5xl p-4 lg:p-6">
         <Alerta tono="ambar">
@@ -43,8 +43,8 @@ export default async function ContadoresPage() {
 
       <GestionContadores
         equipos={equipos}
-        puedeEditar={puede(permisos, 'catalogos', 'editar') || puede(permisos, 'catalogos', 'crear')}
-        puedeEliminar={puede(permisos, 'catalogos', 'eliminar')}
+        puedeEditar={puede(permisos, 'catalogo_equipos', 'editar') || puede(permisos, 'catalogo_equipos', 'crear')}
+        puedeEliminar={puede(permisos, 'catalogo_equipos', 'eliminar')}
       />
     </div>
   )

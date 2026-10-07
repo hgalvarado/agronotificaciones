@@ -191,7 +191,23 @@ regirse por su propia casilla como las demás.
    `public`, si alguien puede entrar a `interno`, o si una expuesta queda
    sin reja.
 
-### 2.6 La misma regla en el navegador
+### 2.6 Los catálogos, por bloque
+
+Desde la 58 no hay una casilla «Catálogos»: hay cinco, una por bloque
+(`catalogo_equipos`, `catalogo_labores`, `catalogo_cultivos`,
+`catalogo_sap`, `catalogo_organizacion`). Son los mismos bloques con los
+que `lib/catalogos/grupos.ts` agrupa el menú, y es el campo `pantalla` de
+cada `GrupoDeclarado` el que los une: el menú sólo enseña los bloques en
+los que la persona tiene «Ver», y la base aplica esa misma casilla sobre
+las tablas de ese bloque.
+
+**Regla para quien agregue un catálogo:** se declara en `GRUPOS` dentro
+de su bloque, y su policy pregunta por la pantalla de ESE bloque. Si no
+se declara, cae en «Otros catálogos» y queda sin gobernar — un dato
+maestro invisible es peor que uno mal colocado, pero uno sin casilla es
+peor que los dos.
+
+### 2.7 La misma regla en el navegador
 
 `lib/permisos/clientABAC.ts` → `canExecuteAction(reglas, pantalla,
 accion, fila, contexto)` es el reflejo exacto de `fn_verificar_permiso`,
@@ -218,6 +234,90 @@ dice.
 ---
 
 ## 3. Registro de cambios
+
+### 2026-10-08 — Catálogos por bloque, nombres en las vistas y Excel (migración 58)
+
+**a) Dos pantallas fantasma.** «Plan de siembra» y «Plan de cosecha» son
+módulos que ya no existen y seguían ocupando dos filas en la matriz de
+Permisos. Una casilla que no gobierna nada es peor que ninguna: alguien
+la marca creyendo que concede algo.
+
+**b) «Catálogos» era UNA casilla para todos los datos maestros.** Quien
+podía tocar los equipos podía tocar también las tareas SAP y los
+proveedores. Se parte en **cinco bloques**, los mismos que la pantalla ya
+usaba para agrupar — no se inventa una taxonomía nueva, quien entra a
+Catálogos ya los ve así:
+
+| Pantalla | Qué gobierna |
+| --- | --- |
+| `catalogo_equipos` | Equipos, familias, implementos, puestos de trabajo, contadores |
+| `catalogo_labores` | Labores con sus tareas e implementos, categorías, operadores |
+| `catalogo_cultivos` | Zonas, productos, variedades, materiales, planes de nutrición, turnos, estaciones |
+| `catalogo_sap` | Tareas y procesos SAP |
+| `catalogo_organizacion` | Departamentos, proveedores, temporadas |
+
+**Lo que cada rol tenía en «Catálogos» se hereda a los cinco**, con sus
+tres ejes intactos: partir un permiso sin heredar es quitárselo a todo el
+mundo y obligar al Administrador a volver a marcar cinco casillas por rol
+el lunes por la mañana.
+
+Las veintidós tablas de catálogo pasan a regirse por su bloque. **Las
+policies no se reescriben a mano:** se lee la expresión que ya tienen y
+se le cambia el nombre de la pantalla. Veintidós policies reescritas a
+mano son veintidós oportunidades de colar un matiz distinto, y la que
+quede mal abre o cierra una tabla sin que nadie lo note. Las funciones
+que también nombraban la casilla (`fn_cambiar_contador`) se traducen por
+el mismo camino — el guardián de la 44 las encuentra leyendo su fuente.
+
+**Una excepción que conviene recordar:** las **zonas** se leen con
+«Lotes», no con el bloque de cultivo. Lo fijó la 55 porque el selector de
+lote necesita la zona para recortar. Lo que sí gobierna
+`catalogo_cultivos` es **escribirlas**.
+
+En la UI: `/admin/permisos` separa la matriz en dos bloques —Módulos y
+Catálogos— con el criterio del prefijo `catalogo_`, no con una lista
+escrita a mano, para que un bloque nuevo caiga en su sitio solo. Y
+`/admin/catalogos` sólo enseña los bloques en los que la persona tiene
+«Ver»: un bloque que no puede abrir no es un candado que explicar, es
+ruido.
+
+**c) Las vistas devuelven nombres, no identificadores.** Desde la 56 las
+vistas son `definer` y se saltan el RLS de los catálogos, así que pueden
+resolver el nombre **ahí**: el navegador ya no tiene que descargarse el
+catálogo entero para pintar una columna, ni enseñar «—» cuando no puede.
+Se añadieron `zona_nombre` a labores, `temporada_nombre` a las cuatro
+vistas de cultivo y a las de avance y costos, `turno_nombre` a riego y
+`labor_nombre` a avance ejecutado — con el mismo envoltorio de la 57.
+
+**d) Excel.** Dos cosas:
+
+- **Fechas al importar.** Excel no guarda fechas, guarda números: una
+  celda con 15/03/2026 llega como `46096` y un formato aparte que dice
+  cómo pintarlo. Quien importaba tenía que acordarse de convertir la
+  columna a texto ANTES de guardar, y si se le olvidaba la base recibía
+  «46096». Ahora `leerXlsx` lee también `xl/styles.xml`, cruza el
+  atributo `s` de cada celda con la tabla de formatos y traduce el serial
+  a `YYYY-MM-DD`. Un número que **no** lleva formato de fecha no se toca.
+- **Desplegables al exportar.** `construirXlsxPlantilla` ya generaba Data
+  Validation nativo; los dos importadores de trasplante eran los únicos
+  que no le pasaban listas, así que Lote y Variedad se escribían a mano y
+  cualquier variación caía en las filas rechazadas. Ya las llevan.
+
+**Verificado**
+
+| Prueba | Resultado |
+| --- | --- |
+| `t59.sql` — fantasmas, los cinco bloques, la granularidad aplicada por RLS, los nombres | **25 / 0** |
+| `t42_52` · `t53` · `t54` · `t55` · `t56` sobre la cadena 58 | **36/0 · 45/0 · 26/0 · 19/0 · 23/0** |
+| Excel — serial, formatos, libro real de ida y vuelta, plantilla | **19 / 0** |
+| Paridad navegador ↔ Postgres, 480 combinaciones | **0 diferencias** |
+| `canExecuteAction` · estado de carga | **29/0 · 13/0** |
+| `tsc --noEmit`, `eslint --max-warnings=0`, `next build` | limpios |
+
+La prueba que de verdad cierra la granularidad no es que la función
+conteste bien, sino que **RLS lo aplique**: con el bloque de equipos
+abierto y el de SAP cerrado, el `update` sobre `equipos` pasa y el de
+`tareas_sap` no.
 
 ### 2026-10-08 — Homologación final y limpieza de deuda (migración 57)
 
@@ -469,6 +569,15 @@ Cosas que ya costaron una sesión. No volver a tropezar.
   la columna al final (`create or replace view` sólo admite añadir al
   final). Y hay que recrear la vista EXPUESTA aparte: su lista de
   columnas se fijó al crearse y un `select x.*` viejo no se entera.
+- **Las zonas se LEEN con «Lotes» y se ESCRIBEN con
+  `catalogo_cultivos`.** No es un descuido: el selector de lote necesita
+  la zona para recortar, así que atarla al bloque de cultivo dejaría sin
+  selector a quien no lo tenga.
+- **Excel no guarda fechas, guarda números.** Toda lectura de `.xlsx`
+  tiene que mirar `xl/styles.xml` para saber qué celda numérica es una
+  fecha. Y el serial se convierte con `Date.UTC` y `getUTC*`: un serial
+  es una fecha de calendario, no un instante, y construirlo en hora local
+  es lo que mueve la fecha un día.
 - **`fn_ve_zona` devuelve `true` cuando el usuario NO tiene zonas
   asignadas.** Por eso un recorte zonal no se nota hasta que alguien
   tiene zonas, y por eso las pruebas necesitan un usuario con zonas.
@@ -516,6 +625,12 @@ operación se quedó sin RLS ni con RLS pero sin policies, y **ninguna
 función `security definer` se quedó sin `search_path`**. La tercera
 encontró tres funciones viejas abiertas.
 
+Para lo de Excel hay una suite aparte (`texcel.mjs`) que construye un
+`.xlsx` **de verdad** con openpyxl y lo vuelve a leer. Probar
+`serialAFecha` por su cuenta no basta: lo que fallaba era la cadena
+entera —abrir el ZIP, encontrar los estilos, cruzarlos con el atributo
+`s` de la celda—, y eso sólo sale construyendo un libro real.
+
 Antes de entregar: `npx tsc --noEmit`, `npx eslint src --max-warnings=0`,
 `npm run build`.
 
@@ -534,6 +649,9 @@ La migración a ABAC está **cerrada en toda la plataforma**.
 - **Homologación final** (migración 57) — las once pantallas con
   cuadrícula deciden por fila con las mismas reglas, y las suites de
   regresión de la 42 a la 52 están reconstruidas y en verde.
+- **Granularidad de catálogos** (migración 58) — «Catálogos» deja de ser
+  una casilla y pasa a ser cinco bloques, aplicados por RLS tabla por
+  tabla.
 
 Lo que queda abierto son ideas, no deuda: están al final del changelog
 de la 57.

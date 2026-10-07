@@ -2,15 +2,27 @@ import { createClient } from '@/lib/supabase/server'
 import { MenuCatalogos } from '@/components/catalogos/MenuCatalogos'
 import type { PestanaCatalogo } from '@/components/catalogos/tipos'
 import { Alerta } from '@/components/ui/Primitivos'
+import { redirect } from 'next/navigation'
 import { getPermisos, puede } from '@/lib/auth'
+import { GRUPOS } from '@/lib/catalogos/grupos'
 
 export default async function CatalogosPage() {
   const supabase = await createClient()
   const permisos = await getPermisos()
-  // Sólo lectura si puede ver pero no editar ni crear. Antes era «es
+
+  // Desde la 58 «Catálogos» no es una casilla sino cinco, una por
+  // bloque. El menú sólo enseña los bloques en los que esta persona
+  // tiene «Ver»: un bloque que no puede abrir no es un candado que
+  // explicar, es ruido.
+  const puedeVerBloque = (pantalla: string) => puede(permisos, pantalla, 'ver')
+
+  // Sólo lectura si NINGÚN bloque le deja escribir. Antes era «es
   // DIGITADOR», que ignoraba lo que dijera el panel de permisos.
-  const soloLectura =
-    !puede(permisos, 'catalogos', 'editar') && !puede(permisos, 'catalogos', 'crear')
+  const soloLectura = !GRUPOS.some(
+    (g) => puede(permisos, g.pantalla, 'editar') || puede(permisos, g.pantalla, 'crear')
+  )
+
+  if (!GRUPOS.some((g) => puedeVerBloque(g.pantalla))) redirect('/tickets')
 
   const [
     { data: zonas },
@@ -560,7 +572,11 @@ export default async function CatalogosPage() {
         </Alerta>
       )}
 
-      <MenuCatalogos pestanas={pestanas} soloLectura={soloLectura} />
+      <MenuCatalogos
+        pestanas={pestanas}
+        soloLectura={soloLectura}
+        bloquesVisibles={GRUPOS.filter((g) => puedeVerBloque(g.pantalla)).map((g) => g.pantalla)}
+      />
     </div>
   )
 }

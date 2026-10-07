@@ -32,12 +32,24 @@ export type GrupoDeclarado = {
   key: string
   titulo: string
   descripcion: string
+  /**
+   * La pantalla de la matriz que gobierna este bloque.
+   *
+   * Hasta la 58 había UNA casilla, «Catálogos», para todos los datos
+   * maestros: quien podía tocar los equipos podía tocar también las
+   * tareas SAP y los proveedores. Ahora cada bloque tiene la suya, y es
+   * este campo el que las une: el menú sólo enseña los bloques en los
+   * que la persona tiene «Ver», y la base aplica la misma casilla sobre
+   * las tablas de ese bloque.
+   */
+  pantalla: string
   items: ItemDeclarado[]
 }
 
 export const GRUPOS: GrupoDeclarado[] = [
   {
     key: 'maquinaria',
+    pantalla: 'catalogo_equipos',
     titulo: 'Equipos e implementos',
     descripcion: 'Aquí modificarás los estados y configuraciones de la maquinaria.',
     items: [
@@ -74,6 +86,7 @@ export const GRUPOS: GrupoDeclarado[] = [
   },
   {
     key: 'labores',
+    pantalla: 'catalogo_labores',
     titulo: 'Labores y personal',
     descripcion: 'Qué trabajo se hace en campo y quién lo ejecuta.',
     items: [
@@ -84,6 +97,7 @@ export const GRUPOS: GrupoDeclarado[] = [
   },
   {
     key: 'campo',
+    pantalla: 'catalogo_cultivos',
     titulo: 'Campo y cultivo',
     descripcion: 'El terreno, lo que se siembra en él y con qué se siembra.',
     items: [
@@ -119,6 +133,7 @@ export const GRUPOS: GrupoDeclarado[] = [
   },
   {
     key: 'sap',
+    pantalla: 'catalogo_sap',
     titulo: 'Integración con SAP',
     descripcion: 'Los códigos con los que SAP recibe la notificación. Cámbialos sólo con SAP al lado.',
     items: [
@@ -128,6 +143,7 @@ export const GRUPOS: GrupoDeclarado[] = [
   },
   {
     key: 'organizacion',
+    pantalla: 'catalogo_organizacion',
     titulo: 'Organización',
     descripcion: 'Cómo se reparte el trabajo y en qué periodo se contabiliza.',
     items: [
@@ -167,13 +183,33 @@ const SIN_GRUPO = 'otros'
  * catálogo que llegó y nadie declaró cae en «Otros catálogos». Un bloque
  * que se queda sin ningún item no se enseña vacío.
  */
-export function organizar<T extends PestanaMinima>(pestanas: T[]): GrupoMenu<T>[] {
+export function organizar<T extends PestanaMinima>(
+  pestanas: T[],
+  /**
+   * Qué bloques puede VER esta persona. `null` quiere decir «no
+   * filtres» —es lo que pide quien ya hizo el recorte antes de llamar—.
+   *
+   * El recorte va aquí y no en la página porque es la misma lista que
+   * decide el orden y los títulos: separarlos haría que un bloque nuevo
+   * apareciera en el menú y no en el filtro, o al revés.
+   */
+  visibles: ((pantalla: string) => boolean) | null = null
+): GrupoMenu<T>[] {
   const porClave = new Map(pestanas.map((p) => [p.key, p]))
   const usadas = new Set<string>()
 
   const grupos: GrupoMenu<T>[] = []
 
   for (const g of GRUPOS) {
+    // Un bloque que la persona no puede ver no se enseña vacío ni con un
+    // candado: desaparece. Y sus catálogos NO caen en «Otros»: se marcan
+    // como usados para que el bloque de huérfanas no los recoja por la
+    // puerta de atrás.
+    if (visibles && !visibles(g.pantalla)) {
+      for (const d of g.items) usadas.add(d.key)
+      continue
+    }
+
     const items: ItemMenu<T>[] = []
 
     for (const d of g.items) {
@@ -213,6 +249,20 @@ export function organizar<T extends PestanaMinima>(pestanas: T[]): GrupoMenu<T>[
   }
 
   return grupos
+}
+
+/** Los códigos de pantalla de los cinco bloques, en orden. */
+export const PANTALLAS_CATALOGO = GRUPOS.map((g) => g.pantalla)
+
+/**
+ * ¿Le toca a esta persona la entrada «Catálogos» del menú?
+ *
+ * Le toca si puede ver AL MENOS UN bloque. Desde la 58 no hay una casilla
+ * «Catálogos»: hay cinco, y preguntar por la que ya no existe dejaba la
+ * entrada escondida para todo el mundo.
+ */
+export function veAlgunCatalogo(puedeVer: (pantalla: string) => boolean): boolean {
+  return PANTALLAS_CATALOGO.some(puedeVer)
 }
 
 /** Sin acentos y en minúsculas, para que «Códigos» se encuentre con «codigos». */

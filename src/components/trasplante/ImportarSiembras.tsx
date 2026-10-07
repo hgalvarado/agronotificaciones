@@ -122,6 +122,10 @@ export function ImportarSiembras({
       titulo="Importar siembra diaria"
       ayuda="Cada fila del archivo es una siembra nueva. El lote y la variedad se buscan por su nombre o su código; las filas que no cuadren se marcan y no se importan."
       columnas={COLUMNAS}
+      listas={[
+        { columna: 1, titulo: 'Lote', valores: lotes.map((l) => l.nomenclatura) },
+        { columna: 2, titulo: 'Variedad', valores: variedades.map((v) => v.nombre) },
+      ]}
       cabecerasResumen={['Fecha', 'Lote', 'Variedad', 'Ciclo', 'Avance', 'Plantas']}
       ejemplo={['2026-09-15', lotes[0]?.nomenclatura ?? '1002-110', variedades[0]?.nombre ?? 'CANTALOUPE A', 1, 3.5, 52500, '', '']}
       interpretar={interpretar}

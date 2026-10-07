@@ -38,9 +38,16 @@ import { filtrar, organizar, type ItemMenu } from '@/lib/catalogos/grupos'
 export function MenuCatalogos({
   pestanas,
   soloLectura,
+  bloquesVisibles,
 }: {
   pestanas: PestanaCatalogo[]
   soloLectura: boolean
+  /**
+   * Los bloques de catálogo que esta persona puede ver, por el código de
+   * su pantalla en la matriz. Sin esta lista se enseñan todos, que es lo
+   * que hacía antes de que «Catálogos» se partiera en cinco.
+   */
+  bloquesVisibles?: string[]
 }) {
   const [abierta, setAbierta] = useState<string | null>(null)
   const [busqueda, setBusqueda] = useState('')
@@ -49,7 +56,10 @@ export function MenuCatalogos({
   // scroll para llegar a «Temporadas». Se abre el que se necesita.
   const [desplegados, setDesplegados] = useState<Set<string>>(new Set())
 
-  const grupos = useMemo(() => organizar(pestanas), [pestanas])
+  const grupos = useMemo(() => {
+    const permitidos = bloquesVisibles ? new Set(bloquesVisibles) : null
+    return organizar(pestanas, permitidos ? (p) => permitidos.has(p) : null)
+  }, [pestanas, bloquesVisibles])
   const visibles = useMemo(() => filtrar(grupos, busqueda), [grupos, busqueda])
 
   const pestanaAbierta = pestanas.find((p) => p.key === abierta)

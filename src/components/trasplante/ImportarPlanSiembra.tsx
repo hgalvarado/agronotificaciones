@@ -120,6 +120,10 @@ export function ImportarPlanSiembra({
       titulo="Importar plan de siembra"
       ayuda="Cada fila es una línea de plan. Un mismo lote puede repetirse con la misma variedad y el mismo ciclo —dos fechas, dos distancias— y ninguna combinación está prohibida. Ojo: el archivo REEMPLAZA el plan completo de los lotes que aparezcan en él, y no toca el de los demás. La fecha prevista es opcional, pero sin ella esa área no sale en la gráfica semanal."
       columnas={COLUMNAS}
+      listas={[
+        { columna: 0, titulo: 'Lote', valores: lotes.map((l) => l.nomenclatura) },
+        { columna: 2, titulo: 'Variedad', valores: variedades.map((v) => v.nombre) },
+      ]}
       cabecerasResumen={['Lote', 'Ciclo', 'Variedad', 'Área plan', 'Fecha']}
       etiquetaActualizar="Reemplaza el plan del lote"
       ejemplo={[

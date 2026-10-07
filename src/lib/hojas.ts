@@ -78,6 +78,65 @@ function indiceColumna(letra: string) {
 }
 
 /* ------------------------------------------------------------------ */
+/* FECHAS DE EXCEL                                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Excel no guarda fechas: guarda números.
+ *
+ * Una celda con 15/03/2026 llega como `46096` y un formato aparte que
+ * dice cómo pintarlo. Quien importaba tenía que acordarse de convertir
+ * la columna a texto ANTES de guardar el archivo, y si se le olvidaba la
+ * base recibía «46096» como fecha y lo rechazaba —o peor, lo aceptaba—.
+ *
+ * El día 0 de Excel es el 1899-12-30 y no el 31, porque Excel arrastra a
+ * propósito el bug de Lotus 1-2-3 que daba 1900 por bisiesto: a partir
+ * del 1 de marzo de 1900 todos sus números van un día adelantados, y el
+ * 30 de diciembre compensa ese día.
+ *
+ * Antes del 60 —el 29 de febrero de 1900, que no existió— ese día de más
+ * todavía no se ha metido, así que ahí la base es el 31. No pasa con
+ * ningún dato real de la finca, pero la prueba lo pedía y la cuenta
+ * correcta cuesta una línea.
+ *
+ * ── Por qué todo en UTC y no en UTC-6 ──────────────────────────────
+ *
+ * Un serial es una fecha de calendario, no un instante: el 15 de marzo
+ * es el 15 de marzo escriba quien escriba y desde donde escriba.
+ * Construirlo con `new Date(a, m, d)` —hora local— y luego formatearlo
+ * en otra zona es justo lo que mueve la fecha un día. Con `Date.UTC` y
+ * los getters `getUTC*` el número entra y sale siendo el mismo día en
+ * cualquier navegador, que es lo que la base espera en una columna
+ * `date`.
+ */
+export function serialAFecha(serial: number): string {
+  const dias = Math.floor(serial)
+  const base = dias < 61 ? Date.UTC(1899, 11, 31) : Date.UTC(1899, 11, 30)
+  const ms = base + dias * 86_400_000
+  const d = new Date(ms)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`
+}
+
+/**
+ * Los formatos con los que Excel marca una fecha.
+ *
+ * Los `numFmtId` del 14 al 22 y del 45 al 47 son los de fábrica. Los
+ * demás son formatos propios del libro y hay que mirarles el código: si
+ * lleva `y`, `d` o `mmm` fuera de comillas, es una fecha.
+ */
+const FORMATOS_FECHA = new Set([14, 15, 16, 17, 18, 19, 20, 21, 22, 45, 46, 47])
+
+export function esFormatoDeFecha(id: number, codigo?: string): boolean {
+  if (FORMATOS_FECHA.has(id)) return true
+  if (!codigo) return false
+  // Fuera lo entrecomillado y los colores: `"año "yyyy` no es fecha por
+  // la palabra, lo es por el `yyyy`.
+  const limpio = codigo.replace(/"[^"]*"/g, '').replace(/\[[^\]]*\]/g, '')
+  return /[ymd]/i.test(limpio) && !/^[#0.,%\s]*$/.test(limpio)
+}
+
+/* ------------------------------------------------------------------ */
 /* ESCRITURA                                                           */
 /* ------------------------------------------------------------------ */
 
@@ -489,6 +548,9 @@ async function abrirZip(buffer: ArrayBuffer): Promise<ArchivoZip[]> {
     const interesa =
       nombre === 'xl/sharedStrings.xml' ||
       nombre === 'xl/workbook.xml' ||
+      // Los estilos son los que dicen qué celda es una FECHA: sin ellos
+      // una fecha llega como el número crudo que Excel guarda por dentro.
+      nombre === 'xl/styles.xml' ||
       nombre.startsWith('xl/worksheets/sheet')
     if (interesa) {
       const datos = metodo === 0 ? crudo.slice() : await inflar(crudo)
@@ -538,6 +600,28 @@ export async function leerXlsx(archivo: File): Promise<string[][]> {
     }
   }
 
+  // Qué estilo es una fecha. `cellXfs` es la lista de estilos del libro;
+  // el atributo `s` de cada celda es un índice en esa lista.
+  const estiloEsFecha: boolean[] = []
+  const parteEstilos = archivos.find((a) => a.nombre === 'xl/styles.xml')
+  if (parteEstilos) {
+    const doc = parsearXml(parteEstilos.datos)
+
+    const codigos = new Map<number, string>()
+    const formatos = doc.getElementsByTagName('numFmt')
+    for (let i = 0; i < formatos.length; i++) {
+      const id = Number(formatos[i].getAttribute('numFmtId'))
+      codigos.set(id, formatos[i].getAttribute('formatCode') ?? '')
+    }
+
+    const tabla = doc.getElementsByTagName('cellXfs')[0]
+    const xfs = tabla ? tabla.getElementsByTagName('xf') : null
+    for (let i = 0; i < (xfs?.length ?? 0); i++) {
+      const id = Number(xfs![i].getAttribute('numFmtId') ?? 0)
+      estiloEsFecha.push(esFormatoDeFecha(id, codigos.get(id)))
+    }
+  }
+
   const doc = parsearXml(hojas[0].datos)
   const filasXml = doc.getElementsByTagName('row')
   const filas: string[][] = []
@@ -561,6 +645,22 @@ export async function leerXlsx(archivo: File): Promise<string[][]> {
         for (let k = 0; k < ts.length; k++) valor += ts[k].textContent ?? ''
       } else {
         valor = celda.getElementsByTagName('v')[0]?.textContent ?? ''
+
+        // Una celda numérica con formato de fecha es una FECHA. Se
+        // traduce aquí, antes de que nadie la vea: así quien importa no
+        // tiene que acordarse de convertir la columna a texto en Excel,
+        // que era el paso que se olvidaba y hacía fallar la carga.
+        const estilo = Number(celda.getAttribute('s') ?? -1)
+        const numero = Number(valor)
+        if (
+          valor !== '' &&
+          (tipo === null || tipo === 'n') &&
+          estiloEsFecha[estilo] &&
+          Number.isFinite(numero) &&
+          numero > 0
+        ) {
+          valor = serialAFecha(numero)
+        }
       }
 
       while (fila.length < columna) fila.push('')

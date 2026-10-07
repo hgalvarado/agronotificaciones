@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { getPermisos, puede } from '@/lib/auth'
 import { AdminNav } from '@/components/admin/AdminNav'
+import { PANTALLAS_CATALOGO } from '@/lib/catalogos/grupos'
 
 /**
  * El grupo de administración ya no se decide por rol.
@@ -15,13 +16,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const permisos = await getPermisos()
 
   const secciones = [
-    { pantalla: 'catalogos', href: '/admin/catalogos', etiqueta: 'Catálogos' },
-    { pantalla: 'catalogos', href: '/admin/labores', etiqueta: 'Labores' },
+    { pantalla: PANTALLAS_CATALOGO[0], href: '/admin/catalogos', etiqueta: 'Catálogos' },
+    { pantalla: 'catalogo_labores', href: '/admin/labores', etiqueta: 'Labores' },
     { pantalla: 'lotes', href: '/admin/lotes', etiqueta: 'Lotes' },
     { pantalla: 'historico', href: '/admin/historico', etiqueta: 'Carga histórica' },
     { pantalla: 'tarifas', href: '/admin/tarifas', etiqueta: 'Tarifas' },
     { pantalla: 'usuarios', href: '/admin/usuarios', etiqueta: 'Usuarios' },
-    { pantalla: 'catalogos', href: '/admin/contadores', etiqueta: 'Contadores' },
+    { pantalla: 'catalogo_equipos', href: '/admin/contadores', etiqueta: 'Contadores' },
     { pantalla: 'permisos', href: '/admin/permisos', etiqueta: 'Permisos' },
     // La navegación va con Permisos: las dos deciden qué ve cada rol, y
     // sólo el Administrador entra (la propia pantalla lo comprueba).
