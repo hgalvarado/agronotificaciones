@@ -12,7 +12,7 @@
  * del tablero, aquí dentro de la lista donde se decide qué comprar.
  */
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Alerta, Boton, Campo, Entrada, Insignia, Selector } from '@/components/ui/Primitivos'
 import { DataGrid } from '@/components/ui/DataGrid'
@@ -28,6 +28,7 @@ import {
 import { ESTADOS_EQUIPO, textoPlazo, type FilaEquipo } from '@/lib/telecom/tipos'
 import { ImportarEquipos } from './Importadores'
 import type { Consulta } from './HistorialModal'
+import { armarReglas, canExecuteAction, type ReglasPlanas } from '@/lib/permisos/clientABAC'
 
 type Fila = FilaEquipo & { id: string }
 
@@ -42,15 +43,55 @@ const CAMPOS: Record<string, keyof CamposEquipo> = {
 
 export function GridEquipos({
   filas,
-  puedeEditar,
-  puedeEliminar,
   onHistorial,
+  reglas: reglasPlanas,
+  usuarioId,
+  zonas,
 }: {
   filas: FilaEquipo[]
-  puedeEditar: boolean
-  puedeEliminar: boolean
+  /**
+   * Las reglas del usuario con sus tres ejes.
+   *
+   * Antes llegaban booleanos para la pantalla entera, y con ABAC eso ya
+   * no alcanza: el mismo usuario puede tocar la fila que capturó él y no
+   * la de al lado. La decisión es POR FILA, así que lo que hace falta
+   * aquí es la regla, no su resultado.
+   */
+  reglas: ReglasPlanas
+  /** Quién está mirando. Lo necesita el eje «propietario». */
+  usuarioId: string | null
+  /** Sus zonas asignadas. Vacío quiere decir «sin recorte zonal». */
+  zonas?: string[]
   onHistorial: (c: Consulta) => void
 }) {
+  const reglas = useMemo(() => armarReglas(reglasPlanas), [reglasPlanas])
+  const zonasDelPerfil = useMemo(() => new Set(zonas ?? []), [zonas])
+
+  // A nivel de PANTALLA: ¿podría llegar a hacerlo? Es lo que decide si se
+  // dibuja la barra de herramientas. Sin fila, alcance y condición no
+  // recortan.
+  // Esta pantalla no guarda quién capturó cada fila, así que el
+  // eje «propietario» no tiene con qué recortar y la respuesta por
+  // fila coincide con la de pantalla. Se pregunta igual con el
+  // helper para que el día que la fila gane un dueño o un estado
+  // no haya que acordarse de cambiarlo aquí.
+  const puedeEditar = canExecuteAction(reglas, 'telecom', 'editar')
+  const puedeEliminar = canExecuteAction(reglas, 'telecom', 'eliminar')
+
+  // Y a nivel de FILA, que es lo que decide cada botón.
+  const ctxAbac = useMemo(
+    () => ({ usuarioId, zonas: zonasDelPerfil }),
+    [usuarioId, zonasDelPerfil]
+  )
+  const puedeEditarFila = useCallback(
+    (_f: Fila) => canExecuteAction(reglas, 'telecom', 'editar', { duenoId: null }, ctxAbac),
+    [reglas, ctxAbac]
+  )
+  const puedeEliminarFila = useCallback(
+    (_f: Fila) => canExecuteAction(reglas, 'telecom', 'eliminar', { duenoId: null }, ctxAbac),
+    [reglas, ctxAbac]
+  )
+
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
   const [creando, setCreando] = useState(false)
@@ -84,7 +125,7 @@ export function GridEquipos({
         tipo: 'seleccion',
         ancho: '12rem',
         valor: (f) => f.marca_modelo,
-        editable: puedeEditar,
+        editable: (f: Fila) => puedeEditarFila(f),
         editor: 'texto',
       },
       {
@@ -92,7 +133,7 @@ export function GridEquipos({
         label: 'RAM',
         tipo: 'seleccion',
         valor: (f) => f.ram,
-        editable: puedeEditar,
+        editable: (f: Fila) => puedeEditarFila(f),
         editor: 'texto',
       },
       {
@@ -100,7 +141,7 @@ export function GridEquipos({
         label: 'Almacenamiento',
         tipo: 'seleccion',
         valor: (f) => f.almacenamiento,
-        editable: puedeEditar,
+        editable: (f: Fila) => puedeEditarFila(f),
         editor: 'texto',
       },
       {
@@ -108,7 +149,7 @@ export function GridEquipos({
         label: 'Compra',
         tipo: 'fecha',
         valor: (f) => f.fecha_compra,
-        editable: puedeEditar,
+        editable: (f: Fila) => puedeEditarFila(f),
         editor: 'fecha',
       },
       // Calculada por la base: compra + 18 meses. Sin editor a propósito.
@@ -146,7 +187,7 @@ export function GridEquipos({
         valor: (f) => f.estado,
         etiqueta: (f) => ESTADOS_EQUIPO.find((e) => e.valor === f.estado)?.etiqueta ?? f.estado,
         // «Dañado» sí es una decisión humana; «Asignado» lo pone la base.
-        editable: (f) => puedeEditar && f.estado !== 'ASIGNADO',
+        editable: (f: Fila) => puedeEditarFila(f) && f.estado !== 'ASIGNADO',
         editor: 'seleccion',
         opciones: [
           { value: 'EN_BODEGA', label: 'En bodega' },
@@ -176,11 +217,11 @@ export function GridEquipos({
         tipo: 'texto',
         ancho: '14rem',
         valor: (f) => f.observaciones,
-        editable: puedeEditar,
+        editable: (f: Fila) => puedeEditarFila(f),
         editor: 'texto',
       },
     ],
-    [puedeEditar, onHistorial]
+    [onHistorial, puedeEditarFila]
   )
 
   async function editarCelda(fila: Fila, campo: string, valor: unknown) {
@@ -268,18 +309,21 @@ export function GridEquipos({
             </>
           )
         }
-        accionesSeleccion={(ids, limpiar) =>
-          puedeEliminar ? (
+        accionesSeleccion={(marcadas, limpiar) => {
+          const borrables = marcadas.filter((id) =>
+            lista.some((f) => f.id === id && puedeEliminarFila(f))
+          )
+          return puedeEliminar && borrables.length > 0 ? (
             <Boton
               variante="peligro"
               tamano="sm"
               disabled={ocupado}
-              onClick={() => eliminar(ids, limpiar)}
+              onClick={() => eliminar(borrables, limpiar)}
             >
-              Eliminar {ids.length}
+              Eliminar {borrables.length}
             </Boton>
           ) : null
-        }
+        }}
       />
 
       <ModalNuevoEquipo

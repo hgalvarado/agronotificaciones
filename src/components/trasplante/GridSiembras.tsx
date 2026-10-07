@@ -22,7 +22,7 @@
  * declara qué columnas tiene una siembra y qué se puede hacer con ella.
  */
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Alerta, Boton } from '@/components/ui/Primitivos'
 import { DataGrid } from '@/components/ui/DataGrid'
@@ -49,6 +49,7 @@ import {
 import { EditarSiembraModal } from './EditarSiembraModal'
 import { ImportarSiembras } from './ImportarSiembras'
 import { ProductosCelda } from './ProductosCelda'
+import { armarReglas, canExecuteAction, type ReglasPlanas } from '@/lib/permisos/clientABAC'
 
 /** Qué columna de la tabla escribe qué campo de `siembras`. */
 const CAMPOS: Record<string, keyof CamposSiembra> = {
@@ -71,17 +72,52 @@ export function GridSiembras({
   lotes,
   variedades,
   materiales,
-  puedeEditar,
-  puedeEliminar,
+  reglas: reglasPlanas,
+  usuarioId,
+  zonas,
 }: {
   temporadaId: string
   filas: FilaSiembra[]
   lotes: LoteOpcion[]
   variedades: Variedad[]
   materiales: Material[]
-  puedeEditar: boolean
-  puedeEliminar: boolean
+  /**
+   * Las reglas del usuario con sus tres ejes.
+   *
+   * Antes llegaban booleanos para la pantalla entera, y con ABAC eso ya
+   * no alcanza: el mismo usuario puede tocar la fila que capturó él y no
+   * la de al lado. La decisión es POR FILA, así que lo que hace falta
+   * aquí es la regla, no su resultado.
+   */
+  reglas: ReglasPlanas
+  /** Quién está mirando. Lo necesita el eje «propietario». */
+  usuarioId: string | null
+  /** Sus zonas asignadas. Vacío quiere decir «sin recorte zonal». */
+  zonas?: string[]
 }) {
+  const reglas = useMemo(() => armarReglas(reglasPlanas), [reglasPlanas])
+  const zonasDelPerfil = useMemo(() => new Set(zonas ?? []), [zonas])
+
+  // A nivel de PANTALLA: ¿podría llegar a hacerlo? Es lo que decide si se
+  // dibuja la barra de herramientas. Sin fila, alcance y condición no
+  // recortan.
+  const puedeEditar = canExecuteAction(reglas, 'trasplante', 'editar')
+  const puedeEliminar = canExecuteAction(reglas, 'trasplante', 'eliminar')
+
+  // Y a nivel de FILA, que es lo que decide cada botón.
+  const ctxAbac = useMemo(
+    () => ({ usuarioId, zonas: zonasDelPerfil }),
+    [usuarioId, zonasDelPerfil]
+  )
+  const puedeEditarFila = useCallback(
+    (f: FilaSiembra) => canExecuteAction(reglas, 'trasplante', 'editar', { duenoId: f.usuario_id }, ctxAbac),
+    [reglas, ctxAbac]
+  )
+  const puedeEliminarFila = useCallback(
+    (f: FilaSiembra) => canExecuteAction(reglas, 'trasplante', 'eliminar', { duenoId: f.usuario_id }, ctxAbac),
+    [reglas, ctxAbac]
+  )
+
   const router = useRouter()
   const [enMasa, setEnMasa] = useState<string[] | null>(null)
   const [importar, setImportar] = useState(false)
@@ -95,7 +131,7 @@ export function GridSiembras({
         label: 'Fecha',
         tipo: 'fecha',
         valor: (f) => f.fecha_siembra,
-        editable: puedeEditar,
+        editable: (f: FilaSiembra) => puedeEditarFila(f),
         editor: 'fecha',
       },
       { campo: 'semana', label: 'Semana', tipo: 'seleccion', valor: (f) => f.semana },
@@ -107,7 +143,7 @@ export function GridSiembras({
         // cortada a «1001…» no sirve para nada.
         ancho: '11rem',
         valor: (f) => f.ut,
-        editable: puedeEditar,
+        editable: (f: FilaSiembra) => puedeEditarFila(f),
         editor: 'seleccion',
         valorEdicion: (f) => f.lote_temporada_id,
         opciones: lotes.map((l) => ({ value: l.lote_temporada_id, label: l.nomenclatura })),
@@ -123,7 +159,7 @@ export function GridSiembras({
         tipo: 'seleccion',
         numero: true,
         valor: (f) => f.ciclo,
-        editable: puedeEditar,
+        editable: (f: FilaSiembra) => puedeEditarFila(f),
         editor: 'seleccion',
         valorEdicion: (f) => String(f.ciclo),
         opciones: CICLOS_SIEMBRA.map((c) => ({ value: String(c), label: String(c) })),
@@ -134,7 +170,7 @@ export function GridSiembras({
         tipo: 'seleccion',
         ancho: '10rem',
         valor: (f) => f.variedad,
-        editable: puedeEditar,
+        editable: (f: FilaSiembra) => puedeEditarFila(f),
         editor: 'seleccion',
         valorEdicion: (f) => f.variedad_id,
         opciones: variedades.map((v) => ({ value: v.id, label: v.nombre })),
@@ -145,7 +181,7 @@ export function GridSiembras({
         label: 'Lote variedad',
         tipo: 'texto',
         valor: (f) => f.lote_variedad,
-        editable: puedeEditar,
+        editable: (f: FilaSiembra) => puedeEditarFila(f),
         editor: 'texto',
       },
       {
@@ -155,7 +191,7 @@ export function GridSiembras({
         numero: true,
         valor: (f) => Number(f.avance_mz),
         etiqueta: (f) => n2(f.avance_mz),
-        editable: puedeEditar,
+        editable: (f: FilaSiembra) => puedeEditarFila(f),
         editor: 'numero',
         render: (f) => <span className="font-bold text-slate-900">{n2(f.avance_mz)}</span>,
       },
@@ -191,7 +227,7 @@ export function GridSiembras({
         numero: true,
         valor: (f) => (f.plantas_reportadas === null ? null : Number(f.plantas_reportadas)),
         etiqueta: (f) => n0(f.plantas_reportadas),
-        editable: puedeEditar,
+        editable: (f: FilaSiembra) => puedeEditarFila(f),
         editor: 'numero',
       },
       {
@@ -228,7 +264,7 @@ export function GridSiembras({
         tipo: 'texto',
         ancho: '14rem',
         valor: (f) => f.observaciones,
-        editable: puedeEditar,
+        editable: (f: FilaSiembra) => puedeEditarFila(f),
         editor: 'texto',
         render: (f) => (
           <span
@@ -343,32 +379,53 @@ export function GridSiembras({
             </Boton>
           )
         }
-        accionesSeleccion={(ids, limpiar) => (
+        accionesSeleccion={(marcadas, limpiar) => {
+          // Lo que esta persona no puede tocar se cae de la selección
+          // ANTES de cualquier acción en masa: si no, la base rechazaría
+          // esas filas a mitad del bucle y el cambio quedaría a medias.
+          const ids = marcadas.filter((id) =>
+            filas.some((f) => f.id === id && puedeEditarFila(f))
+          )
+          const idsBorrables = marcadas.filter((id) =>
+            filas.some((f) => f.id === id && puedeEliminarFila(f))
+          )
+          return (
           <>
             {puedeEditar && (
               <Boton variante="secundario" tamano="sm" onClick={() => setEnMasa(ids)}>
                 Editar {ids.length}
               </Boton>
             )}
-            {puedeEliminar && (
+            {puedeEliminar && idsBorrables.length > 0 && (
               <Boton
                 variante="peligro"
                 tamano="sm"
                 disabled={ocupado}
-                onClick={() => eliminar(ids, limpiar)}
+                onClick={() => eliminar(idsBorrables, limpiar)}
               >
-                Eliminar {ids.length}
+                Eliminar {idsBorrables.length}
               </Boton>
             )}
           </>
-        )}
+          )
+        }}
         accionFila={
           puedeEliminar
-            ? (f) => (
-                <BotonFila peligro onClick={() => eliminar([f.id], () => {})}>
-                  Eliminar
-                </BotonFila>
-              )
+            ? (f) =>
+                puedeEliminarFila(f) ? (
+                  <BotonFila peligro onClick={() => eliminar([f.id], () => {})}>
+                    Eliminar
+                  </BotonFila>
+                ) : (
+                  // No desaparece a secas: un hueco sin explicación se
+                  // reporta como «se perdió el botón de eliminar».
+                  <span
+                    title="Tu permiso de eliminar no alcanza a esta fila: revisa el alcance en Permisos"
+                    className="text-xs font-semibold text-slate-300"
+                  >
+                    —
+                  </span>
+                )
             : undefined
         }
       />

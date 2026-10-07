@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getPermisos, puede } from '@/lib/auth'
+import { getMisZonas, getPermisos, getReglas, getUsuarioActual, puede } from '@/lib/auth'
 import { Alerta } from '@/components/ui/Primitivos'
 import { TrasplanteTabs } from '@/components/trasplante/TrasplanteTabs'
 import {
@@ -16,6 +16,7 @@ import {
   leerSiembras,
 } from '@/lib/trasplante/repositorio'
 import { hoyIso } from '@/lib/fechas'
+import { aplanarReglas } from '@/lib/permisos/clientABAC'
 
 type Temporada = { id: string; nombre: string; activa: boolean }
 
@@ -25,6 +26,13 @@ export default async function TrasplantePage({
   searchParams: Promise<{ temporada?: string }>
 }) {
   const permisos = await getPermisos()
+  // Las reglas enteras, no su resultado: las cuadrículas deciden
+  // Editar y Eliminar fila por fila.
+  const [reglas, usuario, misZonas] = await Promise.all([
+    getReglas(),
+    getUsuarioActual(),
+    getMisZonas(),
+  ])
   if (!puede(permisos, 'trasplante', 'ver')) redirect('/tickets')
 
   const sp = await searchParams
@@ -132,8 +140,9 @@ export default async function TrasplantePage({
         lotes={catalogos.lotes}
         variedades={catalogos.variedades}
         materiales={catalogos.materiales}
-        puedeEditar={puede(permisos, 'trasplante', 'editar') || puede(permisos, 'trasplante', 'crear')}
-        puedeEliminar={puede(permisos, 'trasplante', 'eliminar')}
+        reglas={aplanarReglas(reglas)}
+        usuarioId={usuario?.id ?? null}
+        zonas={misZonas}
       />
     </div>
   )

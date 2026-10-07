@@ -1,11 +1,19 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getPermisos, puede } from '@/lib/auth'
+import { getMisZonas, getPermisos, getReglas, getUsuarioActual, puede } from '@/lib/auth'
 import { ControlTurnosRiego } from '@/components/riego/ControlTurnosRiego'
 import type { CatalogosRiego } from '@/lib/riego/tipos'
+import { aplanarReglas } from '@/lib/permisos/clientABAC'
 
 export default async function TurnosRiegoPage() {
   const permisos = await getPermisos()
+  // Las reglas enteras, no su resultado: las cuadrículas deciden
+  // Editar y Eliminar fila por fila.
+  const [reglas, usuario, misZonas] = await Promise.all([
+    getReglas(),
+    getUsuarioActual(),
+    getMisZonas(),
+  ])
   if (!puede(permisos, 'turnos_riego', 'ver')) redirect('/tickets')
 
   const supabase = await createClient()
@@ -59,9 +67,9 @@ export default async function TurnosRiegoPage() {
 
       <ControlTurnosRiego
         catalogos={catalogos}
-        puedeCrear={puede(permisos, 'turnos_riego', 'crear')}
-        puedeEditar={puede(permisos, 'turnos_riego', 'editar')}
-        puedeEliminar={puede(permisos, 'turnos_riego', 'eliminar')}
+        reglas={aplanarReglas(reglas)}
+        usuarioId={usuario?.id ?? null}
+        zonas={misZonas}
       />
     </div>
   )

@@ -13,7 +13,7 @@
  * hace que se dejen de mirar.
  */
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { PanelAlertas } from './PanelAlertas'
 import { GridAsignaciones } from './GridAsignaciones'
 import { GridEquipos } from './GridEquipos'
@@ -31,6 +31,7 @@ import type {
   Persona,
   PlanTelecom,
 } from '@/lib/telecom/tipos'
+import { armarReglas, canExecuteAction, type ReglasPlanas } from '@/lib/permisos/clientABAC'
 
 type Pestana = 'asignaciones' | 'lineas' | 'equipos' | 'catalogos'
 
@@ -44,8 +45,9 @@ export function TelecomTabs({
   centrosCosto,
   departamentos,
   puestos,
-  puedeEditar,
-  puedeEliminar,
+  reglas,
+  usuarioId,
+  zonas,
 }: {
   alertas: Alerta[]
   lineas: FilaLinea[]
@@ -56,9 +58,17 @@ export function TelecomTabs({
   centrosCosto: CentroCosto[]
   departamentos: { id: string; nombre: string }[]
   puestos: string[]
-  puedeEditar: boolean
-  puedeEliminar: boolean
+  /** Las reglas del usuario con sus tres ejes. Los hijos deciden por fila. */
+  reglas: ReglasPlanas
+  usuarioId: string | null
+  zonas?: string[]
 }) {
+  // Esta capa sólo decide pestañas y modales, que son de pantalla.
+  // El recorte por fila lo hace cada cuadrícula con las mismas reglas.
+  const reglasAbac = useMemo(() => armarReglas(reglas), [reglas])
+  const puedeEditar = canExecuteAction(reglasAbac, 'telecom', 'editar')
+  const puedeEliminar = canExecuteAction(reglasAbac, 'telecom', 'eliminar')
+
   const router = useRouter()
   const [pestana, setPestana] = useState<Pestana>('asignaciones')
   const [historial, setHistorial] = useState<Consulta | null>(null)
@@ -113,8 +123,9 @@ export function TelecomTabs({
           centrosCosto={centrosCosto}
           departamentos={departamentos.map((d) => d.nombre)}
           puestos={puestos}
-          puedeEditar={puedeEditar}
-          puedeEliminar={puedeEliminar}
+          reglas={reglas}
+          usuarioId={usuarioId}
+          zonas={zonas}
           onNueva={() => setEntregando(true)}
         />
       )}
@@ -123,8 +134,9 @@ export function TelecomTabs({
         <GridLineas
           filas={lineas}
           planes={planes}
-          puedeEditar={puedeEditar}
-          puedeEliminar={puedeEliminar}
+          reglas={reglas}
+          usuarioId={usuarioId}
+          zonas={zonas}
           onHistorial={setHistorial}
         />
       )}
@@ -132,8 +144,9 @@ export function TelecomTabs({
       {pestana === 'equipos' && (
         <GridEquipos
           filas={equipos}
-          puedeEditar={puedeEditar}
-          puedeEliminar={puedeEliminar}
+          reglas={reglas}
+          usuarioId={usuarioId}
+          zonas={zonas}
           onHistorial={setHistorial}
         />
       )}

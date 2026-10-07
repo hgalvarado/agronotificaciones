@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
-import { getPermisos, puede } from '@/lib/auth'
+import { getMisZonas, getPermisos, getReglas, getUsuarioActual, puede } from '@/lib/auth'
 import { Alerta } from '@/components/ui/Primitivos'
 import { TelecomTabs } from '@/components/telecom/TelecomTabs'
 import {
@@ -9,9 +9,17 @@ import {
   leerEquipos,
   leerLineas,
 } from '@/lib/telecom/repositorio'
+import { aplanarReglas } from '@/lib/permisos/clientABAC'
 
 export default async function TelecomPage() {
   const permisos = await getPermisos()
+  // Las reglas enteras, no su resultado: las cuadrículas deciden
+  // Editar y Eliminar fila por fila.
+  const [reglas, usuario, misZonas] = await Promise.all([
+    getReglas(),
+    getUsuarioActual(),
+    getMisZonas(),
+  ])
   if (!puede(permisos, 'telecom', 'ver')) redirect('/tickets')
 
   const [lineas, equipos, asignaciones, alertas, catalogos] = await Promise.all([
@@ -49,8 +57,9 @@ export default async function TelecomPage() {
           centrosCosto={catalogos.centrosCosto}
           departamentos={catalogos.departamentos}
           puestos={catalogos.puestos}
-          puedeEditar={puede(permisos, 'telecom', 'editar') || puede(permisos, 'telecom', 'crear')}
-          puedeEliminar={puede(permisos, 'telecom', 'eliminar')}
+          reglas={aplanarReglas(reglas)}
+          usuarioId={usuario?.id ?? null}
+          zonas={misZonas}
         />
       )}
     </div>

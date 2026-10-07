@@ -124,6 +124,8 @@ export type FilaEquipo = {
 
 export type FilaAsignacion = {
   id: string
+  /** Quién registró la asignación. Lo necesita el eje «propietario». */
+  usuario_id: string | null
   empleado_id: string
   empleado: string
   codigo_empleado: string | null

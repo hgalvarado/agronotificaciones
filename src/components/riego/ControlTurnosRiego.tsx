@@ -47,6 +47,7 @@ import {
   type LineaTurno,
   type LoteRegable,
 } from '@/lib/riego/tipos'
+import { armarReglas, canExecuteAction, type ReglasPlanas } from '@/lib/permisos/clientABAC'
 
 type Fila = FilaTurnoRiego & { id: string }
 
@@ -65,15 +66,49 @@ const etiquetaEstado = (e: EstadoTurno) =>
 
 export function ControlTurnosRiego({
   catalogos,
-  puedeCrear,
-  puedeEditar,
-  puedeEliminar,
+  reglas: reglasPlanas,
+  usuarioId,
+  zonas,
 }: {
   catalogos: CatalogosRiego
-  puedeCrear: boolean
-  puedeEditar: boolean
-  puedeEliminar: boolean
+  /**
+   * Las reglas del usuario con sus tres ejes.
+   *
+   * Antes llegaban booleanos para la pantalla entera, y con ABAC eso ya
+   * no alcanza: el mismo usuario puede tocar la fila que capturó él y no
+   * la de al lado. La decisión es POR FILA, así que lo que hace falta
+   * aquí es la regla, no su resultado.
+   */
+  reglas: ReglasPlanas
+  /** Quién está mirando. Lo necesita el eje «propietario». */
+  usuarioId: string | null
+  /** Sus zonas asignadas. Vacío quiere decir «sin recorte zonal». */
+  zonas?: string[]
 }) {
+  const reglas = useMemo(() => armarReglas(reglasPlanas), [reglasPlanas])
+  const zonasDelPerfil = useMemo(() => new Set(zonas ?? []), [zonas])
+
+  // A nivel de PANTALLA: ¿podría llegar a hacerlo? Es lo que decide si se
+  // dibuja la barra de herramientas. Sin fila, alcance y condición no
+  // recortan.
+  const puedeCrear = canExecuteAction(reglas, 'turnos_riego', 'crear')
+  const puedeEditar = canExecuteAction(reglas, 'turnos_riego', 'editar')
+  const puedeEliminar = canExecuteAction(reglas, 'turnos_riego', 'eliminar')
+
+  // Y a nivel de FILA, que es lo que decide cada botón.
+  const ctxAbac = useMemo(
+    () => ({ usuarioId, zonas: zonasDelPerfil }),
+    [usuarioId, zonasDelPerfil]
+  )
+  const puedeEditarFila = useCallback(
+    (f: Fila) => canExecuteAction(reglas, 'turnos_riego', 'editar', { duenoId: f.usuario_id, zonaId: f.zona_id }, ctxAbac),
+    [reglas, ctxAbac]
+  )
+  const puedeEliminarFila = useCallback(
+    (f: Fila) => canExecuteAction(reglas, 'turnos_riego', 'eliminar', { duenoId: f.usuario_id, zonaId: f.zona_id }, ctxAbac),
+    [reglas, ctxAbac]
+  )
+
   const [filas, setFilas] = useState<Fila[] | null>(null)
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -212,7 +247,7 @@ export function ControlTurnosRiego({
         tipo: 'seleccion',
         valor: (f) => String(f.ciclo),
         etiqueta: (f) => `Ciclo ${f.ciclo}`,
-        editable: puedeEditar,
+        editable: (f: Fila) => puedeEditarFila(f),
         editor: 'seleccion',
         valorEdicion: (f) => String(f.ciclo),
         opciones: CICLOS_RIEGO.map((c) => ({ value: String(c), label: `Ciclo ${c}` })),
@@ -223,7 +258,7 @@ export function ControlTurnosRiego({
         tipo: 'fecha',
         valor: (f) => f.fecha_siembra,
         etiqueta: (f) => formatearFecha(f.fecha_siembra),
-        editable: puedeEditar,
+        editable: (f: Fila) => puedeEditarFila(f),
         editor: 'fecha',
         valorEdicion: (f) => f.fecha_siembra,
         render: (f) => <span className="text-xs">{formatearFecha(f.fecha_siembra)}</span>,
@@ -234,7 +269,7 @@ export function ControlTurnosRiego({
         tipo: 'seleccion',
         ancho: '14rem',
         valor: (f) => f.ut,
-        editable: puedeEditar,
+        editable: (f: Fila) => puedeEditarFila(f),
         editor: 'seleccion',
         valorEdicion: (f) => f.lote_temporada_id,
         opciones: lotes.map((l) => ({
@@ -249,7 +284,7 @@ export function ControlTurnosRiego({
         label: 'Zona',
         tipo: 'seleccion',
         valor: (f) => f.zona,
-        editable: puedeEditar,
+        editable: (f: Fila) => puedeEditarFila(f),
         editor: 'seleccion',
         valorEdicion: (f) => f.zona_id,
         opciones: catalogos.zonas.map((z) => ({ value: z.id, label: z.nombre })),
@@ -264,7 +299,7 @@ export function ControlTurnosRiego({
         valor: (f) => f.turno,
         // Elegir el turno arrastra su zona, igual que en el formulario:
         // la regla vive en la base y se aplica en los dos sitios.
-        editable: puedeEditar && catalogos.turnos.length > 0,
+        editable: (f: Fila) => puedeEditarFila(f) && catalogos.turnos.length > 0,
         editor: 'seleccion',
         valorEdicion: (f) => f.turno_catalogo_id ?? '',
         opciones: catalogos.turnos.map((t) => ({ value: t.id, label: t.codigo })),
@@ -280,7 +315,7 @@ export function ControlTurnosRiego({
         // El área se corrige sobre la tabla, pero la sigue validando el
         // disparador de la base: si no cabe, el cambio se rechaza y la
         // pantalla lo dice con el lote y el tope.
-        editable: puedeEditar,
+        editable: (f: Fila) => puedeEditarFila(f),
         editor: 'numero',
         // Con los dos decimales que enseña la celda: si al tocarla el
         // 2.40 se volviera 2.4, parecería que el sistema cambió algo.
@@ -292,7 +327,7 @@ export function ControlTurnosRiego({
         label: 'Variedad',
         tipo: 'seleccion',
         valor: (f) => f.variedad,
-        editable: puedeEditar,
+        editable: (f: Fila) => puedeEditarFila(f),
         editor: 'seleccion',
         valorEdicion: (f) => f.variedad_id ?? '',
         opciones: [
@@ -305,7 +340,7 @@ export function ControlTurnosRiego({
         label: 'Plan nutricional',
         tipo: 'seleccion',
         valor: (f) => f.plan_nutricional,
-        editable: puedeEditar,
+        editable: (f: Fila) => puedeEditarFila(f),
         editor: 'seleccion',
         valorEdicion: (f) => f.plan_nutricional_id ?? '',
         opciones: [
@@ -318,7 +353,7 @@ export function ControlTurnosRiego({
         label: 'Responsable',
         tipo: 'seleccion',
         valor: (f) => f.responsable,
-        editable: puedeEditar,
+        editable: (f: Fila) => puedeEditarFila(f),
         editor: 'texto',
       },
       {
@@ -326,7 +361,7 @@ export function ControlTurnosRiego({
         label: 'Estación riego',
         tipo: 'seleccion',
         valor: (f) => f.estacion_riego,
-        editable: puedeEditar && catalogos.estaciones.length > 0,
+        editable: (f: Fila) => puedeEditarFila(f) && catalogos.estaciones.length > 0,
         editor: 'seleccion',
         valorEdicion: (f) => f.estacion_riego_id ?? '',
         opciones: [
@@ -340,7 +375,7 @@ export function ControlTurnosRiego({
         tipo: 'seleccion',
         valor: (f) => f.fuente_agua,
         etiqueta: (f) => FUENTES_AGUA.find((x) => x.valor === f.fuente_agua)?.etiqueta ?? '',
-        editable: puedeEditar,
+        editable: (f: Fila) => puedeEditarFila(f),
         editor: 'seleccion',
         valorEdicion: (f) => f.fuente_agua ?? '',
         opciones: [
@@ -353,7 +388,7 @@ export function ControlTurnosRiego({
         label: 'Orden SAP',
         tipo: 'texto',
         valor: (f) => f.orden_sap,
-        editable: puedeEditar,
+        editable: (f: Fila) => puedeEditarFila(f),
         editor: 'texto',
         render: (f) =>
           f.orden_sap ? (
@@ -395,7 +430,7 @@ export function ControlTurnosRiego({
         tipo: 'seleccion',
         valor: (f) => f.estado,
         etiqueta: (f) => etiquetaEstado(f.estado).etiqueta,
-        editable: puedeEditar,
+        editable: (f: Fila) => puedeEditarFila(f),
         editor: 'seleccion',
         valorEdicion: (f) => f.estado,
         opciones: ESTADOS_TURNO.map((e) => ({ value: e.valor, label: e.etiqueta })),
@@ -415,7 +450,7 @@ export function ControlTurnosRiego({
         ),
       },
     ],
-    [catalogos, lotes, puedeEditar]
+    [catalogos, lotes, puedeEditarFila]
   )
 
   /* ------------------------------ Acciones ----------------------------- */
@@ -606,7 +641,17 @@ export function ControlTurnosRiego({
               </Boton>
             ) : null
           }
-          accionesSeleccion={(ids, limpiar) => (
+          accionesSeleccion={(marcadas, limpiar) => {
+            // Lo que esta persona no puede tocar se cae de la selección
+            // ANTES de cualquier acción en masa: si no, la base
+            // rechazaría esas filas a mitad del bucle.
+            const ids = marcadas.filter((id) =>
+              lista.some((f) => f.id === id && puedeEditarFila(f))
+            )
+            const idsBorrables = marcadas.filter((id) =>
+              lista.some((f) => f.id === id && puedeEliminarFila(f))
+            )
+            return (
             <>
               {puedeEditar &&
                 ESTADOS_TURNO.map((e) => (
@@ -620,12 +665,13 @@ export function ControlTurnosRiego({
                   </Boton>
                 ))}
               {puedeEliminar && (
-                <Boton variante="secundario" disabled={ocupado} onClick={() => void eliminar(ids, limpiar)}>
-                  Eliminar {ids.length}
+                <Boton variante="secundario" disabled={ocupado} onClick={() => void eliminar(idsBorrables, limpiar)}>
+                  Eliminar {idsBorrables.length}
                 </Boton>
               )}
             </>
-          )}
+          )
+          }}
           filtrosExternos={
             <PanelFiltros
               activos={activos}

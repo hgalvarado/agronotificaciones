@@ -15,7 +15,7 @@
  * firmó.
  */
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Alerta, Boton, Insignia } from '@/components/ui/Primitivos'
 import { DataGrid } from '@/components/ui/DataGrid'
@@ -45,6 +45,7 @@ import { ActaPreview } from './ActaPreview'
 import { ImportarAsignaciones } from './Importadores'
 import { ResumenAsignaciones } from './Resumenes'
 import { Seccion } from './Seccion'
+import { armarReglas, canExecuteAction, type ReglasPlanas } from '@/lib/permisos/clientABAC'
 
 const CAMPOS: Record<string, keyof CamposAsignacion> = {
   fecha_devolucion_programada: 'fecha_devolucion_programada',
@@ -64,9 +65,10 @@ export function GridAsignaciones({
   centrosCosto,
   departamentos,
   puestos,
-  puedeEditar,
-  puedeEliminar,
   onNueva,
+  reglas: reglasPlanas,
+  usuarioId,
+  zonas,
 }: {
   filas: FilaAsignacion[]
   personal: Persona[]
@@ -75,10 +77,44 @@ export function GridAsignaciones({
   centrosCosto: CentroCosto[]
   departamentos: string[]
   puestos: string[]
-  puedeEditar: boolean
-  puedeEliminar: boolean
+  /**
+   * Las reglas del usuario con sus tres ejes.
+   *
+   * Antes llegaban booleanos para la pantalla entera, y con ABAC eso ya
+   * no alcanza: el mismo usuario puede tocar la fila que capturó él y no
+   * la de al lado. La decisión es POR FILA, así que lo que hace falta
+   * aquí es la regla, no su resultado.
+   */
+  reglas: ReglasPlanas
+  /** Quién está mirando. Lo necesita el eje «propietario». */
+  usuarioId: string | null
+  /** Sus zonas asignadas. Vacío quiere decir «sin recorte zonal». */
+  zonas?: string[]
   onNueva: () => void
 }) {
+  const reglas = useMemo(() => armarReglas(reglasPlanas), [reglasPlanas])
+  const zonasDelPerfil = useMemo(() => new Set(zonas ?? []), [zonas])
+
+  // A nivel de PANTALLA: ¿podría llegar a hacerlo? Es lo que decide si se
+  // dibuja la barra de herramientas. Sin fila, alcance y condición no
+  // recortan.
+  const puedeEditar = canExecuteAction(reglas, 'telecom', 'editar')
+  const puedeEliminar = canExecuteAction(reglas, 'telecom', 'eliminar')
+
+  // Y a nivel de FILA, que es lo que decide cada botón.
+  const ctxAbac = useMemo(
+    () => ({ usuarioId, zonas: zonasDelPerfil }),
+    [usuarioId, zonasDelPerfil]
+  )
+  const puedeEditarFila = useCallback(
+    (f: FilaAsignacion) => canExecuteAction(reglas, 'telecom', 'editar', { duenoId: f.usuario_id }, ctxAbac),
+    [reglas, ctxAbac]
+  )
+  const puedeEliminarFila = useCallback(
+    (f: FilaAsignacion) => canExecuteAction(reglas, 'telecom', 'eliminar', { duenoId: f.usuario_id }, ctxAbac),
+    [reglas, ctxAbac]
+  )
+
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
@@ -165,7 +201,7 @@ export function GridAsignaciones({
         label: 'Devolución pactada',
         tipo: 'fecha',
         valor: (f) => f.fecha_devolucion_programada,
-        editable: (f) => puedeEditar && f.estado === 'VIGENTE',
+        editable: (f: FilaAsignacion) => puedeEditarFila(f) && f.estado === 'VIGENTE',
         editor: 'fecha',
         render: (f) =>
           f.fecha_devolucion_programada ? (
@@ -204,7 +240,7 @@ export function GridAsignaciones({
         tipo: 'seleccion',
         ancho: '11rem',
         valor: (f) => f.departamento,
-        editable: puedeEditar,
+        editable: (f: FilaAsignacion) => puedeEditarFila(f),
         editor: 'seleccion',
         opciones: [
           { value: '', label: 'Sin departamento' },
@@ -217,7 +253,7 @@ export function GridAsignaciones({
         tipo: 'seleccion',
         ancho: '11rem',
         valor: (f) => f.puesto,
-        editable: puedeEditar,
+        editable: (f: FilaAsignacion) => puedeEditarFila(f),
         editor: 'seleccion',
         opciones: [
           { value: '', label: 'Sin puesto' },
@@ -233,7 +269,7 @@ export function GridAsignaciones({
         tipo: 'seleccion',
         ancho: '12rem',
         valor: (f) => f.centro_costo_etiqueta ?? etiquetaCentro(f.centro_costo, f.centro_costo_nombre),
-        editable: puedeEditar,
+        editable: (f: FilaAsignacion) => puedeEditarFila(f),
         editor: 'seleccion',
         valorEdicion: (f) => f.centro_costo ?? '',
         opciones: [
@@ -250,7 +286,7 @@ export function GridAsignaciones({
         tipo: 'texto',
         ancho: '14rem',
         valor: (f) => f.correo_asignado,
-        editable: puedeEditar,
+        editable: (f: FilaAsignacion) => puedeEditarFila(f),
         editor: 'texto',
       },
       {
@@ -285,7 +321,7 @@ export function GridAsignaciones({
         // Se puede mover entre Vigente y Revisar en la celda. Finalizar
         // NO: cierra la entrega y libera la línea, y eso lo hace su
         // función para que la fecha real de devolución no quede vacía.
-        editable: (f) => puedeEditar && f.estado !== 'FINALIZADA',
+        editable: (f: FilaAsignacion) => puedeEditarFila(f) && f.estado !== 'FINALIZADA',
         editor: 'seleccion',
         opciones: ESTADOS_ASIGNACION.filter((e) => e.valor !== 'FINALIZADA').map((e) => ({
           value: e.valor,
@@ -302,12 +338,12 @@ export function GridAsignaciones({
         tipo: 'texto',
         ancho: '14rem',
         valor: (f) => f.observaciones,
-        editable: puedeEditar,
+        editable: (f: FilaAsignacion) => puedeEditarFila(f),
         editor: 'texto',
       },
       { campo: 'capturo', label: 'Registró', tipo: 'seleccion', valor: (f) => f.capturo },
     ],
-    [puedeEditar, centrosCosto, departamentos, puestos, filas]
+    [centrosCosto, departamentos, puestos, filas, puedeEditarFila]
   )
 
   async function editarCelda(fila: FilaAsignacion, campo: string, valor: unknown) {
@@ -448,7 +484,15 @@ export function GridAsignaciones({
             </>
           )
         }
-        accionesSeleccion={(ids, limpiar) => {
+        accionesSeleccion={(marcadas, limpiar) => {
+          // Dos recortes encadenados: lo que la persona puede tocar, y
+          // de eso, lo que además sigue vigente.
+          const ids = marcadas.filter((id) =>
+            filas.some((f) => f.id === id && puedeEditarFila(f))
+          )
+          const idsBorrables = marcadas.filter((id) =>
+            filas.some((f) => f.id === id && puedeEliminarFila(f))
+          )
           const vigentes = ids.filter((id) =>
             filas.some((f) => f.id === id && estaAbierta(f))
           )
@@ -464,14 +508,14 @@ export function GridAsignaciones({
                   Finalizar {vigentes.length}
                 </Boton>
               )}
-              {puedeEliminar && (
+              {puedeEliminar && idsBorrables.length > 0 && (
                 <Boton
                   variante="peligro"
                   tamano="sm"
                   disabled={ocupado}
-                  onClick={() => eliminar(ids, limpiar)}
+                  onClick={() => eliminar(idsBorrables, limpiar)}
                 >
-                  Eliminar {ids.length}
+                  Eliminar {idsBorrables.length}
                 </Boton>
               )}
             </>
@@ -509,18 +553,21 @@ export function GridAsignaciones({
             titulo: 'Ninguna finalizada',
             descripcion: 'Todo lo entregado sigue fuera.',
           }}
-          accionesSeleccion={(ids, limpiar) =>
-            puedeEliminar ? (
+          accionesSeleccion={(marcadas, limpiar) => {
+            const borrables = marcadas.filter((id) =>
+              filas.some((f) => f.id === id && puedeEliminarFila(f))
+            )
+            return puedeEliminar && borrables.length > 0 ? (
               <Boton
                 variante="peligro"
                 tamano="sm"
                 disabled={ocupado}
-                onClick={() => eliminar(ids, limpiar)}
+                onClick={() => eliminar(borrables, limpiar)}
               >
-                Eliminar {ids.length}
+                Eliminar {borrables.length}
               </Boton>
             ) : null
-          }
+          }}
           accionFila={(f) => <BotonFila onClick={() => setActa(f)}>Acta</BotonFila>}
         />
       </Seccion>

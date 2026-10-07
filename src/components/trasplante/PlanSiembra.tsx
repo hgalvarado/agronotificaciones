@@ -11,7 +11,7 @@
  * `repositorioCliente`, y la mecánica de la tabla en `DataGrid`.
  */
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Alerta, Boton, Campo, Entrada, Selector, Tarjeta } from '@/components/ui/Primitivos'
@@ -30,22 +30,63 @@ import {
 import { n2 } from '@/lib/trasplante/formato'
 import { EditarPlanModal } from './EditarPlanModal'
 import { ImportarPlanSiembra } from './ImportarPlanSiembra'
+import { armarReglas, canExecuteAction, type ReglasPlanas } from '@/lib/permisos/clientABAC'
 
 export function PlanSiembra({
   temporadaId,
   filas,
   lotes,
   variedades,
-  puedeEditar,
-  puedeEliminar,
+  reglas: reglasPlanas,
+  usuarioId,
+  zonas,
 }: {
   temporadaId: string
   filas: FilaPlanSiembra[]
   lotes: LoteOpcion[]
   variedades: Variedad[]
-  puedeEditar: boolean
-  puedeEliminar: boolean
+  /**
+   * Las reglas del usuario con sus tres ejes.
+   *
+   * Antes llegaban booleanos para la pantalla entera, y con ABAC eso ya
+   * no alcanza: el mismo usuario puede tocar la fila que capturó él y no
+   * la de al lado. La decisión es POR FILA, así que lo que hace falta
+   * aquí es la regla, no su resultado.
+   */
+  reglas: ReglasPlanas
+  /** Quién está mirando. Lo necesita el eje «propietario». */
+  usuarioId: string | null
+  /** Sus zonas asignadas. Vacío quiere decir «sin recorte zonal». */
+  zonas?: string[]
 }) {
+  const reglas = useMemo(() => armarReglas(reglasPlanas), [reglasPlanas])
+  const zonasDelPerfil = useMemo(() => new Set(zonas ?? []), [zonas])
+
+  // A nivel de PANTALLA: ¿podría llegar a hacerlo? Es lo que decide si se
+  // dibuja la barra de herramientas. Sin fila, alcance y condición no
+  // recortan.
+  // Esta pantalla no guarda quién capturó cada fila, así que el
+  // eje «propietario» no tiene con qué recortar y la respuesta por
+  // fila coincide con la de pantalla. Se pregunta igual con el
+  // helper para que el día que la fila gane un dueño o un estado
+  // no haya que acordarse de cambiarlo aquí.
+  const puedeEditar = canExecuteAction(reglas, 'trasplante', 'editar')
+  const puedeEliminar = canExecuteAction(reglas, 'trasplante', 'eliminar')
+
+  // Y a nivel de FILA, que es lo que decide cada botón.
+  const ctxAbac = useMemo(
+    () => ({ usuarioId, zonas: zonasDelPerfil }),
+    [usuarioId, zonasDelPerfil]
+  )
+  const puedeEditarFila = useCallback(
+    (_f: FilaPlanSiembra) => canExecuteAction(reglas, 'trasplante', 'editar', { duenoId: null }, ctxAbac),
+    [reglas, ctxAbac]
+  )
+  const puedeEliminarFila = useCallback(
+    (_f: FilaPlanSiembra) => canExecuteAction(reglas, 'trasplante', 'eliminar', { duenoId: null }, ctxAbac),
+    [reglas, ctxAbac]
+  )
+
   const supabase = createClient()
   const router = useRouter()
 
@@ -267,29 +308,40 @@ export function PlanSiembra({
             </Boton>
           )
         }
-        accionesSeleccion={(ids, limpiar) => (
+        accionesSeleccion={(marcadas, limpiar) => {
+          // Lo que esta persona no puede tocar se cae de la selección
+          // ANTES de cualquier acción en masa: si no, la base rechazaría
+          // esas filas a mitad del bucle y el cambio quedaría a medias.
+          const ids = marcadas.filter((id) =>
+            filas.some((f) => f.id === id && puedeEditarFila(f))
+          )
+          const idsBorrables = marcadas.filter((id) =>
+            filas.some((f) => f.id === id && puedeEliminarFila(f))
+          )
+          return (
           <>
             {puedeEditar && (
               <Boton variante="secundario" tamano="sm" onClick={() => setEnMasa(ids)}>
                 Editar {ids.length}
               </Boton>
             )}
-            {puedeEliminar && (
+            {puedeEliminar && idsBorrables.length > 0 && (
               <Boton
                 variante="peligro"
                 tamano="sm"
                 disabled={ocupado}
-                onClick={() => eliminar(ids, limpiar)}
+                onClick={() => eliminar(idsBorrables, limpiar)}
               >
-                Eliminar {ids.length}
+                Eliminar {idsBorrables.length}
               </Boton>
             )}
           </>
-        )}
+          )
+        }}
         accionFila={(f) => (
           <span className="flex justify-end gap-1">
-            {puedeEditar && <BotonFila onClick={() => setEditando(f)}>Editar</BotonFila>}
-            {puedeEliminar && (
+            {puedeEditarFila(f) && <BotonFila onClick={() => setEditando(f)}>Editar</BotonFila>}
+            {puedeEliminarFila(f) && (
               <BotonFila peligro disabled={ocupado} onClick={() => eliminar([f.id], () => {})}>
                 Eliminar
               </BotonFila>

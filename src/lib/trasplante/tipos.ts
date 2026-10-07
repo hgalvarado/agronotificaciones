@@ -86,6 +86,8 @@ export function textoProductos(productos: ProductoDeSiembra[] | null | undefined
 /** Una siembra capturada en campo. */
 export type FilaSiembra = {
   id: string
+  /** Quién capturó la siembra. Lo necesita el eje «propietario». */
+  usuario_id: string | null
   fecha_siembra: string
   semana: string
   ciclo: number

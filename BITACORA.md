@@ -172,9 +172,13 @@ concede y se revoca: no existe.
 **Qué NO cambia:** las tablas conservan su RLS intacto, así que una
 consulta directa a una tabla sigue recortando igual, y **ninguna
 escritura pasa por las vistas** — insertar, editar y borrar siguen yendo
-por las policies de siempre. `telecom` no entra en el patrón: sus tablas
-no cuelgan de ninguna tabla padre con permiso propio, así que ahí nunca
-hubo estrangulamiento.
+por las policies de siempre.
+
+La 56 dejó `telecom` fuera del patrón porque sus tablas no cuelgan de
+ninguna tabla padre con permiso propio y allí nunca hubo
+estrangulamiento. La **57 lo mete igual**: desde que sus pantallas
+esconden botones por fila, sus vistas tienen que traer el dueño y
+regirse por su propia casilla como las demás.
 
 **Reglas para quien añada una vista de módulo:**
 
@@ -214,6 +218,89 @@ dice.
 ---
 
 ## 3. Registro de cambios
+
+### 2026-10-08 — Homologación final y limpieza de deuda (migración 57)
+
+Los tres puntos que quedaban en «Pendiente», cerrados.
+
+**a) La zona viaja con la línea de labor.** `v_labores_control` traía
+`lote_temporada_id` pero no la ZONA. En la base no se notaba —la reja de
+la vista resuelve el eje zonal con `fn_mis_lotes()`— pero el navegador no
+tenía con qué evaluar el eje zonal de una ESCRITURA fila por fila, así
+que en una celda de alcance zonal la pantalla no recortaba y el rechazo
+llegaba al pulsar Guardar. La base nunca concedió nada de más; lo que
+fallaba era el aviso.
+
+De paso, `v_telecom_asignaciones` gana `usuario_id` por el mismo camino.
+
+**Cómo se añade una columna a una vista que ya está en producción:**
+`create or replace view` no deja insertar una columna a media lista, sólo
+al final, y la definición de la cruda son setenta columnas — reescribirlas
+a mano para colar una es la forma más segura de perder otra. Así que la
+vista **se envuelve en sí misma**: se lee su definición con
+`pg_get_viewdef`, se mete entera como subconsulta y se le pega la columna
+al final con un `left join` (una tabla hash, no una subconsulta
+correlacionada por fila). El texto viejo queda inlineado en el momento
+del `replace`, así que no hay recursión. La vista EXPUESTA hay que
+recrearla aparte: su lista de columnas se fijó al crearse, y un
+`select x.*` viejo no se entera de la columna nueva.
+
+**b) Homologadas las seis pantallas que quedaban.** Trasplante
+(siembras y plan), riego y telecom (líneas, equipos, asignaciones)
+pasaban booleanos de pantalla a sus cuadrículas. Ahora reciben las
+reglas y deciden por fila, igual que labores y tickets: edición en celda,
+botón de fila y acciones en masa. Lo que la persona no puede tocar se
+cae de la selección **antes** de cualquier acción en masa, para que el
+cambio no quede a medias.
+
+Telecom entra además al patrón de la 56 (`interno.v_x_crudo` + reja), que
+la 56 le había dejado fuera: ahora que sus pantallas esconden por fila,
+sus vistas tienen que traer el dueño y regirse por su propia casilla.
+
+Donde la fila no guarda dueño —plan de siembra, líneas, equipos— la
+respuesta por fila coincide con la de pantalla. Se deja escrito con el
+helper igual que las demás para que el día que esas filas ganen un dueño
+o un estado no haya que acordarse de cambiarlo.
+
+**c) Suites `t42`–`t52` reconstruidas** (`t42_52.sql`, **36 verdes /
+0 rojas**). No reproducen lo que cada migración hacía —eso se probó el
+día que se entregó— sino **lo que el refactor de RLS podría haber roto
+sin que nadie se enterara**: que la pieza siga existiendo con su forma,
+que la regla de negocio siga contestando lo mismo, y que los disparadores
+sigan enganchados (un trigger desaparece sin ruido y lo que protegía deja
+de protegerse).
+
+**Y un fallo que encontró esa suite, ajeno al encargo:**
+`fn_audit_horometros`, `fn_mi_rol` y `fn_notificar_ticket` eran
+`security definer` **sin `search_path`**. Es el agujero clásico de
+PostgreSQL: quien pueda crear un esquema y ponerlo delante consigue que
+una tabla o función suya se resuelva antes que la de `public`, y el
+cuerpo la ejecuta con los permisos del dueño. `fn_mi_rol` es la más
+delicada: de ella cuelga media cadena de permisos. Vienen de migraciones
+viejas —el refactor no las tocó— y la 57 las arregla con un bucle que
+barre todas las `security definer` sin `search_path`, más un guardián que
+revienta si vuelve a aparecer alguna.
+
+**Verificado**
+
+| Prueba | Resultado |
+| --- | --- |
+| `t42_52.sql` — la lógica de negocio de once migraciones | **36 / 0** |
+| `t53` · `t54` · `t55` · `t56` sobre la cadena 57 | **45/0 · 26/0 · 19/0 · 23/0** |
+| Paridad navegador ↔ Postgres, 480 combinaciones | **0 diferencias** |
+| `canExecuteAction` | **29 / 0** |
+| Navegador — estado de carga | **13 / 0** |
+| `tsc --noEmit`, `eslint --max-warnings=0`, `next build` | limpios |
+
+**Ideas, que no deuda**
+
+- El eje zonal de escritura se evalúa ya en labores y riego, que son las
+  que traen zona. En trasplante y telecom no hay zona de la que agarrarse
+  y ese eje no recorta en la pantalla; la base sigue mandando.
+- `eslint.config.mjs` acepta ahora parámetros con guion bajo delante
+  (`_f`): es «lo recibo y no lo miro», que es justo lo que pasa en las
+  pantallas sin dueño, donde la función de permiso conserva la misma
+  firma que las demás para que todas las cuadrículas se escriban igual.
 
 ### 2026-10-07 — La matriz es ley, y Fase 3 del ABAC (migración 56)
 
@@ -373,6 +460,15 @@ Cosas que ya costaron una sesión. No volver a tropezar.
   ser la ÚNICA puerta, así que su `where` tiene que estar bien y la cruda
   tiene que vivir en `interno`. Un `revoke` sobre una vista en `public`
   no protege nada: el próximo grant masivo lo deshace.
+- **Una función `security definer` SIN `set search_path` es un agujero
+  de escalada de privilegios**, no un detalle de estilo. Toda función
+  nueva que lleve `security definer` lleva también
+  `set search_path = public, pg_temp`. La suite `t42_52` lo vigila.
+- **Para añadir una columna a una vista ya desplegada**, no se reescribe
+  su definición: se envuelve en sí misma con `pg_get_viewdef` y se pega
+  la columna al final (`create or replace view` sólo admite añadir al
+  final). Y hay que recrear la vista EXPUESTA aparte: su lista de
+  columnas se fijó al crearse y un `select x.*` viejo no se entera.
 - **`fn_ve_zona` devuelve `true` cuando el usuario NO tiene zonas
   asignadas.** Por eso un recorte zonal no se nota hasta que alguien
   tiene zonas, y por eso las pruebas necesitan un usuario con zonas.
@@ -407,6 +503,19 @@ compararlas una por una. `canExecuteAction` y `fn_verificar_permiso`
 tienen que contestar lo mismo en las 480. Si una de las dos se toca sin
 la otra, esa prueba lo dice.
 
+`t42_52.sql` es la red de seguridad de las once migraciones anteriores
+al ABAC. No reproduce lo que cada una hacía —eso se probó el día que se
+entregó— sino lo que un refactor podría romper sin ruido: que la pieza
+siga existiendo con su forma, que la regla de negocio siga contestando lo
+mismo, y que **los disparadores sigan enganchados**. Un trigger
+desaparece sin error y lo que protegía deja de protegerse.
+
+Esa misma suite lleva tres comprobaciones transversales que conviene no
+quitar: ninguna función o policy nombra un rol a mano, ninguna tabla de
+operación se quedó sin RLS ni con RLS pero sin policies, y **ninguna
+función `security definer` se quedó sin `search_path`**. La tercera
+encontró tres funciones viejas abiertas.
+
 Antes de entregar: `npx tsc --noEmit`, `npx eslint src --max-warnings=0`,
 `npm run build`.
 
@@ -414,21 +523,17 @@ Antes de entregar: `npx tsc --noEmit`, `npx eslint src --max-warnings=0`,
 
 ## 6. Completados
 
-- **Fase 1 del ABAC** (migración 53) — los tres ejes en la base.
-- **Fase 2 del ABAC** (migración 54) — la matriz los configura por celda.
-- **Fase 3 del ABAC** (migración 56) — `getReglas` carga los tres ejes,
+La migración a ABAC está **cerrada en toda la plataforma**.
+
+- **Fase 1** (migración 53) — los tres ejes en la base.
+- **Fase 2** (migración 54) — la matriz los configura por celda.
+- **Fase 3** (migración 56) — `getReglas` carga los tres ejes,
   `canExecuteAction` decide cada botón, los DataGrids esconden por fila y
   los selectores de lote se recortan a las zonas asignadas cuando el
   alcance de «crear» es zonal.
+- **Homologación final** (migración 57) — las once pantallas con
+  cuadrícula deciden por fila con las mismas reglas, y las suites de
+  regresión de la 42 a la 52 están reconstruidas y en verde.
 
-## 7. Pendiente
-
-- Reconstruir las suites `t42`–`t52`, perdidas cuando se recicló el
-  contenedor de trabajo. El barrido comparativo cubre la regresión de
-  permisos, pero no la lógica propia de cada una de esas migraciones.
-- `v_labores_control` no expone `zona_id`, así que el navegador no puede
-  comprobar el eje ZONAL de una escritura fila por fila; la base sí lo
-  hace. Añadir la columna a la vista cerraría ese hueco cosmético.
-- Las pantallas de trasplante, riego y telecom siguen pasando booleanos
-  de pantalla a sus DataGrids. Funciona —la base manda— pero no esconden
-  por fila como labores y horómetros.
+Lo que queda abierto son ideas, no deuda: están al final del changelog
+de la 57.

@@ -13,7 +13,7 @@
  * por qué. Ahora la temporada manda todo y se elige de un clic.
  */
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Campo, Selector, Tarjeta } from '@/components/ui/Primitivos'
 import { AvancePorUt } from './AvancePorUt'
@@ -35,6 +35,7 @@ import type {
   Material,
   Variedad,
 } from '@/lib/trasplante/tipos'
+import { armarReglas, canExecuteAction, type ReglasPlanas } from '@/lib/permisos/clientABAC'
 
 type Pestana = 'avance' | 'diaria' | 'plan' | 'recepcion'
 
@@ -52,8 +53,9 @@ export function TrasplanteTabs({
   lotes,
   variedades,
   materiales,
-  puedeEditar,
-  puedeEliminar,
+  reglas,
+  usuarioId,
+  zonas,
 }: {
   temporadas: { id: string; nombre: string; activa: boolean }[]
   temporadaId: string
@@ -68,9 +70,16 @@ export function TrasplanteTabs({
   lotes: LoteOpcion[]
   variedades: Variedad[]
   materiales: Material[]
-  puedeEditar: boolean
-  puedeEliminar: boolean
+  /** Las reglas del usuario con sus tres ejes. Los hijos deciden por fila. */
+  reglas: ReglasPlanas
+  usuarioId: string | null
+  zonas?: string[]
 }) {
+  // Esta capa sólo decide pestañas y modales, que son de pantalla.
+  // El recorte por fila lo hace cada cuadrícula con las mismas reglas.
+  const reglasAbac = useMemo(() => armarReglas(reglas), [reglas])
+  const puedeEditar = canExecuteAction(reglasAbac, 'trasplante', 'editar')
+
   const router = useRouter()
   const [pestana, setPestana] = useState<Pestana>('avance')
 
@@ -142,8 +151,9 @@ export function TrasplanteTabs({
           lotes={lotes}
           variedades={variedades}
           materiales={materiales}
-          puedeEditar={puedeEditar}
-          puedeEliminar={puedeEliminar}
+          reglas={reglas}
+          usuarioId={usuarioId}
+          zonas={zonas}
         />
       )}
       {pestana === 'plan' && (
@@ -152,8 +162,9 @@ export function TrasplanteTabs({
           filas={plan}
           lotes={lotes}
           variedades={variedades}
-          puedeEditar={puedeEditar}
-          puedeEliminar={puedeEliminar}
+          reglas={reglas}
+          usuarioId={usuarioId}
+          zonas={zonas}
         />
       )}
       {pestana === 'recepcion' && (
