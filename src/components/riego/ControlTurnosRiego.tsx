@@ -14,7 +14,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alerta, Boton, Campo, Esqueleto, Insignia, Selector, Tarjeta } from '@/components/ui/Primitivos'
+import { Alerta, Boton, Campo, Insignia, Selector, Tarjeta } from '@/components/ui/Primitivos'
 import { DataGrid } from '@/components/ui/DataGrid'
 import { PanelFiltros } from '@/components/ui/PanelFiltros'
 import { SelectorMultiple } from '@/components/ui/SelectorMultiple'
@@ -75,6 +75,7 @@ export function ControlTurnosRiego({
   puedeEliminar: boolean
 }) {
   const [filas, setFilas] = useState<Fila[] | null>(null)
+  const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
   const [sinMigracion, setSinMigracion] = useState(false)
@@ -98,7 +99,9 @@ export function ControlTurnosRiego({
   const [lotes, setLotes] = useState<LoteRegable[]>([])
 
   const recargar = useCallback(async () => {
+    setCargando(true)
     const { datos, error: e } = await leerTurnos(temporadaId || null, ciclo ? Number(ciclo) : null)
+    setCargando(false)
     if (e) {
       setSinMigracion(faltaMigracion(e))
       setError(faltaMigracion(e) ? null : e)
@@ -117,8 +120,12 @@ export function ControlTurnosRiego({
     // usuario cambia de filtro antes de que conteste la primera consulta.
     let vivo = true
     async function cargar() {
+      // Se enciende ANTES de pedir: el hueco entre el clic y la primera
+      // fila es donde la pantalla parecía colgada.
+      setCargando(true)
       const { datos, error: e } = await leerTurnos(temporadaId || null, ciclo ? Number(ciclo) : null)
       if (!vivo) return
+      setCargando(false)
       if (e) {
         setSinMigracion(faltaMigracion(e))
         setError(faltaMigracion(e) ? null : e)
@@ -562,15 +569,9 @@ export function ControlTurnosRiego({
       {error && <Alerta>{error}</Alerta>}
       {aviso && <Alerta tono="azul">{aviso}</Alerta>}
 
-      {filas === null ? (
-        <Tarjeta className="flex flex-col gap-2 p-4">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <Esqueleto key={i} className="h-8 w-full" />
-          ))}
-        </Tarjeta>
-      ) : (
-        <DataGrid<Fila>
+      <DataGrid<Fila>
           filas={lista}
+          cargando={cargando}
           columnas={columnas}
           titulo="Turnos de riego"
           nombreArchivo="turnos-riego"
@@ -678,8 +679,7 @@ export function ControlTurnosRiego({
               />
             </PanelFiltros>
           }
-        />
-      )}
+      />
 
       {entrada && (
         <TurnoRiegoModal

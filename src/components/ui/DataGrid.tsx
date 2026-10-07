@@ -14,7 +14,7 @@
  */
 
 import { useMemo, useRef, useState, type ReactNode, type UIEvent } from 'react'
-import { Boton, EstadoVacio } from './Primitivos'
+import { Boton, Esqueleto, EstadoVacio, Girador } from './Primitivos'
 import { FiltroColumna } from './FiltroColumna'
 import { SelectorCelda } from './SelectorCelda'
 import { IconCheck, IconInbox, IconSearch } from './Icons'
@@ -70,6 +70,7 @@ export function DataGrid<T extends { id: string }>({
   filtrosExternos,
   onEditarCelda,
   puedeEditarCelda = false,
+  cargando = false,
 }: {
   filas: T[]
   columnas: ColumnaGrid<T>[]
@@ -107,6 +108,16 @@ export function DataGrid<T extends { id: string }>({
   /** Guarda una celda editada. Sin esto, la tabla es de sólo lectura. */
   onEditarCelda?: (fila: T, campo: string, valor: unknown) => Promise<void> | void
   puedeEditarCelda?: boolean
+  /**
+   * Hay una consulta en vuelo.
+   *
+   * Sin esto, volver a consultar con otro rango dejaba la tabla quieta
+   * enseñando lo anterior: nada se movía y parecía colgada. Con filas
+   * todavía en pantalla se mantienen visibles pero atenuadas y con el
+   * aviso encima —lo viejo sigue siendo útil mientras llega lo nuevo—;
+   * sin filas, se dibuja el esqueleto.
+   */
+  cargando?: boolean
 }) {
   const [orden, setOrden] = useState<Orden | null>(ordenInicial ?? null)
   const [filtros, setFiltros] = useState<Filtros>({})
@@ -284,8 +295,30 @@ export function DataGrid<T extends { id: string }>({
       )}
 
       {/* ---------------------------- Tabla -------------------------- */}
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[var(--shadow-card)]">
-        {filas.length === 0 ? (
+      <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[var(--shadow-card)]">
+        {/* El aviso va DENTRO de la tarjeta y por encima, no empujando
+            el contenido: si la tabla diera un salto al empezar cada
+            consulta, el dedo que iba al botón acabaría en otro sitio. */}
+        {cargando && filas.length > 0 && (
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex justify-center p-2">
+            <span className="pointer-events-auto flex items-center gap-2 rounded-full bg-slate-900/85 px-3 py-1.5 text-xs font-semibold text-white shadow-[var(--shadow-raised)]">
+              <Girador className="h-3.5 w-3.5" />
+              Consultando…
+            </span>
+          </div>
+        )}
+
+        {cargando && filas.length === 0 ? (
+          <div className="flex flex-col gap-2 p-4">
+            <div className="flex items-center gap-2 pb-1 text-xs font-semibold text-slate-400">
+              <Girador className="h-3.5 w-3.5" />
+              Consultando…
+            </div>
+            {Array.from({ length: 8 }).map((_, i) => (
+              <Esqueleto key={i} className="h-8 w-full" />
+            ))}
+          </div>
+        ) : filas.length === 0 ? (
           <EstadoVacio
             icono={<IconInbox />}
             titulo={vacio?.titulo ?? 'Sin registros'}
@@ -296,7 +329,9 @@ export function DataGrid<T extends { id: string }>({
             <div
               ref={contenedor}
               onScroll={alDesplazar}
-              className="scroll-suave max-h-[70svh] overflow-auto"
+              className={`scroll-suave max-h-[70svh] overflow-auto transition-opacity ${
+                cargando ? 'pointer-events-none opacity-40' : ''
+              }`}
             >
               <table className="w-full text-sm" style={{ minWidth: minAncho }}>
                 <thead className="sticky top-0 z-10 bg-slate-50">

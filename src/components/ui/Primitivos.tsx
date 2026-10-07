@@ -238,6 +238,49 @@ export function Esqueleto({ className = 'h-4 w-full' }: { className?: string }) 
   return <div className={`esqueleto ${className}`} />
 }
 
+/**
+ * La ruedita de «estoy trabajando».
+ *
+ * Es SVG y no un `div` con borde girando porque dentro de un botón hay
+ * que poder teñirla con `currentColor` sin repetir la clase del tono.
+ */
+export function Girador({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg
+      className={`animate-spin ${className}`}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
+      <path
+        d="M21 12a9 9 0 0 0-9-9"
+        stroke="currentColor"
+        strokeWidth="3"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
+/**
+ * Una tabla todavía sin datos.
+ *
+ * Es el esqueleto que ya dibujaban a mano media docena de pantallas, con
+ * el mismo número de líneas en todas: si cada una elige el suyo, pasar de
+ * Labores a Horómetros parece que cargan cosas distintas.
+ */
+export function TablaEsqueleto({ filas = 8 }: { filas?: number }) {
+  return (
+    <div className="flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-[var(--shadow-card)]">
+      <Esqueleto className="h-8 w-full" />
+      {Array.from({ length: filas }).map((_, i) => (
+        <Esqueleto key={i} className="h-8 w-full" />
+      ))}
+    </div>
+  )
+}
+
 export function ListaEsqueleto({ filas = 4 }: { filas?: number }) {
   return (
     <div className="flex flex-col gap-2">

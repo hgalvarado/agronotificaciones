@@ -18,7 +18,7 @@ import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { leerTodo } from '@/lib/supabase/paginar'
-import { Alerta, Boton, Campo, Esqueleto, Insignia, Selector, Tarjeta } from '@/components/ui/Primitivos'
+import { Alerta, Boton, Campo, Insignia, Selector, Tarjeta } from '@/components/ui/Primitivos'
 import { DataGrid } from '@/components/ui/DataGrid'
 import { BotonFila } from '@/components/ui/BotonFila'
 import { GestorVistas, aplicarVista } from '@/components/ui/GestorVistas'
@@ -180,6 +180,7 @@ export function ControlLabores({
   const supabase = createClient()
 
   const [filas, setFilas] = useState<FilaLabor[] | null>(null)
+  const [cargando, setCargando] = useState(true)
   const [editando, setEditando] = useState<FilaLabor | null>(null)
   const [enTemporada, setEnTemporada] = useState<string[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -223,7 +224,9 @@ export function ControlLabores({
   }, [consulta.desde, consulta.hasta, temporadas_])
 
   const recargar = useCallback(async () => {
+    setCargando(true)
     const { datos, error: e } = await leer()
+    setCargando(false)
     if (e) {
       setError(e)
       setFilas([])
@@ -236,8 +239,12 @@ export function ControlLabores({
   useEffect(() => {
     let vivo = true
     async function cargar() {
+      // Se enciende ANTES de pedir, no después: el hueco entre el clic y
+      // la primera fila es justo donde la pantalla parecía colgada.
+      setCargando(true)
       const { datos, error: e } = await leer()
       if (!vivo) return
+      setCargando(false)
       if (e) {
         setError(e)
         setFilas([])
@@ -831,15 +838,9 @@ export function ControlLabores({
       {error && <Alerta>{error}</Alerta>}
       {aviso && <Alerta tono="azul">{aviso}</Alerta>}
 
-      {filas === null ? (
-        <Tarjeta className="flex flex-col gap-2 p-4">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <Esqueleto key={i} className="h-8 w-full" />
-          ))}
-        </Tarjeta>
-      ) : (
-        <DataGrid<Fila>
+      <DataGrid<Fila>
           filas={lista}
+          cargando={cargando}
           columnas={visibles}
           titulo="Labores"
           nombreArchivo={`labores-${consulta.desde}-a-${consulta.hasta}`}
@@ -1029,8 +1030,7 @@ export function ControlLabores({
                   )
               : undefined
           }
-        />
-      )}
+      />
 
       <EditarLaborModal
         fila={editando as FilaEditable | null}

@@ -20,7 +20,7 @@ import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { leerTodo } from '@/lib/supabase/paginar'
-import { Alerta, Boton, Esqueleto, Insignia, Tarjeta } from '@/components/ui/Primitivos'
+import { Alerta, Boton, Insignia, Tarjeta } from '@/components/ui/Primitivos'
 import { DataGrid } from '@/components/ui/DataGrid'
 import { PanelFiltros } from '@/components/ui/PanelFiltros'
 import { SelectorMultiple } from '@/components/ui/SelectorMultiple'
@@ -108,6 +108,7 @@ export function ControlHorometros({
   const supabase = createClient()
 
   const [filas, setFilas] = useState<FilaControl[] | null>(null)
+  const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
   const [ocupado, setOcupado] = useState(false)
@@ -139,7 +140,9 @@ export function ControlHorometros({
   }, [consulta.desde, consulta.hasta])
 
   const recargar = useCallback(async () => {
+    setCargando(true)
     const { datos, error: e } = await leer()
+    setCargando(false)
     if (e) {
       setError(e)
       setFilas([])
@@ -152,8 +155,12 @@ export function ControlHorometros({
   useEffect(() => {
     let vivo = true
     async function cargar() {
+      // Se enciende ANTES de pedir: el hueco entre el clic y la primera
+      // fila es donde la pantalla parecía colgada.
+      setCargando(true)
       const { datos, error: e } = await leer()
       if (!vivo) return
+      setCargando(false)
       if (e) {
         setError(e)
         setFilas([])
@@ -509,15 +516,9 @@ export function ControlHorometros({
       {error && <Alerta>{error}</Alerta>}
       {aviso && <Alerta tono="azul">{aviso}</Alerta>}
 
-      {filas === null ? (
-        <Tarjeta className="flex flex-col gap-2 p-4">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <Esqueleto key={i} className="h-8 w-full" />
-          ))}
-        </Tarjeta>
-      ) : (
-        <DataGrid<FilaControl>
+      <DataGrid<FilaControl>
           filas={lista}
+          cargando={cargando}
           columnas={columnas}
           titulo="Horometros"
           nombreArchivo={`horometros-${consulta.desde}-a-${consulta.hasta}`}
@@ -660,8 +661,7 @@ export function ControlHorometros({
             </>
             )
           }}
-        />
-      )}
+      />
 
       <div className="flex flex-wrap items-center gap-3 px-1 text-xs text-slate-400">
         <span className="flex items-center gap-1.5">
