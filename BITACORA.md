@@ -235,6 +235,78 @@ dice.
 
 ## 3. Registro de cambios
 
+### 2026-10-08 — Totales al pie de las cuadrículas y acciones en masa de tickets
+
+Sin migración: las dos son de navegador.
+
+**a) El pie de totales.** El `DataGrid` gana un `<tfoot>` con una celda
+por columna. Al tocarla se elige **Suma, Promedio, Mínimo, Máximo,
+Contar o Ninguno**, y el número se calcula sobre **lo que se ve** — las
+filas que pasaron los filtros y la búsqueda, no las que trajo la
+consulta. Un total que no reacciona al filtro contesta a una pregunta que
+nadie hizo, y es peor que no tener total: parece que sí.
+
+Tres decisiones que no son de adorno:
+
+- **La columna no declara su agregación; la elige quien mira.** El de
+  campo quiere la SUMA de manzanas y el de taller el MÁXIMO de horas, así
+  que no hay un `agregacion: 'suma'` en la definición de la columna: hay
+  un menú. Eso es lo que lo hace genérico — se inyecta en cualquier tabla
+  sin nombrar una sola columna.
+- **Una columna de texto sólo ofrece Contar.** Sumar texto no quiere
+  decir nada; «¿en cuántas filas hay operador anotado?» sí, y es justo lo
+  que se pregunta cuando una columna viene a medias.
+- **Sin una sola fila con dato devuelve vacío, no cero.** Un «0» ahí sería
+  mentira: no es que la suma dé cero, es que no hay nada que sumar.
+  (`Contar` sí devuelve 0: esa pregunta tiene respuesta.)
+
+Lo elegido se recuerda por tabla y por columna en `localStorage`, con
+try/catch en cada acceso — en una ventana privada `localStorage` LANZA al
+tocarlo, y una preferencia de presentación no puede tumbar la tabla. Va
+ahí y no en la base porque es de quien mira, no de la empresa: guardarlo
+en la base se lo cambiaría a todos.
+
+El menú va por Portal sobre `document.body` con `anclarPanel`, como los
+demás paneles: el pie es el peor sitio de la tabla para abrir algo, porque
+está pegado al borde de abajo.
+
+**b) Las acciones en masa de /tickets, y un fallo vivo que las escondía.**
+
+`/tickets` **ya tenía** selección múltiple y una acción en masa —están
+desde la 45— pero el botón «Varios» lo gobernaba
+`puede(permisos, 'tickets', 'ver_todo')`, y **`ver_todo` la borró la
+migración 53** al convertirla en el eje «alcance». Al no existir
+contestaba que no siempre, así que la selección múltiple no le salía a
+nadie y parecía no estar implementada.
+
+Arreglado el gate, se le metió el patrón de la 57: cada ticket marcado
+pasa por `canExecuteAction` con sus propios atributos —quién lo capturó,
+en qué paso del proceso está, si sigue abierto— **antes** de mandar nada.
+Lo que no alcanza se cae de la selección y se dice cuántos y por qué:
+mandar los cinco mil y que RLS rechace tres mil deja el cambio a medias,
+con unos movidos y otros no, y sin forma de saber cuáles.
+
+Para poder decidirlo, `cargadas` pasó de ser un `Set` de identificadores
+a un `Map` con la fila entera: con sólo los ids no se puede preguntar
+quién capturó el ticket ni en qué proceso está.
+
+Se añadió además **Eliminar en masa**, con su propio recorte: editar y
+eliminar son dos casillas distintas, así que un rol puede poder editar el
+ticket ajeno y no borrarlo, y los dos contadores salen distintos.
+
+`/tickets` **no es un DataGrid** sino el árbol mes → proceso de la 45, así
+que los checkboxes viven en la fila del acordeón, no en una cuadrícula.
+
+**Verificado**
+
+| Prueba | Resultado |
+| --- | --- |
+| `tagreg.mjs` — las cinco cuentas, los no-números, el formato, la memoria | **24 / 0** |
+| `tpie.mjs` — el pie en navegador, **con el escenario pedido**: elegir Suma en «H. Notificadas» y filtrar por equipo | **14 / 0** |
+| `tlote.mjs` — el recorte ABAC de la selección de tickets | **12 / 0** |
+| `tgrid` · `tabac` · `texcel` | **13/0 · 29/0 · 19/0** |
+| `tsc --noEmit`, `eslint --max-warnings=0`, `next build` | limpios |
+
 ### 2026-10-08 — Catálogos por bloque, nombres en las vistas y Excel (migración 58)
 
 **a) Dos pantallas fantasma.** «Plan de siembra» y «Plan de cosecha» son
@@ -578,6 +650,14 @@ Cosas que ya costaron una sesión. No volver a tropezar.
   fecha. Y el serial se convierte con `Date.UTC` y `getUTC*`: un serial
   es una fecha de calendario, no un instante, y construirlo en hora local
   es lo que mueve la fecha un día.
+- **Una acción borrada en una migración sigue viva en el navegador hasta
+  que alguien la busca.** `tickets:ver_todo` murió en la 53 y siguió
+  gobernando el botón «Varios» de /tickets hasta octubre: `puede(...)`
+  sobre una acción inexistente contesta que no, sin error y sin aviso.
+  Al borrar una acción hay que buscarla en `src/` con el mismo cuidado
+  que el guardián la busca en el SQL.
+- **`localStorage` LANZA en ventana privada**, no devuelve null. Todo
+  acceso va en try/catch y la pantalla tiene que funcionar sin él.
 - **`fn_ve_zona` devuelve `true` cuando el usuario NO tiene zonas
   asignadas.** Por eso un recorte zonal no se nota hasta que alguien
   tiene zonas, y por eso las pruebas necesitan un usuario con zonas.

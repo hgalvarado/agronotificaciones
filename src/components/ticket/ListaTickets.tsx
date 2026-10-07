@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation'
 import { Alerta, Boton, Campo, Insignia, Selector } from '@/components/ui/Primitivos'
 import { Modal } from '@/components/ui/Modal'
 import { createClient } from '@/lib/supabase/client'
+import { mensajeDeError } from '@/lib/errores'
 import { useRouter } from 'next/navigation'
 import { IconCheck, IconPlus, IconSearch, IconX } from '@/components/ui/Icons'
 import { PROCESOS, estadoInfo, formatearFecha, procesoInfo } from '@/lib/estados'
@@ -21,6 +22,7 @@ import {
   type FiltrosTickets,
 } from '@/lib/tickets/tipos'
 import type { EstadoTicket, ProcesoTicket } from '@/lib/types'
+import { armarReglas, canExecuteAction, type ReglasPlanas } from '@/lib/permisos/clientABAC'
 
 export function ListaTickets({
   resumenInicial = [],
@@ -31,7 +33,8 @@ export function ListaTickets({
   temporadaActivaId,
   usuarios = [],
   temporadas = [],
-  puedeLotes = false,
+  reglas: reglasPlanas,
+  puedeOtroUsuario = false,
 }: {
   /**
    * El árbol mes → proceso que el servidor ya trajo. Es una consulta
@@ -47,10 +50,43 @@ export function ListaTickets({
   /** Para el ticket histórico: a nombre de quién se puede crear. */
   usuarios?: UsuarioTicket[]
   temporadas?: { id: string; nombre: string; activa: boolean }[]
-  /** Admin y Torre de Control pueden trabajar varios tickets a la vez. */
-  puedeLotes?: boolean
+  /**
+   * Las reglas del usuario con sus tres ejes.
+   *
+   * Las acciones en masa se deciden TICKET POR TICKET: el alcance mira
+   * quién lo capturó y la condición en qué paso del proceso está. Un
+   * booleano de pantalla no sirve, que es justo lo que había aquí.
+   */
+  reglas: ReglasPlanas
+  /** Si puede crear un ticket a nombre de otra persona. */
+  puedeOtroUsuario?: boolean
 }) {
   const params = useParams<{ ticketId?: string }>()
+  const supabase = createClient()
+  const router = useRouter()
+  const reglas = useMemo(() => armarReglas(reglasPlanas), [reglasPlanas])
+
+  // A nivel de PANTALLA: ¿tiene sentido ofrecer el modo selección?
+  const puedeLotes = canExecuteAction(reglas, 'tickets', 'editar')
+
+  const atributos = useCallback(
+    (t: FilaTicketDato) => ({
+      duenoId: t.usuario_id,
+      proceso: t.proceso,
+      estado: t.estado,
+    }),
+    []
+  )
+  const puedeEditarTicket = useCallback(
+    (t: FilaTicketDato) =>
+      canExecuteAction(reglas, 'tickets', 'editar', atributos(t), { usuarioId }),
+    [reglas, usuarioId, atributos]
+  )
+  const puedeEliminarTicket = useCallback(
+    (t: FilaTicketDato) =>
+      canExecuteAction(reglas, 'tickets', 'eliminar', atributos(t), { usuarioId }),
+    [reglas, usuarioId, atributos]
+  )
   const [abrirNuevo, setAbrirNuevo] = useState(false)
   const [modoSeleccion, setModoSeleccion] = useState(false)
   const [marcados, setMarcados] = useState<Set<string>>(new Set())
@@ -60,14 +96,64 @@ export function ListaTickets({
   // árbol no sabe de acciones en masa, y «seleccionar todos» tiene que
   // significar algo honesto: lo que la persona abrió, no los cinco mil
   // del historial que nadie ha mirado.
-  const [cargadas, setCargadas] = useState<Set<string>>(new Set())
+  //
+  // Guarda la FILA entera y no sólo el identificador: para decidir si una
+  // acción en masa alcanza a un ticket hay que mirar quién lo capturó, en
+  // qué paso del proceso está y si sigue abierto. Con un `Set` de ids no
+  // se podía preguntar nada de eso.
+  const [cargadas, setCargadas] = useState<Map<string, FilaTicketDato>>(new Map())
   const anotarCargadas = useCallback((filas: FilaTicketDato[]) => {
     setCargadas((antes) => {
-      const copia = new Set(antes)
-      for (const f of filas) copia.add(f.id)
+      const copia = new Map(antes)
+      for (const f of filas) copia.set(f.id, f)
       return copia
     })
   }, [])
+
+  /* ------------------ Lo que la acción en masa alcanza ---------------- */
+  //
+  // Se recorta ANTES de mandar nada: cada ticket marcado pasa por
+  // `canExecuteAction` con sus propios atributos, igual que hace la base.
+  // Mandar los cinco mil y que RLS rechace tres mil deja el cambio a
+  // medias —unos movidos y otros no— y sin forma de saber cuáles.
+  const editables = useMemo(
+    () => [...marcados].filter((id) => {
+      const t = cargadas.get(id)
+      return t ? puedeEditarTicket(t) : false
+    }),
+    [marcados, cargadas, puedeEditarTicket]
+  )
+  const borrables = useMemo(
+    () => [...marcados].filter((id) => {
+      const t = cargadas.get(id)
+      return t ? puedeEliminarTicket(t) : false
+    }),
+    [marcados, cargadas, puedeEliminarTicket]
+  )
+  const omitidos = marcados.size - editables.length
+
+  const [borrando, setBorrando] = useState(false)
+  const [errorLote, setErrorLote] = useState<string | null>(null)
+
+  async function eliminarEnMasa() {
+    if (borrables.length === 0) return
+    if (
+      !window.confirm(
+        `¿Eliminar ${borrables.length} ${borrables.length === 1 ? 'ticket' : 'tickets'}? ` +
+          'Se van también sus horómetros y sus labores.'
+      )
+    ) {
+      return
+    }
+
+    setBorrando(true)
+    setErrorLote(null)
+    const { error: e } = await supabase.from('tickets').delete().in('id', borrables)
+    setBorrando(false)
+    if (e) return setErrorLote(mensajeDeError(e, 'No se pudieron eliminar los tickets.'))
+    salirDeSeleccion()
+    router.refresh()
+  }
 
   const [filtros, setFiltros] = useState<FiltrosTickets>(SIN_FILTROS)
   const [bloques, setBloques] = useState<BloqueTickets[]>(resumenInicial)
@@ -121,7 +207,7 @@ export function ListaTickets({
       setCargando(false)
       // Con otro filtro —o después de una modificación—, lo bajado y lo
       // marcado dejan de valer.
-      setCargadas(new Set())
+      setCargadas(new Map())
       setMarcados(new Set())
     }
     cargar()
@@ -215,7 +301,7 @@ export function ListaTickets({
         {modoSeleccion && (
           <div className="mt-2 flex items-center gap-2">
             <button
-              onClick={() => setMarcados(new Set(cargadas))}
+              onClick={() => setMarcados(new Set(cargadas.keys()))}
               className="rounded-md px-2 py-1 text-xs font-semibold text-brand-700 hover:bg-brand-50"
             >
               Seleccionar los {cargadas.size} que ya abriste
@@ -269,17 +355,44 @@ export function ListaTickets({
       </div>
 
       {modoSeleccion && marcados.size > 0 && (
-        <div className="sticky bottom-0 z-10 border-t border-slate-200 bg-white/95 p-3 backdrop-blur-md">
-          <Boton className="w-full" onClick={() => setAbrirLote(true)}>
-            Cambiar estado o proceso ({marcados.size})
+        <div className="sticky bottom-0 z-10 flex flex-col gap-2 border-t border-slate-200 bg-white/95 p-3 backdrop-blur-md">
+          {/* Lo que el permiso de esta persona NO alcanza se dice ANTES
+              de pulsar, no después: pulsar y que la base rechace la
+              mitad deja el cambio a medias y sin explicación. */}
+          {omitidos > 0 && (
+            <p className="text-xs text-slate-500">
+              <strong>{omitidos}</strong> de los {marcados.size} seleccionados quedan fuera: o ya
+              están notificados, o tu permiso no alcanza a ellos.
+            </p>
+          )}
+
+          <Boton
+            className="w-full"
+            disabled={editables.length === 0}
+            onClick={() => setAbrirLote(true)}
+          >
+            Cambiar estado o proceso ({editables.length})
           </Boton>
+
+          {borrables.length > 0 && (
+            <Boton
+              variante="peligro"
+              className="w-full"
+              disabled={borrando}
+              onClick={() => void eliminarEnMasa()}
+            >
+              {borrando ? 'Eliminando…' : `Eliminar ${borrables.length}`}
+            </Boton>
+          )}
+
+          {errorLote && <Alerta>{errorLote}</Alerta>}
         </div>
       )}
 
       <AccionesLoteModal
         abierto={abrirLote}
-        cantidad={marcados.size}
-        ticketIds={[...marcados]}
+        cantidad={editables.length}
+        ticketIds={editables}
         onCerrar={() => setAbrirLote(false)}
         onListo={salirDeSeleccion}
       />
@@ -293,7 +406,7 @@ export function ListaTickets({
         temporadaActivaId={temporadaActivaId}
         usuarios={usuarios}
         temporadas={temporadas}
-        puedeOtroUsuario={puedeLotes}
+        puedeOtroUsuario={puedeOtroUsuario}
       />
     </>
   )

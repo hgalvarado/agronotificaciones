@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
-import { getPerfilActual, getPermisos, puede } from '@/lib/auth'
+import { getPerfilActual, getPermisos, getReglas, puede } from '@/lib/auth'
+import { aplanarReglas } from '@/lib/permisos/clientABAC'
 import { TicketsSplit } from '@/components/ticket/TicketsSplit'
 import { ListaTickets } from '@/components/ticket/ListaTickets'
 import type { BloqueTickets, Capturador } from '@/lib/tickets/tipos'
@@ -9,11 +10,28 @@ import type { BloqueTickets, Capturador } from '@/lib/tickets/tipos'
 // renderizar el panel de detalle.
 export default async function TicketsLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
-  const [{ perfil }, permisos] = await Promise.all([getPerfilActual(), getPermisos()])
+  const [{ perfil }, permisos, reglas] = await Promise.all([
+    getPerfilActual(),
+    getPermisos(),
+    getReglas(),
+  ])
 
-  // RLS decide el alcance: sin «Ver todo» en Tickets se reciben sólo los
-  // propios, así que aquí no hay ni un filtro por usuario.
-  const veTodo = puede(permisos, 'tickets', 'ver_todo')
+  const creaPorOtros =
+    puede(permisos, 'tickets', 'crear') &&
+    (reglas.get('tickets:crear')?.alcance ?? 'global') !== 'propietario'
+
+  // RLS decide el alcance: la vista ya entrega sólo lo que a esta persona
+  // le toca, así que aquí no hay ni un filtro por usuario.
+  //
+  // Las REGLAS enteras y no un booleano: las acciones en masa se deciden
+  // ticket por ticket, porque el alcance mira quién lo capturó y la
+  // condición en qué paso del proceso está.
+  //
+  // Esto antes preguntaba por `tickets:ver_todo`, una acción que la
+  // migración 53 BORRÓ al convertirla en el eje «alcance». Al no existir
+  // contestaba que no siempre, así que el botón «Varios» no le salía a
+  // nadie y la selección múltiple —que lleva aquí desde la 45— parecía
+  // no existir.
 
   // El ÍNDICE del historial, no los tickets. Antes esto traía las últimas
   // cien filas y con eso marzo desaparecía; ahora trae una consulta
@@ -32,8 +50,9 @@ export default async function TicketsLayout({ children }: { children: React.Reac
     supabase.rpc('fn_tickets_capturadores'),
     supabase.from('temporadas').select('id').eq('activa', true).maybeSingle(),
     // Para el ticket histórico: sólo hace falta la lista si esta persona
-    // puede crear a nombre de otro.
-    veTodo
+    // puede crear a nombre de otro. Eso es «crear» con alcance global:
+    // con alcance propietario sólo puede crearse tickets a sí misma.
+    creaPorOtros
       ? supabase
           .from('perfiles')
           .select('id, nombre, departamento')
@@ -62,7 +81,7 @@ export default async function TicketsLayout({ children }: { children: React.Reac
           temporadas={
             (temporadas as { id: string; nombre: string; activa: boolean }[] | null) ?? []
           }
-          puedeLotes={veTodo}
+          reglas={aplanarReglas(reglas)}
         />
       }
     >

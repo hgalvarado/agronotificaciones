@@ -31,6 +31,16 @@ import {
   filtrar as filtrarFilas,
 } from '@/lib/grid/filtros'
 import type { ColumnaGrid, Filtro, Filtros, Orden } from '@/lib/grid/tipos'
+import {
+  agregacionesDe,
+  calcular,
+  guardarAgregaciones,
+  leerAgregaciones,
+  type Agregaciones,
+  type Resultado,
+  type TipoAgregacion,
+} from '@/lib/grid/agregacion'
+import { PieAgregacion } from './PieAgregacion'
 
 export type { ColumnaGrid } from '@/lib/grid/tipos'
 
@@ -231,6 +241,40 @@ export function DataGrid<T extends { id: string }>({
   }
 
   const hayColumnaAcciones = Boolean(accionFila)
+
+  /* --------------------- Los totales del pie ----------------------- */
+
+  // Qué total lleva cada columna. Se lee de `localStorage` en el primer
+  // render y no en un efecto, para que el pie salga ya con lo elegido en
+  // vez de parpadear en «Ninguno» durante un cuadro.
+  const [agregaciones, setAgregaciones] = useState<Agregaciones>(() =>
+    typeof window === 'undefined' ? {} : leerAgregaciones(titulo)
+  )
+
+  function elegirAgregacion(campo: string, tipo: TipoAgregacion) {
+    setAgregaciones((prev) => {
+      const siguiente = { ...prev, [campo]: tipo }
+      guardarAgregaciones(titulo, siguiente)
+      return siguiente
+    })
+  }
+
+  // Se calcula sobre `visibles` —lo filtrado y buscado— y NO sobre
+  // `enPantalla`, que es sólo lo pintado hasta donde se ha desplazado.
+  // Un total que creciera al bajar con el dedo sería un sinsentido.
+  const totales = useMemo(() => {
+    const salida: Record<string, Resultado> = {}
+    for (const c of columnas) {
+      const tipo = agregaciones[c.campo] ?? 'ninguna'
+      salida[c.campo] = tipo === 'ninguna' ? null : calcular(visibles, c, tipo)
+    }
+    return salida
+  }, [visibles, columnas, agregaciones])
+
+  // El pie se queda PEGADO abajo sólo cuando hay algún total que leer.
+  // Pegado siempre, una fila vacía se come una fila de datos en un
+  // teléfono y no enseña nada a cambio.
+  const hayTotales = columnas.some((c) => (agregaciones[c.campo] ?? 'ninguna') !== 'ninguna')
 
   return (
     <div className="flex flex-col gap-3">
@@ -517,6 +561,29 @@ export function DataGrid<T extends { id: string }>({
                     )
                   })}
                 </tbody>
+
+                {/* El pie va DENTRO de la tabla y pegado abajo: sacarlo
+                    a un div aparte lo desalinearía de las columnas en
+                    cuanto una tabla tenga desplazamiento horizontal, que
+                    es justo cuando más falta hace leerlo. */}
+                <tfoot className={`bg-slate-50 ${hayTotales ? 'sticky bottom-0 z-10' : ''}`}>
+                  <tr className="border-t border-slate-200">
+                    {seleccionable && <th className="px-2 py-1.5" />}
+                    {columnas.map((c) => (
+                      <td key={c.campo} className="px-2 py-1.5 align-middle">
+                        <PieAgregacion
+                          etiqueta={c.label}
+                          tipo={agregaciones[c.campo] ?? 'ninguna'}
+                          opciones={agregacionesDe(c)}
+                          resultado={totales[c.campo] ?? null}
+                          alinearDerecha={Boolean(c.numero)}
+                          onElegir={(t) => elegirAgregacion(c.campo, t)}
+                        />
+                      </td>
+                    ))}
+                    {hayColumnaAcciones && <td className="px-3 py-1.5" />}
+                  </tr>
+                </tfoot>
               </table>
 
               {/* El botón es el respaldo del desplazamiento: con teclado,
