@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { puedeEnTicket } from '@/lib/permisos/captura'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getPermisos } from '@/lib/auth'
+import { getReglas } from '@/lib/auth'
 import { TablaRegistros } from '@/components/registro/TablaRegistros'
 import {
   BotonLink,
@@ -65,12 +65,12 @@ export default async function HorometroDetailPage({
   // Decide la MATRIZ de permisos y nada más: ni el rol ni el estado del
   // ticket. Cerrado es una marca de avance, no un candado; el único tope
   // es NOTIFICADO.
-  const permisos = await getPermisos()
-  const puedeAgregarLabores = puedeEnTicket(permisos, 'labores', 'crear', ticket.proceso)
-  const puedeEditarLabores = puedeEnTicket(permisos, 'labores', 'editar', ticket.proceso)
-  const puedeBorrarLabores = puedeEnTicket(permisos, 'labores', 'eliminar', ticket.proceso)
-  const puedeEditarHorometro = puedeEnTicket(permisos, 'horometros', 'editar', ticket.proceso)
-  const puedeAgregarHorometro = puedeEnTicket(permisos, 'horometros', 'crear', ticket.proceso)
+  const reglas = await getReglas()
+  const puedeAgregarLabores = puedeEnTicket(reglas, 'labores', 'crear', ticket.proceso, ticket.estado)
+  const puedeEditarLabores = puedeEnTicket(reglas, 'labores', 'editar', ticket.proceso, ticket.estado)
+  const puedeBorrarLabores = puedeEnTicket(reglas, 'labores', 'eliminar', ticket.proceso, ticket.estado)
+  const puedeEditarHorometro = puedeEnTicket(reglas, 'horometros', 'editar', ticket.proceso, ticket.estado)
+  const puedeAgregarHorometro = puedeEnTicket(reglas, 'horometros', 'crear', ticket.proceso, ticket.estado)
   const esDiurno = h.turno === 'DIURNO'
 
   return (

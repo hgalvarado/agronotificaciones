@@ -1,4 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
+import { getMisZonas, getReglas } from '@/lib/auth'
+import { filtrarPorZona, zonasParaCrear } from '@/lib/permisos/clientABAC'
 
 export type Proveedor = { id: string; nombre: string; tipo: string }
 
@@ -16,6 +18,7 @@ export type ImplementoFisico = {
 type LoteTemporadaRow = {
   id: string
   temporada_id: string
+  zona_id: string | null
   area_neta: number
   ciclo: number | null
   lotes:
@@ -74,7 +77,11 @@ export async function cargarCatalogosRegistro() {
       // misma labor si el equipo de verdad trabajó en las dos.
       supabase
         .from('lotes_temporada')
-        .select('id, temporada_id, area_neta, ciclo, lotes(nomenclatura, nombre)')
+        // `zona_id` viaja con el lote porque el formulario tiene que poder
+        // recortar el selector cuando el alcance de «crear» es zonal:
+        // ofrecer una zona ajena es dejar llenar el formulario entero
+        // para que la base lo rechace al guardar.
+        .select('id, temporada_id, zona_id, area_neta, ciclo, lotes(nomenclatura, nombre)')
         .eq('activo', true),
       // Los proveedores sólo existen a partir de la migración 12. Si no
       // está corrida, la consulta falla y el formulario simplemente no
@@ -100,6 +107,7 @@ export async function cargarCatalogosRegistro() {
       return {
         lote_temporada_id: lt.id,
         temporada_id: lt.temporada_id,
+        zona_id: lt.zona_id ?? null,
         temporada_nombre: listaTemporadas.find((t) => t.id === lt.temporada_id)?.nombre ?? '',
         nomenclatura: lote?.nomenclatura ?? '—',
         nombre: lote?.nombre ?? null,
@@ -109,13 +117,31 @@ export async function cargarCatalogosRegistro() {
     })
     .sort((a, b) => a.nomenclatura.localeCompare(b.nomenclatura))
 
+  /* ------------------ El recorte zonal de los lotes ------------------ */
+  //
+  // Si el alcance de «crear» es ZONAL, el selector ofrece únicamente los
+  // lotes de las zonas asignadas. Dejarle elegir una zona ajena es
+  // dejarle llenar el formulario entero —labor, tarea, horas, por tres
+  // lotes— para que la base lo rechace al pulsar Guardar.
+  //
+  // Va AQUÍ y no en cada formulario a propósito: alta y edición comparten
+  // este cargador justamente para no ofrecer opciones distintas, y si el
+  // recorte se escribiera en cada pantalla acabaría aplicándose en unas
+  // sí y en otras no.
+  //
+  // `zonasParaCrear` devuelve null cuando no hay que recortar —alcance
+  // global, o persona sin zonas asignadas—, que no es lo mismo que
+  // devolver un conjunto vacío.
+  const permitidas = zonasParaCrear(await getReglas(), 'labores', await getMisZonas())
+  const lotesVisibles = filtrarPorZona(lotes, (l) => l.zona_id, permitidas)
+
   return {
     temporadas: listaTemporadas,
     temporadaId: temporadaActiva?.id ?? null,
     labores: labores ?? [],
     tareasSap: tareasSap ?? [],
     implementos: implementos ?? [],
-    lotes,
+    lotes: lotesVisibles,
     proveedores: (proveedores as Proveedor[] | null) ?? [],
     implementosFisicos: (implementosFisicos as ImplementoFisico[] | null) ?? [],
     vinculosFisicos:

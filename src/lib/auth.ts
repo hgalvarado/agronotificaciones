@@ -1,6 +1,9 @@
 import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import type { Perfil, Rol } from '@/lib/types'
+import { leerAlcance, leerCondicion } from '@/lib/permisos/abac'
+import { REGLA_ABIERTA, type Reglas } from '@/lib/permisos/clientABAC'
+import { SIN_MIGRACION } from '@/lib/permisos/puede'
 
 // `cache()` de React deduplica dentro de UN MISMO request: aunque el
 // layout, la página y un componente anidado llamen a getPerfilActual(),
@@ -55,9 +58,9 @@ export const getPerfilActual = cache(async (): Promise<{
  * el layout lo pide para dibujar el menú y cada página lo vuelve a pedir
  * para esconder botones, y así se consulta una sola vez por request.
  */
-export const getPermisos = cache(async (): Promise<Set<string>> => {
+export const getReglas = cache(async (): Promise<Reglas> => {
   const user = await getUsuarioActual()
-  if (!user) return new Set()
+  if (!user) return new Map()
 
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('fn_mis_permisos')
@@ -66,10 +69,57 @@ export const getPermisos = cache(async (): Promise<Set<string>> => {
   // vez de dejar la app sin menú, se cae al comportamiento anterior: el
   // rol manda. Así actualizar el código y correr el SQL pueden ir en
   // momentos distintos sin que nadie se quede sin poder trabajar.
-  if (error) return new Set(['__sin_migracion__'])
+  if (error) return new Map([[SIN_MIGRACION, REGLA_ABIERTA]])
 
-  const filas = (data as { recurso: string; accion: string }[] | null) ?? []
-  return new Set(filas.map((f) => `${f.recurso}:${f.accion}`))
+  const filas =
+    (data as
+      | { recurso: string; accion: string; alcance?: string; condicion?: string }[]
+      | null) ?? []
+
+  const reglas: Reglas = new Map()
+  for (const f of filas) {
+    reglas.set(`${f.recurso}:${f.accion}`, {
+      // Antes de la 53 la fila no traía los otros dos ejes: existir era
+      // permitir, sin recorte. Ése es el valor que se asume.
+      alcance: leerAlcance(f.alcance),
+      condicion: leerCondicion(f.condicion),
+    })
+  }
+  return reglas
+})
+
+/**
+ * Las claves `"pantalla:accion"` concedidas.
+ *
+ * Se deriva de `getReglas()` —no es otro viaje a Supabase, las dos van
+ * con el `cache()` de React— para que los cien sitios que preguntan
+ * `puede(...)` sigan funcionando igual mientras las pantallas que
+ * necesitan los tres ejes van pasando a `canExecuteAction`.
+ */
+export const getPermisos = cache(async (): Promise<Set<string>> => {
+  return new Set((await getReglas()).keys())
+})
+
+/**
+ * Las zonas que el Administrador le asignó a esta persona.
+ *
+ * Hace falta en el navegador para dos cosas: decidir si una fila cae en
+ * su zona, y recortar los selectores de Lote y Zona cuando el alcance de
+ * «crear» es zonal. Vacío quiere decir «sin zonas asignadas», que en la
+ * base equivale a verlo todo.
+ */
+export const getMisZonas = cache(async (): Promise<string[]> => {
+  const user = await getUsuarioActual()
+  if (!user) return []
+
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('perfiles_zonas')
+    .select('zona_id')
+    .eq('perfil_id', user.id)
+
+  if (error) return []
+  return ((data as { zona_id: string }[] | null) ?? []).map((z) => z.zona_id)
 })
 
 /**
@@ -92,6 +142,9 @@ export const getNavegacion = cache(async (): Promise<string[]> => {
   const filas = (data as { pantalla: string }[] | null) ?? []
   return filas.map((f) => f.pantalla)
 })
+
+export { canExecuteAction, zonasParaCrear, filtrarPorZona } from '@/lib/permisos/clientABAC'
+export type { Regla, Reglas } from '@/lib/permisos/clientABAC'
 
 // `puede` vive en `lib/permisos/puede` —sin ninguna importación— porque
 // también la usan componentes de cliente, y este archivo abre el cliente

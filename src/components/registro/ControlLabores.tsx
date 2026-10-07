@@ -18,6 +18,7 @@ import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { leerTodo } from '@/lib/supabase/paginar'
+import { armarReglas, canExecuteAction, type ReglasPlanas } from '@/lib/permisos/clientABAC'
 import { Alerta, Boton, Campo, Insignia, Selector, Tarjeta } from '@/components/ui/Primitivos'
 import { DataGrid } from '@/components/ui/DataGrid'
 import { BotonFila } from '@/components/ui/BotonFila'
@@ -166,18 +167,57 @@ const distintos = (valores: (string | null | undefined)[]) =>
 export function ControlLabores({
   temporadas = [],
   catalogosEdicion,
-  puedeEditar,
-  puedeEliminar,
+  reglas: reglasPlanas,
+  usuarioId,
   puedeEstandar,
 }: {
   temporadas?: TemporadaOpcion[]
   catalogosEdicion: CatalogosEdicion
-  puedeEditar: boolean
-  puedeEliminar: boolean
+  /**
+   * Las reglas del usuario con sus tres ejes.
+   *
+   * Antes llegaban dos booleanos —`puedeEditar`, `puedeEliminar`— para
+   * la pantalla entera, y con ABAC eso ya no alcanza: el mismo usuario
+   * puede editar la línea que capturó él y no la de al lado, o poder
+   * editar sólo mientras el ticket está en «0. Registrado». La decisión
+   * es POR FILA, así que lo que hace falta aquí es la regla, no su
+   * resultado.
+   */
+  reglas: ReglasPlanas
+  /** Quién está mirando. Lo necesita el alcance «propietario». */
+  usuarioId: string | null
   /** Si puede fijar la vista estándar de la empresa. Sale de la matriz. */
   puedeEstandar: boolean
 }) {
   const supabase = createClient()
+
+  const reglas = useMemo(() => armarReglas(reglasPlanas), [reglasPlanas])
+
+  // A nivel de PANTALLA: ¿podría llegar a hacerlo? Es lo que decide si
+  // se dibuja la barra de herramientas. Sin fila, los ejes de alcance y
+  // condición no recortan.
+  const puedeEditar = canExecuteAction(reglas, 'labores', 'editar')
+  const puedeEliminar = canExecuteAction(reglas, 'labores', 'eliminar')
+
+  // Y a nivel de FILA, que es lo que decide cada botón.
+  const puedeEditarFila = useCallback(
+    (f: { usuario_id?: string | null; ticket_proceso: ProcesoTicket; ticket_estado?: string | null }) =>
+      canExecuteAction(
+        reglas, 'labores', 'editar',
+        { duenoId: f.usuario_id, proceso: f.ticket_proceso, estado: f.ticket_estado },
+        { usuarioId }
+      ),
+    [reglas, usuarioId]
+  )
+  const puedeEliminarFila = useCallback(
+    (f: { usuario_id?: string | null; ticket_proceso: ProcesoTicket; ticket_estado?: string | null }) =>
+      canExecuteAction(
+        reglas, 'labores', 'eliminar',
+        { duenoId: f.usuario_id, proceso: f.ticket_proceso, estado: f.ticket_estado },
+        { usuarioId }
+      ),
+    [reglas, usuarioId]
+  )
 
   const [filas, setFilas] = useState<FilaLabor[] | null>(null)
   const [cargando, setCargando] = useState(true)
@@ -340,7 +380,7 @@ export function ControlLabores({
         // cortada a «1001…» no sirve para nada.
         ancho: '11rem',
         valor: (f) => f.ut,
-        editable: (f: Fila) => !liquidada(f),
+        editable: (f: Fila) => puedeEditarFila(f),
         editor: 'seleccion',
         valorEdicion: (f) => f.lote_temporada_id,
         opciones: catalogosEdicion.lotes.map((l) => ({
@@ -357,7 +397,7 @@ export function ControlLabores({
         ancho: '12rem',
         valor: (f) => f.tarea_codigo,
         etiqueta: (f) => `${f.tarea_codigo} · ${f.tarea_nombre}`,
-        editable: (f: Fila) => !liquidada(f),
+        editable: (f: Fila) => puedeEditarFila(f),
         editor: 'seleccion',
         valorEdicion: (f) => f.tarea_id,
         opciones: catalogosEdicion.tareasSap.map((t) => ({
@@ -376,7 +416,7 @@ export function ControlLabores({
         tipo: 'seleccion',
         ancho: '12rem',
         valor: (f) => f.labor_nombre,
-        editable: (f: Fila) => !liquidada(f),
+        editable: (f: Fila) => puedeEditarFila(f),
         editor: 'seleccion',
         valorEdicion: (f) => f.labor_id,
         opciones: catalogosEdicion.labores.map((l) => ({ value: l.id, label: l.nombre })),
@@ -395,7 +435,7 @@ export function ControlLabores({
         numero: true,
         valor: (f) => (f.avance_mz === null ? null : Number(f.avance_mz)),
         etiqueta: (f) => n2(f.avance_mz),
-        editable: (f: Fila) => !liquidada(f),
+        editable: (f: Fila) => puedeEditarFila(f),
         editor: 'numero',
       },
       { campo: 'equipo_codigo', label: 'Equipo', tipo: 'seleccion', valor: (f) => f.equipo_codigo },
@@ -425,7 +465,7 @@ export function ControlLabores({
         // caso del operador que sabe que ese lote le llevó cuatro horas
         // aunque el área diga otra cosa. Vaciar la celda lo devuelve al
         // reparto automático.
-        editable: (f: Fila) => puedeEditar && !liquidada(f),
+        editable: (f: Fila) => puedeEditarFila(f),
         editor: 'numero',
         valorEdicion: (f) => n2(horasDeLinea(f)),
         // La marca va como `sufijo` y no dentro de `render`: una celda
@@ -481,7 +521,7 @@ export function ControlLabores({
         label: 'Código impl.',
         tipo: 'seleccion',
         valor: (f) => f.codigo_implemento ?? null,
-        editable: (f: Fila) => !liquidada(f),
+        editable: (f: Fila) => puedeEditarFila(f),
         editor: 'seleccion',
         valorEdicion: (f) => f.implemento_fisico_id ?? '',
         opciones: catalogosEdicion.implementosFisicos.map((i) => ({
@@ -587,7 +627,7 @@ export function ControlLabores({
         label: 'Prov. plástico',
         tipo: 'seleccion',
         valor: (f) => f.proveedor_plastico ?? null,
-        editable: (f: Fila) => puedeEditar && !liquidada(f),
+        editable: (f: Fila) => puedeEditarFila(f),
         editor: 'seleccion',
         valorEdicion: (f) => f.proveedor_plastico_id ?? '',
         opciones: [
@@ -607,7 +647,7 @@ export function ControlLabores({
         label: 'Prov. manguera',
         tipo: 'seleccion',
         valor: (f) => f.proveedor_manguera ?? null,
-        editable: (f: Fila) => puedeEditar && !liquidada(f),
+        editable: (f: Fila) => puedeEditarFila(f),
         editor: 'seleccion',
         valorEdicion: (f) => f.proveedor_manguera_id ?? '',
         opciones: [
@@ -627,7 +667,7 @@ export function ControlLabores({
         label: 'Comentarios',
         tipo: 'texto',
         valor: (f) => f.detalle_comentarios ?? null,
-        editable: (f: Fila) => puedeEditar && !liquidada(f),
+        editable: (f: Fila) => puedeEditarFila(f),
         editor: 'texto',
         render: (f) => (
           <span
@@ -661,7 +701,7 @@ export function ControlLabores({
       })
     }
     return cols
-  }, [hayTemporada, catalogosEdicion, puedeEditar])
+  }, [hayTemporada, catalogosEdicion, puedeEditarFila])
 
   const visibles = useMemo(() => aplicarVista(columnas, vista), [columnas, vista])
 
@@ -940,18 +980,22 @@ export function ControlLabores({
             </PanelFiltros>
           }
           accionesSeleccion={(marcadas, limpiar) => {
-            // Lo ya notificado se cae de la selección antes de cualquier
-            // acción en masa: si no, la base rechazaría esas líneas a
-            // mitad del bucle y el resultado quedaría a medias.
-            const ids = marcadas.filter(
-              (id) => !lista.some((f) => f.id === id && liquidada(f))
+            // Lo que esta persona no puede tocar se cae de la selección
+            // ANTES de cualquier acción en masa: si no, la base
+            // rechazaría esas líneas a mitad del bucle y el resultado
+            // quedaría a medias, con unas cambiadas y otras no.
+            const ids = marcadas.filter((id) =>
+              lista.some((f) => f.id === id && puedeEditarFila(f))
+            )
+            const idsBorrables = marcadas.filter((id) =>
+              lista.some((f) => f.id === id && puedeEliminarFila(f))
             )
             const fuera = marcadas.length - ids.length
             return (
             <>
               {fuera > 0 && (
                 <span className="text-xs font-semibold text-slate-400">
-                  {fuera} ya {fuera === 1 ? 'notificada' : 'notificadas'}: no se {fuera === 1 ? 'toca' : 'tocan'}
+                  {fuera} fuera de tu permiso: no se {fuera === 1 ? 'toca' : 'tocan'}
                 </span>
               )}
               {puedeEditar && ids.length > 0 && (
@@ -997,19 +1041,19 @@ export function ControlLabores({
                   Cambiar temporada
                 </Boton>
               )}
-              {puedeEliminar && ids.length > 0 && (
+              {puedeEliminar && idsBorrables.length > 0 && (
                 <Boton
                   variante="peligro"
                   tamano="sm"
                   disabled={ocupado}
                   onClick={() =>
                     eliminar(
-                      lista.filter((f) => ids.includes(f.id)),
+                      lista.filter((f) => idsBorrables.includes(f.id)),
                       limpiar
                     )
                   }
                 >
-                  Eliminar {ids.length}
+                  Eliminar {idsBorrables.length}
                 </Boton>
               )}
             </>
@@ -1018,7 +1062,9 @@ export function ControlLabores({
           accionFila={
             puedeEditar
               ? (f) =>
-                  liquidada(f) ? (
+                  puedeEditarFila(f) ? (
+                    <BotonFila onClick={() => setEditando(f)}>Editar todo</BotonFila>
+                  ) : liquidada(f) ? (
                     <span
                       title="Ya notificado a SAP: se corrige devolviendo el ticket a un proceso anterior"
                       className="text-xs font-semibold text-slate-300"
@@ -1026,7 +1072,14 @@ export function ControlLabores({
                       Notificado
                     </span>
                   ) : (
-                    <BotonFila onClick={() => setEditando(f)}>Editar todo</BotonFila>
+                    // No desaparece a secas: un hueco sin explicación se
+                    // reporta como «se perdió el botón de editar».
+                    <span
+                      title="Tu permiso de editar no alcanza a esta línea: revisa el alcance y la condición en Permisos"
+                      className="text-xs font-semibold text-slate-300"
+                    >
+                      —
+                    </span>
                   )
               : undefined
           }

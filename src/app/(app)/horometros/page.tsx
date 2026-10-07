@@ -1,12 +1,17 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getPermisos, puede } from '@/lib/auth'
+import { getPermisos, getReglas, getUsuarioActual, puede } from '@/lib/auth'
+import { aplanarReglas } from '@/lib/permisos/clientABAC'
 import { ControlHorometros } from '@/components/horometro/ControlHorometros'
 
 export default async function HorometrosPage() {
   // Pantalla de revisión: sólo quien tenga el permiso de la pantalla.
   const permisos = await getPermisos()
   if (!puede(permisos, 'horometros', 'ver')) redirect('/tickets')
+
+  // Las reglas enteras, no su resultado: editar y eliminar se deciden
+  // fila por fila.
+  const [reglas, usuario] = await Promise.all([getReglas(), getUsuarioActual()])
 
   const supabase = await createClient()
   const [{ data: equipos }, { data: operadores }] = await Promise.all([
@@ -35,8 +40,8 @@ export default async function HorometrosPage() {
       <ControlHorometros
         equipos={equipos ?? []}
         operadores={operadores ?? []}
-        puedeEditar={puede(permisos, 'horometros', 'editar')}
-        puedeEliminar={puede(permisos, 'horometros', 'eliminar')}
+        reglas={aplanarReglas(reglas)}
+        usuarioId={usuario?.id ?? null}
       />
     </div>
   )

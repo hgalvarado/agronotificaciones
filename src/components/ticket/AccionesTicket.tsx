@@ -12,10 +12,12 @@ import { ahoraIso } from '@/lib/fechas'
 import type { ProcesoTicket, Ticket } from '@/lib/types'
 import { puede } from '@/lib/permisos/puede'
 import { enRevision, estaNotificado, puedeEditarEnRevision } from '@/lib/permisos/captura'
+import { armarReglas, canExecuteAction, type ReglasPlanas } from '@/lib/permisos/clientABAC'
 
 export function AccionesTicket({
   ticket,
   permisos,
+  reglas: reglasPlanas,
   nombreUsuario,
 }: {
   ticket: Ticket
@@ -27,6 +29,12 @@ export function AccionesTicket({
    * dijera otra cosa, y editar dependía de que el ticket estuviera abierto.
    */
   permisos: string[]
+  /**
+   * Las mismas reglas con sus tres ejes. Van como lista de pares porque
+   * un `Map` en las props de un componente de cliente depende de cómo
+   * serialice cada versión del framework.
+   */
+  reglas?: ReglasPlanas
   nombreUsuario: string
 }) {
   const supabase = createClient()
@@ -36,22 +44,24 @@ export function AccionesTicket({
   const [error, setError] = useState<string | null>(null)
 
   const abierto = ticket.estado === 'ABIERTO'
-  const concedidos = useMemo(() => new Set(permisos), [permisos])
+  const reglas = useMemo(() => armarReglas(reglasPlanas), [reglasPlanas])
 
   // Lo que la base va a permitir, preguntado igual que ella lo pregunta.
   // Notificado es de sólo lectura para todos; a partir de «1. Revisando»
   // sólo escribe quien tenga la casilla. El estado —abierto o cerrado— no
   // decide nada.
   const notificado = estaNotificado(ticket.proceso)
-  const congelado = enRevision(ticket.proceso) && !puedeEditarEnRevision(concedidos)
-  const abre = !notificado && !congelado
-  const puedeEditar = abre && puede(concedidos, 'tickets', 'editar')
-  const puedeBorrar = abre && puede(concedidos, 'tickets', 'eliminar')
+  const congelado = enRevision(ticket.proceso) && !puedeEditarEnRevision(reglas)
+  // Los tres ejes de una vez, sobre ESTE ticket: la acción concedida, el
+  // alcance sobre esta fila y la condición contra su proceso y su estado.
+  const fila = { proceso: ticket.proceso, estado: ticket.estado }
+  const puedeEditar = canExecuteAction(reglas, 'tickets', 'editar', fila)
+  const puedeBorrar = canExecuteAction(reglas, 'tickets', 'eliminar', fila)
 
   // Mandar a revisión es lo contrario de editar en revisión: se hace
   // desde el paso 0 y es justamente lo último que hace quien captura.
   const puedeEnviarARevision =
-    !notificado && ticket.proceso === 'REGISTRADO' && puede(concedidos, 'tickets', 'editar')
+    ticket.proceso === 'REGISTRADO' && canExecuteAction(reglas, 'tickets', 'editar', fila)
 
   async function cerrarTicket() {
     if (!confirm('¿Cerrar este ticket? Ya no podrás editar sus horómetros ni labores.')) return
@@ -150,6 +160,18 @@ export function AccionesTicket({
         )}
       </div>
 
+      {/* Por qué no están los botones. Uno que desaparece sin decir
+          nada se reporta como «se perdió el botón de editar», y quien lo
+          recibe no tiene forma de saber que fue el proceso del ticket y
+          no un fallo. */}
+      {!puedeEditar && !puedeBorrar && (notificado || congelado) && (
+        <p className="mt-2 text-xs text-slate-400">
+          {notificado
+            ? 'Este ticket ya se liquidó en SAP: queda de sólo lectura para todos.'
+            : 'Este ticket salió de «0. Registrado» y tu permiso de editar sólo aplica mientras se registra.'}
+        </p>
+      )}
+
       {error && (
         <div className="mt-2">
           <Alerta>{error}</Alerta>
@@ -182,6 +204,12 @@ function EditarTicketModal({
   onCerrar: () => void
   ticket: Ticket
   permisos: string[]
+  /**
+   * Las mismas reglas con sus tres ejes. Van como lista de pares porque
+   * un `Map` en las props de un componente de cliente depende de cómo
+   * serialice cada versión del framework.
+   */
+  reglas?: ReglasPlanas
   nombreUsuario: string
 }) {
   const supabase = createClient()

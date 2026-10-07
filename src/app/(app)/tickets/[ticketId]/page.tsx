@@ -7,7 +7,8 @@ import {
 } from '@/lib/permisos/captura'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getPermisos } from '@/lib/auth'
+import { getPermisos, getReglas } from '@/lib/auth'
+import { aplanarReglas } from '@/lib/permisos/clientABAC'
 import { AccionesTicket } from '@/components/ticket/AccionesTicket'
 import { TablaHorometros } from '@/components/horometro/TablaHorometros'
 import { TablaRegistros } from '@/components/registro/TablaRegistros'
@@ -172,19 +173,20 @@ export default async function TicketDetailPage({
   // de permisos en la cara. Y el estado del ticket ya no bloquea: cerrado
   // es una marca de avance, no un candado.
   const permisos = await getPermisos()
+  const reglas = await getReglas()
   // Agregar y corregir son casillas distintas desde la migración 44: los
   // INSERT piden «crear» y los UPDATE «editar». Era lo que dejaba al
   // Digitador sin poder agregar un horómetro.
-  const puedeAgregarHorometros = puedeEnTicket(permisos, 'horometros', 'crear', ticket.proceso)
-  const puedeEditarHorometros = puedeEnTicket(permisos, 'horometros', 'editar', ticket.proceso)
-  const puedeEditarLabores = puedeEnTicket(permisos, 'labores', 'editar', ticket.proceso)
-  const puedeBorrarHorometros = puedeEnTicket(permisos, 'horometros', 'eliminar', ticket.proceso)
-  const puedeBorrarLabores = puedeEnTicket(permisos, 'labores', 'eliminar', ticket.proceso)
-  const puedeImportar = puedeEnTicket(permisos, 'horometros', 'importar', ticket.proceso)
+  const puedeAgregarHorometros = puedeEnTicket(reglas, 'horometros', 'crear', ticket.proceso, ticket.estado)
+  const puedeEditarHorometros = puedeEnTicket(reglas, 'horometros', 'editar', ticket.proceso, ticket.estado)
+  const puedeEditarLabores = puedeEnTicket(reglas, 'labores', 'editar', ticket.proceso, ticket.estado)
+  const puedeBorrarHorometros = puedeEnTicket(reglas, 'horometros', 'eliminar', ticket.proceso, ticket.estado)
+  const puedeBorrarLabores = puedeEnTicket(reglas, 'labores', 'eliminar', ticket.proceso, ticket.estado)
+  const puedeImportar = puedeEnTicket(reglas, 'horometros', 'importar', ticket.proceso, ticket.estado)
   // Congelado = salió del paso 0 y esta persona no tiene la llave. Se
   // calcula aquí para poder DECIRLO: un botón que desaparece sin
   // explicación se reporta como «se perdió el botón de editar».
-  const congelado = enRevision(ticket.proceso) && !puedeEditarEnRevision(permisos)
+  const congelado = enRevision(ticket.proceso) && !puedeEditarEnRevision(reglas)
   const estado = estadoInfo(ticket.estado)
   const proceso = procesoInfo(ticket.proceso)
 
@@ -251,6 +253,7 @@ export default async function TicketDetailPage({
           <AccionesTicket
             ticket={ticket}
             permisos={[...permisos]}
+            reglas={aplanarReglas(reglas)}
             nombreUsuario={nombreCreador}
           />
         </div>

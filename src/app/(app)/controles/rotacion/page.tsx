@@ -1,7 +1,8 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getPermisos, puede } from '@/lib/auth'
+import { getPermisos, getReglas, puede } from '@/lib/auth'
+import { canExecuteAction } from '@/lib/permisos/clientABAC'
 import { Alerta } from '@/components/ui/Primitivos'
 import { RotacionTabs } from '@/components/rotacion/RotacionTabs'
 import {
@@ -26,6 +27,13 @@ export default async function RotacionPage({
 }) {
   const permisos = await getPermisos()
   if (!puede(permisos, 'rotacion', 'ver')) redirect('/tickets')
+
+  // Rotación no cuelga de un ticket: sus filas no tienen proceso ni
+  // estado, así que la condición no las recorta y la decisión por fila
+  // coincide con la de pantalla. Aun así se pregunta con el helper de
+  // ABAC y no con `puede`, para que el día que estas filas ganen un
+  // dueño o un estado no haya que acordarse de cambiarlo aquí.
+  const reglas = await getReglas()
 
   const sp = await searchParams
   const supabase = await createClient()
@@ -104,8 +112,11 @@ export default async function RotacionPage({
         porTipo={porTipo.datos}
         lotes={catalogos.lotes}
         variedades={catalogos.variedades}
-        puedeEditar={puede(permisos, 'rotacion', 'editar') || puede(permisos, 'rotacion', 'crear')}
-        puedeEliminar={puede(permisos, 'rotacion', 'eliminar')}
+        puedeEditar={
+          canExecuteAction(reglas, 'rotacion', 'editar') ||
+          canExecuteAction(reglas, 'rotacion', 'crear')
+        }
+        puedeEliminar={canExecuteAction(reglas, 'rotacion', 'eliminar')}
       />
     </div>
   )

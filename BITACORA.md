@@ -128,9 +128,133 @@ policy. Eso vuelve a aplicar el RLS de `tickets` entero, por cada fila.
 Hay que usar una función `security definer` (`fn_dueno_ticket`,
 `fn_dueno_registro`, `fn_dueno_detalle`).
 
+### 2.5 El patrón `SECURITY DEFINER` de las vistas (migración 56)
+
+**La regla de negocio:** cada pantalla se rige EXCLUSIVAMENTE por su
+propia fila en la matriz. Si Labores dice Global, Labores enseña todo,
+aunque los datos cuelguen de un ticket que ese rol no podría abrir.
+
+**Por qué hizo falta.** Una pantalla casi nunca lee una sola tabla.
+`/labores` lee `v_labores_control`, que une `registro_detalle` con
+`registros`, `horometros`, `tickets` y `lotes_temporada`. Con la vista en
+`security_invoker = on` **cada una de esas tablas aplicaba su propio
+RLS**, y el resultado era la intersección de todas. Un rol con «Labores:
+Global» y «Tickets: Propietario» —que es lo normal, un digitador no
+gestiona tickets ajenos— no veía nada: la unión con `tickets` tiraba las
+filas antes de que nadie mirara el permiso de Labores. Un recorte que el
+Administrador no había pedido y que no podía quitar desde ninguna
+casilla, porque la casilla que mandaba era la de otro módulo.
+
+**La forma.** Cada vista de módulo se parte en dos:
+
+```
+interno.v_x_crudo   security_invoker = off  → corre como su dueño, NO
+                    aplica el RLS de abajo. La unión completa.
+
+public.v_x          select * from interno.v_x_crudo
+                    where <reja de SU pantalla>
+                    También definer, que es lo que le permite leer la
+                    cruda. Es la única que se concede.
+```
+
+No se quita un control: **se sustituye por el que corresponde.** La reja
+es la misma forma canónica de §2.4.
+
+**Lo más importante: la cruda vive en el esquema `interno`.** El primer
+intento las dejó en `public` con un `revoke`, y no sirve: un
+`grant select on all tables in schema public to authenticated` —que es
+lo que Supabase corre por omisión, y lo que corre cualquiera que repare
+permisos a mano— se lo devuelve todo, y entonces la vista que se salta el
+RLS queda a un `select` de cualquiera. La prueba lo encontró. En
+`interno`, al que `authenticated` no tiene ni `usage`, el permiso no se
+concede y se revoca: no existe.
+
+**Qué NO cambia:** las tablas conservan su RLS intacto, así que una
+consulta directa a una tabla sigue recortando igual, y **ninguna
+escritura pasa por las vistas** — insertar, editar y borrar siguen yendo
+por las policies de siempre. `telecom` no entra en el patrón: sus tablas
+no cuelgan de ninguna tabla padre con permiso propio, así que ahí nunca
+hubo estrangulamiento.
+
+**Reglas para quien añada una vista de módulo:**
+
+1. La cruda va en `interno`, nunca en `public`.
+2. La expuesta SIEMPRE lleva `fn_permitido_de('<su pantalla>','ver')`.
+3. Se añade a la lista del bucle de la migración 56, no se escribe la
+   reja a mano: trece rejas escritas a mano acaban siendo trece rejas
+   ligeramente distintas, y la que esté mal no la ve nadie.
+4. El guardián de la 56 revienta la migración si alguna cruda se queda en
+   `public`, si alguien puede entrar a `interno`, o si una expuesta queda
+   sin reja.
+
+### 2.6 La misma regla en el navegador
+
+`lib/permisos/clientABAC.ts` → `canExecuteAction(reglas, pantalla,
+accion, fila, contexto)` es el reflejo exacto de `fn_verificar_permiso`,
+para que la pantalla esconda lo mismo que Postgres rechaza. Evalúa los
+tres ejes en el mismo orden, más el tope de NOTIFICADO.
+
+`undefined` en un atributo de la fila quiere decir «esta fila no tiene
+ese atributo», y ese eje no recorta — igual que un parámetro nulo en la
+base. Por eso `canExecuteAction(reglas, p, a)` **sin fila** contesta la
+pregunta de pantalla («¿podría llegar a hacerlo?»), que es la que decide
+si se dibuja el botón «Nuevo».
+
+Lo que el navegador NO puede comprobar es el recorte zonal de una fila
+cuya zona la vista no expone. En ese caso el eje zonal no recorta en la
+pantalla y **la base sigue mandando**: el navegador nunca concede nada,
+sólo esconde.
+
+**Está verificado contra la base, no «por parecido»:** las 480
+combinaciones de (alcance × condición × acción × dueño × proceso ×
+estado) se generan en el navegador y en Postgres y se comparan una por
+una. Cero diferencias. Si alguien toca una de las dos, esa prueba lo
+dice.
+
 ---
 
 ## 3. Registro de cambios
+
+### 2026-10-07 — La matriz es ley, y Fase 3 del ABAC (migración 56)
+
+**a) El estrangulamiento en cascada.** Está explicado entero en §2.5: las
+vistas de módulo pasan al patrón `interno.v_x_crudo` (definer, sin RLS) +
+`public.v_x` (con la reja de SU pantalla). Trece vistas: labores,
+horómetros, los tres avances, costos, las dos de rotación, trasplante y
+recepción, turnos de riego, lotes y contadores.
+
+Comprobado con el caso exacto del encargo —Labores en **Global** y
+Tickets en **Propietario**—: el usuario ve **0 tickets** y **las 12.974
+labores**. Y el vecino no se contagia: horómetros en Propietario sigue
+recortando lo suyo.
+
+**El fallo que encontró la prueba y que vale la pena recordar:** la
+primera versión dejó las crudas en `public` protegidas con un `revoke`.
+El banco de pruebas corre después los grants por omisión de Supabase, y
+se las devolvió todas. Una vista que se salta el RLS, legible por
+cualquier usuario. De ahí el esquema `interno`.
+
+**b) Fase 3 del ABAC, completa.**
+
+| Archivo | Qué |
+| --- | --- |
+| `lib/permisos/clientABAC.ts` | **Nuevo.** `canExecuteAction`, `zonasParaCrear`, `filtrarPorZona`, `nivelDeProceso`, y el par `aplanarReglas`/`armarReglas` para cruzar al navegador. Puro. |
+| `lib/auth.ts` | `getReglas()` carga los tres ejes; `getPermisos()` se deriva de ella, así que los cien sitios que preguntan `puede(...)` siguen igual. `getMisZonas()`. |
+| `lib/permisos/captura.ts` | Reescrito sobre `canExecuteAction`. **Arregla un fallo vivo:** seguía preguntando por `tickets:editar_en_revision`, una acción que la 53 borró, así que contestaba que no SIEMPRE y los tickets en revisión quedaban congelados para todos, incluido quien tenía el permiso. |
+| `AccionesTicket`, `/tickets/[id]`, `/horometros/[id]` | Editar, Eliminar y Enviar a revisión se deciden con los tres ejes sobre ESE ticket. Cuando no salen, se dice por qué. |
+| `ControlLabores`, `ControlHorometros` | Reciben las reglas, no dos booleanos. Edición en celda, botón de fila y acciones en masa, **todo por fila**: lo que la persona no puede tocar se cae de la selección antes de cualquier acción en masa, para que no quede a medias. |
+| `/controles/rotacion` | Pasa por el helper de ABAC. Sus filas no tienen proceso ni estado, así que por fila coincide con por pantalla; se deja así escrito para que el día que ganen un dueño no haya que acordarse. |
+| `lib/datosRegistro.ts` | El catálogo de lotes trae `zona_id` y se recorta con `zonasParaCrear` cuando el alcance de «crear» es zonal. **Va aquí y no en cada formulario:** alta y edición comparten este cargador justamente para no ofrecer opciones distintas. |
+
+**Verificado**
+
+| Prueba | Resultado |
+| --- | --- |
+| `t56.sql` — la matriz es ley, cada eje, las crudas, las tablas, el tiempo, universalidad | **23 verdes / 0 rojas** |
+| `t53` · `t54` · `t55` sobre la cadena 56 | **45/0 · 26/0 · 19/0** |
+| **Paridad navegador ↔ Postgres**, 480 combinaciones | **0 diferencias** |
+| `canExecuteAction` — alcance, condición, tope, selectores | **29 verdes / 0 rojas** |
+| Navegador — estado de carga y panel de permisos | **13/0 · 20/0** |
 
 ### 2026-10-07 — Alcance global, timeouts y estados de carga (migración 55)
 
@@ -244,6 +368,11 @@ Cosas que ya costaron una sesión. No volver a tropezar.
   media lista.** Hay que `drop view` + `create view`, y recrear antes las
   vistas que dependan de una columna que se va a borrar.
 - **Las columnas generadas tienen que ser expresiones inmutables.**
+- **Una vista `security_invoker = off` se salta el RLS de todo lo que
+  une.** Eso no es un fallo, es el patrón de §2.5 — pero la vista pasa a
+  ser la ÚNICA puerta, así que su `where` tiene que estar bien y la cruda
+  tiene que vivir en `interno`. Un `revoke` sobre una vista en `public`
+  no protege nada: el próximo grant masivo lo deshace.
 - **`fn_ve_zona` devuelve `true` cuando el usuario NO tiene zonas
   asignadas.** Por eso un recorte zonal no se nota hasta que alguien
   tiene zonas, y por eso las pruebas necesitan un usuario con zonas.
@@ -271,19 +400,35 @@ anterior y la nueva—, preguntarle a las dos por todos los cruces o contar
 las filas visibles por persona, y comparar una por una. Si algo se movió
 sin que fuera la intención, sale ahí.
 
+La otra prueba que no puede faltar cuando se toca el ABAC es la de
+**paridad**: generar las 480 combinaciones de (alcance × condición ×
+acción × dueño × proceso × estado) en el navegador y en Postgres y
+compararlas una por una. `canExecuteAction` y `fn_verificar_permiso`
+tienen que contestar lo mismo en las 480. Si una de las dos se toca sin
+la otra, esa prueba lo dice.
+
 Antes de entregar: `npx tsc --noEmit`, `npx eslint src --max-warnings=0`,
 `npm run build`.
 
 ---
 
-## 6. Pendiente
+## 6. Completados
 
-- **Fase 3 del ABAC:** `getPermisos`/`auth.ts` cargando alcance y
-  condición, no sólo la llave; `canExecuteAction(record, permission)`
-  para esconder Editar y Eliminar en el DataGrid y en los formularios
-  cuando el ticket está en «1. Revisando» y la condición es
-  `solo_abiertos_registrando`; selectores de Lote y Zona recortados a las
-  zonas asignadas cuando el alcance de creación es `zonal`.
+- **Fase 1 del ABAC** (migración 53) — los tres ejes en la base.
+- **Fase 2 del ABAC** (migración 54) — la matriz los configura por celda.
+- **Fase 3 del ABAC** (migración 56) — `getReglas` carga los tres ejes,
+  `canExecuteAction` decide cada botón, los DataGrids esconden por fila y
+  los selectores de lote se recortan a las zonas asignadas cuando el
+  alcance de «crear» es zonal.
+
+## 7. Pendiente
+
 - Reconstruir las suites `t42`–`t52`, perdidas cuando se recicló el
   contenedor de trabajo. El barrido comparativo cubre la regresión de
   permisos, pero no la lógica propia de cada una de esas migraciones.
+- `v_labores_control` no expone `zona_id`, así que el navegador no puede
+  comprobar el eje ZONAL de una escritura fila por fila; la base sí lo
+  hace. Añadir la columna a la vista cerraría ese hueco cosmético.
+- Las pantallas de trasplante, riego y telecom siguen pasando booleanos
+  de pantalla a sus DataGrids. Funciona —la base manda— pero no esconden
+  por fila como labores y horómetros.

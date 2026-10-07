@@ -7,35 +7,30 @@
  * botón que al pulsarlo da un error de permisos, o —peor— no ve un botón
  * que sí le correspondía.
  *
- * ── Ya NO recibe el rol ──────────────────────────────────────────────
+ * ── Ya NO pregunta por una casilla aparte ────────────────────────────
  *
- * Antes preguntaba `rol === 'ADMIN' || rol === 'TORRE_CONTROL'`, y era
- * justo el problema: la pantalla de Permisos podía decir una cosa y esto
- * otra, así que marcar o desmarcar una casilla no cambiaba nada. Ahora
- * recibe el CONJUNTO DE PERMISOS del usuario, que es lo mismo que la
- * base consulta.
+ * Hasta la 52 el candado del proceso se levantaba con una acción propia,
+ * `tickets:editar_en_revision`. La 53 la borró y la convirtió en la
+ * CONDICIÓN del permiso de editar. Esto siguió preguntando por la acción
+ * vieja un tiempo, y como ya no existe contestaba que no SIEMPRE: los
+ * tickets en revisión quedaban congelados para todo el mundo, incluido
+ * quien tenía el permiso. Ahora lee la condición, que es donde vive.
  *
- * Y el estado del ticket tampoco decide: cerrar un ticket es una marca
- * de avance, no un candado. Quien tenga la acción en la matriz la tiene
- * también sobre un ticket cerrado. El único tope es NOTIFICADO.
+ * Y antes de eso preguntaba `rol === 'ADMIN' || rol === 'TORRE_CONTROL'`,
+ * que era el mismo problema una vuelta más atrás: la matriz decía una
+ * cosa y esto otra, así que marcar una casilla no cambiaba nada.
+ *
+ * El estado del ticket tampoco decide por sí solo: cerrar un ticket es
+ * una marca de avance, no un candado. El único tope absoluto es
+ * NOTIFICADO.
  *
  * Funciones puras. No consultan nada.
  */
 
 import type { ProcesoTicket } from '@/lib/types'
-import { puede } from './puede'
+import { canExecuteAction, estaNotificado, nivelDeProceso, type Reglas } from './clientABAC'
 
-/**
- * ¿Ya se liquidó en SAP?
- *
- * El proceso 3 —Notificado— cierra el ticket para todo el mundo. Se
- * corrige devolviéndolo a un proceso anterior, que es una decisión de
- * quien revisa y no un cambio de celda. Sólo el Administrador escribe
- * encima, y eso lo decide la base: la pantalla se limita a esconder.
- */
-export function estaNotificado(proceso: ProcesoTicket | null | undefined): boolean {
-  return proceso === 'NOTIFICADO'
-}
+export { estaNotificado, nivelDeProceso }
 
 /**
  * ¿El ticket ya salió de «0. Registrado»?
@@ -49,13 +44,19 @@ export function enRevision(proceso: ProcesoTicket | null | undefined): boolean {
 }
 
 /**
- * ¿A esta persona se le levanta el candado del proceso?
+ * ¿A esta persona se le levanta el candado del proceso para `pantalla`?
  *
- * La excepción se CONCEDE en la matriz —`tickets:editar_en_revision`—, no
- * se deduce de un nombre de rol. NOTIFICADO no lo abre ni esta casilla.
+ * Sale de la CONDICIÓN de su permiso de editar, no de una casilla
+ * aparte: `sin_restriccion` quiere decir que puede en cualquier momento
+ * del proceso. NOTIFICADO no lo abre ni así.
  */
-export function puedeEditarEnRevision(permisos: Set<string> | string[]): boolean {
-  return puede(permisos, 'tickets', 'editar_en_revision')
+export function puedeEditarEnRevision(reglas: Reglas, pantalla = 'tickets'): boolean {
+  return canExecuteAction(reglas, pantalla, 'editar', {
+    // Un ticket en revisión y abierto: si con eso contesta que sí, es
+    // que su condición no le pone el candado del proceso.
+    proceso: 'REVISANDO',
+    estado: 'ABIERTO',
+  })
 }
 
 /**
@@ -65,12 +66,11 @@ export function puedeEditarEnRevision(permisos: Set<string> | string[]): boolean
  * `tickets`— y `accion` la de la matriz: `editar`, `eliminar`, `crear`.
  */
 export function puedeEnTicket(
-  permisos: Set<string>,
+  reglas: Reglas,
   pantalla: string,
   accion: string,
-  proceso?: ProcesoTicket | null
+  proceso?: ProcesoTicket | null,
+  estado?: string | null
 ): boolean {
-  if (estaNotificado(proceso)) return false
-  if (enRevision(proceso) && !puedeEditarEnRevision(permisos)) return false
-  return puede(permisos, pantalla, accion)
+  return canExecuteAction(reglas, pantalla, accion, { proceso, estado })
 }

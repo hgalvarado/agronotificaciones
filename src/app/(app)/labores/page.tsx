@@ -6,11 +6,16 @@ import type {
   LaborCompleta,
 } from '@/components/registro/EditarLaborModal'
 import { cargarCatalogosRegistro } from '@/lib/datosRegistro'
-import { getPermisos, puede } from '@/lib/auth'
+import { getPermisos, getReglas, getUsuarioActual, puede } from '@/lib/auth'
+import { aplanarReglas } from '@/lib/permisos/clientABAC'
 
 export default async function LaboresControlPage() {
   const permisos = await getPermisos()
   if (!puede(permisos, 'labores', 'ver')) redirect('/tickets')
+
+  // Las reglas enteras, no su resultado: editar y eliminar se deciden
+  // fila por fila, porque el alcance y la condición miran el registro.
+  const [reglas, usuario] = await Promise.all([getReglas(), getUsuarioActual()])
 
   const supabase = await createClient()
 
@@ -56,8 +61,8 @@ export default async function LaboresControlPage() {
       <ControlLabores
         temporadas={(temporadas as TemporadaOpcion[] | null) ?? []}
         catalogosEdicion={catalogosEdicion}
-        puedeEditar={puede(permisos, 'labores', 'editar')}
-        puedeEliminar={puede(permisos, 'labores', 'eliminar')}
+        reglas={aplanarReglas(reglas)}
+        usuarioId={usuario?.id ?? null}
         puedeEstandar={puede(permisos, 'permisos', 'editar')}
       />
     </div>
