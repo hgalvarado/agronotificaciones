@@ -22,7 +22,7 @@ import type { ColumnaGrid } from '@/lib/grid/tipos'
 import { formatearFecha } from '@/lib/estados'
 import { n2 } from '@/lib/trasplante/formato'
 import { canExecuteAction, type Reglas } from '@/lib/permisos/clientABAC'
-import { faseCerrada } from '@/lib/desinfeccion/calculo'
+import { faseCerrada, limpiarLotes, limpiarPersonal, limpiarProductos } from '@/lib/desinfeccion/calculo'
 import {
   buscarEjecucion,
   cambiarFase,
@@ -94,8 +94,8 @@ export function GridEjecucion({
   const [lineasProducto, setLineasProducto] = useState<LineaProducto[]>([
     { ...LINEA_PRODUCTO_VACIA },
   ])
-  /** La siembra del lote más temprano del turno, para el DAT de la fase 2. */
-  const [fechaSiembra, setFechaSiembra] = useState<string | null>(null)
+  /** Las siembras de los lotes del turno, para el DDT de las tres fases. */
+  const [fechasSiembra, setFechasSiembra] = useState<string[]>([])
 
   const ctx = useMemo(() => ({ usuarioId, zonas }), [usuarioId, zonas])
   const puedeCrear = canExecuteAction(reglas, 'desinfeccion', 'crear')
@@ -508,9 +508,11 @@ export function GridEjecucion({
     setBuscando(false)
   }
 
-  /* --------------- La siembra, para el DAT de la fase 2 ---------------- */
-  // Se pide por los lotes del turno y se toma la MÁS TEMPRANA: un turno
-  // riega varios lotes y pueden no haberse sembrado el mismo día.
+  /* ---------------- Las siembras, para el DDT de cada fase -------------- */
+  // Se piden TODAS las del turno y se pasan enteras: un turno riega varios
+  // lotes y pueden no haberse sembrado el mismo día, así que quedarse con
+  // una sola sería enseñar un número que no vale para los demás lotes. Con
+  // todas, la pantalla puede decir un rango.
   const lotesDelTurno = useMemo(
     () => lineasLote.map((l) => l.loteTemporadaId).filter(Boolean).sort().join(','),
     [lineasLote]
@@ -522,13 +524,12 @@ export function GridEjecucion({
     async function cargar() {
       const ids = lotesDelTurno ? lotesDelTurno.split(',') : []
       if (ids.length === 0) {
-        setFechaSiembra(null)
+        setFechasSiembra([])
         return
       }
       const mapa = await siembrasDeLotes(ids, Number(cicloActual) || null)
       if (!vivo) return
-      const fechas = [...mapa.values()].map((v) => v.fecha).sort()
-      setFechaSiembra(fechas[0] ?? null)
+      setFechasSiembra([...mapa.values()].map((v) => v.fecha).sort())
     }
     void cargar()
     return () => {
@@ -555,7 +556,17 @@ export function GridEjecucion({
   async function guardar() {
     if (!entrada) return
     setOcupado(true)
-    const r = await guardarEjecucion(entrada, lecturas, lineasLote, lineasPersonal, lineasProducto)
+    // Los renglones que nadie tocó no viajan: son el hueco donde escribir,
+    // no un dato. Es la MISMA regla con la que valida `validarEjecucion`,
+    // para que no pueda pasar que una fila bloquee el guardado y otra
+    // distinta llegue a la base.
+    const r = await guardarEjecucion(
+      entrada,
+      lecturas,
+      limpiarLotes(lineasLote),
+      limpiarPersonal(lineasPersonal),
+      limpiarProductos(lineasProducto)
+    )
     setOcupado(false)
     if (!r.ok) return setError(r.mensaje)
     setEntrada(null)
@@ -698,7 +709,7 @@ export function GridEjecucion({
           lotesDisponibles={lotes}
           turnosDisponibles={turnos}
           estacionesDisponibles={estaciones}
-          fechaSiembra={fechaSiembra}
+          fechasSiembra={fechasSiembra}
           guardando={ocupado}
           buscando={buscando}
           onActivar={(turnoId, ciclo) => void activar(turnoId, ciclo)}

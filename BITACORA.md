@@ -235,6 +235,78 @@ dice.
 
 ## 3. Registro de cambios
 
+### 2026-10-08 — Guardado incremental, filas fantasma y el DDT en todo el embudo
+
+Sin migración: las dos son de navegador. Salen de una auditoría de la
+Fase 2 en campo.
+
+**a) Las filas fantasma bloqueaban el guardado incremental.**
+
+El síntoma: llenar sólo «0 · Lotes y manzanas» y pulsar Guardar
+contestaba **«Hay un renglón de personal sin puesto de trabajo»** — un
+error sobre una sección que el usuario no había mirado siquiera.
+
+La causa no era la validación, era la plantilla: `LINEA_PERSONAL_VACIA`
+traía `jornadas: '1'` de fábrica. La regla «si no hay puesto pero hay
+jornadas, avisa» estaba bien escrita; lo que estaba mal es que el renglón
+en blanco **ya venía con una jornada puesta**, así que el formulario se
+acusaba a sí mismo de haber escrito algo.
+
+Y el fallo de fondo es más grande que ese campo: **el trabajo de campo es
+asíncrono.** Se asignan los lotes un día, se riega otro y se aplica un
+tercero. Quien guarda con sólo los lotes no está dejando la cuadrilla a
+medias: es que todavía no le toca. Un formulario que exige las cuatro
+fases de una vez no es estricto, es inservible.
+
+La solución está en `calculo.ts` y son tres funciones de dos líneas:
+
+```
+intacta(linea, plantilla)   ¿está tal como nació? (el `id` no cuenta:
+                            una fila que ya existe en la base nunca es
+                            un hueco)
+limpiarLotes / limpiarPersonal / limpiarProductos
+```
+
+El renglón en blanco con el que abre cada sub-tabla **no es un dato**: es
+dónde escribir. Compararlo campo a campo con su plantilla es la forma
+exacta de distinguir «no la tocó» de «la tocó y la dejó a medias».
+
+**Lo que esta limpieza NO hace es tapar un descuido.** Un renglón con
+horas extras escritas y sin puesto sí está tocado, y ése sigue avisando.
+Lo mismo con litros sin producto. La prueba comprueba las dos caras: que
+el hueco pasa y que el descuido no.
+
+La limpieza se aplica **en los dos sitios con la misma función**: antes
+de validar y antes de armar el payload. Si una fila bloqueara el guardado
+y otra distinta llegara a la base, el error volvería por otro lado.
+
+**b) El DDT, en las tres fases.**
+
+Estaba sólo en las lecturas. La pregunta «¿a cuántos días de la siembra
+estoy haciendo esto?» es la misma el día del preriego y el de la
+aplicación, y tenerla en una sola fase obliga a calcularla de cabeza en
+las otras dos. Ahora va en Preriego, Lecturas y Aplicación, cada una
+contra SU fecha, y además en el encabezado plegado de cada sección.
+
+**Con varios lotes sale un RANGO, no un número.** Los lotes de un turno
+no se siembran el mismo día, así que un solo número sería mentira la
+mitad de las veces: «21 a 25 días» dice de un vistazo que el turno no es
+homogéneo, que es justo lo que hay que saber antes de aplicar. Sin
+ninguna siembra capturada dice «—» y lo explica; no inventa un número.
+
+Antes se pasaba sólo la siembra más temprana y se perdía esa información
+en el camino; ahora viajan todas (`rangoDdt`, `textoDdt`).
+
+**Verificado**
+
+| Prueba | Resultado |
+| --- | --- |
+| `tcalc.mjs` — incluye el caso exacto reportado: lote puesto, nada más tocado, guarda | **102 / 0** |
+| `tdesinf.mjs` — navegador a 390 px, con la prueba de Henry: lote y Guardar | **43 / 0** |
+| Paridad del costo del personal · de las horas de riego | **0 · 0 diferencias** |
+| `tsc --noEmit`, `eslint --max-warnings=0`, `next build` | limpios |
+
+
 ### 2026-10-08 — Desinfección: multiproducto y reestructura del flujo (migración 60)
 
 La 59 dio por supuestas dos cosas que en campo son falsas: que una
@@ -1010,6 +1082,12 @@ Cosas que ya costaron una sesión. No volver a tropezar.
   (`faseCerrada`) no lo aplica RLS, porque el módulo no cuelga de un
   ticket y no tiene el tope de NOTIFICADO. Evita el error de pasada; no
   es seguridad. El navegador nunca concede: sólo esconde.
+- **Un renglón en blanco de una sub-tabla NO es un dato: es el hueco
+  donde escribir.** Hay que descartarlo antes de validar y antes de
+  guardar, comparándolo campo a campo con su plantilla. Y la plantilla no
+  puede traer valores que parezcan escritos: `jornadas: '1'` de fábrica
+  hizo que el formulario se acusara a sí mismo y bloqueó el guardado
+  incremental del módulo entero.
 - **Una columna normal no se vuelve GENERADA con un `alter`.** Hay que
   quitarla y volver a ponerla, y antes tirar las vistas que la nombran.
   Lo mismo para quitar columnas de una tabla que una vista lee.

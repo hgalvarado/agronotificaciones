@@ -43,13 +43,13 @@ import {
   costoPersonal,
   costoProducto,
   costoQuimicos,
-  ddt,
   dosisPorMz,
   horasInyeccion,
   horasPreriego,
   mzDeLotes,
   seccionLlena,
   siguienteSeccion,
+  textoDdt,
   totalHorasRiego,
   validarEjecucion,
   type SeccionEjecucion,
@@ -91,8 +91,8 @@ export function EjecucionModal({
   lotesDisponibles,
   turnosDisponibles,
   estacionesDisponibles,
-  /** La siembra del lote más temprano del turno, para el DDT. */
-  fechaSiembra,
+  /** Las siembras de los lotes del turno, para el DDT de cada fase. */
+  fechasSiembra,
   guardando,
   buscando,
   onActivar,
@@ -113,7 +113,7 @@ export function EjecucionModal({
   lotesDisponibles: LoteDesinfeccion[]
   turnosDisponibles: CatalogosDesinfeccion['turnos']
   estacionesDisponibles: CatalogosDesinfeccion['estaciones']
-  fechaSiembra: string | null
+  fechasSiembra: string[]
   guardando: boolean
   buscando: boolean
   /** Turno + ciclo: el padre busca si ya existe y carga lo que haya. */
@@ -198,7 +198,14 @@ export function EjecucionModal({
   const duracionPreriego = horasPreriego(entrada)
   const inyeccion = horasInyeccion(entrada)
   const totalHoras = totalHorasRiego(entrada)
-  const diasAlTrasplante = ddt(fechaSiembra, entrada.fechaLecturas)
+  // El DDT se enseña en LAS TRES fases y no sólo en las lecturas: la
+  // pregunta «¿a cuántos días de la siembra estoy haciendo esto?» es la
+  // misma el día del preriego que el de la aplicación, y tenerla a la
+  // vista en una sola fase obliga a calcularla de cabeza en las otras dos.
+  const ddtPreriego = textoDdt(fechasSiembra, entrada.fechaPreriego)
+  const ddtLecturas = textoDdt(fechasSiembra, entrada.fechaLecturas)
+  const ddtAplicacion = textoDdt(fechasSiembra, entrada.fechaAplicacion)
+  const haySiembra = fechasSiembra.length > 0
 
   /* ------------------------------ Acciones ----------------------------- */
 
@@ -240,6 +247,26 @@ export function EjecucionModal({
       {bloqueada(s) && <IconLock className="h-3.5 w-3.5 text-slate-400" />}
       <span>{texto}</span>
     </span>
+  )
+
+  /**
+   * El DDT de una fase, en su propio campo de sólo lectura.
+   *
+   * Con varios lotes sembrados en días distintos sale un RANGO en vez de
+   * un número: un turno que va del día 18 al 25 no es homogéneo, y eso es
+   * justo lo que hay que ver antes de aplicar.
+   */
+  const campoDdt = (texto: string) => (
+    <Campo
+      etiqueta="DDT (días antes del trasplante)"
+      ayuda={
+        haySiembra
+          ? 'Siembra de los lotes del turno menos el día de esta fase.'
+          : 'Hará falta la siembra del lote en Trasplante para calcularlo.'
+      }
+    >
+      <Entrada value={texto} readOnly disabled />
+    </Campo>
   )
 
   /** El aviso y el botón de reabrir, dentro de una sección bloqueada. */
@@ -437,7 +464,7 @@ export function EjecucionModal({
                   descripcion="El día y las horas en que se regó antes de aplicar."
                   resumen={resumenDe(
                     'preriego',
-                    duracionPreriego > 0 ? `${n2(duracionPreriego)} h` : '—'
+                    duracionPreriego > 0 ? `${n2(duracionPreriego)} h · ${ddtPreriego}` : ddtPreriego
                   )}
                   abierto={abierta === 'preriego'}
                   onAlternar={() => alternar('preriego')}
@@ -459,6 +486,7 @@ export function EjecucionModal({
                     >
                       <Entrada value={`${n2(duracionPreriego)} h`} readOnly disabled />
                     </Campo>
+                    {campoDdt(ddtPreriego)}
                     <Campo etiqueta="Hora de inicio">
                       <Entrada
                         type="time"
@@ -491,7 +519,7 @@ export function EjecucionModal({
                   descripcion="El día en que se midió, que no tiene por qué ser el del preriego."
                   resumen={resumenDe(
                     'lecturas',
-                    `${lecturas.filter((l) => l.lectura.trim() !== '').length} lecturas`
+                    `${lecturas.filter((l) => l.lectura.trim() !== '').length} lecturas · ${ddtLecturas}`
                   )}
                   abierto={abierta === 'lecturas'}
                   onAlternar={() => alternar('lecturas')}
@@ -507,23 +535,7 @@ export function EjecucionModal({
                         disabled={bloqueada('lecturas')}
                       />
                     </Campo>
-                    <Campo
-                      etiqueta="DAT (días antes del trasplante)"
-                      // Sale de la siembra del lote más temprano del turno.
-                      // Si ese lote no tiene siembra capturada todavía, no
-                      // se inventa un número: se dice que falta.
-                      ayuda={
-                        fechaSiembra
-                          ? 'Siembra del lote más temprano menos el día de la lectura.'
-                          : 'Hará falta la siembra del lote en Trasplante para calcularlo.'
-                      }
-                    >
-                      <Entrada
-                        value={diasAlTrasplante === null ? '—' : `${diasAlTrasplante} días`}
-                        readOnly
-                        disabled
-                      />
-                    </Campo>
+                    {campoDdt(ddtLecturas)}
                   </div>
 
                   <div className="mt-3 flex flex-col gap-2">
@@ -594,7 +606,7 @@ export function EjecucionModal({
                   descripcion="Tiempos, conductividad, calibración y los químicos."
                   resumen={resumenDe(
                     'aplicacion',
-                    quimico > 0 ? `L ${n2(quimico)}` : totalHoras > 0 ? `${n2(totalHoras)} h` : '—'
+                    quimico > 0 ? `L ${n2(quimico)} · ${ddtAplicacion}` : ddtAplicacion
                   )}
                   abierto={abierta === 'aplicacion'}
                   onAlternar={() => alternar('aplicacion')}
@@ -610,6 +622,8 @@ export function EjecucionModal({
                         disabled={bloqueada('aplicacion')}
                       />
                     </Campo>
+
+                    {campoDdt(ddtAplicacion)}
 
                     <Campo etiqueta="Estación de riego">
                       <Selector

@@ -14,7 +14,7 @@
  */
 
 import { sumarDias } from '@/lib/fechas'
-import { FASES, JORNADAS, type EntradaEjecucion, type EntradaLogistica, type EntradaPlan, type EstadoDesinfeccion, type JornadaTipo, type LecturaTensiometro, type LineaLote, type LineaPersonal, type LineaProducto } from './tipos'
+import { FASES, JORNADAS, LINEA_LOTE_VACIA, LINEA_PERSONAL_VACIA, LINEA_PRODUCTO_VACIA, type EntradaEjecucion, type EntradaLogistica, type EntradaPlan, type EstadoDesinfeccion, type JornadaTipo, type LecturaTensiometro, type LineaLote, type LineaPersonal, type LineaProducto } from './tipos'
 
 /** La base sobre la que se calcula la hora extra. Es la de la migración 59. */
 export const HORAS_JORNADA = 8
@@ -192,6 +192,36 @@ export function totalesPlan(e: EntradaPlan): { litros: number; costo: number; co
   return { litros, costo, costoMz: area > 0 ? costo / area : 0 }
 }
 
+/**
+ * El DDT de un turno completo, que riega VARIOS lotes.
+ *
+ * Los lotes de un turno no se siembran el mismo día, así que un solo
+ * número sería mentira la mitad de las veces. Se devuelven los dos
+ * extremos y la pantalla decide cómo decirlo: con un rango se ve de un
+ * vistazo que el turno no es homogéneo, que es justo lo que hay que saber
+ * antes de aplicar.
+ *
+ * `null` cuando no hay ninguna siembra capturada: no se inventa un número.
+ */
+export function rangoDdt(
+  fechasSiembra: string[],
+  fechaFase: string
+): { min: number; max: number } | null {
+  if (!fechaFase) return null
+  const dias = fechasSiembra
+    .map((f) => ddt(f, fechaFase))
+    .filter((d): d is number => d !== null)
+  if (dias.length === 0) return null
+  return { min: Math.min(...dias), max: Math.max(...dias) }
+}
+
+/** Lo mismo, ya escrito para la pantalla. */
+export function textoDdt(fechasSiembra: string[], fechaFase: string): string {
+  const r = rangoDdt(fechasSiembra, fechaFase)
+  if (r === null) return '—'
+  return r.min === r.max ? `${r.min} días` : `${r.min} a ${r.max} días`
+}
+
 /* ------------------------------------------------------------------ */
 /* La fase, y qué se puede tocar en cada una                           */
 /* ------------------------------------------------------------------ */
@@ -325,6 +355,59 @@ export function lecturasParaGuardar(lecturas: LecturaTensiometro[]): LecturaTens
 }
 
 /* ------------------------------------------------------------------ */
+/* Las filas fantasma                                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * ¿Esta fila está tal como nació?
+ *
+ * El formulario abre cada sub-tabla con un renglón en blanco para que
+ * haya dónde escribir. Si nadie lo toca, ese renglón **no es un dato**:
+ * es el hueco. Compararlo campo a campo con su plantilla es la forma
+ * exacta de distinguir «no la tocó» de «la tocó y la dejó a medias», y
+ * esa diferencia es la que decide si se descarta en silencio o si hay que
+ * avisar.
+ *
+ * El identificador no cuenta: una fila que ya existe en la base y que
+ * nadie ha tocado sigue siendo una fila con datos.
+ */
+export function intacta<T extends Record<string, unknown>>(linea: T, plantilla: T): boolean {
+  if ((linea.id ?? '') !== '') return false
+  return Object.keys(plantilla).every(
+    (k) => k === 'id' || String(linea[k] ?? '') === String(plantilla[k] ?? '')
+  )
+}
+
+/**
+ * Fuera los renglones que nadie tocó, antes de validar y antes de
+ * guardar.
+ *
+ * **Por qué existe esto.** El trabajo de campo es asíncrono: se asignan
+ * los lotes un día, se riega otro y se aplica un tercero. Quien guarda
+ * con sólo los lotes puestos no está dejando la cuadrilla «a medias»: es
+ * que todavía no le toca. Antes, el renglón en blanco de personal traía
+ * `jornadas: '1'` de fábrica, la validación lo leía como un dato escrito
+ * y contestaba «Hay un renglón de personal sin puesto de trabajo» — un
+ * error sobre algo que el usuario no había mirado siquiera, y que
+ * bloqueaba el guardado incremental entero.
+ *
+ * Lo que NO hace esta limpieza es tapar un descuido: un renglón donde se
+ * escribieron horas extras y se olvidó el puesto sí está tocado, y ése
+ * sigue avisando.
+ */
+export function limpiarLotes(lineas: LineaLote[]): LineaLote[] {
+  return lineas.filter((l) => !intacta(l, LINEA_LOTE_VACIA))
+}
+
+export function limpiarPersonal(lineas: LineaPersonal[]): LineaPersonal[] {
+  return lineas.filter((l) => !intacta(l, LINEA_PERSONAL_VACIA))
+}
+
+export function limpiarProductos(lineas: LineaProducto[]): LineaProducto[] {
+  return lineas.filter((l) => !intacta(l, LINEA_PRODUCTO_VACIA))
+}
+
+/* ------------------------------------------------------------------ */
 /* Validación                                                          */
 /* ------------------------------------------------------------------ */
 /* Devuelven el problema en texto, o `null` si no hay ninguno. Dicen    */
@@ -350,10 +433,16 @@ export function validarPlan(e: EntradaPlan): string | null {
 
 export function validarEjecucion(
   e: EntradaEjecucion,
-  lotes: LineaLote[],
-  personal: LineaPersonal[],
-  productos: LineaProducto[] = []
+  lotesCrudos: LineaLote[],
+  personalCrudo: LineaPersonal[],
+  productosCrudos: LineaProducto[] = []
 ): string | null {
+  // Primero se tiran los renglones que nadie tocó. Validar el hueco en
+  // blanco es lo que impedía guardar con sólo los lotes puestos.
+  const lotes = limpiarLotes(lotesCrudos)
+  const personal = limpiarPersonal(personalCrudo)
+  const productos = limpiarProductos(productosCrudos)
+
   if (!e.temporadaId) return 'Elige la temporada.'
   if (!e.turnoId) return 'Elige el turno de riego.'
   const ciclo = aNumero(e.ciclo)
