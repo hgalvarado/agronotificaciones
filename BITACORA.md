@@ -235,6 +235,116 @@ dice.
 
 ## 3. Registro de cambios
 
+### 2026-10-08 — Desinfección de suelo: las pantallas (Fase 2, sin migración)
+
+El módulo de la 59 ya se usa. Cuatro pestañas en `/controles/desinfeccion`
+—Planificación, Ejecución, Logística y Reporte—, todas sobre el `DataGrid`
+de siempre y todas decidiendo **por fila** con `canExecuteAction`.
+
+**El embudo de captura es un acordeón, y eso no es decoración.** Un turno
+de desinfección son más de treinta campos en cuatro bloques distintos.
+Puesto en un formulario plano, en un teléfono es una tira interminable en
+la que nadie sabe por dónde va. Partido en cuatro secciones plegables
+—datos base y preriego · lecturas · aplicación · lotes y cuadrilla— se ve
+el índice completo de un vistazo y se abre sólo lo que toca ahora.
+
+Tres decisiones del acordeón:
+
+- **Una sección abierta a la vez.** Con las cuatro abiertas vuelve a ser
+  la tira que se venía a evitar.
+- **El contenido se oculta, NO se desmonta.** Plegar una sección por error
+  no puede borrar lo que se llevaba escrito, y la validación tiene que
+  poder mirar dentro de lo cerrado.
+- **El encabezado dice lo suyo estando cerrado** («3 lotes · 12.40 mz»).
+  Si no, plegar es esconder información en vez de ordenarla.
+
+Cuál se abre sola la decide la FASE del turno: quien entra a uno que está
+en preriego viene a capturar el preriego, no a mirar las calibraciones.
+
+**La vista previa del costo NO es el costo.** El costo del personal lo
+pone el disparador de la base; el formulario enseña el mismo cálculo con
+la tarifa que devuelve `fn_tarifa_puesto`, para que quien captura vea lo
+que va a costar antes de guardar. Dos implementaciones de una fórmula son
+dos números, así que **se comprueban una contra otra**: las 288
+combinaciones de (personas × jornadas × horas extras × jornada × tarifa)
+se generan con el disparador real y se recalculan en el navegador. Cero
+diferencias. Es la misma regla de paridad que la 56 fijó para el ABAC,
+aplicada al dinero.
+
+La tarifa se pide por `fn_tarifa_puesto` y **no** con un `select` a
+`tarifas_puesto`: esa tabla se lee con el permiso de Costos o de Tarifas,
+y quien captura en campo no suele tenerlo. La función es `security
+definer` y está concedida a `authenticated` justamente para esto.
+
+**El candado de fase es convención de PANTALLA, no seguridad.** Un turno
+en «3. Aplicación» no se corrige de pasada: la celda no se edita y el
+formulario sale con los campos bloqueados y un interruptor visible para
+abrirlos. Pero **la base no bloquea nada por fase** —desinfección no
+cuelga de un ticket, así que no tiene el tope de NOTIFICADO— y eso está
+escrito en `faseCerrada`. El navegador nunca concede: sólo esconde. El
+día que esto tenga que ser una regla de verdad, va en RLS.
+
+**«Sincronizar» es a mano y sobre una selección.** La
+`fecha_siembra_congelada` se copia a propósito al planificar (§3, la 59):
+si la siembra se mueve, el plan no se mueve solo. Pero a veces se movió de
+verdad, y re-planificar es una DECISIÓN. El botón la toma sobre las líneas
+marcadas, avisa de que va a mover la fecha de aplicación, y dice cuántas
+líneas no pudo resolver —porque no hay siembra registrada, o porque quien
+mira no ve Trasplante—. Lo que no hace es decir «listo» sin haber
+cambiado nada.
+
+**El reporte: las tres piezas, siempre.** Químico, mano de obra y
+logística absorbida se enseñan aunque alguna vaya en cero, porque un total
+sin desglose no se audita y nadie firma lo que no puede auditar. El costo
+por manzana del total es **ponderado** —total entre manzanas—, no la media
+de los promedios: el lote de media manzana no pesa lo mismo que el de
+doce. Dos gráficos SVG a mano, sin librerías, por lo de siempre: esto se
+imprime.
+
+**Un fallo mío que encontró la prueba, y que conviene recordar.** Al
+guardar una ejecución se borran los renglones que ya no están, y la
+primera versión los comparaba contra los identificadores del FORMULARIO.
+Un renglón recién creado todavía no tiene identificador, así que se
+insertaba y, dos líneas más abajo, se borraba por «sobrante». Ahora se
+compara contra los identificadores que quedaron VIVOS —los nuevos
+incluidos—, y esa cuenta vive suelta y probada en `idsSobrantes`.
+
+El orden de guardado tampoco es casual: cabecera → se añade y se corrige
+lo que cuelga → **y al final** se borra lo que sobró. Borrar primero es
+más corto de escribir y mucho peor: una desconexión a mitad dejaría el
+turno sin los lotes que sí tenía. Así, lo peor que queda es un renglón de
+más, que se ve y se corrige. (La 59 no dejó una función que guarde
+cabecera y detalle en una sola transacción; el día que se escriba, esto
+se simplifica.)
+
+| Archivo | Qué |
+| --- | --- |
+| `lib/desinfeccion/tipos.ts` | Las formas de las seis vistas y de los tres formularios. Todo en texto: un `number` obliga a decidir qué es un campo vacío, y las dos salidas mienten. |
+| `lib/desinfeccion/calculo.ts` | **Puro.** El costo del personal, los totales del plan, las horas sugeridas, el candado de fase, `idsSobrantes` y la validación. |
+| `lib/desinfeccion/repositorioCliente.ts` | Lee y escribe. No valida y no decide quién puede. |
+| `components/ui/Acordeon.tsx` | **Nuevo**, genérico. |
+| `components/ui/Modal.tsx` | Gana `ancho`; en el teléfono no cambia nada. |
+| `components/desinfeccion/*` | Las cuatro pestañas, los tres formularios y los dos gráficos. |
+| `components/ui/AppShell.tsx` | Entrada en Controles, junto a Riego: se ejecuta sobre el turno de riego. |
+
+**Verificado**
+
+| Prueba | Resultado |
+| --- | --- |
+| **Paridad del costo del personal**, navegador ↔ disparador, 288 combinaciones | **0 diferencias** |
+| `tcalc.mjs` — las cuentas, el candado, los sobrantes, la validación | **56 / 0** |
+| `tdesinf.mjs` — navegador a 390 px: acordeón, desbordes, vista previa, candado, reporte | **29 / 0** |
+| `t59` · `t58` · `t56` · `t55` · `t54` · `t53` · `t42_52` | **40/0 · 25/0 · 23/0 · 19/0 · 26/0 · 45/0 · 36/0** |
+| `tsc --noEmit`, `eslint --max-warnings=0`, `next build` | limpios |
+
+**Lo que NO lleva, y hay que decirlo**
+
+El módulo **no tiene importador de Excel**. Exporta —el `DataGrid` lo trae
+de serie, con su casilla de «exportar»— pero la regla de la casa dice
+import **y** export para todo módulo de captura, y eso queda pendiente. Se
+anota aquí para que no se pierda: tres importadores (plan, ejecución y
+logística) con sus desplegables de catálogo, como los de trasplante.
+
 ### 2026-10-08 — Desinfección de suelo: el núcleo (migración 59)
 
 Fase 1 del módulo: las tablas, su RLS, los cálculos que no pueden quedar
@@ -765,6 +875,22 @@ Cosas que ya costaron una sesión. No volver a tropezar.
   buscarla en las migraciones viejas.
 - **`localStorage` LANZA en ventana privada**, no devuelve null. Todo
   acceso va en try/catch y la pantalla tiene que funcionar sin él.
+- **Al guardar un maestro-detalle desde el navegador, los renglones que
+  sobran se comparan contra los identificadores VIVOS, no contra los del
+  formulario.** Un renglón recién insertado todavía no tiene
+  identificador: compararlo contra el formulario lo borra justo después
+  de crearlo. Y el borrado va SIEMPRE al final, nunca antes de insertar:
+  así una desconexión a mitad deja un renglón de más —visible— y no un
+  dato capturado que desapareció.
+- **Un bloqueo que sólo existe en la pantalla hay que escribir que sólo
+  existe en la pantalla.** El candado de fase de desinfección
+  (`faseCerrada`) no lo aplica RLS, porque el módulo no cuelga de un
+  ticket y no tiene el tope de NOTIFICADO. Evita el error de pasada; no
+  es seguridad. El navegador nunca concede: sólo esconde.
+- **`tarifas_puesto` se lee con el permiso de Costos o de Tarifas.** Quien
+  captura en campo no suele tenerlo, así que cualquier pantalla que
+  necesite una tarifa para enseñar un número usa `fn_tarifa_puesto`, que
+  es `security definer` y está concedida a `authenticated`.
 - **`fn_ve_zona` devuelve `true` cuando el usuario NO tiene zonas
   asignadas.** Por eso un recorte zonal no se nota hasta que alguien
   tiene zonas, y por eso las pruebas necesitan un usuario con zonas.
@@ -839,6 +965,10 @@ La migración a ABAC está **cerrada en toda la plataforma**.
 - **Granularidad de catálogos** (migración 58) — «Catálogos» deja de ser
   una casilla y pasa a ser cinco bloques, aplicados por RLS tabla por
   tabla.
+- **Desinfección de suelo** — núcleo en la migración 59 y pantallas en la
+  Fase 2: `/controles/desinfeccion`, con su captura en acordeón y su
+  reporte por lote.
 
-Lo que queda abierto son ideas, no deuda: están al final del changelog
-de la 57.
+Lo que queda abierto son ideas, no deuda, salvo UNA cosa que sí lo es y
+está anotada arriba: **desinfección no tiene importador de Excel**. El
+resto, al final del changelog de la 57.

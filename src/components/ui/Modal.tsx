@@ -4,18 +4,33 @@ import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { IconX } from './Icons'
 
+/**
+ * Cuánto se le deja crecer EN PANTALLA GRANDE.
+ *
+ * En el celular todos miden lo mismo —el ancho de la pantalla menos el
+ * margen— porque no hay otra opción sensata. La diferencia empieza en
+ * `sm`: un formulario de cuatro secciones en una columna de 32 rem obliga
+ * a desplazarse por campos que caben de sobra al lado.
+ */
+const anchos = {
+  normal: 'sm:max-w-lg',
+  ancho: 'sm:max-w-3xl',
+} as const
+
 export function Modal({
   abierto,
   onCerrar,
   titulo,
   children,
   pie,
+  ancho = 'normal',
 }: {
   abierto: boolean
   onCerrar: () => void
   titulo: string
   children: React.ReactNode
   pie?: React.ReactNode
+  ancho?: keyof typeof anchos
 }) {
   useEffect(() => {
     if (!abierto) return
@@ -62,7 +77,7 @@ export function Modal({
           role="dialog"
           aria-modal="true"
           aria-label={titulo}
-          className="relative flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-2xl bg-white shadow-[var(--shadow-float)] sm:max-h-[85svh] sm:max-w-lg"
+          className={`relative flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-2xl bg-white shadow-[var(--shadow-float)] sm:max-h-[85svh] ${anchos[ancho]}`}
         >
           <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-5 py-4">
             <h2 className="text-base font-semibold text-slate-900">{titulo}</h2>

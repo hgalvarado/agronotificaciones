@@ -121,6 +121,7 @@ export function AppShell({
         ve('trasplante') ||
         ve('rotacion') ||
         ve('turnos_riego') ||
+        ve('desinfeccion') ||
         ve('telecom'),
       hijos: [
         {
@@ -150,6 +151,15 @@ export function AppShell({
           etiqueta: 'Turnos de riego',
           icono: <IconGota />,
           visible: ve('turnos_riego'),
+        },
+        {
+          // Va junto a Riego porque se ejecuta sobre el TURNO de riego:
+          // quien entra aquí viene de mirar los turnos.
+          href: '/controles/desinfeccion',
+          pantalla: 'desinfeccion',
+          etiqueta: 'Desinfección de suelo',
+          icono: <IconGota />,
+          visible: ve('desinfeccion'),
         },
         {
           href: '/telecom',
