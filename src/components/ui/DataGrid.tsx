@@ -271,9 +271,16 @@ export function DataGrid<T extends { id: string }>({
     return salida
   }, [visibles, columnas, agregaciones])
 
-  // El pie se queda PEGADO abajo sólo cuando hay algún total que leer.
-  // Pegado siempre, una fila vacía se come una fila de datos en un
-  // teléfono y no enseña nada a cambio.
+  // ¿Hay algún total elegido? Sólo decide el GROSOR de la fila, no si se
+  // pega abajo.
+  //
+  // Al principio el pie era `sticky` únicamente cuando ya había un total
+  // elegido, y eso lo volvía inalcanzable: con cuatrocientas líneas de
+  // labores el pie quedaba debajo de las cuatrocientas, así que para
+  // poder ELEGIR un total había que desplazarse hasta el final de la
+  // tabla. Con un filtro puesto la tabla se acortaba y el pie aparecía,
+  // de donde salía la impresión de que los totales «sólo funcionan con
+  // filtro». Funcionaban; lo que no se veía era dónde tocar.
   const hayTotales = columnas.some((c) => (agregaciones[c.campo] ?? 'ninguna') !== 'ninguna')
 
   return (
@@ -566,11 +573,14 @@ export function DataGrid<T extends { id: string }>({
                     a un div aparte lo desalinearía de las columnas en
                     cuanto una tabla tenga desplazamiento horizontal, que
                     es justo cuando más falta hace leerlo. */}
-                <tfoot className={`bg-slate-50 ${hayTotales ? 'sticky bottom-0 z-10' : ''}`}>
+                <tfoot className="sticky bottom-0 z-10 bg-slate-50">
                   <tr className="border-t border-slate-200">
-                    {seleccionable && <th className="px-2 py-1.5" />}
+                    {seleccionable && <th className={hayTotales ? 'px-2 py-1.5' : 'px-2 py-0.5'} />}
                     {columnas.map((c) => (
-                      <td key={c.campo} className="px-2 py-1.5 align-middle">
+                      <td
+                        key={c.campo}
+                        className={`align-middle ${hayTotales ? 'px-2 py-1.5' : 'px-2 py-0.5'}`}
+                      >
                         <PieAgregacion
                           etiqueta={c.label}
                           tipo={agregaciones[c.campo] ?? 'ninguna'}
@@ -581,7 +591,9 @@ export function DataGrid<T extends { id: string }>({
                         />
                       </td>
                     ))}
-                    {hayColumnaAcciones && <td className="px-3 py-1.5" />}
+                    {hayColumnaAcciones && (
+                      <td className={hayTotales ? 'px-3 py-1.5' : 'px-3 py-0.5'} />
+                    )}
                   </tr>
                 </tfoot>
               </table>

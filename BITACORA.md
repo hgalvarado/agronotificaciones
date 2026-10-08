@@ -235,6 +235,105 @@ dice.
 
 ## 3. Registro de cambios
 
+### 2026-10-08 — Desinfección de suelo: el núcleo (migración 59)
+
+Fase 1 del módulo: las tablas, su RLS, los cálculos que no pueden quedar
+en el navegador y las vistas con su reja. Sin pantallas todavía.
+
+**La forma: maestro-detalle sobre el TURNO de riego.**
+
+```
+PLAN         qué se va a aplicar, lote por lote, con su costo previsto
+EJECUCIÓN    lo que pasó, en tres fases sobre un turno de riego
+  └ LOTES    qué lotes tocó ese turno y cuántas manzanas de cada uno
+PERSONAL     la cuadrilla de esa ejecución
+LOGÍSTICA    la bolsa de acarreo de la zona
+```
+
+Un turno riega **varios** lotes, así que los lotes regados son una tabla
+y no tres columnas — con columnas, el cuarto lote no cabe.
+
+**Tres decisiones que no son obvias**
+
+- **`fecha_siembra_congelada` se copia, no se referencia.** Si la siembra
+  se mueve, el plan de desinfección no debe moverse solo: ya se compró el
+  producto y ya se cuadró la cuadrilla. Que las dos fechas se separen es
+  información, no un error que corregir.
+- **Los totales del plan son columnas generadas** (`fecha_aplicacion`,
+  `total_litros`, `total_costo`, `costo_mz`). Un total calculado en el
+  navegador acaba distinto del del reporte, y nadie sabe cuál es el
+  bueno. La prueba comprueba que ni un `update` directo puede falsearlos.
+- **La bolsa de logística NO se reparte al guardar, sino al leer.** Si se
+  repartiera al guardar, agregar un lote a la zona obligaría a recalcular
+  hacia atrás todo lo ya repartido.
+
+**El prorrateo zonal, en `interno.v_desinfeccion_costos_crudo`**
+
+Las tres piezas del costo de un lote no se suman igual:
+
+| Pieza | Se reparte entre |
+| --- | --- |
+| Químico (ácido del turno) | los lotes de **esa ejecución**, por manzanas |
+| Personal (la cuadrilla) | los lotes de **esa ejecución**, por manzanas |
+| Bolsa de logística | las manzanas de **esa zona** en la temporada |
+
+La bolsa es la que tiene truco: se captura por zona y **no se filtra a
+otra zona**. La prueba lo comprueba con dos lotes en zonas distintas — el
+de la Zona Sur no carga ni un lempira de acarreo de la Norte. Todas las
+divisiones van con `nullif`: una zona sin manzanas regadas todavía no es
+un error, es una zona que aún no ha empezado.
+
+**Dos cosas que el encargo pedía y ya existían**
+
+- `tarifas_puesto` ya estaba desde la migración 11, con su vigencia. **No
+  se creó otra**: dos tablas de salarios es garantizar que dentro de un
+  año digan cosas distintas y nadie sepa cuál rige. Lo único que había
+  que traducir es la unidad — allí el costo es por HORA y el encargo
+  razona en jornadas —, y la jornada son ocho horas, que es la misma base
+  sobre la que se calcula la hora extra.
+- La columna de la tasa se llama **`tasa_hnl_usd`**, no `tasa_hdl_usd`:
+  el código ISO del lempira es HNL. Una columna bautizada con una moneda
+  que no existe se arrastra para siempre.
+
+**El cálculo del personal**
+
+```
+costo = personas × ( tarifa_día × jornadas
+                   + horas_extras × (tarifa_día / 8) × factor )
+```
+
+Factor 1.25 de día, 1.75 de noche. La tarifa se **copia a la fila**: si
+mañana sube el salario, lo ya capturado no puede cambiar de costo solo —
+y la prueba lo verifica subiendo la tarifa y comprobando que el costo
+viejo no se mueve.
+
+**Las seis vistas** siguen el patrón de la 56/57: cruda en `interno` con
+`security_invoker = off` —así resuelve los nombres de los catálogos
+aunque quien pregunta no tenga permiso sobre ellos— y expuesta en
+`public` con la reja de `desinfeccion`.
+
+### 2026-10-08 — El pie de totales se alcanzaba sólo con filtro
+
+El pie era `sticky` **únicamente cuando ya había un total elegido**, y eso
+lo volvía inalcanzable: con cuatrocientas líneas de labores quedaba
+debajo de las cuatrocientas, así que para poder ELEGIR un total había que
+desplazarse hasta el final de la tabla. Con un filtro puesto la tabla se
+acortaba y el pie aparecía — de ahí la impresión de que «los totales sólo
+funcionan con filtro». Funcionaban; lo que no se veía era dónde tocar.
+
+Ahora el pie está pegado abajo **siempre**, y lo que cambia según haya o
+no un total elegido es sólo el grosor de la fila.
+
+**Verificado**
+
+| Prueba | Resultado |
+| --- | --- |
+| `t59.sql` — catálogos, columnas generadas, el cálculo del personal, el prorrateo zonal, los nombres, la reja | **40 / 0** |
+| `t42_52` · `t53` · `t54` · `t55` · `t56` · `t58` sobre la cadena 59 | **36/0 · 45/0 · 26/0 · 19/0 · 23/0 · 25/0** |
+| `tpie.mjs` — ahora con tabla larga y sin filtro | **16 / 0** |
+| `tagreg` · `tgrid` · `tlote` · `tabac` | **24/0 · 13/0 · 12/0 · 29/0** |
+| `tsc --noEmit`, `eslint --max-warnings=0`, `next build` | limpios |
+
 ### 2026-10-08 — Totales al pie de las cuadrículas y acciones en masa de tickets
 
 Sin migración: las dos son de navegador.
@@ -656,6 +755,14 @@ Cosas que ya costaron una sesión. No volver a tropezar.
   sobre una acción inexistente contesta que no, sin error y sin aviso.
   Al borrar una acción hay que buscarla en `src/` con el mismo cuidado
   que el guardián la busca en el SQL.
+- **Una fila `sticky` dentro de una tabla con desplazamiento sólo se
+  alcanza si es sticky SIEMPRE.** Hacerla sticky «cuando hay algo que
+  enseñar» es un bucle: para que haya algo que enseñar hay que poder
+  tocarla primero.
+- **`create table if not exists` sobre una tabla que ya existe con otra
+  forma no avisa**: la salta en silencio y falla el primer índice que
+  nombre una columna que no está. Antes de crear una tabla hay que
+  buscarla en las migraciones viejas.
 - **`localStorage` LANZA en ventana privada**, no devuelve null. Todo
   acceso va en try/catch y la pantalla tiene que funcionar sin él.
 - **`fn_ve_zona` devuelve `true` cuando el usuario NO tiene zonas
