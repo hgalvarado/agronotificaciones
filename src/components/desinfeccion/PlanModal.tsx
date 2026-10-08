@@ -10,12 +10,13 @@
  * decide. Son columnas generadas; esto es sólo verlas antes de guardar.
  */
 
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Alerta, Boton, Campo, Entrada, Selector } from '@/components/ui/Primitivos'
 import { formatearFecha } from '@/lib/estados'
 import { n2 } from '@/lib/trasplante/formato'
 import { fechaAplicacionPrevista, totalesPlan, validarPlan } from '@/lib/desinfeccion/calculo'
+import { siembrasDeLotes } from '@/lib/desinfeccion/repositorioCliente'
 import type { CatalogosDesinfeccion, EntradaPlan, LoteDesinfeccion } from '@/lib/desinfeccion/tipos'
 
 export function PlanModal({
@@ -37,10 +38,55 @@ export function PlanModal({
   onCerrar: () => void
 }) {
   const [error, setError] = useState<string | null>(null)
+  const [autollenado, setAutollenado] = useState<string | null>(null)
 
   const totales = useMemo(() => totalesPlan(entrada), [entrada])
   const aplicacion = fechaAplicacionPrevista(entrada)
   const lote = lotes.find((l) => l.lote_temporada_id === entrada.loteTemporadaId)
+
+  /**
+   * Elegir el lote trae su siembra y su variedad.
+   *
+   * No es un adorno: la fecha de siembra es de donde sale la de
+   * aplicación, y escribirla a mano con el plan de Trasplante abierto en
+   * otra pestaña es cómo se cuelan las fechas equivocadas. Los días a la
+   * aplicación siguen siendo a mano —eso lo decide el agrónomo, no el
+   * sistema—.
+   *
+   * Lo que ya estaba escrito NO se pisa: si alguien corrigió la fecha a
+   * propósito, el autollenado no puede deshacérsela. Y se DICE que se
+   * rellenó, porque un campo que cambia solo y en silencio es un campo
+   * que nadie vuelve a mirar.
+   */
+  const elegirLote = useCallback(
+    async (loteTemporadaId: string) => {
+      const base = { ...entrada, loteTemporadaId }
+      onCambiar(base)
+      setAutollenado(null)
+      if (!loteTemporadaId) return
+
+      const mapa = await siembrasDeLotes([loteTemporadaId], Number(entrada.ciclo) || null)
+      const dato = mapa.get(loteTemporadaId)
+      if (!dato) {
+        setAutollenado('Ese lote todavía no tiene siembra capturada en Trasplante.')
+        return
+      }
+
+      const cambios: Partial<EntradaPlan> = {}
+      if (!base.fechaSiembraCongelada) cambios.fechaSiembraCongelada = dato.fecha
+      if (!base.variedadId && dato.variedadId) cambios.variedadId = dato.variedadId
+
+      if (Object.keys(cambios).length === 0) {
+        setAutollenado('El lote ya tenía fecha y variedad escritas: no se tocaron.')
+        return
+      }
+      onCambiar({ ...base, ...cambios })
+      setAutollenado(
+        `Se tomó de Trasplante: siembra ${dato.fecha}${dato.variedad ? ` · ${dato.variedad}` : ''}.`
+      )
+    },
+    [entrada, onCambiar]
+  )
 
   function guardar() {
     const problema = validarPlan(entrada)
@@ -69,6 +115,7 @@ export function PlanModal({
     >
       <div className="flex flex-col gap-4">
         {error && <Alerta>{error}</Alerta>}
+        {autollenado && <Alerta tono="azul">{autollenado}</Alerta>}
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Campo etiqueta="Temporada" requerido>
@@ -97,7 +144,7 @@ export function PlanModal({
           <Campo etiqueta="Lote" requerido className="sm:col-span-2">
             <Selector
               value={entrada.loteTemporadaId}
-              onChange={(e) => cambiar({ loteTemporadaId: e.target.value })}
+              onChange={(e) => void elegirLote(e.target.value)}
             >
               <option value="">Elige el lote…</option>
               {lotes.map((l) => (
@@ -112,7 +159,7 @@ export function PlanModal({
           <Campo
             etiqueta="Fecha de siembra"
             requerido
-            ayuda="Se copia aquí y se queda quieta: si la siembra se mueve, el plan no se mueve solo."
+            ayuda="La trae el lote desde Trasplante y se queda quieta: si la siembra se mueve, el plan no se mueve solo."
           >
             <Entrada
               type="date"

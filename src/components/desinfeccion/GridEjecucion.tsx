@@ -3,13 +3,15 @@
 /**
  * Pestaña 2 · Ejecución de turnos. La cuadrícula principal del módulo.
  *
- * Una fila es un TURNO completo, con su resumen de lo que cuelga —cuántos
- * lotes, cuántas manzanas, cuánto costó la cuadrilla—, que la vista ya
- * trae sumado. El detalle renglón por renglón se abre en el formulario:
- * una celda no puede guardar una lista de lotes.
+ * Una fila es un TURNO completo de un ciclo, con su resumen de lo que
+ * cuelga —cuántos lotes, cuántas manzanas, cuánto costó la cuadrilla y
+ * cuánto el químico—, que la vista ya trae sumado. El detalle renglón por
+ * renglón se abre en el formulario: una celda no puede guardar una lista
+ * de lotes ni una de químicos.
  *
- * El candado de fase —un turno en Aplicación no se corrige de pasada— es
- * convención de PANTALLA, no de RLS: está explicado en `faseCerrada`.
+ * Aquí vive también la BÚSQUEDA del activador: el formulario pregunta
+ * turno y ciclo y esta pantalla, que es la que sabe hablar con la base,
+ * trae la ejecución que ya exista con todo lo que cuelga de ella.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -22,35 +24,44 @@ import { n2 } from '@/lib/trasplante/formato'
 import { canExecuteAction, type Reglas } from '@/lib/permisos/clientABAC'
 import { faseCerrada } from '@/lib/desinfeccion/calculo'
 import {
+  buscarEjecucion,
   cambiarFase,
   editarCampoEjecucion,
   eliminarEjecuciones,
   guardarEjecucion,
   leerDetalle,
   leerEjecuciones,
+  siembrasDeLotes,
 } from '@/lib/desinfeccion/repositorioCliente'
 import {
+  CICLOS,
   EJECUCION_VACIA,
   FASES,
   LINEA_LOTE_VACIA,
   LINEA_PERSONAL_VACIA,
+  LINEA_PRODUCTO_VACIA,
   etiquetaFase,
+  lecturasPorOmision,
   type CatalogosDesinfeccion,
   type EntradaEjecucion,
   type FilaEjecucion,
   type LecturaTensiometro,
   type LineaLote,
   type LineaPersonal,
+  type LineaProducto,
   type LoteDesinfeccion,
 } from '@/lib/desinfeccion/tipos'
 import { EjecucionModal } from './EjecucionModal'
 
+/** `time` de Postgres llega como HH:MM:SS; el input quiere HH:MM. */
 const t = (v: string | null | undefined) => (v ?? '').slice(0, 5)
 
 export function GridEjecucion({
   temporadaId,
   catalogos,
   lotes,
+  turnos,
+  estaciones,
   reglas,
   usuarioId,
   zonas,
@@ -58,7 +69,10 @@ export function GridEjecucion({
 }: {
   temporadaId: string
   catalogos: CatalogosDesinfeccion
+  /** Ya recortados por zona por la pestaña. */
   lotes: LoteDesinfeccion[]
+  turnos: CatalogosDesinfeccion['turnos']
+  estaciones: CatalogosDesinfeccion['estaciones']
   reglas: Reglas
   usuarioId: string | null
   zonas: Set<string>
@@ -69,6 +83,7 @@ export function GridEjecucion({
   const [error, setError] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
   const [ocupado, setOcupado] = useState(false)
+  const [buscando, setBuscando] = useState(false)
 
   const [entrada, setEntrada] = useState<EntradaEjecucion | null>(null)
   const [lecturas, setLecturas] = useState<LecturaTensiometro[]>([])
@@ -76,6 +91,11 @@ export function GridEjecucion({
   const [lineasPersonal, setLineasPersonal] = useState<LineaPersonal[]>([
     { ...LINEA_PERSONAL_VACIA },
   ])
+  const [lineasProducto, setLineasProducto] = useState<LineaProducto[]>([
+    { ...LINEA_PRODUCTO_VACIA },
+  ])
+  /** La siembra del lote más temprano del turno, para el DAT de la fase 2. */
+  const [fechaSiembra, setFechaSiembra] = useState<string | null>(null)
 
   const ctx = useMemo(() => ({ usuarioId, zonas }), [usuarioId, zonas])
   const puedeCrear = canExecuteAction(reglas, 'desinfeccion', 'crear')
@@ -160,6 +180,18 @@ export function GridEjecucion({
           </span>
         ),
       },
+      {
+        campo: 'ciclo',
+        label: 'Ciclo',
+        tipo: 'seleccion',
+        numero: true,
+        valor: (f) => f.ciclo,
+        etiqueta: (f) => `Ciclo ${f.ciclo}`,
+        editable: celdaEditable,
+        editor: 'seleccion',
+        valorEdicion: (f) => String(f.ciclo),
+        opciones: CICLOS.map((c) => ({ value: String(c), label: `Ciclo ${c}` })),
+      },
       { campo: 'zona_nombre', label: 'Zona', tipo: 'seleccion', valor: (f) => f.zona_nombre },
       {
         campo: 'estado',
@@ -191,11 +223,25 @@ export function GridEjecucion({
         render: (f) => (
           <span className="text-xs">
             {f.fecha_preriego ? formatearFecha(f.fecha_preriego) : '—'}
-            {f.hora_inicio_preriego && (
-              <span className="ml-1 text-slate-400">
-                {t(f.hora_inicio_preriego)}–{t(f.hora_fin_preriego)}
-              </span>
+            {f.horas_preriego !== null && Number(f.horas_preriego) > 0 && (
+              <span className="ml-1 text-slate-400">{n2(f.horas_preriego)} h</span>
             )}
+          </span>
+        ),
+      },
+      {
+        campo: 'fecha_lecturas',
+        label: 'Lecturas',
+        tipo: 'fecha',
+        ancho: '9rem',
+        valor: (f) => f.fecha_lecturas,
+        etiqueta: (f) => (f.fecha_lecturas ? formatearFecha(f.fecha_lecturas) : ''),
+        editable: celdaEditable,
+        editor: 'fecha',
+        valorEdicion: (f) => f.fecha_lecturas ?? '',
+        render: (f) => (
+          <span className="text-xs">
+            {f.fecha_lecturas ? formatearFecha(f.fecha_lecturas) : '—'}
           </span>
         ),
       },
@@ -225,7 +271,7 @@ export function GridEjecucion({
         valorEdicion: (f) => f.estacion_riego_id ?? '',
         opciones: [
           { value: '', label: 'Sin estación' },
-          ...catalogos.estaciones.map((e) => ({ value: e.id, label: e.nombre })),
+          ...estaciones.map((e) => ({ value: e.id, label: e.nombre })),
         ],
       },
       {
@@ -249,11 +295,10 @@ export function GridEjecucion({
         label: 'Horas riego',
         tipo: 'numero',
         numero: true,
+        // Columna generada desde la 60: se mira, no se escribe. Dejarla
+        // editable sería ofrecer un campo que la base rechaza siempre.
         valor: (f) => (f.total_horas_riego === null ? null : Number(f.total_horas_riego)),
         etiqueta: (f) => n2(f.total_horas_riego),
-        editable: celdaEditable,
-        editor: 'numero',
-        valorEdicion: (f) => String(f.total_horas_riego ?? ''),
       },
       {
         campo: 'ppm',
@@ -300,42 +345,32 @@ export function GridEjecucion({
         valorEdicion: (f) => String(f.ce_despues ?? ''),
       },
       {
-        campo: 'producto_nombre',
-        label: 'Producto',
-        tipo: 'seleccion',
-        ancho: '12rem',
-        valor: (f) => f.producto_nombre,
-        editable: celdaEditable,
-        editor: 'seleccion',
-        valorEdicion: (f) => f.producto_id ?? '',
-        opciones: [
-          { value: '', label: 'Sin producto' },
-          ...catalogos.materiales.map((m) => ({
-            value: m.id,
-            label: `${m.codigo}${m.descripcion ? ` · ${m.descripcion}` : ''}`,
-          })),
-        ],
+        campo: 'productos_nombres',
+        label: 'Químicos',
+        tipo: 'texto',
+        ancho: '14rem',
+        // Ya no es UN producto: una aplicación lleva los que haga falta,
+        // así que la columna enseña cuántos y cuáles.
+        valor: (f) => f.productos_nombres,
+        render: (f) =>
+          f.productos > 0 ? (
+            <span className="block max-w-[200px] truncate text-xs" title={f.productos_nombres ?? ''}>
+              <strong className="text-slate-900">{f.productos}</strong>{' '}
+              <span className="text-slate-400">{f.productos_nombres}</span>
+            </span>
+          ) : (
+            <span className="text-xs text-slate-300">—</span>
+          ),
       },
       {
-        campo: 'litros_acido',
-        label: 'Litros ácido',
-        tipo: 'numero',
-        numero: true,
-        valor: (f) => Number(f.litros_acido ?? 0),
-        etiqueta: (f) => n2(f.litros_acido),
-        editable: celdaEditable,
-        editor: 'numero',
-        valorEdicion: (f) => String(f.litros_acido ?? ''),
-      },
-      {
-        campo: 'costo_acido',
+        campo: 'costo_quimico',
         label: 'Costo químico',
         tipo: 'numero',
         numero: true,
-        valor: (f) => Number(f.costo_acido ?? 0),
-        etiqueta: (f) => n2(f.costo_acido),
+        valor: (f) => Number(f.costo_quimico ?? 0),
+        etiqueta: (f) => n2(f.costo_quimico),
         render: (f) => (
-          <span className="font-bold tabular-nums text-slate-900">{n2(f.costo_acido)}</span>
+          <span className="font-bold tabular-nums text-slate-900">{n2(f.costo_quimico)}</span>
         ),
       },
       {
@@ -358,83 +393,169 @@ export function GridEjecucion({
         ),
       },
     ],
-    [catalogos, celdaEditable, puedeEditarFila]
+    [estaciones, celdaEditable, puedeEditarFila]
   )
+
+  /* ------------------------- Cargar un turno --------------------------- */
+
+  /** Deja el formulario como está la ejecución que llega (o vacío). */
+  const cargarEnFormulario = useCallback(
+    async (f: FilaEjecucion | null, base: EntradaEjecucion) => {
+      if (!f) {
+        setEntrada(base)
+        setLecturas(lecturasPorOmision())
+        setLineasLote([{ ...LINEA_LOTE_VACIA }])
+        setLineasPersonal([{ ...LINEA_PERSONAL_VACIA }])
+        setLineasProducto([{ ...LINEA_PRODUCTO_VACIA }])
+        return
+      }
+
+      const { lotes: ls, personal: ps, productos: qs, error: e } = await leerDetalle(f.id)
+      if (e) setError(e)
+
+      setEntrada({
+        id: f.id,
+        temporadaId: f.temporada_id,
+        turnoId: f.turno_id,
+        ciclo: String(f.ciclo),
+        estado: f.estado,
+        fechaPreriego: f.fecha_preriego ?? '',
+        horaInicioPreriego: t(f.hora_inicio_preriego),
+        horaFinPreriego: t(f.hora_fin_preriego),
+        obsPreriego: f.obs_preriego ?? '',
+        fechaLecturas: f.fecha_lecturas ?? '',
+        fechaAplicacion: f.fecha_aplicacion ?? '',
+        estacionRiegoId: f.estacion_riego_id ?? '',
+        horasPresurizacion: String(f.horas_presurizacion ?? ''),
+        horaInicioIny: t(f.hora_inicio_iny),
+        horaFinIny: t(f.hora_fin_iny),
+        horasLavado: String(f.horas_lavado ?? ''),
+        ppm: String(f.ppm ?? ''),
+        ceAntes: String(f.ce_antes ?? ''),
+        ceDurante: String(f.ce_durante ?? ''),
+        ceDespues: String(f.ce_despues ?? ''),
+        calibracionEntrada: String(f.calibracion_entrada ?? ''),
+        calibracionSalida: String(f.calibracion_salida ?? ''),
+        calibracionCampo: String(f.calibracion_campo ?? ''),
+      })
+
+      // El JSONB viene como venga: si alguien guardó otra cosa ahí, se
+      // ignora en vez de tumbar el formulario.
+      const leidas = Array.isArray(f.lecturas_tensiometro) ? f.lecturas_tensiometro : []
+      setLecturas(leidas.length > 0 ? leidas : lecturasPorOmision())
+
+      setLineasLote(
+        ls.length > 0
+          ? ls.map((l) => ({
+              id: l.id,
+              loteTemporadaId: l.lote_temporada_id,
+              mzCubiertas: String(l.mz_cubiertas),
+            }))
+          : [{ ...LINEA_LOTE_VACIA }]
+      )
+      setLineasPersonal(
+        ps.length > 0
+          ? ps.map((p) => ({
+              id: p.id,
+              puestoId: p.puesto_id,
+              operadorId: p.operador_id ?? '',
+              cantidadPersonas: String(p.cantidad_personas),
+              jornadas: String(p.jornadas),
+              horasExtras: String(p.horas_extras),
+              jornadaTipo: p.jornada_tipo,
+            }))
+          : [{ ...LINEA_PERSONAL_VACIA }]
+      )
+      setLineasProducto(
+        qs.length > 0
+          ? qs.map((q) => ({
+              id: q.id,
+              productoId: q.producto_id,
+              totalLitros: String(q.total_litros),
+              costoLitro: String(q.costo_litro),
+            }))
+          : [{ ...LINEA_PRODUCTO_VACIA }]
+      )
+    },
+    []
+  )
+
+  /**
+   * El activador: turno + ciclo.
+   *
+   * Busca si ese turno ya tiene ejecución en ese ciclo y, si la tiene, la
+   * carga entera. Es lo que impide que capturar el preriego el lunes y la
+   * aplicación el jueves acabe en dos turnos distintos.
+   */
+  async function activar(turnoId: string, ciclo: string) {
+    const base: EntradaEjecucion = {
+      ...EJECUCION_VACIA,
+      ...(entrada ?? {}),
+      id: '',
+      temporadaId: entrada?.temporadaId || temporadaId,
+      turnoId,
+      ciclo,
+    }
+    if (!turnoId || !base.temporadaId) {
+      setEntrada(base)
+      return
+    }
+
+    setBuscando(true)
+    const { fila, error: e } = await buscarEjecucion(base.temporadaId, turnoId, Number(ciclo) || 1)
+    if (e) setError(e)
+    await cargarEnFormulario(fila, { ...EJECUCION_VACIA, temporadaId: base.temporadaId, turnoId, ciclo })
+    setBuscando(false)
+  }
+
+  /* --------------- La siembra, para el DAT de la fase 2 ---------------- */
+  // Se pide por los lotes del turno y se toma la MÁS TEMPRANA: un turno
+  // riega varios lotes y pueden no haberse sembrado el mismo día.
+  const lotesDelTurno = useMemo(
+    () => lineasLote.map((l) => l.loteTemporadaId).filter(Boolean).sort().join(','),
+    [lineasLote]
+  )
+  const cicloActual = entrada?.ciclo ?? ''
+
+  useEffect(() => {
+    let vivo = true
+    async function cargar() {
+      const ids = lotesDelTurno ? lotesDelTurno.split(',') : []
+      if (ids.length === 0) {
+        setFechaSiembra(null)
+        return
+      }
+      const mapa = await siembrasDeLotes(ids, Number(cicloActual) || null)
+      if (!vivo) return
+      const fechas = [...mapa.values()].map((v) => v.fecha).sort()
+      setFechaSiembra(fechas[0] ?? null)
+    }
+    void cargar()
+    return () => {
+      vivo = false
+    }
+  }, [lotesDelTurno, cicloActual])
 
   /* ------------------------------ Acciones ----------------------------- */
 
   function nuevo() {
     setEntrada({ ...EJECUCION_VACIA, temporadaId })
-    setLecturas([])
+    setLecturas(lecturasPorOmision())
     setLineasLote([{ ...LINEA_LOTE_VACIA }])
     setLineasPersonal([{ ...LINEA_PERSONAL_VACIA }])
+    setLineasProducto([{ ...LINEA_PRODUCTO_VACIA }])
   }
 
   async function editar(f: FilaEjecucion) {
     setOcupado(true)
-    const { lotes: ls, personal: ps, error: e } = await leerDetalle(f.id)
+    await cargarEnFormulario(f, { ...EJECUCION_VACIA, temporadaId })
     setOcupado(false)
-    if (e) return setError(e)
-
-    setEntrada({
-      id: f.id,
-      temporadaId: f.temporada_id,
-      turnoId: f.turno_id,
-      estado: f.estado,
-      fechaPreriego: f.fecha_preriego ?? '',
-      horaInicioPreriego: t(f.hora_inicio_preriego),
-      horaFinPreriego: t(f.hora_fin_preriego),
-      obsPreriego: f.obs_preriego ?? '',
-      fechaAplicacion: f.fecha_aplicacion ?? '',
-      estacionRiegoId: f.estacion_riego_id ?? '',
-      horasPresurizacion: String(f.horas_presurizacion ?? ''),
-      horaInicioIny: t(f.hora_inicio_iny),
-      horaFinIny: t(f.hora_fin_iny),
-      horasLavado: String(f.horas_lavado ?? ''),
-      totalHorasRiego: String(f.total_horas_riego ?? ''),
-      ppm: String(f.ppm ?? ''),
-      ceAntes: String(f.ce_antes ?? ''),
-      ceDurante: String(f.ce_durante ?? ''),
-      ceDespues: String(f.ce_despues ?? ''),
-      calibracionEntrada: String(f.calibracion_entrada ?? ''),
-      calibracionSalida: String(f.calibracion_salida ?? ''),
-      calibracionCampo: String(f.calibracion_campo ?? ''),
-      productoId: f.producto_id ?? '',
-      litrosAcido: String(f.litros_acido ?? ''),
-      costoLitroAcido: String(f.costo_litro_acido ?? ''),
-    })
-
-    // El JSONB viene como venga: si alguien guardó otra cosa ahí, se
-    // ignora en vez de tumbar el formulario.
-    setLecturas(Array.isArray(f.lecturas_tensiometro) ? f.lecturas_tensiometro : [])
-    setLineasLote(
-      ls.length > 0
-        ? ls.map((l) => ({
-            id: l.id,
-            loteTemporadaId: l.lote_temporada_id,
-            mzCubiertas: String(l.mz_cubiertas),
-          }))
-        : [{ ...LINEA_LOTE_VACIA }]
-    )
-    setLineasPersonal(
-      ps.length > 0
-        ? ps.map((p) => ({
-            id: p.id,
-            puestoId: p.puesto_id,
-            operadorId: p.operador_id ?? '',
-            cantidadPersonas: String(p.cantidad_personas),
-            jornadas: String(p.jornadas),
-            horasExtras: String(p.horas_extras),
-            jornadaTipo: p.jornada_tipo,
-          }))
-        : [{ ...LINEA_PERSONAL_VACIA }]
-    )
   }
 
   async function guardar() {
     if (!entrada) return
     setOcupado(true)
-    const r = await guardarEjecucion(entrada, lecturas, lineasLote, lineasPersonal)
+    const r = await guardarEjecucion(entrada, lecturas, lineasLote, lineasPersonal, lineasProducto)
     setOcupado(false)
     if (!r.ok) return setError(r.mensaje)
     setEntrada(null)
@@ -464,7 +585,7 @@ export function GridEjecucion({
   async function eliminar(ids: string[], limpiar: () => void) {
     if (
       !window.confirm(
-        `¿Eliminar ${ids.length} ejecución(es)? Se van con ellas sus lotes regados y su cuadrilla.`
+        `¿Eliminar ${ids.length} ejecución(es)? Se van con ellas sus lotes, sus químicos y su cuadrilla.`
       )
     ) {
       return
@@ -493,22 +614,28 @@ export function GridEjecucion({
         titulo="Ejecución de turnos"
         nombreArchivo="desinfeccion-ejecucion"
         ordenInicial={{ campo: 'fecha_aplicacion', direccion: 'desc' }}
-        minAncho="2100px"
+        minAncho="2300px"
         seleccionable={puedeEditar || puedeEliminar}
         puedeEditarCelda={puedeEditar}
         onEditarCelda={editarCelda}
         puedeExportar={canExecuteAction(reglas, 'desinfeccion', 'exportar')}
         vacio={{
           titulo: 'Sin turnos ejecutados',
-          descripcion: 'Registra el primero: preriego, lecturas y aplicación van en el mismo turno.',
+          descripcion: 'Registra el primero: elige turno y ciclo, y el formulario abre el que haya.',
         }}
         resumen={(visibles) => (
           <span className="text-xs text-slate-500">
-            <strong className="text-slate-900">{n2(visibles.reduce((a, f) => a + Number(f.mz_regadas), 0))}</strong>{' '}
+            <strong className="text-slate-900">
+              {n2(visibles.reduce((a, f) => a + Number(f.mz_regadas), 0))}
+            </strong>{' '}
             mz regadas · químico L{' '}
-            <strong className="text-slate-900">{n2(visibles.reduce((a, f) => a + Number(f.costo_acido ?? 0), 0))}</strong>{' '}
+            <strong className="text-slate-900">
+              {n2(visibles.reduce((a, f) => a + Number(f.costo_quimico ?? 0), 0))}
+            </strong>{' '}
             · mano de obra L{' '}
-            <strong className="text-slate-900">{n2(visibles.reduce((a, f) => a + Number(f.costo_personal), 0))}</strong>
+            <strong className="text-slate-900">
+              {n2(visibles.reduce((a, f) => a + Number(f.costo_personal), 0))}
+            </strong>
           </span>
         )}
         acciones={
@@ -566,13 +693,20 @@ export function GridEjecucion({
           lecturas={lecturas}
           lotes={lineasLote}
           personal={lineasPersonal}
+          productos={lineasProducto}
           catalogos={catalogos}
           lotesDisponibles={lotes}
+          turnosDisponibles={turnos}
+          estacionesDisponibles={estaciones}
+          fechaSiembra={fechaSiembra}
           guardando={ocupado}
+          buscando={buscando}
+          onActivar={(turnoId, ciclo) => void activar(turnoId, ciclo)}
           onCambiarEntrada={setEntrada}
           onCambiarLecturas={setLecturas}
           onCambiarLotes={setLineasLote}
           onCambiarPersonal={setLineasPersonal}
+          onCambiarProductos={setLineasProducto}
           onGuardar={() => void guardar()}
           onCerrar={() => {
             setEntrada(null)

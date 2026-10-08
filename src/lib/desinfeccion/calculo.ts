@@ -14,7 +14,7 @@
  */
 
 import { sumarDias } from '@/lib/fechas'
-import { FASES, JORNADAS, type EntradaEjecucion, type EntradaLogistica, type EntradaPlan, type EstadoDesinfeccion, type JornadaTipo, type LecturaTensiometro, type LineaLote, type LineaPersonal } from './tipos'
+import { FASES, JORNADAS, type EntradaEjecucion, type EntradaLogistica, type EntradaPlan, type EstadoDesinfeccion, type JornadaTipo, type LecturaTensiometro, type LineaLote, type LineaPersonal, type LineaProducto } from './tipos'
 
 /** La base sobre la que se calcula la hora extra. Es la de la migración 59. */
 export const HORAS_JORNADA = 8
@@ -82,9 +82,32 @@ export function costoCuadrilla(
   return hay ? total : null
 }
 
-/** El ácido del turno: litros × costo por litro. Es la columna generada. */
-export function costoAcido(e: Pick<EntradaEjecucion, 'litrosAcido' | 'costoLitroAcido'>): number {
-  return aNumeroCero(e.litrosAcido) * aNumeroCero(e.costoLitroAcido)
+/** Lo que cuesta un químico: litros × costo por litro. */
+export function costoProducto(l: Pick<LineaProducto, 'totalLitros' | 'costoLitro'>): number {
+  return aNumeroCero(l.totalLitros) * aNumeroCero(l.costoLitro)
+}
+
+/**
+ * Lo que cuesta el químico de la aplicación: TODOS sus productos.
+ *
+ * Desde la 60 una aplicación lleva varios —el desinfectante y el ácido, y
+ * mañana otro—, así que esto es una suma y no una multiplicación.
+ */
+export function costoQuimicos(lineas: LineaProducto[]): number {
+  return lineas.reduce((a, l) => a + costoProducto(l), 0)
+}
+
+/**
+ * La dosis por manzana de un producto.
+ *
+ * Se DEDUCE del total aplicado y de las manzanas del turno; no se
+ * captura. Capturadas las dos, un día no cuadran y no hay forma de saber
+ * cuál es la buena. Sin manzanas devuelve `null` —no cero—: no es que la
+ * dosis sea cero, es que todavía no se sabe entre cuántas se reparte.
+ */
+export function dosisPorMz(totalLitros: string, mz: number): number | null {
+  if (mz <= 0) return null
+  return aNumeroCero(totalLitros) / mz
 }
 
 export function mzDeLotes(lineas: LineaLote[]): number {
@@ -92,20 +115,55 @@ export function mzDeLotes(lineas: LineaLote[]): number {
 }
 
 /**
- * Las horas de riego que SUGIERE el formulario: presurización +
- * inyección + lavado.
+ * Las horas entre dos horas del mismo día, sin negativos.
  *
- * Se sugiere y no se impone porque el total lo manda el reporte de campo,
- * y hay turnos en que el riego sigue después de lavar. Sobrescribir lo
- * que la persona escribió con una cuenta nuestra es cambiarle el dato sin
- * decírselo.
+ * Es el reflejo exacto de lo que hace la base con
+ * `greatest(fin - inicio, interval '0')`: un fin anterior al inicio no
+ * resta horas —un turno de duración negativa no existe— y una hora
+ * todavía sin capturar cuenta como cero en vez de anular la suma entera.
  */
-export function horasSugeridas(e: EntradaEjecucion): number | null {
-  const inicio = minutosDe(e.horaInicioIny)
-  const fin = minutosDe(e.horaFinIny)
-  const iny = inicio !== null && fin !== null && fin >= inicio ? (fin - inicio) / 60 : 0
-  const total = aNumeroCero(e.horasPresurizacion) + iny + aNumeroCero(e.horasLavado)
-  return total > 0 ? Math.round(total * 100) / 100 : null
+export function horasEntre(inicio: string, fin: string): number {
+  const a = minutosDe(inicio)
+  const b = minutosDe(fin)
+  if (a === null || b === null || b <= a) return 0
+  return (b - a) / 60
+}
+
+/** La duración del preriego. La base la guarda generada. */
+export function horasPreriego(e: EntradaEjecucion): number {
+  return horasEntre(e.horaInicioPreriego, e.horaFinPreriego)
+}
+
+/** La duración de la inyección. También generada en la base. */
+export function horasInyeccion(e: EntradaEjecucion): number {
+  return horasEntre(e.horaInicioIny, e.horaFinIny)
+}
+
+/**
+ * El total de horas de riego: presurización + inyección + lavado.
+ *
+ * Desde la 60 es una COLUMNA GENERADA y el campo está bloqueado en la
+ * pantalla. Esto es su reflejo, para enseñar el número mientras se
+ * teclea; el que queda guardado es el de la base.
+ */
+export function totalHorasRiego(e: EntradaEjecucion): number {
+  return aNumeroCero(e.horasPresurizacion) + horasInyeccion(e) + aNumeroCero(e.horasLavado)
+}
+
+/**
+ * Los días que faltan para el trasplante: siembra − lectura.
+ *
+ * Positivo quiere decir que la siembra todavía está por delante, que es
+ * el caso normal al desinfectar. Negativo quiere decir que ya se sembró.
+ */
+export function ddt(fechaSiembra: string | null | undefined, fechaLectura: string): number | null {
+  if (!fechaSiembra || !fechaLectura) return null
+  // Las dos son fechas de CALENDARIO, no instantes: se restan en UTC para
+  // que ningún reloj les quite un día.
+  const s = Date.parse(`${fechaSiembra}T12:00:00Z`)
+  const l = Date.parse(`${fechaLectura}T12:00:00Z`)
+  if (Number.isNaN(s) || Number.isNaN(l)) return null
+  return Math.round((s - l) / 86400000)
 }
 
 /** HH:MM a minutos desde medianoche. `null` si no es una hora. */
@@ -161,6 +219,64 @@ export function faseCerrada(estado: EstadoDesinfeccion): boolean {
   return nivelDeFase(estado) >= nivelDeFase('3_Aplicacion')
 }
 
+/* ------------------------------------------------------------------ */
+/* El embudo: qué está lleno y por dónde se sigue                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Las secciones del formulario, en el orden en que se capturan.
+ *
+ * `lotes` va primero y no es una fase del enum: es el PASO 0. Sin saber
+ * qué lotes tocó el turno y cuántas manzanas son, ni el químico ni la
+ * cuadrilla se pueden repartir entre nadie — el costo se quedaría en el
+ * aire. Por eso bloquea a las demás.
+ */
+export type SeccionEjecucion = 'lotes' | 'preriego' | 'lecturas' | 'aplicacion'
+
+export const SECCIONES: SeccionEjecucion[] = ['lotes', 'preriego', 'lecturas', 'aplicacion']
+
+/**
+ * ¿Esta sección ya tiene lo suyo?
+ *
+ * Lo que cuenta es el dato MÍNIMO que hace útil a la sección, no que esté
+ * entera: un preriego con su fecha y sus horas está capturado aunque no
+ * lleve observaciones. Pedir el formulario completo haría que una sección
+ * no se diera nunca por hecha y el embudo no avanzara nunca.
+ */
+export function seccionLlena(
+  seccion: SeccionEjecucion,
+  e: EntradaEjecucion,
+  lotes: LineaLote[],
+  lecturas: LecturaTensiometro[]
+): boolean {
+  switch (seccion) {
+    case 'lotes':
+      return mzDeLotes(lotes) > 0 && lotes.some((l) => l.loteTemporadaId !== '')
+    case 'preriego':
+      return e.fechaPreriego !== '' && horasPreriego(e) > 0
+    case 'lecturas':
+      return e.fechaLecturas !== '' && lecturas.some((l) => l.lectura.trim() !== '')
+    case 'aplicacion':
+      return e.fechaAplicacion !== '' && totalHorasRiego(e) > 0
+  }
+}
+
+/**
+ * Por dónde se sigue: la PRIMERA sección que todavía está vacía.
+ *
+ * Es lo que decide qué se abre al entrar. Quien vuelve al día siguiente
+ * no viene a mirar lo que ya capturó, viene a seguir donde lo dejó;
+ * abrirle siempre la primera sección le obliga a plegar y desplegar hasta
+ * encontrar el hueco. Con todo lleno devuelve `null` y no se abre nada.
+ */
+export function siguienteSeccion(
+  e: EntradaEjecucion,
+  lotes: LineaLote[],
+  lecturas: LecturaTensiometro[]
+): SeccionEjecucion | null {
+  return SECCIONES.find((s) => !seccionLlena(s, e, lotes, lecturas)) ?? null
+}
+
 /**
  * Qué renglones hay que borrar al guardar: los que estaban y ya no están.
  *
@@ -174,6 +290,31 @@ export function faseCerrada(estado: EstadoDesinfeccion): boolean {
 export function idsSobrantes(antes: { id: string }[], vivos: Iterable<string>): string[] {
   const quedan = new Set([...vivos].filter(Boolean))
   return antes.map((a) => a.id).filter((id) => !quedan.has(id))
+}
+
+/**
+ * Recorta una lista de catálogo a las zonas permitidas, dejando pasar lo
+ * que TODAVÍA no tiene zona.
+ *
+ * `filtrarPorZona` de ABAC tira lo que no tiene zona, y para los lotes
+ * eso está bien: un lote sin zona es un dato incompleto. Para las
+ * estaciones de riego no: la zona se la puso la migración 60 y nace nula,
+ * así que el día que se instala ninguna tiene zona. Esconderlas todas
+ * dejaría el módulo sin poder capturar hasta que alguien entre a
+ * Catálogos a asignarlas una por una.
+ *
+ * `permitidas` en `null` quiere decir «no hay que recortar».
+ */
+export function recortarDejandoSinZona<T>(
+  opciones: T[],
+  zonaDe: (o: T) => string | null | undefined,
+  permitidas: Set<string> | null
+): T[] {
+  if (permitidas === null) return opciones
+  return opciones.filter((o) => {
+    const z = zonaDe(o)
+    return z == null || permitidas.has(z)
+  })
 }
 
 /** Las lecturas que de verdad tienen algo escrito. */
@@ -210,10 +351,20 @@ export function validarPlan(e: EntradaPlan): string | null {
 export function validarEjecucion(
   e: EntradaEjecucion,
   lotes: LineaLote[],
-  personal: LineaPersonal[]
+  personal: LineaPersonal[],
+  productos: LineaProducto[] = []
 ): string | null {
   if (!e.temporadaId) return 'Elige la temporada.'
   if (!e.turnoId) return 'Elige el turno de riego.'
+  const ciclo = aNumero(e.ciclo)
+  if (ciclo === null || ciclo < 1) return 'El ciclo tiene que ser 1 o más.'
+
+  // El paso 0 no es una formalidad: sin lotes y sin manzanas, ni el
+  // químico ni la cuadrilla se pueden repartir entre nadie y el costo del
+  // turno se queda en el aire.
+  if (mzDeLotes(lotes) <= 0) {
+    return 'Empieza por los lotes: sin manzanas no hay entre qué repartir el costo.'
+  }
 
   const ini = minutosDe(e.horaInicioPreriego)
   const fin = minutosDe(e.horaFinPreriego)
@@ -264,11 +415,18 @@ export function validarEjecucion(
     }
   }
 
-  // Un costo de químico sin lotes regados no se puede repartir: la vista
-  // de costos lo divide entre las manzanas de la ejecución, y sin ellas
-  // ese gasto no llega a ningún lote.
-  if (costoAcido(e) > 0 && conLote.length === 0) {
-    return 'Hay costo de químico pero ningún lote regado: ese gasto no se podría repartir.'
+  /* ----------------------------- Químicos ---------------------------- */
+  const conProducto = productos.filter((q) => q.productoId !== '')
+  if (new Set(conProducto.map((q) => q.productoId)).size !== conProducto.length) {
+    return 'Hay un producto repetido: suma los litros en una sola línea.'
+  }
+  for (const q of conProducto) {
+    if (aNumeroCero(q.totalLitros) < 0 || aNumeroCero(q.costoLitro) < 0) {
+      return 'Ni los litros ni el costo por litro pueden ser negativos.'
+    }
+  }
+  if (productos.some((q) => q.productoId === '' && aNumeroCero(q.totalLitros) > 0)) {
+    return 'Hay litros escritos en un renglón sin producto.'
   }
 
   return null

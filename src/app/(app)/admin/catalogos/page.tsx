@@ -534,6 +534,9 @@ export default async function CatalogosPage() {
         { key: 'codigo', label: 'Código', tipo: 'text' },
         { key: 'nombre', label: 'Estación', tipo: 'text', requerido: true },
         { key: 'descripcion', label: 'Descripción', tipo: 'text' },
+        // Desde la 60. Sin asignar, la estación la ve todo el mundo; con
+        // zona, sólo quien tiene esa zona.
+        { key: 'zona_id', label: 'Zona', tipo: 'select', opciones: opcionesZona },
         { key: 'activo', label: 'Activo', tipo: 'checkbox' },
       ],
       filas: estacionesRiego ?? [],

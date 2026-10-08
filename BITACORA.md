@@ -235,6 +235,124 @@ dice.
 
 ## 3. Registro de cambios
 
+### 2026-10-08 — Desinfección: multiproducto y reestructura del flujo (migración 60)
+
+La 59 dio por supuestas dos cosas que en campo son falsas: que una
+aplicación lleva UN químico y que un lote se planifica UNA vez por ciclo.
+
+**a) Un lote se parte entre productos.** Diez manzanas con Vapam y diez
+con Mercenario son dos líneas del MISMO lote y el mismo ciclo. La llave
+pasa de `(lote, ciclo)` a `(lote, ciclo, producto)` **con `nulls not
+distinct`**, que es lo que impide que esto se vuelva un coladero: sin eso
+Postgres considera que dos nulos son distintos y se podrían meter cien
+líneas del mismo lote sin producto, que es justo el duplicado que la
+llave venía a impedir.
+
+**b) Los químicos salen de la cabecera.** `producto_id`, `litros_acido` y
+`costo_litro_acido` eran columnas de `desinfeccion_ejecucion`, así que el
+segundo producto no cabía — y añadir `producto_2_id` es cómo empiezan las
+tablas con veinte columnas de las que se usan dos. Ahora son
+`desinfeccion_ejecucion_productos`, con su RLS heredada de la ejecución
+como las otras dos hijas.
+
+Lo que ya estuviera capturado en las columnas viejas **se trae antes de
+quitarlas**: perder un costo por un cambio de forma de la tabla es la
+clase de pérdida que nadie nota hasta que cuadra el mes.
+
+**La dosis por manzana se DEDUCE, no se captura.** Se anota el total
+aplicado y la vista lo divide entre las manzanas del turno. Capturadas
+las dos, un día no cuadran y no hay forma de saber cuál es la buena.
+
+**c) La ejecución gana CICLO, y con él el activador.** El formulario
+pregunta primero turno y ciclo, y con esos dos o abre el turno que ya
+existe o empieza uno. Sin eso, capturar el preriego el lunes y la
+aplicación el jueves creaba dos turnos distintos y el costo se partía en
+dos sin que nadie lo notara. La llave única `(temporada, turno, ciclo)`
+es lo que garantiza que la búsqueda devuelva uno o ninguno — y si al
+instalar hubiera duplicados, la migración **dice cuáles** en vez de dejar
+que el índice reviente con un mensaje que no indica dónde mirar.
+
+**d) Las horas las calcula la base.** `horas_preriego`, `horas_inyeccion`
+y `total_horas_riego` pasan a ser columnas generadas y el campo queda
+bloqueado en la pantalla. `greatest(fin - inicio, interval '0')` resuelve
+dos cosas a la vez: un fin anterior al inicio no resta horas —un turno de
+duración negativa no existe— y, como `greatest` ignora los nulos, una
+hora todavía sin capturar cuenta como cero en vez de anular la suma
+entera.
+
+`total_horas_riego` no se pudo convertir en sitio: una columna normal no
+se vuelve generada con un `alter`, hay que quitarla y volver a ponerla —
+y antes hay que tirar las vistas que la nombran.
+
+**e) La fase 2 tiene su propio día.** Se riega un día y se leen los
+tensiómetros otro; con una sola fecha, el DAT de la lectura salía del día
+del preriego. `fecha_lecturas` es nueva.
+
+**f) La estación de riego gana zona.** El encargo pide recortar por zona
+los tres selectores del módulo. Turno y lote ya sabían en qué zona están;
+la estación no tenía dónde guardarlo. Nace **nula** a propósito, y una
+estación sin zona la sigue viendo todo el mundo: el día que se instala la
+migración ninguna tiene zona, y esconderlas todas dejaría el módulo sin
+poder capturar hasta que alguien entre a Catálogos.
+
+**g) De dónde sale la siembra.** Al elegir el lote, el plan rellena solo
+la fecha de siembra y la variedad. Ese dato vive en `siembras`, que se lee
+con el permiso de **Trasplante** — que quien planifica una desinfección
+no tiene por qué tener. `fn_siembras_de_lotes` es `security definer` y
+**comprueba el permiso ella misma**: sin esa comprobación sería un
+agujero por el que cualquiera leería la siembra de toda la finca. Eso
+cierra además el reparo que quedó abierto en la entrega anterior, donde
+«Sincronizar» leía `siembras` a pelo y se quedaba corto en silencio.
+
+Los días a la aplicación siguen siendo **a mano**: eso lo decide el
+agrónomo. Y el autollenado **no pisa lo escrito** — si alguien corrigió
+la fecha a propósito, no se la puede deshacer — y **dice** lo que rellenó:
+un campo que cambia solo y en silencio es un campo que nadie vuelve a
+mirar.
+
+**El embudo, reordenado**
+
+```
+ACTIVADOR  turno + ciclo        ← fuera del acordeón; busca o empieza
+  0 · Lotes y manzanas          ← bloquea a las demás
+  1 · Preriego        fecha propia · duración automática
+  2 · Lecturas        fecha propia · DAT automático · dos puntos precargados
+  3 · Aplicación      horas automáticas · químicos con dosis deducida
+      Cuadrilla                 ← intacta, como pedía el encargo
+```
+
+**El paso 0 bloquea y no es una formalidad:** el químico y la cuadrilla
+se reparten entre los lotes del turno por manzanas, así que sin manzanas
+no hay entre qué repartir y el costo se queda en el aire.
+
+**Lo ya capturado se abre plegado y bloqueado**, con su propio botón de
+Editar, y el acordeón abre por la **primera sección vacía**: quien vuelve
+al día siguiente no viene a mirar lo que ya hizo, viene a seguir donde lo
+dejó. Las dos lecturas de siempre —«Tensiómetro 12» y «Tensiómetro 24»—
+vienen precargadas porque lo que se escribe a mano cada vez acaba escrito
+de cinco maneras distintas y después no se puede agrupar.
+
+**Verificado**
+
+| Prueba | Resultado |
+| --- | --- |
+| **Paridad del costo del personal**, navegador ↔ disparador, 288 combinaciones | **0 diferencias** |
+| **Paridad de las horas de riego**, navegador ↔ columna generada, 108 combinaciones | **0 diferencias** |
+| `t60.sql` — multiproducto, turno+ciclo, horas generadas, químicos, dosis, la siembra y la reja | **28 / 0** |
+| `t59` · `t58` · `t56` · `t55` · `t54` · `t53` · `t42_52` sobre la cadena 60 | **40/0 · 25/0 · 23/0 · 19/0 · 26/0 · 45/0 · 36/0** |
+| `tcalc.mjs` — cuentas, embudo, recortes, validación | **85 / 0** |
+| `tdesinf.mjs` — navegador a 390 px: activador, paso 0, autocálculos, candado por fase | **37 / 0** |
+| `tsc --noEmit`, `eslint --max-warnings=0`, `next build` | limpios |
+
+`t59` tuvo que tocarse en dos sitios, y eso es la suite haciendo su
+trabajo: sus asertos del químico miraban la columna de la cabecera —el
+número esperado no cambia, 100 L a 15 siguen siendo 1500, cambia dónde se
+guarda— y contaba seis vistas donde ahora hay siete.
+
+**Sigue pendiente** el importador de Excel del módulo, anotado en la
+entrega anterior.
+
+
 ### 2026-10-08 — Desinfección de suelo: las pantallas (Fase 2, sin migración)
 
 El módulo de la 59 ya se usa. Cuatro pestañas en `/controles/desinfeccion`
@@ -882,11 +1000,26 @@ Cosas que ya costaron una sesión. No volver a tropezar.
   de crearlo. Y el borrado va SIEMPRE al final, nunca antes de insertar:
   así una desconexión a mitad deja un renglón de más —visible— y no un
   dato capturado que desapareció.
+- **Una función `security definer` que sirve a una pantalla tiene que
+  comprobar el permiso DENTRO.** `fn_siembras_de_lotes` lee `siembras`
+  saltándose el RLS de Trasplante para que Desinfección pueda
+  autocompletar; sin la comprobación interna sería un agujero por el que
+  cualquiera leería la siembra de toda la finca.
 - **Un bloqueo que sólo existe en la pantalla hay que escribir que sólo
   existe en la pantalla.** El candado de fase de desinfección
   (`faseCerrada`) no lo aplica RLS, porque el módulo no cuelga de un
   ticket y no tiene el tope de NOTIFICADO. Evita el error de pasada; no
   es seguridad. El navegador nunca concede: sólo esconde.
+- **Una columna normal no se vuelve GENERADA con un `alter`.** Hay que
+  quitarla y volver a ponerla, y antes tirar las vistas que la nombran.
+  Lo mismo para quitar columnas de una tabla que una vista lee.
+- **En una llave única con una columna que admite nulos, hay que decidir
+  si dos nulos son el mismo valor.** Por omisión Postgres dice que no, y
+  entonces la llave no impide repetir la fila «sin producto» cien veces.
+  `nulls not distinct` (PG 15+) es lo que la cierra.
+- **`greatest` IGNORA los nulos.** Eso lo vuelve la forma más corta de
+  escribir «esta hora todavía no se capturó, cuenta cero» en una columna
+  generada, sin un `coalesce` por cada término.
 - **`tarifas_puesto` se lee con el permiso de Costos o de Tarifas.** Quien
   captura en campo no suele tenerlo, así que cualquier pantalla que
   necesite una tarifa para enseñar un número usa `fn_tarifa_puesto`, que
@@ -965,9 +1098,10 @@ La migración a ABAC está **cerrada en toda la plataforma**.
 - **Granularidad de catálogos** (migración 58) — «Catálogos» deja de ser
   una casilla y pasa a ser cinco bloques, aplicados por RLS tabla por
   tabla.
-- **Desinfección de suelo** — núcleo en la migración 59 y pantallas en la
-  Fase 2: `/controles/desinfeccion`, con su captura en acordeón y su
-  reporte por lote.
+- **Desinfección de suelo** — núcleo en la migración 59, pantallas en la
+  Fase 2 y, en la **60**, multiproducto (en el plan y en la aplicación),
+  el activador por turno y ciclo, las horas calculadas por la base y el
+  autollenado desde Trasplante.
 
 Lo que queda abierto son ideas, no deuda, salvo UNA cosa que sí lo es y
 está anotada arriba: **desinfección no tiene importador de Excel**. El

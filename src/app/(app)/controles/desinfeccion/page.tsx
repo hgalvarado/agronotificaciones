@@ -38,7 +38,8 @@ export default async function DesinfeccionPage() {
     // migración 41, así que aquí no hay filtro que repetir.
     supabase.from('zonas').select('id, nombre').eq('activo', true).order('nombre'),
     supabase.from('turnos').select('id, codigo, zona_id').eq('activo', true).order('codigo'),
-    supabase.from('estaciones_riego').select('id, nombre').eq('activo', true).order('nombre'),
+    // Con su zona desde la 60: es lo que permite recortar el selector.
+    supabase.from('estaciones_riego').select('id, nombre, zona_id').eq('activo', true).order('nombre'),
     supabase.from('variedades').select('id, nombre').eq('activo', true).order('nombre'),
     supabase.from('materiales').select('id, codigo, descripcion').eq('activo', true).order('codigo'),
     supabase.from('puestos_trabajo').select('id, codigo, descripcion').eq('activo', true).order('codigo'),

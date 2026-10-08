@@ -22,6 +22,7 @@ import {
   type ReglasPlanas,
 } from '@/lib/permisos/clientABAC'
 import { AVISO_SIN_MIGRACION, leerLotes } from '@/lib/desinfeccion/repositorioCliente'
+import { recortarDejandoSinZona } from '@/lib/desinfeccion/calculo'
 import type { CatalogosDesinfeccion, LoteDesinfeccion } from '@/lib/desinfeccion/tipos'
 import { GridPlan } from './GridPlan'
 import { GridEjecucion } from './GridEjecucion'
@@ -74,17 +75,41 @@ export function DesinfeccionTabs({
     }
   }, [temporadaId])
 
-  // Con alcance zonal al CREAR, los selectores de lote sólo ofrecen lo
-  // asignado. Va aquí y no en cada formulario para que el alta y la
-  // edición no acaben ofreciendo listas distintas.
+  /*
+   * Los tres selectores del módulo, recortados por zona.
+   *
+   * Con alcance zonal al CREAR, lote, turno y estación sólo ofrecen lo
+   * asignado: dejar elegir una zona ajena es dejar llenar el formulario
+   * entero para que la base lo rechace al guardar. Va AQUÍ y no en cada
+   * formulario para que el alta y la edición no acaben ofreciendo listas
+   * distintas.
+   *
+   * La diferencia entre las tres no es un descuido:
+   *
+   *   · Lote y turno SIEMPRE tienen zona, así que lo que no cae en las
+   *     permitidas se cae de la lista.
+   *   · La estación de riego ganó zona en la 60 y nace NULA. Una estación
+   *     sin asignar la sigue viendo todo el mundo — si no, el día que se
+   *     instala la migración no habría ninguna estación utilizable.
+   */
+  const zonasPermitidas = useMemo(
+    () => zonasParaCrear(reglas, 'desinfeccion', zonasDelPerfil),
+    [reglas, zonasDelPerfil]
+  )
+
   const lotesVisibles = useMemo(
-    () =>
-      filtrarPorZona(
-        lotes,
-        (l) => l.zona_id,
-        zonasParaCrear(reglas, 'desinfeccion', zonasDelPerfil)
-      ),
-    [lotes, reglas, zonasDelPerfil]
+    () => filtrarPorZona(lotes, (l) => l.zona_id, zonasPermitidas),
+    [lotes, zonasPermitidas]
+  )
+
+  const turnosVisibles = useMemo(
+    () => filtrarPorZona(catalogos.turnos, (t) => t.zona_id, zonasPermitidas),
+    [catalogos.turnos, zonasPermitidas]
+  )
+
+  const estacionesVisibles = useMemo(
+    () => recortarDejandoSinZona(catalogos.estaciones, (e) => e.zona_id, zonasPermitidas),
+    [catalogos.estaciones, zonasPermitidas]
   )
 
   if (sinMigracion) return <Alerta tono="ambar">{AVISO_SIN_MIGRACION}</Alerta>
@@ -144,6 +169,8 @@ export function DesinfeccionTabs({
           temporadaId={temporadaId}
           catalogos={catalogos}
           lotes={lotesVisibles}
+          turnos={turnosVisibles}
+          estaciones={estacionesVisibles}
           reglas={reglas}
           usuarioId={usuarioId}
           zonas={zonasDelPerfil}

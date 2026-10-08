@@ -31,15 +31,17 @@ import type {
   FilaLoteRegado,
   FilaPersonal,
   FilaPlan,
+  FilaProducto,
   LecturaTensiometro,
   LineaLote,
   LineaPersonal,
+  LineaProducto,
 } from './tipos'
 
 export type Resultado = { ok: boolean; mensaje: string }
 
 export const AVISO_SIN_MIGRACION =
-  'El módulo de desinfección de suelo todavía no está instalado. Corre la migración 59 en el SQL Editor de Supabase.'
+  'El módulo de desinfección de suelo todavía no está instalado. Corre las migraciones 59 y 60 en el SQL Editor de Supabase.'
 
 export function faltaMigracion(mensaje: string | null | undefined): boolean {
   const t = (mensaje ?? '').toLowerCase()
@@ -158,10 +160,12 @@ export async function eliminarPlanes(ids: string[]): Promise<Resultado> {
  * DECISIÓN, no un automatismo. Este botón es esa decisión, tomada a mano
  * sobre las líneas que se eligen.
  *
- * La siembra real sale de `siembras`, que es la captura de trasplante. Si
- * quien está mirando no tiene permiso sobre ese módulo, la consulta
- * devuelve menos filas y se dice cuántas no se pudieron resolver: lo que
- * no puede pasar es que el botón diga «listo» sin haber cambiado nada.
+ * La siembra real sale de `fn_siembras_de_lotes` (migración 60), que es
+ * `security definer` y comprueba el permiso dentro: antes esto leía
+ * `siembras` directamente y se quedaba corto para quien no tuviera
+ * permiso sobre Trasplante. Si un lote no tiene siembra capturada se
+ * dice cuántos: lo que no puede pasar es que el botón diga «listo» sin
+ * haber cambiado nada.
  */
 export async function sincronizarSiembra(
   filas: { id: string; lote_temporada_id: string; ciclo: number; fecha_siembra_congelada: string }[]
@@ -171,29 +175,20 @@ export async function sincronizarSiembra(
   }
 
   const cliente = createClient()
-  const lotes = [...new Set(filas.map((f) => f.lote_temporada_id))]
-  const { data, error } = await cliente
-    .from('siembras')
-    .select('lote_temporada_id, ciclo, fecha_siembra')
-    .in('lote_temporada_id', lotes)
 
-  if (error) {
-    return {
-      ok: false,
-      mensaje: mensajeDeError(error, 'No se pudo consultar la siembra real.'),
-      cambiadas: 0,
-      sinSiembra: 0,
-    }
+  // La siembra se pide por CICLO, porque la primera siembra del ciclo 1 y
+  // la del ciclo 2 son fechas distintas y mezclarlas movería el plan al
+  // día equivocado. Se agrupa para preguntar una vez por ciclo en vez de
+  // una por línea.
+  const porCiclo = new Map<number, string[]>()
+  for (const f of filas) {
+    porCiclo.set(f.ciclo, [...(porCiclo.get(f.ciclo) ?? []), f.lote_temporada_id])
   }
 
-  // La primera siembra del lote en ese ciclo: un lote se siembra en varios
-  // días y la que manda para contar los días a la aplicación es la que
-  // abrió el ciclo.
   const primera = new Map<string, string>()
-  for (const s of (data ?? []) as { lote_temporada_id: string; ciclo: number; fecha_siembra: string }[]) {
-    const llave = `${s.lote_temporada_id}|${s.ciclo}`
-    const actual = primera.get(llave)
-    if (!actual || s.fecha_siembra < actual) primera.set(llave, s.fecha_siembra)
+  for (const [ciclo, lotes] of porCiclo) {
+    const mapa = await siembrasDeLotes([...new Set(lotes)], ciclo)
+    for (const [lote, dato] of mapa) primera.set(`${lote}|${ciclo}`, dato.fecha)
   }
 
   let cambiadas = 0
@@ -222,11 +217,7 @@ export async function sincronizarSiembra(
   }
 
   const partes = [`${cambiadas} línea(s) actualizadas`]
-  if (sinSiembra > 0) {
-    partes.push(
-      `${sinSiembra} sin siembra registrada (o fuera de lo que puedes ver en Trasplante)`
-    )
-  }
+  if (sinSiembra > 0) partes.push(`${sinSiembra} sin siembra registrada en Trasplante`)
   return { ok: true, mensaje: `${partes.join('; ')}.`, cambiadas, sinSiembra }
 }
 
@@ -281,11 +272,14 @@ export async function leerPersonal(temporadaId: string | null): Promise<Lectura<
  * porque la cuadrícula sólo trae el resumen —manzanas y costo sumados—,
  * y el formulario necesita renglón por renglón.
  */
-export async function leerDetalle(
-  ejecucionId: string
-): Promise<{ lotes: FilaLoteRegado[]; personal: FilaPersonal[]; error: string | null }> {
+export async function leerDetalle(ejecucionId: string): Promise<{
+  lotes: FilaLoteRegado[]
+  personal: FilaPersonal[]
+  productos: FilaProducto[]
+  error: string | null
+}> {
   const cliente = createClient()
-  const [l, p] = await Promise.all([
+  const [l, p, q] = await Promise.all([
     cliente
       .from('v_desinfeccion_lotes')
       .select('*')
@@ -296,20 +290,91 @@ export async function leerDetalle(
       .select('*')
       .eq('ejecucion_id', ejecucionId)
       .order('created_at', { ascending: true }),
+    cliente
+      .from('v_desinfeccion_productos')
+      .select('*')
+      .eq('ejecucion_id', ejecucionId)
+      .order('created_at', { ascending: true }),
   ])
 
-  const error = l.error?.message ?? p.error?.message ?? null
+  const error = l.error?.message ?? p.error?.message ?? q.error?.message ?? null
   return {
     lotes: (l.data as FilaLoteRegado[] | null) ?? [],
     personal: (p.data as FilaPersonal[] | null) ?? [],
+    productos: (q.data as FilaProducto[] | null) ?? [],
     error,
   }
+}
+
+/**
+ * La ejecución de un turno y un ciclo, si ya existe.
+ *
+ * Es el ACTIVADOR del formulario: se eligen turno y ciclo y o se abre la
+ * que ya hay o se empieza una. Sin esto, capturar el preriego el lunes y
+ * la aplicación el jueves crearía dos turnos distintos —y el costo se
+ * partiría en dos sin que nadie lo notara—. La llave única de la 60 es lo
+ * que garantiza que esta búsqueda devuelva una o ninguna.
+ */
+export async function buscarEjecucion(
+  temporadaId: string,
+  turnoId: string,
+  ciclo: number
+): Promise<{ fila: FilaEjecucion | null; error: string | null }> {
+  if (!temporadaId || !turnoId) return { fila: null, error: null }
+  const { data, error } = await createClient()
+    .from('v_desinfeccion_ejecucion')
+    .select('*')
+    .eq('temporada_id', temporadaId)
+    .eq('turno_id', turnoId)
+    .eq('ciclo', ciclo)
+    .maybeSingle()
+
+  if (error) return { fila: null, error: error.message }
+  return { fila: (data as FilaEjecucion | null) ?? null, error: null }
+}
+
+/**
+ * La siembra real de unos lotes, para rellenar sola la fila del plan.
+ *
+ * Va por `fn_siembras_de_lotes` y no con un `select` a `siembras` porque
+ * esa tabla se lee con el permiso de Trasplante, que quien planifica una
+ * desinfección no tiene por qué tener. La función es `security definer` y
+ * comprueba el permiso ella misma (migración 60).
+ */
+export async function siembrasDeLotes(
+  lotes: string[],
+  ciclo: number | null
+): Promise<Map<string, { fecha: string; variedadId: string | null; variedad: string | null }>> {
+  const salida = new Map<string, { fecha: string; variedadId: string | null; variedad: string | null }>()
+  if (lotes.length === 0) return salida
+
+  const { data, error } = await createClient().rpc('fn_siembras_de_lotes', {
+    p_lotes: lotes,
+    p_ciclo: ciclo,
+  })
+  if (error) return salida
+
+  type Cruda = {
+    lote_temporada_id: string
+    fecha_siembra: string
+    variedad_id: string | null
+    variedad_nombre: string | null
+  }
+  for (const f of (data as Cruda[] | null) ?? []) {
+    salida.set(f.lote_temporada_id, {
+      fecha: f.fecha_siembra,
+      variedadId: f.variedad_id,
+      variedad: f.variedad_nombre,
+    })
+  }
+  return salida
 }
 
 function filaEjecucion(e: EntradaEjecucion, lecturas: LecturaTensiometro[]) {
   return {
     temporada_id: e.temporadaId,
     turno_id: e.turnoId,
+    ciclo: Math.trunc(aNumeroCero(e.ciclo)) || 1,
     estado: e.estado,
 
     fecha_preriego: e.fechaPreriego || null,
@@ -317,6 +382,7 @@ function filaEjecucion(e: EntradaEjecucion, lecturas: LecturaTensiometro[]) {
     hora_fin_preriego: e.horaFinPreriego || null,
     obs_preriego: e.obsPreriego.trim() || null,
 
+    fecha_lecturas: e.fechaLecturas || null,
     lecturas_tensiometro: lecturasParaGuardar(lecturas),
 
     fecha_aplicacion: e.fechaAplicacion || null,
@@ -325,7 +391,9 @@ function filaEjecucion(e: EntradaEjecucion, lecturas: LecturaTensiometro[]) {
     hora_inicio_iny: e.horaInicioIny || null,
     hora_fin_iny: e.horaFinIny || null,
     horas_lavado: aNumeroCero(e.horasLavado),
-    total_horas_riego: aNumeroCero(e.totalHorasRiego),
+    // `total_horas_riego`, `horas_preriego` y `horas_inyeccion` NO van
+    // aquí: desde la 60 son columnas generadas y mandarlas sería un
+    // error de Postgres, no un número ignorado.
     ppm: aNumero(e.ppm),
     ce_antes: aNumero(e.ceAntes),
     ce_durante: aNumero(e.ceDurante),
@@ -333,10 +401,6 @@ function filaEjecucion(e: EntradaEjecucion, lecturas: LecturaTensiometro[]) {
     calibracion_entrada: aNumero(e.calibracionEntrada),
     calibracion_salida: aNumero(e.calibracionSalida),
     calibracion_campo: aNumero(e.calibracionCampo),
-
-    producto_id: e.productoId || null,
-    litros_acido: aNumeroCero(e.litrosAcido),
-    costo_litro_acido: aNumeroCero(e.costoLitroAcido),
   }
 }
 
@@ -357,7 +421,8 @@ export async function guardarEjecucion(
   e: EntradaEjecucion,
   lecturas: LecturaTensiometro[],
   lotes: LineaLote[],
-  personal: LineaPersonal[]
+  personal: LineaPersonal[],
+  productos: LineaProducto[] = []
 ): Promise<Resultado> {
   const cliente = createClient()
   const fila = filaEjecucion(e, lecturas)
@@ -387,6 +452,7 @@ export async function guardarEjecucion(
   // renglón nuevo todavía no tiene identificador.
   const vivosLotes: string[] = []
   const vivosPersonal: string[] = []
+  const vivosProductos: string[] = []
 
   /* ----------------------------- Lotes ----------------------------- */
   const lotesValidos = lotes.filter((l) => l.loteTemporadaId !== '')
@@ -461,8 +527,45 @@ export async function guardarEjecucion(
     }
   }
 
+  /* ---------------------------- Químicos --------------------------- */
+  const productosValidos = productos.filter((q) => q.productoId !== '')
+  for (const q of productosValidos) {
+    const datos = {
+      ejecucion_id: ejecucionId,
+      producto_id: q.productoId,
+      total_litros: aNumeroCero(q.totalLitros),
+      costo_litro: aNumeroCero(q.costoLitro),
+    }
+    if (q.id) {
+      const { error } = await cliente
+        .from('desinfeccion_ejecucion_productos')
+        .update(datos)
+        .eq('id', q.id)
+      if (error) {
+        return {
+          ok: false,
+          mensaje: mensajeDeError(error, 'La ejecución se guardó, pero un químico no.'),
+        }
+      }
+      vivosProductos.push(q.id)
+    } else {
+      const { data, error } = await cliente
+        .from('desinfeccion_ejecucion_productos')
+        .insert(datos)
+        .select('id')
+        .single()
+      if (error || !data) {
+        return {
+          ok: false,
+          mensaje: mensajeDeError(error, 'La ejecución se guardó, pero un químico no.'),
+        }
+      }
+      vivosProductos.push((data as { id: string }).id)
+    }
+  }
+
   /* --------------------- Y al final, lo que sobró ------------------- */
-  const borrado = await borrarSobrantes(ejecucionId, vivosLotes, vivosPersonal)
+  const borrado = await borrarSobrantes(ejecucionId, vivosLotes, vivosPersonal, vivosProductos)
   if (!borrado.ok) return borrado
 
   return { ok: true, mensaje: e.id ? 'Ejecución guardada.' : 'Ejecución creada.' }
@@ -479,10 +582,11 @@ export async function guardarEjecucion(
 async function borrarSobrantes(
   ejecucionId: string,
   vivosLotes: string[],
-  vivosPersonal: string[]
+  vivosPersonal: string[],
+  vivosProductos: string[]
 ): Promise<Resultado> {
   const cliente = createClient()
-  const { lotes: antes, personal: antesP, error } = await leerDetalle(ejecucionId)
+  const { lotes: antes, personal: antesP, productos: antesQ, error } = await leerDetalle(ejecucionId)
   if (error) {
     // Lo guardado ya está bien; lo único que no se pudo es limpiar.
     return { ok: false, mensaje: `Se guardó, pero no se pudo revisar lo anterior: ${error}` }
@@ -490,6 +594,7 @@ async function borrarSobrantes(
 
   const sobranLotes = idsSobrantes(antes, vivosLotes)
   const sobranPersonal = idsSobrantes(antesP, vivosPersonal)
+  const sobranProductos = idsSobrantes(antesQ, vivosProductos)
 
   if (sobranLotes.length > 0) {
     const { error: e } = await cliente
@@ -501,6 +606,13 @@ async function borrarSobrantes(
   if (sobranPersonal.length > 0) {
     const { error: e } = await cliente.from('desinfeccion_personal').delete().in('id', sobranPersonal)
     if (e) return { ok: false, mensaje: mensajeDeError(e, 'No se pudo quitar un renglón de personal.') }
+  }
+  if (sobranProductos.length > 0) {
+    const { error: e } = await cliente
+      .from('desinfeccion_ejecucion_productos')
+      .delete()
+      .in('id', sobranProductos)
+    if (e) return { ok: false, mensaje: mensajeDeError(e, 'No se pudo quitar un químico.') }
   }
   return { ok: true, mensaje: '' }
 }
@@ -514,32 +626,31 @@ async function borrarSobrantes(
  */
 const CAMPOS_EJECUCION: Record<string, string> = {
   estado: 'estado',
+  ciclo: 'ciclo',
   fecha_preriego: 'fecha_preriego',
+  fecha_lecturas: 'fecha_lecturas',
   fecha_aplicacion: 'fecha_aplicacion',
   estacion_riego_nombre: 'estacion_riego_id',
   horas_presurizacion: 'horas_presurizacion',
   horas_lavado: 'horas_lavado',
-  total_horas_riego: 'total_horas_riego',
   ppm: 'ppm',
   ce_antes: 'ce_antes',
   ce_durante: 'ce_durante',
   ce_despues: 'ce_despues',
-  producto_nombre: 'producto_id',
-  litros_acido: 'litros_acido',
-  costo_litro_acido: 'costo_litro_acido',
   obs_preriego: 'obs_preriego',
 }
 
+// `total_horas_riego`, `horas_preriego` y `horas_inyeccion` quedan FUERA
+// a propósito: son columnas generadas desde la 60. Dejarlas editables en
+// la celda sería ofrecer un campo que la base rechaza siempre.
 const NUMERICOS_EJECUCION = new Set([
+  'ciclo',
   'horas_presurizacion',
   'horas_lavado',
-  'total_horas_riego',
   'ppm',
   'ce_antes',
   'ce_durante',
   'ce_despues',
-  'litros_acido',
-  'costo_litro_acido',
 ])
 
 export function campoEjecucion(columna: string): string | null {

@@ -56,13 +56,19 @@ export type FilaEjecucion = {
   turno_codigo: string | null
   zona_id: string | null
   zona_nombre: string | null
+  /** Con el turno, es la llave con la que la pantalla la busca. */
+  ciclo: number
   estado: EstadoDesinfeccion
 
   fecha_preriego: string | null
   hora_inicio_preriego: string | null
   hora_fin_preriego: string | null
+  /** Generada: fin − inicio, sin negativos. */
+  horas_preriego: number | null
   obs_preriego: string | null
 
+  /** La fase 2 tiene su propio día: se riega un día y se lee otro. */
+  fecha_lecturas: string | null
   lecturas_tensiometro: LecturaTensiometro[] | null
 
   fecha_aplicacion: string | null
@@ -71,7 +77,10 @@ export type FilaEjecucion = {
   horas_presurizacion: number | null
   hora_inicio_iny: string | null
   hora_fin_iny: string | null
+  /** Generada. */
+  horas_inyeccion: number | null
   horas_lavado: number | null
+  /** Generada: presurización + inyección + lavado. No se escribe. */
   total_horas_riego: number | null
   ppm: number | null
   ce_antes: number | null
@@ -81,17 +90,19 @@ export type FilaEjecucion = {
   calibracion_salida: number | null
   calibracion_campo: number | null
 
-  producto_id: string | null
-  producto_nombre: string | null
-  litros_acido: number | null
-  costo_litro_acido: number | null
-  /** Generado en la base: litros × costo. */
-  costo_acido: number | null
-
   /** Resumen de lo que cuelga, que la vista ya trae sumado. */
   mz_regadas: number
   lotes_regados: number
   costo_personal: number
+  /**
+   * La suma de TODOS los productos de la aplicación.
+   *
+   * Desde la 60 el químico no es una columna de la cabecera: una
+   * aplicación lleva varios productos y con columnas el segundo no cabe.
+   */
+  costo_quimico: number
+  productos: number
+  productos_nombres: string | null
 
   usuario_id: string
   usuario_nombre: string | null
@@ -111,6 +122,34 @@ export type FilaLoteRegado = {
   zona_id: string | null
   zona_nombre: string | null
   mz_cubiertas: number
+  usuario_id: string
+  created_at: string
+}
+
+/**
+ * Un químico de una aplicación.
+ *
+ * `dosis_mz` la DEDUCE la vista dividiendo los litros entre las manzanas
+ * del turno. No se captura: capturadas las dos, un día no cuadran y no
+ * hay forma de saber cuál es la buena.
+ */
+export type FilaProducto = {
+  id: string
+  ejecucion_id: string
+  temporada_id: string
+  turno_id: string
+  turno_nombre: string | null
+  zona_id: string | null
+  ciclo: number
+  fecha_aplicacion: string | null
+  producto_id: string
+  producto_codigo: string | null
+  producto_nombre: string | null
+  total_litros: number
+  costo_litro: number
+  costo_total: number
+  mz_regadas: number
+  dosis_mz: number | null
   usuario_id: string
   created_at: string
 }
@@ -210,6 +249,16 @@ export type LecturaTensiometro = {
   nota: string
 }
 
+/**
+ * Las dos lecturas que se toman siempre.
+ *
+ * Se precargan porque son las de todos los turnos: dejar la lista vacía
+ * obliga a escribir «Tensiómetro 12» a mano cada vez, y lo que se
+ * escribe a mano cada vez acaba escrito de cinco maneras distintas y no
+ * se puede agrupar después.
+ */
+export const PUNTOS_POR_OMISION = ['Tensiómetro 12', 'Tensiómetro 24']
+
 export const LECTURA_VACIA: LecturaTensiometro = {
   punto: '',
   profundidad: '',
@@ -237,7 +286,8 @@ export type CatalogosDesinfeccion = {
   temporadas: { id: string; nombre: string; activa: boolean }[]
   zonas: OpcionCatalogo[]
   turnos: { id: string; codigo: string; zona_id: string | null }[]
-  estaciones: OpcionCatalogo[]
+  /** Con su zona desde la 60: nula quiere decir «todavía sin asignar». */
+  estaciones: { id: string; nombre: string; zona_id: string | null }[]
   variedades: OpcionCatalogo[]
   /** Insumos. El producto de desinfección sale de aquí, no de cultivos. */
   materiales: { id: string; codigo: string; descripcion: string | null }[]
@@ -281,8 +331,23 @@ export const FASES: { valor: EstadoDesinfeccion; etiqueta: string; tono: Tono }[
 
 export const FASE_FINAL: EstadoDesinfeccion = '3_Aplicacion'
 
+/**
+ * Los ciclos de cultivo.
+ *
+ * Son los mismos tres de riego y trasplante, repetidos aquí a propósito
+ * en vez de importados del módulo de riego: desinfección no depende de
+ * riego para nada más, y cruzar un módulo entero por una lista de tres
+ * números es la clase de atadura que después nadie se atreve a cortar.
+ */
+export const CICLOS = [1, 2, 3] as const
+
 export function etiquetaFase(e: EstadoDesinfeccion) {
   return FASES.find((f) => f.valor === e) ?? FASES[0]
+}
+
+/** Las lecturas con las que arranca un turno nuevo. */
+export function lecturasPorOmision(): LecturaTensiometro[] {
+  return PUNTOS_POR_OMISION.map((punto) => ({ ...LECTURA_VACIA, punto }))
 }
 
 export const JORNADAS: { valor: JornadaTipo; etiqueta: string; factor: number }[] = [
@@ -335,7 +400,9 @@ export const PLAN_VACIO: EntradaPlan = {
 export type EntradaEjecucion = {
   id: string
   temporadaId: string
+  /** Turno y ciclo son el ACTIVADOR: con ellos se busca o se empieza. */
   turnoId: string
+  ciclo: string
   estado: EstadoDesinfeccion
 
   fechaPreriego: string
@@ -343,13 +410,14 @@ export type EntradaEjecucion = {
   horaFinPreriego: string
   obsPreriego: string
 
+  fechaLecturas: string
+
   fechaAplicacion: string
   estacionRiegoId: string
   horasPresurizacion: string
   horaInicioIny: string
   horaFinIny: string
   horasLavado: string
-  totalHorasRiego: string
   ppm: string
   ceAntes: string
   ceDurante: string
@@ -358,27 +426,25 @@ export type EntradaEjecucion = {
   calibracionSalida: string
   calibracionCampo: string
 
-  productoId: string
-  litrosAcido: string
-  costoLitroAcido: string
 }
 
 export const EJECUCION_VACIA: EntradaEjecucion = {
   id: '',
   temporadaId: '',
   turnoId: '',
+  ciclo: '1',
   estado: '1_Preriego',
   fechaPreriego: '',
   horaInicioPreriego: '',
   horaFinPreriego: '',
   obsPreriego: '',
+  fechaLecturas: '',
   fechaAplicacion: '',
   estacionRiegoId: '',
   horasPresurizacion: '',
   horaInicioIny: '',
   horaFinIny: '',
   horasLavado: '',
-  totalHorasRiego: '',
   ppm: '',
   ceAntes: '',
   ceDurante: '',
@@ -386,9 +452,6 @@ export const EJECUCION_VACIA: EntradaEjecucion = {
   calibracionEntrada: '',
   calibracionSalida: '',
   calibracionCampo: '',
-  productoId: '',
-  litrosAcido: '',
-  costoLitroAcido: '',
 }
 
 /** Un lote regado por el turno. `id` vacío quiere decir «todavía no existe». */
@@ -418,6 +481,22 @@ export const LINEA_PERSONAL_VACIA: LineaPersonal = {
   jornadas: '1',
   horasExtras: '0',
   jornadaTipo: 'Diurna',
+}
+
+/** Un químico en el formulario. `id` vacío = todavía no existe. */
+export type LineaProducto = {
+  id: string
+  productoId: string
+  /** El TOTAL aplicado. La dosis por manzana se deduce de las manzanas. */
+  totalLitros: string
+  costoLitro: string
+}
+
+export const LINEA_PRODUCTO_VACIA: LineaProducto = {
+  id: '',
+  productoId: '',
+  totalLitros: '',
+  costoLitro: '',
 }
 
 export type EntradaLogistica = {
