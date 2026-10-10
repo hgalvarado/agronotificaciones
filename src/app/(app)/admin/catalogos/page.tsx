@@ -562,16 +562,14 @@ export default async function CatalogosPage() {
       clave: 'nombre',
       label: 'Temporadas',
       tabla: 'temporadas',
+      // Cada temporada abre su historial de tasas: el lempira se mueve
+      // dentro del año y un químico de marzo se costea con la tasa de
+      // marzo. Una columna suelta no tiene memoria (migración 65).
+      detalle: 'tasas_temporada',
       campos: [
         { key: 'nombre', label: 'Temporada', tipo: 'text', requerido: true },
         { key: 'fecha_inicio', label: 'Inicio', tipo: 'date', requerido: true },
         { key: 'fecha_fin', label: 'Fin', tipo: 'date', requerido: true },
-        // Lempiras por dólar de ESTA temporada. De aquí sale la
-        // conversión de los químicos importados (migración 64). Sin
-        // escribirla, un precio en dólares no se puede pasar a lempiras
-        // y el costo del químico se queda en blanco a propósito: una
-        // tasa inventada costea en silencio toda una temporada.
-        { key: 'tasa_hnl_usd', label: 'Tasa L/US$', tipo: 'number' },
         { key: 'activa', label: 'Activa', tipo: 'checkbox' },
       ],
       filas: temporadas ?? [],

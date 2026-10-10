@@ -875,17 +875,6 @@ export function EjecucionModal({
                       <Entrada value={n2(agua)} readOnly disabled className="font-bold" />
                     </Campo>
 
-                    <Campo
-                      etiqueta="ppm (captura manual)"
-                      ayuda="Las calculadas salen por químico, abajo: cada producto tiene las suyas."
-                    >
-                      <Entrada
-                        inputMode="decimal"
-                        value={entrada.ppm}
-                        onChange={(e) => cambiar({ ppm: e.target.value })}
-                        disabled={bloqueada('aplicacion')}
-                      />
-                    </Campo>
                     <Campo etiqueta="CE antes">
                       <Entrada
                         inputMode="decimal"
@@ -964,7 +953,7 @@ export function EjecucionModal({
                     {productos.map((q, i) => {
                       const dosis = dosisPorMz(q.totalLitros, mz)
                       const material = catalogos.materiales.find((m) => m.id === q.productoId)
-                      const ppm = ppmDe(q.totalLitros, material?.concentracion, entrada)
+                      const ppm = ppmDe(q.totalLitros, material?.concentracion, entrada, mz)
                       return (
                         <div
                           key={i}

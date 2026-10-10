@@ -45,6 +45,9 @@ export function DesglosePpmModal({
     { concepto: 'Horas de aplicación', valor: `${num(d.horasInyeccion)} h` },
     { concepto: 'Horas de lavado', valor: `${num(d.horasLavado)} h` },
     { concepto: 'Total caudal', valor: `${num(d.aguaTotal)} m³`, derivado: true },
+    // De aquí parte el producto puro desde la 65, y no de los litros
+    // totales. Va antes del producto para que el orden de la tabla sea
+    // el orden del cálculo.
     { concepto: 'Dosis por manzana', valor: `${num(d.dosisMz)} L/mz`, derivado: true },
     { concepto: 'Producto químico', valor: d.producto },
     {
@@ -96,16 +99,19 @@ export function DesglosePpmModal({
         </div>
 
         <p className="rounded-xl bg-slate-50 px-3 py-2.5 text-xs leading-relaxed text-slate-500 ring-1 ring-inset ring-slate-200">
-          Producto puro en cc entre el agua total en m³. Un metro cúbico de agua pesa un millón de
-          gramos y un centímetro cúbico de producto pesa aproximadamente uno: por eso los cc por m³
-          ya <strong>son</strong> partes por millón, sin ningún factor más.
+          El producto puro sale de la <strong>dosis por manzana</strong>, no de los litros totales,
+          y se divide entre el agua total en m³. Un metro cúbico de agua pesa un millón de gramos y
+          un centímetro cúbico de producto pesa aproximadamente uno: por eso los cc por m³ ya{' '}
+          <strong>son</strong> partes por millón, sin ningún factor más.
         </p>
 
         {d.ppm === null && (
           <p className="text-xs text-amber-700">
             {d.concentracion === null
               ? 'Falta la concentración del producto en Catálogos → Materiales.'
-              : 'Falta el caudal o las horas de inyección y lavado del turno.'}
+              : d.dosisMz === null
+                ? 'Faltan las manzanas del turno: sin ellas no hay dosis por manzana.'
+                : 'Falta el caudal o las horas de inyección y lavado del turno.'}
           </p>
         )}
 

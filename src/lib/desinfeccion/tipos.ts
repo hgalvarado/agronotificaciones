@@ -95,6 +95,14 @@ export type FilaEjecucion = {
   /** Generada: presurización + inyección + lavado. No se escribe. */
   total_horas_riego: number | null
   /**
+   * Las ppm del producto que más pesa del turno.
+   *
+   * No es un promedio: promediar el desinfectante y el ácido daría un
+   * número que no es la concentración de ninguno de los dos. La columna
+   * `ppm` que se escribía a mano desapareció en la 65; ésta la sustituye.
+   */
+  ppm_principal: number | null
+  /**
    * Metros cúbicos por hora de la estación. 20 por omisión.
    *
    * Es lo que faltaba para calcular las partes por millón: la 59 dejó
@@ -104,7 +112,6 @@ export type FilaEjecucion = {
   caudal_agua: number
   /** Deducida por la vista: (inyección + lavado) × caudal. */
   agua_total_m3: number | null
-  ppm: number | null
   ce_antes: number | null
   ce_durante: number | null
   ce_despues: number | null
@@ -514,7 +521,6 @@ export type EntradaEjecucion = {
   horaFinIny: string
   horaInicioLavado: string
   horaFinLavado: string
-  ppm: string
   ceAntes: string
   ceDurante: string
   ceDespues: string
@@ -544,7 +550,6 @@ export const EJECUCION_VACIA: EntradaEjecucion = {
   horaFinIny: '',
   horaInicioLavado: '',
   horaFinLavado: '',
-  ppm: '',
   ceAntes: '',
   ceDurante: '',
   ceDespues: '',

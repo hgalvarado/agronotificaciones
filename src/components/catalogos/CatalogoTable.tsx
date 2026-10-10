@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/TablaAvanzada'
 import { ImportarExcel, type RelacionCatalogo } from './ImportarExcel'
 import { PreciosMaterial } from './PreciosMaterial'
+import { TasasTemporada } from './TasasTemporada'
 
 /**
  * Los sub-paneles que una fila de catálogo puede abrir.
@@ -25,7 +26,7 @@ import { PreciosMaterial } from './PreciosMaterial'
  * serializada, y una función no cruza. El nombre sí, y aquí se traduce al
  * componente.
  */
-export type DetalleCatalogo = 'precios_material'
+export type DetalleCatalogo = 'precios_material' | 'tasas_temporada'
 
 export type CampoCatalogo = {
   key: string
@@ -292,7 +293,7 @@ export function CatalogoTable({
                   tamano="sm"
                   onClick={() => setAbierta(f as Fila)}
                 >
-                  Precios
+                  {detalle === 'tasas_temporada' ? 'Tasas' : 'Precios'}
                 </Boton>
               )
             : undefined
@@ -378,6 +379,16 @@ export function CatalogoTable({
           {error && <Alerta>{error}</Alerta>}
         </div>
       </Modal>
+
+      {detalle === 'tasas_temporada' && abierta && (
+        <TasasTemporada
+          abierto
+          temporadaId={String(abierta.id)}
+          titulo={String(abierta.nombre ?? '')}
+          soloLectura={efectivos.editar !== true}
+          onCerrar={() => setAbierta(null)}
+        />
+      )}
 
       {detalle === 'precios_material' && abierta && (
         <PreciosMaterial

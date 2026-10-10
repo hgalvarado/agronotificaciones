@@ -339,15 +339,15 @@ export function GridEjecucion({
         etiqueta: (f) => n2(f.total_horas_riego),
       },
       {
-        campo: 'ppm',
+        // Las del producto que más pesa del turno. Desde la 65 NO se
+        // escriben: la columna manual se retiró y ésta la calcula la
+        // base con la misma fórmula que la pantalla.
+        campo: 'ppm_principal',
         label: 'ppm',
         tipo: 'numero',
         numero: true,
-        valor: (f) => (f.ppm === null ? null : Number(f.ppm)),
-        etiqueta: (f) => n2(f.ppm),
-        editable: celdaEditable,
-        editor: 'numero',
-        valorEdicion: (f) => String(f.ppm ?? ''),
+        valor: (f) => (f.ppm_principal === null ? null : Number(f.ppm_principal)),
+        etiqueta: (f) => n2(f.ppm_principal),
       },
       {
         campo: 'ce_antes',
@@ -480,7 +480,6 @@ export function GridEjecucion({
         horaFinIny: t(f.hora_fin_iny),
         horaInicioLavado: t(f.hora_inicio_lavado),
         horaFinLavado: t(f.hora_fin_lavado),
-        ppm: String(f.ppm ?? ''),
         ceAntes: String(f.ce_antes ?? ''),
         ceDurante: String(f.ce_durante ?? ''),
         ceDespues: String(f.ce_despues ?? ''),

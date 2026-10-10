@@ -156,36 +156,56 @@ export function aguaTotal(e: EntradaEjecucion): number {
   return (horasInyeccion(e) + horasLavado(e)) * aNumeroCero(e.caudalAgua)
 }
 
-/** Los litros de ingrediente activo que llevaba lo aplicado. */
-export function productoPuro(litros: string, concentracion: string | null | undefined): number | null {
+/**
+ * Los litros de ingrediente activo de la DOSIS POR MANZANA.
+ *
+ * Desde la 65 parte de la dosis y no de los litros totales. No es el
+ * mismo número con otro nombre: es el de antes dividido entre las
+ * manzanas del turno.
+ */
+export function productoPuro(
+  litros: string,
+  concentracion: string | null | undefined,
+  mz: number
+): number | null {
   const pct = numeroDeTexto(concentracion)
   if (pct === null) return null
-  return aNumeroCero(litros) * (pct / 100)
+  const dosis = dosisPorMz(litros, mz)
+  if (dosis === null) return null
+  return dosis * (pct / 100)
 }
 
 /**
  * Las partes por millón de un químico aplicado.
  *
- *     ppm = producto puro (cc) / agua total (m³)
+ *     dosis_mz = litros / manzanas del turno
+ *     ppm      = dosis_mz × (I.A.%/100) × 1000 / agua total (m³)
  *
- * **Por qué los mililitros por metro cúbico SON partes por millón.** Un
- * metro cúbico de agua pesa un millón de gramos y un mililitro de
- * producto pesa aproximadamente un gramo: la división ya viene en
- * millonésimas. Por eso está el ×1000 —de litros a cc— y por eso NO hay
- * ningún ×1.000.000 por ningún lado.
+ * El ×1000 es de litros a centímetros cúbicos, y no hay ningún
+ * ×1.000.000: un metro cúbico de agua pesa un millón de gramos y un cc
+ * de producto pesa aproximadamente uno, así que los cc por m³ ya vienen
+ * en millonésimas.
  *
- * Espejo de `fn_ppm_desinfeccion` (migración 64). Sin agua devuelve
+ * **Qué cambió en la 65.** La cuenta partía de los litros TOTALES y
+ * ahora parte de la dosis por manzana, siguiendo la hoja de los
+ * agrónomos. El resultado es el de antes dividido entre las manzanas del
+ * turno: en uno de 10 mz, diez veces menor. La nota dimensional está en
+ * la cabecera de la migración 65 y en §4 de la BITÁCORA — si el número
+ * sale más bajo de lo esperado, ahí está dónde mirar.
+ *
+ * Espejo de `fn_ppm_desinfeccion`. Sin agua o sin manzanas devuelve
  * `null` y no cero: no es que la concentración sea cero, es que todavía
- * no se sabe entre cuánta agua se reparte.
+ * no se sabe entre cuánto se reparte.
  */
 export function ppmDe(
   litros: string,
   concentracion: string | null | undefined,
-  e: EntradaEjecucion
+  e: EntradaEjecucion,
+  mz: number
 ): number | null {
   const agua = aguaTotal(e)
   if (agua <= 0) return null
-  const puro = productoPuro(litros, concentracion)
+  const puro = productoPuro(litros, concentracion, mz)
   if (puro === null) return null
   return (puro * 1000) / agua
 }
@@ -216,7 +236,7 @@ export function desglosePpm(
   e: EntradaEjecucion,
   mz: number
 ): DesglosePpm {
-  const puro = productoPuro(linea.totalLitros, material?.concentracion)
+  const puro = productoPuro(linea.totalLitros, material?.concentracion, mz)
   return {
     caudal: aNumeroCero(e.caudalAgua),
     horasInyeccion: horasInyeccion(e),
@@ -227,7 +247,7 @@ export function desglosePpm(
     concentracion: numeroDeTexto(material?.concentracion),
     productoPuroLitros: puro,
     productoPuroCc: puro === null ? null : puro * 1000,
-    ppm: ppmDe(linea.totalLitros, material?.concentracion, e),
+    ppm: ppmDe(linea.totalLitros, material?.concentracion, e, mz),
   }
 }
 

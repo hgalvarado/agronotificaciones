@@ -235,6 +235,72 @@ dice.
 
 ## 3. Registro de cambios
 
+### 2026-10-10 — Historial de tasas, y las ppm sobre la dosis (migración 65)
+
+#### 1 · La tasa de cambio, con vigencias
+
+La 64 la puso como columna suelta en `temporadas`: un número por
+temporada y sin memoria. Pero el lempira se mueve dentro del año, y un
+químico comprado en marzo tiene que cuadrarse con la tasa de marzo
+aunque en octubre sea otra — corregir la columna reescribiría en silencio
+el costo de todo lo ya capturado.
+
+`historial_tasas_temporada` con RLS, el mismo patrón que las tarifas de
+puesto y los precios de material. `fn_tasa_de_temporada` busca, en orden:
+la vigencia que cubre el día, la última que empezó antes (una tasa vieja
+es peor que una nueva pero mucho mejor que un hueco), el catálogo de la
+59, y nulo.
+
+La columna de la 64 se **muda** al historial antes de desaparecer: quien
+ya la escribió no puede perderla por un cambio de forma de la tabla. Y se
+retira, porque dos sitios donde escribir la misma tasa es la ambigüedad
+que un día deja un costo convertido con la equivocada. En la pantalla,
+sub-panel `TasasTemporada` igual al de precios: si los dos paneles se
+parecen, el gesto se aprende una vez.
+
+#### 2 · La `ppm` manual se retiró
+
+De la tabla, de la vista, de la cuadrícula y del formulario. La cabecera
+ahora trae `ppm_principal`: las del producto que **más pesa** del turno,
+que no es lo mismo que un promedio — promediar el desinfectante y el
+ácido daría un número que no es la concentración de ninguno de los dos.
+
+#### 3 · Las ppm parten de la dosis por manzana
+
+    dosis_mz        = litros / manzanas del turno
+    producto_puro_L = dosis_mz × (I.A.% / 100)
+    ppm             = producto_puro_L × 1000 / agua_total_m³
+
+**⚠ Esto NO es el mismo número con otro nombre.** Es el de la 64 dividido
+entre las manzanas del turno: en uno de 10 mz, diez veces menor. La nota
+dimensional está en §4 y en la cabecera de la migración. Se implementó lo
+pedido —la fórmula sale de la hoja de los agrónomos, que saben qué mide
+su caudal— y queda escrito dónde mirar si el número sale bajo.
+
+`fn_ppm_desinfeccion` gana un sexto argumento y **se suelta la de cinco**:
+dejar las dos vivas haría que media plataforma siguiera calculando con la
+fórmula vieja sin avisar, que es la trampa que ya costó una vuelta con
+`fn_precio_material`.
+
+#### Cómo se comprobó
+
+- `t65.sql`: 23 verdes. Las vigencias de la tasa, que fuera de toda
+  vigencia mande la última anterior, que antes de la primera no se
+  invente ninguna, y la cuenta de ppm a mano (100 L en 10 mz al 42 % con
+  60 m³ = **70 ppm**), más la prueba de que **con una sola manzana vuelve
+  a dar los 700 de la 64** — que es la forma exacta de ver qué cambió.
+- `t42_52` y `t53`–`t64`: todas verdes. `t64` se parchó donde la 65 cambió
+  la regla a propósito.
+- **Paridad de ppm con la variable nueva**: 2.160 combinaciones contra
+  `fn_ppm_desinfeccion` real, 0 diferencias.
+- `ttasas.mjs` (14 verdes, nuevo) para el panel de tasas en Chromium a
+  390 px, incluido que una tasa de **cero** no se cuele.
+- `tcalc` (134) y `tdesinf` (83), con el desglose derivando de la dosis.
+
+#### Lo que NO se hizo
+
+El importador de Excel del módulo. Sigue pendiente.
+
 ### 2026-10-10 — El caudal, la tasa de la temporada y las ppm (migración 64)
 
 #### 1 · El costo del químico «no reaccionaba» — y la causa estaba en la base
@@ -1393,6 +1459,30 @@ usuario).
 
 Cosas que ya costaron una sesión. No volver a tropezar.
 
+- **⚠ LAS PPM: LA DUDA DIMENSIONAL, SIN RESOLVER.** Desde la 65 la
+  fórmula parte de `dosis_mz` y no de los litros totales, por encargo.
+  Las dos no miden lo mismo y la diferencia es exactamente las manzanas
+  del turno:
+
+      con litros   → cc de producto / m³ de agua  = ppm
+      con dosis_mz → (cc/mz) / m³                 = ppm ÷ mz
+
+  Si `horas × caudal` es el agua que recibieron TODAS las manzanas, la
+  concentración de esa agua es la primera. Para que la segunda sea una
+  concentración, el caudal tendría que ser el de UNA manzana. Se
+  implementó la pedida porque sale de la hoja de los agrónomos; si el
+  número sale más bajo de lo esperado, **esto es lo que hay que mirar
+  primero**, y la prueba `t65` deja el contraste hecho: con una sola
+  manzana la fórmula nueva da exactamente lo que daba la vieja.
+- **Un valor que se escribe en dos sitios acaba diciendo dos cosas.** La
+  tasa de cambio vivió una migración como columna de `temporadas` y como
+  historial a la vez; se retiró la columna. Lo mismo pasó con
+  `horas_lavado_manual` en la 62. Si hay que migrar un dato a una forma
+  nueva: mudarlo, y quitar la vieja en la misma migración.
+- **Al cambiar la firma de una función que calcula algo, hay que soltar
+  la versión anterior en la misma migración.** Con las dos vivas, la
+  llamada se resuelve por el número de argumentos y media plataforma
+  sigue calculando con la fórmula vieja sin un solo error en los logs.
 - **`create or replace function` con un argumento de más NO reemplaza:
   crea una SEGUNDA función con el mismo nombre.** Y con las dos vivas,
   la llamada vieja deja de resolverse («function is not unique») y se

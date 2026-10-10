@@ -424,7 +424,6 @@ function filaEjecucion(e: EntradaEjecucion, lecturas: LecturaTensiometro[]) {
     // `horas_presurizacion`, `horas_inyeccion`, `horas_lavado` y
     // `total_horas_riego` son columnas generadas, y mandarlas sería un
     // error de Postgres, no un número ignorado.
-    ppm: aNumero(e.ppm),
     ce_antes: aNumero(e.ceAntes),
     ce_durante: aNumero(e.ceDurante),
     ce_despues: aNumero(e.ceDespues),
@@ -668,7 +667,6 @@ const CAMPOS_EJECUCION: Record<string, string> = {
   fecha_lecturas: 'fecha_lecturas',
   fecha_aplicacion: 'fecha_aplicacion',
   estacion_riego_nombre: 'estacion_riego_id',
-  ppm: 'ppm',
   ce_antes: 'ce_antes',
   ce_durante: 'ce_durante',
   ce_despues: 'ce_despues',
@@ -681,7 +679,6 @@ const CAMPOS_EJECUCION: Record<string, string> = {
 // en la celda sería ofrecer un campo que la base rechaza siempre.
 const NUMERICOS_EJECUCION = new Set([
   'ciclo',
-  'ppm',
   'ce_antes',
   'ce_durante',
   'ce_despues',
