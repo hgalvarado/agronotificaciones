@@ -35,10 +35,14 @@ export type FilaPlan = {
   producto_codigo: string | null
   dosis_mz: number
   area_planificada_mz: number
+  /** SIEMPRE en lempiras: es lo que suman las columnas generadas. */
   costo_litro: number
   total_litros: number
   total_costo: number
   costo_mz: number
+  /** Lo que se escribió y en qué moneda, al lado de lo ya convertido. */
+  moneda: MonedaPlan
+  costo_origen: number | null
   comentarios: string | null
   usuario_id: string
   usuario_nombre: string | null
@@ -46,6 +50,10 @@ export type FilaPlan = {
 }
 
 export type EstadoDesinfeccion = '1_Preriego' | '2_Lecturas' | '3_Aplicacion'
+
+/** Las dos monedas en que se compra el químico. */
+export const MONEDAS_PLAN = ['HNL', 'USD'] as const
+export type MonedaPlan = (typeof MONEDAS_PLAN)[number]
 
 export type FilaEjecucion = {
   id: string
@@ -473,7 +481,18 @@ export type EntradaPlan = {
   productoId: string
   dosisMz: string
   areaPlanificadaMz: string
+  /** El costo tal como se escribe, en la moneda de al lado. */
   costoLitro: string
+  /**
+   * En qué moneda está ese costo (migración 67).
+   *
+   * El químico se importa. Antes `costo_litro` era un número sin moneda
+   * que las columnas generadas trataban como lempiras, así que escribir
+   * ahí un precio en dólares multiplicaba el presupuesto por veintiséis
+   * sin que nadie lo viera. La base convierte con la tasa de SU
+   * temporada y guarda el lempira aparte.
+   */
+  moneda: MonedaPlan
   comentarios: string
 }
 
@@ -489,6 +508,7 @@ export const PLAN_VACIO: EntradaPlan = {
   dosisMz: '',
   areaPlanificadaMz: '',
   costoLitro: '',
+  moneda: 'HNL',
   comentarios: '',
 }
 

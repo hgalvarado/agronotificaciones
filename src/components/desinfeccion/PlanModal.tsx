@@ -17,7 +17,13 @@ import { formatearFecha } from '@/lib/estados'
 import { n2 } from '@/lib/trasplante/formato'
 import { fechaAplicacionPrevista, totalesPlan, validarPlan } from '@/lib/desinfeccion/calculo'
 import { siembrasDeLotes } from '@/lib/desinfeccion/repositorioCliente'
-import type { CatalogosDesinfeccion, EntradaPlan, LoteDesinfeccion } from '@/lib/desinfeccion/tipos'
+import { MONEDAS_PLAN } from '@/lib/desinfeccion/tipos'
+import type {
+  CatalogosDesinfeccion,
+  EntradaPlan,
+  LoteDesinfeccion,
+  MonedaPlan,
+} from '@/lib/desinfeccion/tipos'
 
 export function PlanModal({
   entrada,
@@ -223,13 +229,37 @@ export function PlanModal({
             />
           </Campo>
 
-          <Campo etiqueta="Costo por litro (L)">
+          <Campo etiqueta="Costo por litro">
             <Entrada
               inputMode="decimal"
               value={entrada.costoLitro}
               onChange={(e) => cambiar({ costoLitro: e.target.value })}
               placeholder="0.0000"
             />
+          </Campo>
+
+          {/* El químico se importa, así que el costo lleva su moneda
+              desde la 67. La conversión a lempiras la hace la BASE con
+              la tasa de SU temporada: el navegador no puede decidirla
+              porque la tasa no vive aquí. */}
+          <Campo
+            etiqueta="Moneda"
+            ayuda={
+              entrada.moneda === 'USD'
+                ? 'Se convierte a lempiras con la tasa de la temporada.'
+                : 'Lempiras.'
+            }
+          >
+            <Selector
+              value={entrada.moneda}
+              onChange={(e) => cambiar({ moneda: e.target.value as MonedaPlan })}
+            >
+              {MONEDAS_PLAN.map((m) => (
+                <option key={m} value={m}>
+                  {m === 'HNL' ? 'Lempiras (HNL)' : 'Dólares (USD)'}
+                </option>
+              ))}
+            </Selector>
           </Campo>
 
           <Campo etiqueta="Comentarios" className="sm:col-span-2">

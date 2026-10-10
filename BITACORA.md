@@ -235,6 +235,186 @@ dice.
 
 ## 3. Registro de cambios
 
+### 2026-10-10 — Parches del Excel, el hotfix zonal y el tablero (migración 67)
+
+Tres cosas que no se parecen entre sí, y la del medio es la que no podía
+esperar.
+
+#### 1. El selector de lotes se salía de la zona (**el hotfix**)
+
+`fn_lotes_desinfeccion` es `security definer` —se salta la RLS por
+diseño, para poder cruzar siembras y planes— y **no miraba la zona por
+ningún lado**. Un jefe de zona norte abría la captura de ejecución y el
+desplegable le ofrecía los lotes del sur. La 66 selló las vistas; esta
+función no es una vista, y por eso quedó fuera.
+
+El arreglo no es un filtro fijo: la función recibe ahora la **pantalla**
+como argumento y recorta según el alcance de ESE permiso.
+
+```sql
+and (select public.fn_permitido_de(p_pantalla, 'ver'))
+and case (select public.fn_mi_alcance(p_pantalla, 'ver'))
+    when 'global' then true
+    else (select public.fn_ve_zona_estricta(lt.zona_id))
+end
+```
+
+Así la granularidad de la 66 sigue viva aquí: el mismo usuario puede ver
+todos los lotes en ejecución y sólo los suyos en planificación, porque
+son dos permisos distintos. Sin zonas asignadas, **cero lotes** — el
+fallo cerrado de la 66, no el abierto de antes.
+
+> **La regla que queda**: toda función `security definer` que devuelva
+> filas de campo tiene que recortar por zona a mano. La RLS no la va a
+> salvar; es justo lo que se está saltando.
+
+#### 2. La dosis entra en la llave del plan
+
+Un lote no es homogéneo: media parte pide 300 L/mz y la otra 350. Con la
+llave vieja (`lote + ciclo + producto`) eso era imposible de planificar
+sin inventarse un producto que no existe.
+
+```sql
+drop index if exists public.desinfeccion_plan_lote_ciclo_producto_uidx;
+create unique index desinfeccion_plan_lote_ciclo_prod_dosis_uidx
+    on public.desinfeccion_plan (lote_temporada_id, ciclo, producto_id, dosis_mz)
+    nulls not distinct;
+```
+
+Lo que **sigue** sin admitir es repetir la misma dosis, que es lo que la
+llave viene a evitar. `llaveDePlan` en TypeScript normaliza con
+`toFixed(4)`: «300» y «300.0» son la misma línea, no dos.
+
+#### 3. La plantilla pierde dos columnas y gana una
+
+- **Fuera la fecha de siembra y la variedad.** Las dos salen del plan de
+  trasplante (`fn_siembras_de_lotes`) al resolver el lote. Pedirlas en el
+  Excel era pedir que se copiara a mano un dato que el sistema ya tiene,
+  y cada copia a mano es una fecha mal tecleada. El importador las
+  precarga por `lote|ciclo` antes de escribir, y **rebota la fila que no
+  tenga siembra**: sin fecha de siembra no hay fecha de aplicación.
+- **Entra la moneda**, con desplegable HNL/USD. La conversión la hace la
+  base con la tasa de **su temporada** (migración 65), no el navegador:
+
+```sql
+-- trigger fn_desinfeccion_plan_moneda
+costo_litro := costo_origen * public.fn_tasa_de_temporada(temporada_id, ...)
+```
+
+  Sin tasa vigente el costo queda en **cero y con aviso**: no se inventa
+  una tasa. Y `costo_origen` se conserva al lado, que es lo que permite
+  auditar la conversión sin abrir la base.
+
+> **El fallo que esto evita**: 2 USD × 300 L × 5 mz guardado tal cual son
+> 3.000 en el presupuesto, cuando de verdad son 79.500. Un presupuesto
+> equivocado por un factor de veintiséis y en silencio.
+
+#### 4. El tablero analítico (pestaña 4)
+
+Sustituye al reporte de lista. Cuatro tarjetas, dos gráficos en SVG a
+mano —sin librerías, como todo el proyecto— y la tabla de auditoría sobre
+`v_desinfeccion_costos`, que hereda la reja estricta de la 66.
+
+**Lo que hay que entender para no leerlo mal, y está escrito en la propia
+pantalla**: las tarjetas y los gráficos salen de las ejecuciones y la
+logística, que tienen fecha, y por eso el rango de fechas las recorta. La
+tabla de auditoría sale del prorrateo de `v_desinfeccion_costos`, que es
+**de temporada completa**; recortarla por fecha repartiría la bolsa de
+acarreo entre una parte de las manzanas y daría un costo por manzana
+inflado. Por eso la zona recorta las dos cosas y la fecha sólo las de
+arriba.
+
+Los colores (`#0369a1`, `#16a34a`, `#c2410c`) están **validados con el
+script de paletas**, no elegidos a ojo: el par que usaba el reporte viejo
+(`#047857` con `#0369a1`) quedaba en ΔE 14, por debajo del piso de 15, y
+dos series que un lector con visión plena confunde no son dos series.
+Como la separación para daltonismo cae en la banda 6–8, cada pieza lleva
+**su nombre y su número escritos al lado** y las porciones van separadas
+por un hueco: el color nunca es lo único que distingue.
+
+#### Cómo se comprobó
+
+- `t67.sql` (**18 verdes**, nueva): el selector sellado zona a zona —con
+  alcance global, con alcance zonal, sin zonas y sin permiso de ver—, las
+  dosis diferenciadas conviviendo y la duplicada rechazada, y la
+  conversión de moneda con tasa, sin tasa y con los totales generados.
+- `texcelxlsx.mjs` (**30 verdes**) en Chromium, ahora contra **dos**
+  ficheros: `plan-campo.xlsx` con las dos dosis del mismo químico en el
+  mismo lote, y `fechas-campo.xlsx` sólo para el decodificador de
+  seriales, que ya no viaja por la hoja del plan pero sigue vivo para las
+  demás plantillas.
+- `ttablero.mjs` (**28 verdes**, nuevo) en Chromium a 390 px: las cuatro
+  tarjetas, las barras ordenadas de mayor a menor con su valor escrito,
+  los tres arcos de la dona con los colores validados, y **la prueba que
+  importa** — con un rango de fechas puesto, las tarjetas se recortan y
+  la tabla de auditoría NO se mueve.
+- `texcelplan.mjs` (**49 verdes**) y las quince suites SQL, verdes.
+
+### 2026-10-10 — Importador de Excel del plan de desinfección (sin migración)
+
+Se salda la deuda que arrastraba el módulo desde la 59. **Sin SQL:** la
+pantalla `desinfeccion_plan` ya nació con la acción `importar` en la 66 y
+la tabla ya tenía su llave natural desde la 60. Todo lo nuevo es
+TypeScript.
+
+#### Sólo el plan, y por qué
+
+La ejecución y la logística se capturan **en vivo**: el turno abierto, el
+candado por fase, los autocálculos y el guardado incremental. Meterles un
+Excel por la puerta de atrás sería saltarse el embudo entero que las
+migraciones 60–62 construyeron. El plan es lo contrario: se arma de una
+sentada, un lote por renglón, cien renglones. Eso es lo que un importador
+resuelve de verdad.
+
+#### Qué se hizo
+
+- **`lib/desinfeccion/excel.ts`** — puro, sin React ni Supabase: las diez
+  columnas con sus alias, la interpretación fila a fila, la llave natural
+  y el reflejo de la fecha de aplicación generada.
+- **`components/desinfeccion/ImportarPlan.tsx`** — monta `ImportarHoja`,
+  el mismo importador que usan trasplante, riego, rotación y telecom. Que
+  sea el mismo no es ahorro de código: es que quien ya importó turnos de
+  riego no tiene que aprender otro gesto.
+- **Plantilla con validación nativa**: los lotes, ciclos, variedades y
+  productos salen de la BASE como desplegables de Excel. Sin eso vuelve
+  una hoja con «Guanacaste» y otra con «guanacaste», y el importador
+  rebotando filas por una tilde.
+- **El botón, gobernado por `desinfeccion_plan:importar`** — su pantalla
+  granular y **su acción**. No cuelga de «crear»: quien puede escribir
+  una línea a mano no necesariamente puede meter cien de un archivo que
+  nadie ha revisado. Y sin permiso **no se dibuja**, no se pinta en gris.
+
+#### Dos decisiones que no son obvias
+
+- **El costo por litro vacío NO es cero.** Vacío quiere decir «lo toma
+  del historial de precios del material», que es lo que hace el
+  disparador. Mandar un cero sería decidir que el químico es gratis. Un
+  cero escrito a mano sí es un cero, y se respeta.
+- **La llave es lote + ciclo + producto** (la de la base desde la 60): si
+  la hoja repite una línea, se **actualiza**. Insertarla otra vez la
+  rechazaría la base con un error de llave duplicada a mitad del lote, y
+  la importación quedaría hecha a medias.
+
+#### Cómo se comprobó
+
+- `texcelplan.mjs` (**36 verdes**, nuevo): las validaciones una a una, el
+  costo vacío, la llave natural y el cruce de textos con el catálogo.
+- `texcelxlsx.mjs` (**22 verdes**, nuevo) **en Chromium**, que es donde
+  esto se puede probar de verdad —`leerXlsx` usa `File`, `DOMParser` y
+  `DecompressionStream`—:
+  - La plantilla generada es un ZIP válido, con `dataValidation` de tipo
+    lista apuntando a nombres definidos, y los lotes de la base dentro.
+  - **El viaje de ida y vuelta con un .xlsx como los del campo**, con la
+    fecha en serial numérico y en dos formatos: uno de fábrica (14) y uno
+    propio del libro (165, `dd/mm/yyyy`). Serial 46357 → `2026-12-01`;
+    46402 → `2027-01-15`. Si no se mirara `xl/styles.xml`, esas celdas
+    llegarían como el número y la fila rebotaría entera.
+- `tplanabac.mjs` (**10 verdes**, nuevo): dos cuadrículas reales, las
+  mismas reglas salvo `importar`. El botón aparece en una y **no existe**
+  en la otra, y las dos pueden «crear» — que es la prueba de que son
+  acciones distintas.
+- Las catorce suites SQL y las dieciséis de navegador, verdes.
+
 ### 2026-10-10 — ABAC granular y el sellado de la fuga zonal (migración 66)
 
 #### 1 · La fuga zonal era real, y era mía
@@ -1556,6 +1736,53 @@ usuario).
 
 Cosas que ya costaron una sesión. No volver a tropezar.
 
+- **La numeración de las migraciones la lleva el asistente, no el
+  encargo.** Un lote de trabajo sin SQL **no consume número**: el
+  importador de Excel se habló como «la 67» y no creó ningún archivo, así
+  que el siguiente SQL es la 67 y no la 68. Si el encargo pide un número
+  que deja un hueco en `sql/`, hay que corregirlo antes de escribir una
+  línea — un hueco en la secuencia es una migración que alguien buscará y
+  no encontrará.
+- **Una función `security definer` que devuelve filas de campo NO la
+  protege la RLS**: se la está saltando por diseño. Tiene que recortar
+  por zona a mano, igual que una vista. `fn_lotes_desinfeccion` ofreció
+  lotes de otras zonas durante seis migraciones porque la 66 selló las
+  vistas y nadie miró las funciones.
+- **El alcance se consulta por PANTALLA, no por módulo.** Desde la 66 el
+  mismo usuario puede ser global en una pestaña y zonal en otra, así que
+  una función compartida recibe la pantalla como argumento en vez de
+  suponerla.
+- **Un costo en otra moneda convertido en el navegador es un costo que se
+  guarda mal el día que alguien escribe en la base por otra puerta.** La
+  conversión vive en el disparador, con la tasa de SU temporada, y lo
+  escrito se conserva en `costo_origen` para poder auditarla.
+- **Sin tasa de cambio no se inventa una**: el costo queda en cero y con
+  aviso. Un «1 por 1» silencioso es un presupuesto equivocado por un
+  factor de veintiséis.
+- **No pidas en un Excel un dato que el sistema ya tiene.** La fecha de
+  siembra y la variedad salen del plan de trasplante; pedirlas sólo
+  añadía dos columnas donde teclear mal una fecha.
+- **Una paleta no se elige a ojo, se valida con el script.** El par
+  `#047857` / `#0369a1` del reporte viejo queda en ΔE 14, por debajo del
+  piso de 15 para visión normal: dos series que cualquiera confunde.
+- **Un `svg path` no basta para contar los arcos de una dona en una
+  prueba**: la cuadrícula de abajo trae sus propios iconos en SVG y el
+  contador sube a veintidós. Hay que buscar dentro de la figura.
+- **Un campo numérico vacío en una hoja importada no es un cero.** En el
+  plan de desinfección, costo vacío = «tómalo del historial de precios»;
+  cero = «es gratis». Convertir con `Number('')` borra esa diferencia, y
+  el cero guardado parece un dato.
+- **Un importador tiene que resolver los catálogos en la VISTA PREVIA, no
+  al guardar.** Un lote que no existe debe verse en la tabla de antes,
+  con su renglón marcado, y no aparecer a mitad de la escritura como un
+  error de llave foránea cuando ya hay cuarenta filas dentro.
+- **Importar es una acción propia, no un sinónimo de crear.** Quien puede
+  escribir una línea a mano no necesariamente puede meter cien de un
+  archivo que nadie ha revisado. El botón cuelga de `importar`.
+- **Un componente que use `useRouter` necesita un doble de
+  `next/navigation` en el banco de pruebas**, o revienta con «invariant
+  expected app router to be mounted» — que no dice nada sobre lo que
+  falta.
 - **Una reja de vista no es seguridad: la seguridad es la RLS de la
   tabla.** PostgREST deja consultar la tabla directamente. Sellar la
   vista y dejar la policy abierta es poner una puerta nueva al lado de

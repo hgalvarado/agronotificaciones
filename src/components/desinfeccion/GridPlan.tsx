@@ -36,6 +36,7 @@ import {
   type FilaPlan,
   type LoteDesinfeccion,
 } from '@/lib/desinfeccion/tipos'
+import { ImportarPlan } from './ImportarPlan'
 import { PlanModal } from './PlanModal'
 
 export function GridPlan({
@@ -61,11 +62,16 @@ export function GridPlan({
   const [aviso, setAviso] = useState<string | null>(null)
   const [ocupado, setOcupado] = useState(false)
   const [entrada, setEntrada] = useState<EntradaPlan | null>(null)
+  const [importando, setImportando] = useState(false)
 
   const ctx = useMemo(() => ({ usuarioId, zonas }), [usuarioId, zonas])
   const puedeCrear = canExecuteAction(reglas, 'desinfeccion_plan', 'crear')
   const puedeEditar = canExecuteAction(reglas, 'desinfeccion_plan', 'editar')
   const puedeEliminar = canExecuteAction(reglas, 'desinfeccion_plan', 'eliminar')
+  // Importar ESCRIBE: pide su propia acción, no se deduce de «crear».
+  // Quien puede crear una línea a mano no necesariamente puede meter
+  // cien de un archivo que nadie ha revisado.
+  const puedeImportar = canExecuteAction(reglas, 'desinfeccion_plan', 'importar')
 
   const puedeEditarFila = useCallback(
     (f: FilaPlan) =>
@@ -323,7 +329,10 @@ export function GridPlan({
       productoId: f.producto_id ?? '',
       dosisMz: String(f.dosis_mz),
       areaPlanificadaMz: String(f.area_planificada_mz),
-      costoLitro: String(f.costo_litro),
+      // Se reedita lo que se ESCRIBIÓ, no el lempira convertido: si no,
+      // reabrir una línea en dólares la convertiría otra vez al guardar.
+      costoLitro: String(f.costo_origen ?? f.costo_litro),
+      moneda: f.moneda ?? 'HNL',
       comentarios: f.comentarios ?? '',
     })
   }
@@ -416,12 +425,23 @@ export function GridPlan({
           </span>
         )}
         acciones={
-          puedeCrear ? (
-            <Boton onClick={nuevo}>
-              <IconPlus className="h-4 w-4" />
-              Nuevo
-            </Boton>
-          ) : null
+          <>
+            {/* El importador es SÓLO del plan: la ejecución y la
+                logística se capturan en vivo. Y va gobernado por su
+                propia pantalla granular (`desinfeccion_plan`), no por la
+                del módulo, que desde la 66 ya no existe. */}
+            {puedeImportar && (
+              <Boton variante="secundario" onClick={() => setImportando(true)}>
+                Importar
+              </Boton>
+            )}
+            {puedeCrear && (
+              <Boton onClick={nuevo}>
+                <IconPlus className="h-4 w-4" />
+                Nuevo
+              </Boton>
+            )}
+          </>
         }
         accionFila={(f) =>
           puedeEditarFila(f) ? (
@@ -464,6 +484,15 @@ export function GridPlan({
             </>
           )
         }}
+      />
+
+      <ImportarPlan
+        abierto={importando}
+        onCerrar={() => setImportando(false)}
+        temporadaId={temporadaId}
+        catalogos={catalogos}
+        lotes={lotes}
+        onImportado={() => void recargar()}
       />
 
       {entrada && (

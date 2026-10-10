@@ -592,8 +592,13 @@ export function GridEjecucion({
         setLotesTurno(lotes)
         return
       }
-      const datos = await leerLotes(temporadaId, ejecucionAbierta || null)
-      if (vivo) setLotesTurno(datos.length > 0 ? datos : lotes)
+      // **Ojo con el respaldo.** Antes, cuando la consulta volvía
+      // vacía se caía a `lotes`, la lista de la pestaña. Con la 67 una
+      // lista vacía puede significar «esta persona no tiene lotes en su
+      // zona», y caer al respaldo volvía a enseñárselos todos: el mismo
+      // fallo abierto de siempre, disfrazado de cortesía.
+      const datos = await leerLotes(temporadaId, ejecucionAbierta || null, 'desinfeccion_ejecucion')
+      if (vivo) setLotesTurno(datos)
     }
     void cargar()
     return () => {

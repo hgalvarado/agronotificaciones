@@ -189,8 +189,14 @@ export function zonasParaCrear(
   const regla = reglaDe(reglas, pantalla, 'crear')
   if (regla === null || regla.alcance !== 'zonal') return null
 
-  const zonas = zonasDelPerfil instanceof Set ? zonasDelPerfil : new Set(zonasDelPerfil ?? [])
-  return zonas.size > 0 ? zonas : null
+  // **Sin zonas asignadas se devuelve un conjunto VACÍO, no `null`.**
+  // `null` quiere decir «no hay que recortar» y era el mismo fallo
+  // abierto que la 66 selló en la base: con alcance zonal y sin zonas,
+  // la lista salía entera. En una rama que sólo se alcanza con alcance
+  // zonal, no tener zonas significa «todavía no le toca ver nada».
+  return zonasDelPerfil instanceof Set
+    ? zonasDelPerfil
+    : new Set(zonasDelPerfil ?? [])
 }
 
 /** Deja en la lista sólo lo que cae en las zonas permitidas. */

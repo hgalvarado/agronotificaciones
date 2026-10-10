@@ -28,7 +28,7 @@ import type { CatalogosDesinfeccion, LoteDesinfeccion } from '@/lib/desinfeccion
 import { GridPlan } from './GridPlan'
 import { GridEjecucion } from './GridEjecucion'
 import { GridLogistica } from './GridLogistica'
-import { ReporteCostos } from './ReporteCostos'
+import { DesinfeccionDashboard } from './DesinfeccionDashboard'
 
 type Pestana = 'plan' | 'ejecucion' | 'logistica' | 'reporte'
 
@@ -242,9 +242,13 @@ export function DesinfeccionTabs({
         />
       )}
 
+      {/* Desde la 67 la pestaña es un TABLERO, no una lista: cuatro
+          tarjetas, dos gráficos y la auditoría por lote debajo. El
+          reporte de lotes sigue existiendo dentro, como tabla. */}
       {activa === 'reporte' && (
-        <ReporteCostos
+        <DesinfeccionDashboard
           temporadaId={temporadaId}
+          zonas={catalogos.zonas}
           reglas={reglas}
           onSinMigracion={avisarMigracion}
         />

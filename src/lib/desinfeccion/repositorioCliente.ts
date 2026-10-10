@@ -130,7 +130,12 @@ export async function guardarPlan(e: EntradaPlan): Promise<Resultado> {
     producto_id: e.productoId || null,
     dosis_mz: aNumeroCero(e.dosisMz),
     area_planificada_mz: aNumeroCero(e.areaPlanificadaMz),
-    costo_litro: aNumeroCero(e.costoLitro),
+    // `costo_origen` + `moneda` es lo que se escribió; `costo_litro` lo
+    // pone el disparador ya en lempiras (migración 67). Mandar los tres
+    // sería dejar que el navegador decida la conversión, que es justo lo
+    // que no puede hacer: la tasa vive en la base.
+    costo_origen: aNumero(e.costoLitro),
+    moneda: e.moneda,
     comentarios: e.comentarios.trim() || null,
   }
 
@@ -890,14 +895,25 @@ export async function tarifaPuesto(puestoId: string, fecha: string): Promise<num
  * `ejecucionId` excluye el turno que se está editando: sin eso, corregir
  * 9.99 a 10.00 parecería que ya no queda nada por hacer.
  */
+/**
+ * Los lotes que esta persona puede elegir, YA recortados por zona.
+ *
+ * La pantalla es un argumento y no una suposición: Planificación y
+ * Ejecución son dos permisos distintos desde la 66 y pueden tener
+ * alcances distintos. El recorte lo hace la BASE (migración 67): esta
+ * función se llama por RPC y filtrar sólo en React sería poner la puerta
+ * donde nadie la va a usar para entrar.
+ */
 export async function leerLotes(
   temporadaId: string,
-  ejecucionId: string | null = null
+  ejecucionId: string | null = null,
+  pantalla: 'desinfeccion_plan' | 'desinfeccion_ejecucion' = 'desinfeccion_ejecucion'
 ): Promise<CatalogosDesinfeccion['lotes']> {
   if (!temporadaId) return []
   const { data, error } = await createClient().rpc('fn_lotes_desinfeccion', {
     p_temporada_id: temporadaId,
     p_ejecucion_id: ejecucionId || null,
+    p_pantalla: pantalla,
   })
   if (error) return []
 
