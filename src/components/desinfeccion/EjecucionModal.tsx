@@ -3,30 +3,26 @@
 /**
  * El embudo de captura de un turno de desinfección.
  *
- * **El activador va fuera del acordeón.** Lo primero que se pregunta es
- * TURNO y CICLO, porque con esos dos datos o se abre el turno que ya
- * existe o se empieza uno. Sin ese paso, capturar el preriego el lunes y
- * la aplicación el jueves creaba dos turnos distintos y el costo se
- * partía en dos sin que nadie lo notara. La llave única de la 60 es lo
- * que garantiza que la búsqueda devuelva uno o ninguno.
- *
- * Después, cuatro secciones en orden de proceso:
+ * **El activador va fuera del acordeón.** Lo primero es TURNO y CICLO:
+ * con esos dos o se abre el turno que ya existe o se empieza uno. Sin
+ * ese paso, capturar el preriego el lunes y la aplicación el jueves
+ * creaba dos turnos distintos y el costo se partía en dos.
  *
  *   0 · Lotes y manzanas   ← bloquea a las demás
- *   1 · Preriego
- *   2 * Lecturas
- *   3 · Aplicación y químicos
+ *   1 · Preriego           + su cuadrilla
+ *   2 · Lecturas
+ *   3 · Aplicación         + sus químicos y su cuadrilla
  *
- * **El paso 0 bloquea** y no es una formalidad: el químico y la cuadrilla
- * se reparten entre los lotes del turno por manzanas, así que sin
- * manzanas no hay entre qué repartir y el costo se queda en el aire.
+ * **La cuadrilla vive DENTRO de su fase** desde la 61. Antes era una
+ * sección aparte al final y había que recordar de qué día era cada
+ * renglón; ahora la del preriego se captura con el preriego y la de la
+ * aplicación con la aplicación, que es como se trabaja.
  *
- * **Lo ya capturado se abre plegado y bloqueado**, con su propio botón
- * de Editar. Quien vuelve al día siguiente no viene a mirar lo que ya
- * hizo: viene a seguir donde lo dejó, y el acordeón se abre solo por la
- * primera sección vacía.
- *
- * La cuadrilla se queda como estaba, a la espera.
+ * **El candado se decide al CARGAR, no mientras se escribe.** Es el
+ * arreglo de la fricción que reportó campo: la versión anterior miraba
+ * el estado vivo, así que la sección se cerraba sola en cuanto se
+ * terminaba de llenar —a media captura, con el dedo todavía en el
+ * teclado—. Ahora sólo se bloquea lo que ya venía guardado de la base.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -36,7 +32,7 @@ import { Alerta, Boton, Campo, Entrada, Insignia, Selector } from '@/components/
 import { IconCheck, IconLock, IconPlus, IconTrash } from '@/components/ui/Icons'
 import { n2 } from '@/lib/trasplante/formato'
 import { hoyIso } from '@/lib/fechas'
-import { tarifaPuesto } from '@/lib/desinfeccion/repositorioCliente'
+import { crearJornal, salarioMinimo } from '@/lib/desinfeccion/repositorioCliente'
 import {
   SECCIONES,
   costoCuadrilla,
@@ -45,8 +41,10 @@ import {
   costoQuimicos,
   dosisPorMz,
   horasInyeccion,
+  horasLavado,
   horasPreriego,
   mzDeLotes,
+  salarioDe,
   seccionLlena,
   siguienteSeccion,
   textoDdt,
@@ -56,16 +54,18 @@ import {
 } from '@/lib/desinfeccion/calculo'
 import {
   CICLOS,
-  FASES,
   JORNADAS,
   LECTURA_VACIA,
   LINEA_LOTE_VACIA,
-  LINEA_PERSONAL_VACIA,
   LINEA_PRODUCTO_VACIA,
+  PUESTOS_CUADRILLA,
+  PUESTO_OTRO,
+  TIPOS_ENVASE,
   etiquetaFase,
+  lineaPersonalVacia,
   type CatalogosDesinfeccion,
   type EntradaEjecucion,
-  type EstadoDesinfeccion,
+  type FasePersonal,
   type JornadaTipo,
   type LecturaTensiometro,
   type LineaLote,
@@ -91,8 +91,9 @@ export function EjecucionModal({
   lotesDisponibles,
   turnosDisponibles,
   estacionesDisponibles,
-  /** Las siembras de los lotes del turno, para el DDT de cada fase. */
   fechasSiembra,
+  /** Qué secciones venían llenas AL CARGAR. Es lo único que bloquea. */
+  seccionesGuardadas,
   guardando,
   buscando,
   onActivar,
@@ -101,6 +102,7 @@ export function EjecucionModal({
   onCambiarLotes,
   onCambiarPersonal,
   onCambiarProductos,
+  onJornalCreado,
   onGuardar,
   onCerrar,
 }: {
@@ -114,21 +116,22 @@ export function EjecucionModal({
   turnosDisponibles: CatalogosDesinfeccion['turnos']
   estacionesDisponibles: CatalogosDesinfeccion['estaciones']
   fechasSiembra: string[]
+  seccionesGuardadas: SeccionEjecucion[]
   guardando: boolean
   buscando: boolean
-  /** Turno + ciclo: el padre busca si ya existe y carga lo que haya. */
   onActivar: (turnoId: string, ciclo: string) => void
   onCambiarEntrada: (e: EntradaEjecucion) => void
   onCambiarLecturas: (l: LecturaTensiometro[]) => void
   onCambiarLotes: (l: LineaLote[]) => void
   onCambiarPersonal: (p: LineaPersonal[]) => void
   onCambiarProductos: (q: LineaProducto[]) => void
+  onJornalCreado: () => void
   onGuardar: () => void
   onCerrar: () => void
 }) {
   const [error, setError] = useState<string | null>(null)
-  const [abierta, setAbierta] = useState<SeccionEjecucion | 'cuadrilla' | null>(null)
-  /** Las secciones que se han vuelto a abrir a mano para corregirlas. */
+  const [abierta, setAbierta] = useState<SeccionEjecucion | null>(null)
+  /** Las secciones que se han reabierto a mano para corregirlas. */
   const [desbloqueadas, setDesbloqueadas] = useState<Set<SeccionEjecucion>>(new Set())
 
   const activado = entrada.turnoId !== '' && entrada.ciclo !== ''
@@ -137,9 +140,6 @@ export function EjecucionModal({
   const lotesListos = mz > 0
 
   /* ----------------------- Por dónde se sigue ------------------------- */
-  // Al entrar —y cada vez que se carga otro turno— se abre la PRIMERA
-  // sección vacía. El identificador de la ejecución es la señal: cambia
-  // cuando el activador trae otro turno.
   const huella = `${entrada.id}|${entrada.turnoId}|${entrada.ciclo}`
   const [huellaPrevia, setHuellaPrevia] = useState<string | null>(null)
   if (activado && huella !== huellaPrevia) {
@@ -148,11 +148,17 @@ export function EjecucionModal({
     setDesbloqueadas(new Set())
   }
 
-  /** Guardada y no reabierta a mano: se mira, no se toca. */
+  /**
+   * Guardada en la base y no reabierta a mano: se mira, no se toca.
+   *
+   * Mira `seccionesGuardadas` —una foto del momento de cargar— y NO el
+   * estado vivo. Con el estado vivo, terminar de escribir la fecha y la
+   * hora cerraba la sección en la cara de quien estaba capturando.
+   */
+  const guardadas = useMemo(() => new Set(seccionesGuardadas), [seccionesGuardadas])
   const bloqueada = useCallback(
-    (s: SeccionEjecucion) =>
-      !esNuevo && seccionLlena(s, entrada, lotes, lecturas) && !desbloqueadas.has(s),
-    [esNuevo, entrada, lotes, lecturas, desbloqueadas]
+    (s: SeccionEjecucion) => guardadas.has(s) && !desbloqueadas.has(s),
+    [guardadas, desbloqueadas]
   )
 
   function desbloquear(s: SeccionEjecucion) {
@@ -165,47 +171,47 @@ export function EjecucionModal({
     [entrada, onCambiarEntrada]
   )
 
-  /* ----------------------- Las tarifas del personal ------------------- */
-  const fechaTarifa = entrada.fechaAplicacion || entrada.fechaPreriego || hoyIso()
-  const [tarifas, setTarifas] = useState<Record<string, number | null>>({})
-  const puestosPedidos = useMemo(
-    () => [...new Set(personal.map((p) => p.puestoId).filter(Boolean))].sort().join(','),
-    [personal]
-  )
+  /* ------------------------- El salario mínimo ------------------------ */
+  // Es lo que el formulario PROPONE en cada renglón de cuadrilla. Se pide
+  // por la fecha de la fase, porque una jornada de marzo se paga con el
+  // mínimo de marzo aunque se capture en mayo.
+  const fechaSalario = entrada.fechaAplicacion || entrada.fechaPreriego || hoyIso()
+  const [minimo, setMinimo] = useState<number | null>(null)
 
   useEffect(() => {
     let vivo = true
     async function cargar() {
-      const puestos = puestosPedidos ? puestosPedidos.split(',') : []
-      if (puestos.length === 0) return
-      const pares = await Promise.all(
-        puestos.map(async (id) => [id, await tarifaPuesto(id, fechaTarifa)] as const)
-      )
-      if (!vivo) return
-      setTarifas(Object.fromEntries(pares))
+      const v = await salarioMinimo(fechaSalario)
+      if (vivo) setMinimo(v)
     }
     void cargar()
     return () => {
       vivo = false
     }
-  }, [puestosPedidos, fechaTarifa])
-
-  const tarifaDe = useCallback((puestoId: string) => tarifas[puestoId] ?? null, [tarifas])
+  }, [fechaSalario])
 
   /* ------------------------------ Cuentas ------------------------------ */
   const quimico = useMemo(() => costoQuimicos(productos), [productos])
-  const manoObra = useMemo(() => costoCuadrilla(personal, tarifaDe), [personal, tarifaDe])
+  const obraPreriego = useMemo(
+    () => costoCuadrilla(personal, minimo, '1_Preriego'),
+    [personal, minimo]
+  )
+  const obraAplicacion = useMemo(
+    () => costoCuadrilla(personal, minimo, '3_Aplicacion'),
+    [personal, minimo]
+  )
   const duracionPreriego = horasPreriego(entrada)
   const inyeccion = horasInyeccion(entrada)
+  const lavado = horasLavado(entrada)
   const totalHoras = totalHorasRiego(entrada)
-  // El DDT se enseña en LAS TRES fases y no sólo en las lecturas: la
-  // pregunta «¿a cuántos días de la siembra estoy haciendo esto?» es la
-  // misma el día del preriego que el de la aplicación, y tenerla a la
-  // vista en una sola fase obliga a calcularla de cabeza en las otras dos.
+
   const ddtPreriego = textoDdt(fechasSiembra, entrada.fechaPreriego)
   const ddtLecturas = textoDdt(fechasSiembra, entrada.fechaLecturas)
   const ddtAplicacion = textoDdt(fechasSiembra, entrada.fechaAplicacion)
   const haySiembra = fechasSiembra.length > 0
+
+  const granTotal = (obraPreriego ?? 0) + (obraAplicacion ?? 0) + quimico
+  const costoMz = mz > 0 ? granTotal / mz : null
 
   /* ------------------------------ Acciones ----------------------------- */
 
@@ -213,32 +219,62 @@ export function EjecucionModal({
     const problema = validarEjecucion(entrada, lotes, personal, productos)
     if (problema) {
       setError(problema)
-      // Llevar a la sección del problema ahorra buscarlo a ojo entre
-      // cuatro secciones plegadas.
       if (/lote|manzana/i.test(problema)) setAbierta('lotes')
       else if (/preriego/i.test(problema)) setAbierta('preriego')
-      else if (/producto|litro|químico|quimico/i.test(problema)) setAbierta('aplicacion')
+      else if (/producto|litro|químico|quimico|cuadrilla|puesto|salario/i.test(problema)) {
+        setAbierta('aplicacion')
+      }
       return
     }
     setError(null)
     onGuardar()
   }
 
-  const alternar = (s: SeccionEjecucion | 'cuadrilla') =>
-    setAbierta((a) => (a === s ? null : s))
+  const alternar = (s: SeccionEjecucion) => setAbierta((a) => (a === s ? null : s))
 
   const cambiarLectura = (i: number, c: Partial<LecturaTensiometro>) =>
     onCambiarLecturas(lecturas.map((l, j) => (i === j ? { ...l, ...c } : l)))
   const cambiarLote = (i: number, c: Partial<LineaLote>) =>
     onCambiarLotes(lotes.map((l, j) => (i === j ? { ...l, ...c } : l)))
-  const cambiarPersona = (i: number, c: Partial<LineaPersonal>) =>
-    onCambiarPersonal(personal.map((p, j) => (i === j ? { ...p, ...c } : p)))
   const cambiarProducto = (i: number, c: Partial<LineaProducto>) =>
     onCambiarProductos(productos.map((q, j) => (i === j ? { ...q, ...c } : q)))
 
+  /**
+   * Elegir el lote sugiere sus manzanas pendientes.
+   *
+   * Se SUGIERE, no se impone, y sólo si el renglón está vacío: el que
+   * está en el lote sabe mejor que el plan cuántas manzanas regó, y
+   * pisarle un número escrito sería cambiarle el dato sin decírselo.
+   */
+  function elegirLote(i: number, loteTemporadaId: string) {
+    const lote = lotesDisponibles.find((l) => l.lote_temporada_id === loteTemporadaId)
+    const vacio = (lotes[i]?.mzCubiertas ?? '').trim() === ''
+    cambiarLote(i, {
+      loteTemporadaId,
+      ...(lote && vacio && lote.mz_restantes > 0
+        ? { mzCubiertas: lote.mz_restantes.toFixed(2) }
+        : {}),
+    })
+  }
+
+  /* ------------------------- La cuadrilla, por fase -------------------- */
+
+  const cambiarPersona = (i: number, c: Partial<LineaPersonal>) =>
+    onCambiarPersonal(personal.map((p, j) => (i === j ? { ...p, ...c } : p)))
+
+  async function crearYElegir(indice: number, texto: string): Promise<string> {
+    const r = await crearJornal(texto)
+    if ('error' in r) {
+      setError(r.error)
+      return ''
+    }
+    cambiarPersona(indice, { operadorId: r.id })
+    onJornalCreado()
+    return r.id
+  }
+
   const fase = etiquetaFase(entrada.estado)
 
-  /** El encabezado de cada sección: tilde si está hecha, candado si está cerrada. */
   const resumenDe = (s: SeccionEjecucion, texto: string) => (
     <span className="flex items-center gap-1.5">
       {seccionLlena(s, entrada, lotes, lecturas) && (
@@ -249,13 +285,6 @@ export function EjecucionModal({
     </span>
   )
 
-  /**
-   * El DDT de una fase, en su propio campo de sólo lectura.
-   *
-   * Con varios lotes sembrados en días distintos sale un RANGO en vez de
-   * un número: un turno que va del día 18 al 25 no es homogéneo, y eso es
-   * justo lo que hay que ver antes de aplicar.
-   */
   const campoDdt = (texto: string) => (
     <Campo
       etiqueta="DDT (días antes del trasplante)"
@@ -269,12 +298,11 @@ export function EjecucionModal({
     </Campo>
   )
 
-  /** El aviso y el botón de reabrir, dentro de una sección bloqueada. */
   const candado = (s: SeccionEjecucion) =>
     bloqueada(s) ? (
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2.5 ring-1 ring-inset ring-slate-200">
         <p className="text-xs text-slate-500">
-          Esta parte ya se capturó. Se deja bloqueada para no cambiarla sin querer.
+          Esta parte ya venía guardada. Se deja bloqueada para no cambiarla sin querer.
         </p>
         <Boton variante="secundario" tamano="sm" onClick={() => desbloquear(s)}>
           Editar
@@ -289,13 +317,24 @@ export function EjecucionModal({
       onCerrar={onCerrar}
       titulo={esNuevo ? 'Nueva ejecución' : 'Ejecución del turno'}
       pie={
-        <div className="flex gap-2">
-          <Boton variante="secundario" className="flex-1" onClick={onCerrar} disabled={guardando}>
-            Cancelar
-          </Boton>
-          <Boton className="flex-1" onClick={guardar} disabled={guardando || !activado}>
-            {guardando ? 'Guardando…' : 'Guardar'}
-          </Boton>
+        <div className="flex flex-col gap-2">
+          {/* Los subtotales, siempre a la vista al pie. */}
+          {activado && lotesListos && (
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+              <Pie etiqueta="M. obra preriego" valor={obraPreriego} />
+              <Pie etiqueta="M. obra aplicación" valor={obraAplicacion} />
+              <Pie etiqueta="Químicos" valor={quimico} />
+              <Pie etiqueta="Costo / mz" valor={costoMz} destacado />
+            </div>
+          )}
+          <div className="flex gap-2">
+            <Boton variante="secundario" className="flex-1" onClick={onCerrar} disabled={guardando}>
+              Cancelar
+            </Boton>
+            <Boton className="flex-1" onClick={guardar} disabled={guardando || !activado}>
+              {guardando ? 'Guardando…' : 'Guardar'}
+            </Boton>
+          </div>
         </div>
       }
     >
@@ -303,8 +342,6 @@ export function EjecucionModal({
         {error && <Alerta>{error}</Alerta>}
 
         {/* ===================== EL ACTIVADOR ======================== */}
-        {/* Fuera del acordeón a propósito: es la pregunta que decide si
-            se abre un turno que ya existe o se empieza uno. */}
         <div className="rounded-xl bg-brand-50 p-3.5 ring-1 ring-inset ring-brand-600/15">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Campo etiqueta="Temporada" requerido>
@@ -364,20 +401,14 @@ export function EjecucionModal({
 
         {!activado ? null : (
           <>
-            <div className="flex flex-wrap items-center justify-between gap-2">
+            {/* La fase es una consecuencia de lo capturado, no algo que
+                se elija: el selector de arriba sólo servía para
+                contradecir a los datos. Se enseña, y punto. */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Fase
+              </span>
               <Insignia tono={fase.tono}>{fase.etiqueta}</Insignia>
-              <Campo etiqueta="Fase" className="w-44">
-                <Selector
-                  value={entrada.estado}
-                  onChange={(e) => cambiar({ estado: e.target.value as EstadoDesinfeccion })}
-                >
-                  {FASES.map((f) => (
-                    <option key={f.valor} value={f.valor}>
-                      {f.etiqueta}
-                    </option>
-                  ))}
-                </Selector>
-              </Campo>
             </div>
 
             {/* ================ 0 · LOTES Y MANZANAS ================= */}
@@ -394,44 +425,66 @@ export function EjecucionModal({
               {candado('lotes')}
 
               <div className="flex flex-col gap-2">
-                {lotes.map((l, i) => (
-                  <div key={i} className="rounded-xl bg-slate-50 p-2.5 ring-1 ring-inset ring-slate-200">
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_7rem_2.5rem] sm:items-start">
-                      <Selector
-                        value={l.loteTemporadaId}
-                        onChange={(e) => cambiarLote(i, { loteTemporadaId: e.target.value })}
-                        disabled={bloqueada('lotes')}
-                        className="w-full min-w-0"
-                      >
-                        <option value="">Elige el lote…</option>
-                        {lotesDisponibles.map((d) => (
-                          <option key={d.lote_temporada_id} value={d.lote_temporada_id}>
-                            {d.nomenclatura}
-                            {d.nombre ? ` · ${d.nombre}` : ''} — {n2(d.area_neta)} mz
-                          </option>
-                        ))}
-                      </Selector>
-                      <Entrada
-                        inputMode="decimal"
-                        value={l.mzCubiertas}
-                        onChange={(e) => cambiarLote(i, { mzCubiertas: e.target.value })}
-                        placeholder="mz"
-                        disabled={bloqueada('lotes')}
-                        className="w-full min-w-0"
-                      />
-                      <button
-                        type="button"
-                        aria-label={`Eliminar lote ${i + 1}`}
-                        onClick={() => onCambiarLotes(lotes.filter((_, j) => j !== i))}
-                        disabled={bloqueada('lotes') || lotes.length === 1}
-                        className="flex h-11 w-full shrink-0 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-white hover:text-red-600 disabled:opacity-30 sm:w-10"
-                      >
-                        <IconTrash className="h-4 w-4" />
-                        <span className="ml-1.5 text-sm font-semibold sm:hidden">Eliminar</span>
-                      </button>
+                {lotes.map((l, i) => {
+                  const lote = lotesDisponibles.find(
+                    (d) => d.lote_temporada_id === l.loteTemporadaId
+                  )
+                  return (
+                    <div
+                      key={i}
+                      className="rounded-xl bg-slate-50 p-2.5 ring-1 ring-inset ring-slate-200"
+                    >
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_7rem_2.5rem] sm:items-start">
+                        <Selector
+                          value={l.loteTemporadaId}
+                          onChange={(e) => elegirLote(i, e.target.value)}
+                          disabled={bloqueada('lotes')}
+                          className="w-full min-w-0"
+                        >
+                          <option value="">Elige el lote…</option>
+                          {lotesDisponibles.map((d) => (
+                            <option key={d.lote_temporada_id} value={d.lote_temporada_id}>
+                              {d.nomenclatura}
+                              {d.nombre ? ` · ${d.nombre}` : ''} [{n2(d.mz_planeadas)} −{' '}
+                              {n2(d.mz_ejecutadas)}]
+                            </option>
+                          ))}
+                        </Selector>
+                        <Entrada
+                          inputMode="decimal"
+                          value={l.mzCubiertas}
+                          onChange={(e) => cambiarLote(i, { mzCubiertas: e.target.value })}
+                          placeholder="mz"
+                          disabled={bloqueada('lotes')}
+                          className="w-full min-w-0"
+                        />
+                        <button
+                          type="button"
+                          aria-label={`Eliminar lote ${i + 1}`}
+                          onClick={() => onCambiarLotes(lotes.filter((_, j) => j !== i))}
+                          disabled={bloqueada('lotes') || lotes.length === 1}
+                          className="flex h-11 w-full shrink-0 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-white hover:text-red-600 disabled:opacity-30 sm:w-10"
+                        >
+                          <IconTrash className="h-4 w-4" />
+                          <span className="ml-1.5 text-sm font-semibold sm:hidden">Eliminar</span>
+                        </button>
+                      </div>
+
+                      {lote && (
+                        // Lo que queda es una SUGERENCIA. Si escriben
+                        // más, se guarda más: el que está en el lote
+                        // sabe mejor que el plan.
+                        <p className="mt-1.5 px-0.5 text-[11px] text-slate-400">
+                          Planeadas {n2(lote.mz_planeadas)} · ya desinfectadas{' '}
+                          {n2(lote.mz_ejecutadas)} ·{' '}
+                          <strong className="text-slate-600">
+                            quedan {n2(lote.mz_restantes)} mz
+                          </strong>
+                        </p>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
 
               <button
@@ -461,7 +514,7 @@ export function EjecucionModal({
                 {/* =================== 1 · PRERIEGO =================== */}
                 <Acordeon
                   titulo={TITULOS.preriego}
-                  descripcion="El día y las horas en que se regó antes de aplicar."
+                  descripcion="El día, las horas y la cuadrilla que lo trabajó."
                   resumen={resumenDe(
                     'preriego',
                     duracionPreriego > 0 ? `${n2(duracionPreriego)} h · ${ddtPreriego}` : ddtPreriego
@@ -482,7 +535,7 @@ export function EjecucionModal({
                     </Campo>
                     <Campo
                       etiqueta="Duración"
-                      ayuda="Fin menos inicio. La calcula la base; aquí sólo se ve."
+                      ayuda="Fin menos inicio, cruzando la medianoche. La calcula la base."
                     >
                       <Entrada value={`${n2(duracionPreriego)} h`} readOnly disabled />
                     </Campo>
@@ -495,7 +548,7 @@ export function EjecucionModal({
                         disabled={bloqueada('preriego')}
                       />
                     </Campo>
-                    <Campo etiqueta="Hora de fin">
+                    <Campo etiqueta="Hora de fin" ayuda="Puede ser del día siguiente.">
                       <Entrada
                         type="time"
                         value={entrada.horaFinPreriego}
@@ -511,6 +564,19 @@ export function EjecucionModal({
                       />
                     </Campo>
                   </div>
+
+                  <CuadrillaFase
+                    fase="1_Preriego"
+                    cerrado={bloqueada('preriego')}
+                    personal={personal}
+                    operadores={catalogos.operadores}
+                    minimo={minimo}
+                    subtotal={obraPreriego}
+                    onCambiar={cambiarPersona}
+                    onQuitar={(i) => onCambiarPersonal(personal.filter((_, j) => j !== i))}
+                    onAgregar={() => onCambiarPersonal([...personal, lineaPersonalVacia('1_Preriego')])}
+                    onCrear={crearYElegir}
+                  />
                 </Acordeon>
 
                 {/* =================== 2 · LECTURAS =================== */}
@@ -603,7 +669,7 @@ export function EjecucionModal({
                 {/* ================== 3 · APLICACIÓN ================== */}
                 <Acordeon
                   titulo={TITULOS.aplicacion}
-                  descripcion="Tiempos, conductividad, calibración y los químicos."
+                  descripcion="Tiempos, conductividad, químicos y la cuadrilla que aplicó."
                   resumen={resumenDe(
                     'aplicacion',
                     quimico > 0 ? `L ${n2(quimico)} · ${ddtAplicacion}` : ddtAplicacion
@@ -622,7 +688,6 @@ export function EjecucionModal({
                         disabled={bloqueada('aplicacion')}
                       />
                     </Campo>
-
                     {campoDdt(ddtAplicacion)}
 
                     <Campo etiqueta="Estación de riego">
@@ -649,15 +714,6 @@ export function EjecucionModal({
                         placeholder="0.00"
                       />
                     </Campo>
-                    <Campo etiqueta="Horas de lavado">
-                      <Entrada
-                        inputMode="decimal"
-                        value={entrada.horasLavado}
-                        onChange={(e) => cambiar({ horasLavado: e.target.value })}
-                        disabled={bloqueada('aplicacion')}
-                        placeholder="0.00"
-                      />
-                    </Campo>
 
                     <Campo etiqueta="Inicio de inyección">
                       <Entrada
@@ -667,7 +723,7 @@ export function EjecucionModal({
                         disabled={bloqueada('aplicacion')}
                       />
                     </Campo>
-                    <Campo etiqueta="Fin de inyección">
+                    <Campo etiqueta="Fin de inyección" ayuda="Puede ser del día siguiente.">
                       <Entrada
                         type="time"
                         value={entrada.horaFinIny}
@@ -676,13 +732,54 @@ export function EjecucionModal({
                       />
                     </Campo>
 
+                    <Campo etiqueta="Inicio de lavado">
+                      <Entrada
+                        type="time"
+                        value={entrada.horaInicioLavado}
+                        onChange={(e) => cambiar({ horaInicioLavado: e.target.value })}
+                        disabled={bloqueada('aplicacion')}
+                      />
+                    </Campo>
+                    <Campo etiqueta="Fin de lavado">
+                      <Entrada
+                        type="time"
+                        value={entrada.horaFinLavado}
+                        onChange={(e) => cambiar({ horaFinLavado: e.target.value })}
+                        disabled={bloqueada('aplicacion')}
+                      />
+                    </Campo>
+
                     <Campo etiqueta="Horas de inyección" ayuda="Fin menos inicio.">
                       <Entrada value={`${n2(inyeccion)} h`} readOnly disabled />
                     </Campo>
                     <Campo
+                      etiqueta="Horas de lavado"
+                      ayuda={
+                        entrada.horaInicioLavado && entrada.horaFinLavado
+                          ? 'De sus horas.'
+                          : 'Sin horas de lavado, manda el número escrito abajo.'
+                      }
+                    >
+                      <Entrada value={`${n2(lavado)} h`} readOnly disabled />
+                    </Campo>
+
+                    {!(entrada.horaInicioLavado && entrada.horaFinLavado) && (
+                      <Campo
+                        etiqueta="Horas de lavado (a mano)"
+                        ayuda="Se usa mientras no pongas las horas de arriba."
+                      >
+                        <Entrada
+                          inputMode="decimal"
+                          value={entrada.horasLavadoManual}
+                          onChange={(e) => cambiar({ horasLavadoManual: e.target.value })}
+                          disabled={bloqueada('aplicacion')}
+                          placeholder="0.00"
+                        />
+                      </Campo>
+                    )}
+
+                    <Campo
                       etiqueta="Total de horas de riego"
-                      // Columna generada desde la 60: no se puede escribir
-                      // ni aquí ni por ningún otro camino.
                       ayuda="Presurización + inyección + lavado. La calcula la base."
                     >
                       <Entrada
@@ -756,8 +853,8 @@ export function EjecucionModal({
                     <div className="min-w-0">
                       <h3 className="text-sm font-semibold text-slate-900">Químicos aplicados</h3>
                       <p className="text-xs text-slate-400">
-                        Se anota el TOTAL aplicado; la dosis por manzana sale de las {n2(mz)} mz del
-                        turno.
+                        Se anota el TOTAL aplicado; la dosis sale de las {n2(mz)} mz del turno. El
+                        costo lo toma del catálogo si lo dejas vacío.
                       </p>
                     </div>
                     <span className="shrink-0 text-sm font-bold tabular-nums text-brand-700">
@@ -768,6 +865,7 @@ export function EjecucionModal({
                   <div className="mt-2 flex flex-col gap-2">
                     {productos.map((q, i) => {
                       const dosis = dosisPorMz(q.totalLitros, mz)
+                      const material = catalogos.materiales.find((m) => m.id === q.productoId)
                       return (
                         <div
                           key={i}
@@ -785,6 +883,7 @@ export function EjecucionModal({
                                 <option key={m.id} value={m.id}>
                                   {m.codigo}
                                   {m.descripcion ? ` · ${m.descripcion}` : ''}
+                                  {m.ingrediente_activo ? ` — ${m.ingrediente_activo}` : ''}
                                 </option>
                               ))}
                             </Selector>
@@ -822,20 +921,53 @@ export function EjecucionModal({
                                 value={q.costoLitro}
                                 onChange={(e) => cambiarProducto(i, { costoLitro: e.target.value })}
                                 disabled={bloqueada('aplicacion')}
-                                placeholder="0.0000"
+                                placeholder="Del catálogo"
                               />
                             </Campo>
-                            <Campo etiqueta="Dosis/mz">
+                            <Campo etiqueta="Envases">
                               <Entrada
-                                value={dosis === null ? '—' : n2(dosis)}
-                                readOnly
-                                disabled
+                                inputMode="numeric"
+                                value={q.cantidadEnvases}
+                                onChange={(e) =>
+                                  cambiarProducto(i, { cantidadEnvases: e.target.value })
+                                }
+                                disabled={bloqueada('aplicacion')}
+                                placeholder="0"
                               />
+                            </Campo>
+                            <Campo etiqueta="Tipo de envase">
+                              <Selector
+                                value={q.tipoEnvase}
+                                onChange={(e) =>
+                                  cambiarProducto(i, { tipoEnvase: e.target.value })
+                                }
+                                disabled={bloqueada('aplicacion')}
+                              >
+                                <option value="">Sin especificar</option>
+                                {TIPOS_ENVASE.map((t) => (
+                                  <option key={t} value={t}>
+                                    {t}
+                                  </option>
+                                ))}
+                              </Selector>
+                            </Campo>
+                          </div>
+
+                          <div className="mt-2 grid grid-cols-2 gap-2">
+                            <Campo etiqueta="Dosis/mz">
+                              <Entrada value={dosis === null ? '—' : n2(dosis)} readOnly disabled />
                             </Campo>
                             <Campo etiqueta="Costo total">
                               <Entrada value={n2(costoProducto(q))} readOnly disabled />
                             </Campo>
                           </div>
+
+                          {material?.ingrediente_activo && (
+                            <p className="mt-1.5 px-0.5 text-[11px] text-slate-400">
+                              {material.ingrediente_activo}
+                              {material.concentracion ? ` · ${material.concentracion}` : ''}
+                            </p>
+                          )}
                         </div>
                       )
                     })}
@@ -850,146 +982,25 @@ export function EjecucionModal({
                     <IconPlus className="h-4 w-4" />
                     Agregar químico
                   </button>
-                </Acordeon>
 
-                {/* ==================== CUADRILLA ===================== */}
-                {/* Se queda como estaba: el encargo la deja pendiente. */}
-                <Acordeon
-                  titulo="Cuadrilla"
-                  descripcion="Quién trabajó el turno. La tarifa sale del puesto y de la fecha."
-                  resumen={manoObra === null ? '—' : `L ${n2(manoObra)}`}
-                  abierto={abierta === 'cuadrilla'}
-                  onAlternar={() => alternar('cuadrilla')}
-                >
-                  <div className="flex flex-col gap-2">
-                    {personal.map((p, i) => {
-                      const tarifa = tarifaDe(p.puestoId)
-                      const costo = costoPersonal(p, tarifa)
-                      return (
-                        <div
-                          key={i}
-                          className="rounded-xl bg-slate-50 p-2.5 ring-1 ring-inset ring-slate-200"
-                        >
-                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2.5rem] sm:items-start">
-                            <Selector
-                              value={p.puestoId}
-                              onChange={(e) => cambiarPersona(i, { puestoId: e.target.value })}
-                              className="w-full min-w-0"
-                            >
-                              <option value="">Elige el puesto…</option>
-                              {catalogos.puestos.map((x) => (
-                                <option key={x.id} value={x.id}>
-                                  {x.codigo}
-                                  {x.descripcion ? ` · ${x.descripcion}` : ''}
-                                </option>
-                              ))}
-                            </Selector>
-                            <Selector
-                              value={p.operadorId}
-                              onChange={(e) => cambiarPersona(i, { operadorId: e.target.value })}
-                              className="w-full min-w-0"
-                            >
-                              <option value="">Sin nombre (se cuenta por puesto)</option>
-                              {catalogos.operadores.map((o) => (
-                                <option key={o.id} value={o.id}>
-                                  {o.nombre}
-                                </option>
-                              ))}
-                            </Selector>
-                            <button
-                              type="button"
-                              aria-label={`Eliminar renglón de personal ${i + 1}`}
-                              onClick={() => onCambiarPersonal(personal.filter((_, j) => j !== i))}
-                              disabled={personal.length === 1}
-                              className="flex h-11 w-full shrink-0 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-white hover:text-red-600 disabled:opacity-30 sm:w-10"
-                            >
-                              <IconTrash className="h-4 w-4" />
-                              <span className="ml-1.5 text-sm font-semibold sm:hidden">
-                                Eliminar
-                              </span>
-                            </button>
-                          </div>
-
-                          <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                            <Campo etiqueta="Personas">
-                              <Entrada
-                                inputMode="numeric"
-                                value={p.cantidadPersonas}
-                                onChange={(e) =>
-                                  cambiarPersona(i, { cantidadPersonas: e.target.value })
-                                }
-                              />
-                            </Campo>
-                            <Campo etiqueta="Jornadas">
-                              <Entrada
-                                inputMode="decimal"
-                                value={p.jornadas}
-                                onChange={(e) => cambiarPersona(i, { jornadas: e.target.value })}
-                              />
-                            </Campo>
-                            <Campo etiqueta="Horas extras">
-                              <Entrada
-                                inputMode="decimal"
-                                value={p.horasExtras}
-                                onChange={(e) => cambiarPersona(i, { horasExtras: e.target.value })}
-                              />
-                            </Campo>
-                            <Campo etiqueta="Jornada">
-                              <Selector
-                                value={p.jornadaTipo}
-                                onChange={(e) =>
-                                  cambiarPersona(i, { jornadaTipo: e.target.value as JornadaTipo })
-                                }
-                              >
-                                {JORNADAS.map((j) => (
-                                  <option key={j.valor} value={j.valor}>
-                                    {j.etiqueta}
-                                  </option>
-                                ))}
-                              </Selector>
-                            </Campo>
-                          </div>
-
-                          <p className="mt-1.5 px-0.5 text-[11px] text-slate-400">
-                            {!p.puestoId
-                              ? 'Elige el puesto para ver lo que cuesta.'
-                              : tarifa === null
-                                ? 'Ese puesto todavía no tiene tarifa vigente en esta fecha: el costo lo pondrá la base en cero hasta que la tenga.'
-                                : `Jornada L ${n2(tarifa)} · hora extra L ${n2(tarifa / 8)} × ${
-                                    JORNADAS.find((j) => j.valor === p.jornadaTipo)?.factor ?? 1.25
-                                  } → `}
-                            {tarifa !== null && p.puestoId && (
-                              <strong className="text-slate-700">L {n2(costo)}</strong>
-                            )}
-                          </p>
-                        </div>
-                      )
-                    })}
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => onCambiarPersonal([...personal, { ...LINEA_PERSONAL_VACIA }])}
-                    className="mt-2 flex items-center gap-1.5 rounded-lg px-1 py-1.5 text-sm font-semibold text-brand-700 transition-colors hover:text-brand-800"
-                  >
-                    <IconPlus className="h-4 w-4" />
-                    Agregar personal
-                  </button>
-                </Acordeon>
-
-                {/* El resumen del turno, siempre a la vista. */}
-                <div className="grid grid-cols-4 gap-2">
-                  <Resumen etiqueta="Manzanas" valor={n2(mz)} />
-                  <Resumen etiqueta="Horas riego" valor={n2(totalHoras)} />
-                  <Resumen etiqueta="Químico" valor={`L ${n2(quimico)}`} />
-                  <Resumen
-                    etiqueta="Mano de obra"
-                    valor={manoObra === null ? '—' : `L ${n2(manoObra)}`}
+                  <CuadrillaFase
+                    fase="3_Aplicacion"
+                    cerrado={bloqueada('aplicacion')}
+                    personal={personal}
+                    operadores={catalogos.operadores}
+                    minimo={minimo}
+                    subtotal={obraAplicacion}
+                    onCambiar={cambiarPersona}
+                    onQuitar={(i) => onCambiarPersonal(personal.filter((_, j) => j !== i))}
+                    onAgregar={() => onCambiarPersonal([...personal, lineaPersonalVacia('3_Aplicacion')])}
+                    onCrear={crearYElegir}
                   />
-                </div>
+                </Acordeon>
 
                 {SECCIONES.every((s) => seccionLlena(s, entrada, lotes, lecturas)) && (
-                  <Alerta tono="azul">El turno está completo: las cuatro secciones tienen lo suyo.</Alerta>
+                  <Alerta tono="azul">
+                    El turno está completo: las cuatro secciones tienen lo suyo.
+                  </Alerta>
                 )}
               </>
             )}
@@ -1000,10 +1011,203 @@ export function EjecucionModal({
   )
 }
 
-function Resumen({ etiqueta, valor }: { etiqueta: string; valor: string }) {
+/**
+ * La cuadrilla de UNA fase.
+ *
+ * Vive fuera del componente padre y no dentro: un componente declarado
+ * en el render se vuelve a crear en cada pulsación, y React le reinicia
+ * el estado —el buscador del selector se cerraba solo a media palabra—.
+ *
+ * Recibe la lista ENTERA y filtra por fase, en vez de recibir ya
+ * filtrada, porque los índices con los que se cambia y se quita son los
+ * de la lista entera: filtrar fuera obligaría a traducirlos de vuelta.
+ */
+function CuadrillaFase({
+  fase,
+  cerrado,
+  personal,
+  operadores,
+  minimo,
+  subtotal,
+  onCambiar,
+  onQuitar,
+  onAgregar,
+  onCrear,
+}: {
+  fase: FasePersonal
+  cerrado: boolean
+  personal: LineaPersonal[]
+  operadores: CatalogosDesinfeccion['operadores']
+  minimo: number | null
+  subtotal: number | null
+  onCambiar: (indice: number, cambios: Partial<LineaPersonal>) => void
+  onQuitar: (indice: number) => void
+  onAgregar: () => void
+  onCrear: (indice: number, texto: string) => Promise<string>
+}) {
+  const suyas = personal.map((p, i) => ({ p, i })).filter((x) => x.p.fase === fase)
+
   return (
-    <div className="rounded-xl bg-slate-50 px-2 py-2.5 text-center ring-1 ring-inset ring-slate-200">
-      <p className="text-sm font-bold tabular-nums text-slate-900">{valor}</p>
+    <div className="mt-4 border-t border-slate-100 pt-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-slate-900">Cuadrilla de esta fase</h3>
+          <p className="text-xs text-slate-400">
+            El salario trae el mínimo vigente y se puede cambiar. La hora extra se calcula sobre
+            base de ocho horas.
+          </p>
+        </div>
+        <span className="shrink-0 text-sm font-bold tabular-nums text-brand-700">
+          {subtotal === null ? '—' : `L ${n2(subtotal)}`}
+        </span>
+      </div>
+
+      <div className="mt-2 flex flex-col gap-2">
+        {suyas.map(({ p, i }) => {
+          const salario = salarioDe(p, minimo)
+          const costo = costoPersonal(p, salario)
+          return (
+            <div key={i} className="rounded-xl bg-slate-50 p-2.5 ring-1 ring-inset ring-slate-200">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_2.5rem] sm:items-start">
+                <Selector
+                  value={p.operadorId}
+                  onChange={(e) => onCambiar(i, { operadorId: e.target.value })}
+                  onCrear={(texto) => onCrear(i, texto)}
+                  disabled={cerrado}
+                  className="w-full min-w-0"
+                >
+                  <option value="">Sin nombre (se cuenta por puesto)</option>
+                  {operadores
+                    .filter((o) => o.es_jornal)
+                    .map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.codigo ? `${o.codigo} - ${o.nombre}` : o.nombre}
+                      </option>
+                    ))}
+                </Selector>
+                <button
+                  type="button"
+                  aria-label={`Eliminar renglón de cuadrilla ${i + 1}`}
+                  onClick={() => onQuitar(i)}
+                  disabled={cerrado}
+                  className="flex h-11 w-full shrink-0 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-white hover:text-red-600 disabled:opacity-30 sm:w-10"
+                >
+                  <IconTrash className="h-4 w-4" />
+                  <span className="ml-1.5 text-sm font-semibold sm:hidden">Eliminar</span>
+                </button>
+              </div>
+
+              <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <Campo etiqueta="Personas">
+                  <Entrada
+                    inputMode="numeric"
+                    value={p.cantidadPersonas}
+                    onChange={(e) => onCambiar(i, { cantidadPersonas: e.target.value })}
+                    disabled={cerrado}
+                  />
+                </Campo>
+                <Campo etiqueta="Salario">
+                  <Entrada
+                    inputMode="decimal"
+                    value={p.salario}
+                    onChange={(e) => onCambiar(i, { salario: e.target.value })}
+                    placeholder={minimo === null ? 'Escríbelo' : n2(minimo)}
+                    disabled={cerrado}
+                  />
+                </Campo>
+                <Campo etiqueta="Horas extras">
+                  <Entrada
+                    inputMode="decimal"
+                    value={p.horasExtras}
+                    onChange={(e) => onCambiar(i, { horasExtras: e.target.value })}
+                    disabled={cerrado}
+                  />
+                </Campo>
+                <Campo etiqueta="Jornada">
+                  <Selector
+                    value={p.jornadaTipo}
+                    onChange={(e) => onCambiar(i, { jornadaTipo: e.target.value as JornadaTipo })}
+                    disabled={cerrado}
+                  >
+                    {JORNADAS.map((j) => (
+                      <option key={j.valor} value={j.valor}>
+                        {j.etiqueta}
+                      </option>
+                    ))}
+                  </Selector>
+                </Campo>
+              </div>
+
+              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <Campo etiqueta="Puesto">
+                  <Selector
+                    value={p.puesto}
+                    onChange={(e) => onCambiar(i, { puesto: e.target.value })}
+                    disabled={cerrado}
+                  >
+                    {PUESTOS_CUADRILLA.map((x) => (
+                      <option key={x} value={x}>
+                        {x}
+                      </option>
+                    ))}
+                  </Selector>
+                </Campo>
+                {p.puesto === PUESTO_OTRO && (
+                  <Campo etiqueta="¿Cuál?" requerido>
+                    <Entrada
+                      value={p.puestoOtro}
+                      onChange={(e) => onCambiar(i, { puestoOtro: e.target.value })}
+                      placeholder="Escribe el puesto"
+                      disabled={cerrado}
+                    />
+                  </Campo>
+                )}
+              </div>
+
+              <p className="mt-1.5 px-0.5 text-[11px] text-slate-400">
+                {salario === null
+                  ? 'No hay salario mínimo vigente para esta fecha: escribe el salario.'
+                  : `Salario L ${n2(salario)} · hora extra L ${n2(salario / 8)} × ${
+                      JORNADAS.find((j) => j.valor === p.jornadaTipo)?.factor ?? 1.25
+                    } → `}
+                {salario !== null && <strong className="text-slate-700">L {n2(costo)}</strong>}
+              </p>
+            </div>
+          )
+        })}
+      </div>
+
+      <button
+        type="button"
+        onClick={onAgregar}
+        disabled={cerrado}
+        className="mt-2 flex items-center gap-1.5 rounded-lg px-1 py-1.5 text-sm font-semibold text-brand-700 transition-colors hover:text-brand-800 disabled:opacity-40"
+      >
+        <IconPlus className="h-4 w-4" />
+        Agregar personal
+      </button>
+    </div>
+  )
+}
+
+function Pie({
+  etiqueta,
+  valor,
+  destacado = false,
+}: {
+  etiqueta: string
+  valor: number | null
+  destacado?: boolean
+}) {
+  return (
+    <div className="rounded-lg bg-slate-50 px-2 py-1.5 text-center ring-1 ring-inset ring-slate-200">
+      <p
+        className={`text-sm font-bold tabular-nums ${
+          destacado ? 'text-brand-700' : 'text-slate-900'
+        }`}
+      >
+        {valor === null ? '—' : `L ${n2(valor)}`}
+      </p>
       <p className="text-[10px] font-medium text-slate-400">{etiqueta}</p>
     </div>
   )

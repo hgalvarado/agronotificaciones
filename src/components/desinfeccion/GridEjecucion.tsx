@@ -22,7 +22,15 @@ import type { ColumnaGrid } from '@/lib/grid/tipos'
 import { formatearFecha } from '@/lib/estados'
 import { n2 } from '@/lib/trasplante/formato'
 import { canExecuteAction, type Reglas } from '@/lib/permisos/clientABAC'
-import { faseCerrada, limpiarLotes, limpiarPersonal, limpiarProductos } from '@/lib/desinfeccion/calculo'
+import {
+  SECCIONES,
+  faseCerrada,
+  limpiarLotes,
+  limpiarPersonal,
+  limpiarProductos,
+  seccionLlena,
+  type SeccionEjecucion,
+} from '@/lib/desinfeccion/calculo'
 import {
   buscarEjecucion,
   cambiarFase,
@@ -31,17 +39,20 @@ import {
   guardarEjecucion,
   leerDetalle,
   leerEjecuciones,
+  leerLotes,
   siembrasDeLotes,
 } from '@/lib/desinfeccion/repositorioCliente'
 import {
   CICLOS,
   EJECUCION_VACIA,
+  PUESTOS_CUADRILLA,
+  PUESTO_OTRO,
   FASES,
   LINEA_LOTE_VACIA,
-  LINEA_PERSONAL_VACIA,
   LINEA_PRODUCTO_VACIA,
   etiquetaFase,
   lecturasPorOmision,
+  lineaPersonalVacia,
   type CatalogosDesinfeccion,
   type EntradaEjecucion,
   type FilaEjecucion,
@@ -66,6 +77,7 @@ export function GridEjecucion({
   usuarioId,
   zonas,
   onSinMigracion,
+  onJornalCreado,
 }: {
   temporadaId: string
   catalogos: CatalogosDesinfeccion
@@ -77,6 +89,8 @@ export function GridEjecucion({
   usuarioId: string | null
   zonas: Set<string>
   onSinMigracion: (falta: boolean) => void
+  /** Un jornal creado desde el selector: hay que recargar el catálogo. */
+  onJornalCreado: () => void
 }) {
   const [filas, setFilas] = useState<FilaEjecucion[]>([])
   const [cargando, setCargando] = useState(true)
@@ -88,14 +102,28 @@ export function GridEjecucion({
   const [entrada, setEntrada] = useState<EntradaEjecucion | null>(null)
   const [lecturas, setLecturas] = useState<LecturaTensiometro[]>([])
   const [lineasLote, setLineasLote] = useState<LineaLote[]>([{ ...LINEA_LOTE_VACIA }])
-  const [lineasPersonal, setLineasPersonal] = useState<LineaPersonal[]>([
-    { ...LINEA_PERSONAL_VACIA },
-  ])
+  const [lineasPersonal, setLineasPersonal] = useState<LineaPersonal[]>([])
+  /**
+   * Qué secciones venían LLENAS al cargar.
+   *
+   * Es lo único que bloquea el acordeón. Antes el candado miraba el
+   * estado vivo y la sección se cerraba sola a media captura, con el
+   * dedo todavía en el teclado; ésta es la foto del momento de abrir.
+   */
+  const [seccionesGuardadas, setSeccionesGuardadas] = useState<SeccionEjecucion[]>([])
   const [lineasProducto, setLineasProducto] = useState<LineaProducto[]>([
     { ...LINEA_PRODUCTO_VACIA },
   ])
   /** Las siembras de los lotes del turno, para el DDT de las tres fases. */
   const [fechasSiembra, setFechasSiembra] = useState<string[]>([])
+  /**
+   * Los lotes con sus manzanas, recalculados para el turno abierto.
+   *
+   * Se vuelven a pedir con el identificador de la ejecución para que lo
+   * suyo no cuente como ya gastado: sin eso, corregir 9.99 a 10.00
+   * parecería que al lote no le queda nada.
+   */
+  const [lotesTurno, setLotesTurno] = useState<LoteDesinfeccion[]>(lotes)
 
   const ctx = useMemo(() => ({ usuarioId, zonas }), [usuarioId, zonas])
   const puedeCrear = canExecuteAction(reglas, 'desinfeccion', 'crear')
@@ -405,15 +433,17 @@ export function GridEjecucion({
         setEntrada(base)
         setLecturas(lecturasPorOmision())
         setLineasLote([{ ...LINEA_LOTE_VACIA }])
-        setLineasPersonal([{ ...LINEA_PERSONAL_VACIA }])
+        setLineasPersonal([lineaPersonalVacia('1_Preriego'), lineaPersonalVacia('3_Aplicacion')])
         setLineasProducto([{ ...LINEA_PRODUCTO_VACIA }])
+        // Un turno nuevo no tiene nada guardado: nada se bloquea.
+        setSeccionesGuardadas([])
         return
       }
 
       const { lotes: ls, personal: ps, productos: qs, error: e } = await leerDetalle(f.id)
       if (e) setError(e)
 
-      setEntrada({
+      const cargada: EntradaEjecucion = {
         id: f.id,
         temporadaId: f.temporada_id,
         turnoId: f.turno_id,
@@ -429,7 +459,9 @@ export function GridEjecucion({
         horasPresurizacion: String(f.horas_presurizacion ?? ''),
         horaInicioIny: t(f.hora_inicio_iny),
         horaFinIny: t(f.hora_fin_iny),
-        horasLavado: String(f.horas_lavado ?? ''),
+        horaInicioLavado: t(f.hora_inicio_lavado),
+        horaFinLavado: t(f.hora_fin_lavado),
+        horasLavadoManual: String(f.horas_lavado ?? ''),
         ppm: String(f.ppm ?? ''),
         ceAntes: String(f.ce_antes ?? ''),
         ceDurante: String(f.ce_durante ?? ''),
@@ -437,14 +469,14 @@ export function GridEjecucion({
         calibracionEntrada: String(f.calibracion_entrada ?? ''),
         calibracionSalida: String(f.calibracion_salida ?? ''),
         calibracionCampo: String(f.calibracion_campo ?? ''),
-      })
+      }
+      setEntrada(cargada)
 
-      // El JSONB viene como venga: si alguien guardó otra cosa ahí, se
-      // ignora en vez de tumbar el formulario.
       const leidas = Array.isArray(f.lecturas_tensiometro) ? f.lecturas_tensiometro : []
-      setLecturas(leidas.length > 0 ? leidas : lecturasPorOmision())
+      const lecturasCargadas = leidas.length > 0 ? leidas : lecturasPorOmision()
+      setLecturas(lecturasCargadas)
 
-      setLineasLote(
+      const lotesCargados =
         ls.length > 0
           ? ls.map((l) => ({
               id: l.id,
@@ -452,20 +484,35 @@ export function GridEjecucion({
               mzCubiertas: String(l.mz_cubiertas),
             }))
           : [{ ...LINEA_LOTE_VACIA }]
-      )
-      setLineasPersonal(
-        ps.length > 0
-          ? ps.map((p) => ({
-              id: p.id,
-              puestoId: p.puesto_id,
-              operadorId: p.operador_id ?? '',
-              cantidadPersonas: String(p.cantidad_personas),
-              jornadas: String(p.jornadas),
-              horasExtras: String(p.horas_extras),
-              jornadaTipo: p.jornada_tipo,
-            }))
-          : [{ ...LINEA_PERSONAL_VACIA }]
-      )
+      setLineasLote(lotesCargados)
+
+      // Cada fase abre con un renglón en blanco si no trae ninguno: así
+      // hay dónde escribir sin tener que pulsar «Agregar» primero.
+      const porFase = (fase: '1_Preriego' | '3_Aplicacion') => {
+        const suyas = ps.filter((p) => p.fase === fase)
+        if (suyas.length === 0) return [lineaPersonalVacia(fase)]
+        return suyas.map((p) => ({
+          id: p.id,
+          fase: p.fase,
+          operadorId: p.operador_id ?? '',
+          cantidadPersonas: String(p.cantidad_personas),
+          salario: String(p.salario_base_manual ?? p.tarifa_dia ?? ''),
+          horasExtras: String(p.horas_extras),
+          jornadaTipo: p.jornada_tipo,
+          puesto: PUESTOS_CUADRILLA.includes(
+            (p.puesto_texto ?? '') as (typeof PUESTOS_CUADRILLA)[number]
+          )
+            ? (p.puesto_texto as string)
+            : PUESTO_OTRO,
+          puestoOtro: PUESTOS_CUADRILLA.includes(
+            (p.puesto_texto ?? '') as (typeof PUESTOS_CUADRILLA)[number]
+          )
+            ? ''
+            : (p.puesto_texto ?? ''),
+        }))
+      }
+      setLineasPersonal([...porFase('1_Preriego'), ...porFase('3_Aplicacion')])
+
       setLineasProducto(
         qs.length > 0
           ? qs.map((q) => ({
@@ -473,8 +520,16 @@ export function GridEjecucion({
               productoId: q.producto_id,
               totalLitros: String(q.total_litros),
               costoLitro: String(q.costo_litro),
+              cantidadEnvases: String(q.cantidad_envases ?? ''),
+              tipoEnvase: q.tipo_envase ?? '',
             }))
           : [{ ...LINEA_PRODUCTO_VACIA }]
+      )
+
+      // La foto del candado se toma AQUÍ, con lo que acaba de llegar de
+      // la base, y no se vuelve a mirar mientras se escribe.
+      setSeccionesGuardadas(
+        SECCIONES.filter((sec) => seccionLlena(sec, cargada, lotesCargados, lecturasCargadas))
       )
     },
     []
@@ -513,6 +568,23 @@ export function GridEjecucion({
   // lotes y pueden no haberse sembrado el mismo día, así que quedarse con
   // una sola sería enseñar un número que no vale para los demás lotes. Con
   // todas, la pantalla puede decir un rango.
+  const ejecucionAbierta = entrada?.id ?? ''
+  useEffect(() => {
+    let vivo = true
+    async function cargar() {
+      if (!temporadaId) {
+        setLotesTurno(lotes)
+        return
+      }
+      const datos = await leerLotes(temporadaId, ejecucionAbierta || null)
+      if (vivo) setLotesTurno(datos.length > 0 ? datos : lotes)
+    }
+    void cargar()
+    return () => {
+      vivo = false
+    }
+  }, [temporadaId, ejecucionAbierta, lotes])
+
   const lotesDelTurno = useMemo(
     () => lineasLote.map((l) => l.loteTemporadaId).filter(Boolean).sort().join(','),
     [lineasLote]
@@ -543,8 +615,9 @@ export function GridEjecucion({
     setEntrada({ ...EJECUCION_VACIA, temporadaId })
     setLecturas(lecturasPorOmision())
     setLineasLote([{ ...LINEA_LOTE_VACIA }])
-    setLineasPersonal([{ ...LINEA_PERSONAL_VACIA }])
+    setLineasPersonal([lineaPersonalVacia('1_Preriego'), lineaPersonalVacia('3_Aplicacion')])
     setLineasProducto([{ ...LINEA_PRODUCTO_VACIA }])
+    setSeccionesGuardadas([])
   }
 
   async function editar(f: FilaEjecucion) {
@@ -706,10 +779,11 @@ export function GridEjecucion({
           personal={lineasPersonal}
           productos={lineasProducto}
           catalogos={catalogos}
-          lotesDisponibles={lotes}
+          lotesDisponibles={lotesTurno}
           turnosDisponibles={turnos}
           estacionesDisponibles={estaciones}
           fechasSiembra={fechasSiembra}
+          seccionesGuardadas={seccionesGuardadas}
           guardando={ocupado}
           buscando={buscando}
           onActivar={(turnoId, ciclo) => void activar(turnoId, ciclo)}
@@ -718,6 +792,7 @@ export function GridEjecucion({
           onCambiarLotes={setLineasLote}
           onCambiarPersonal={setLineasPersonal}
           onCambiarProductos={setLineasProducto}
+          onJornalCreado={onJornalCreado}
           onGuardar={() => void guardar()}
           onCerrar={() => {
             setEntrada(null)

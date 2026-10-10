@@ -28,7 +28,6 @@ export default async function DesinfeccionPage() {
     { data: estaciones },
     { data: variedades },
     { data: materiales },
-    { data: puestos },
     { data: operadores },
     { data: equipos },
     { data: implementos },
@@ -41,9 +40,20 @@ export default async function DesinfeccionPage() {
     // Con su zona desde la 60: es lo que permite recortar el selector.
     supabase.from('estaciones_riego').select('id, nombre, zona_id').eq('activo', true).order('nombre'),
     supabase.from('variedades').select('id, nombre').eq('activo', true).order('nombre'),
-    supabase.from('materiales').select('id, codigo, descripcion').eq('activo', true).order('codigo'),
-    supabase.from('puestos_trabajo').select('id, codigo, descripcion').eq('activo', true).order('codigo'),
-    supabase.from('operadores').select('id, nombre').eq('activo', true).order('nombre'),
+    // Con ingrediente activo y concentración desde la 61: es lo que deja
+    // comparar dos productos que se llaman distinto y hacen lo mismo.
+    supabase
+      .from('materiales')
+      .select('id, codigo, descripcion, ingrediente_activo, concentracion')
+      .eq('activo', true)
+      .order('codigo'),
+    // Con su código y su marca de jornal: el selector de cuadrilla sólo
+    // ofrece jornales, y los enseña como «código - nombre».
+    supabase
+      .from('operadores')
+      .select('id, codigo, nombre, es_jornal')
+      .eq('activo', true)
+      .order('nombre'),
     supabase.from('equipos').select('id, codigo, nombre').eq('activo', true).order('codigo'),
     supabase.from('implementos').select('id, codigo, nombre').eq('activo', true).order('codigo'),
   ])
@@ -55,7 +65,6 @@ export default async function DesinfeccionPage() {
     estaciones: (estaciones ?? []) as CatalogosDesinfeccion['estaciones'],
     variedades: (variedades ?? []) as CatalogosDesinfeccion['variedades'],
     materiales: (materiales ?? []) as CatalogosDesinfeccion['materiales'],
-    puestos: (puestos ?? []) as CatalogosDesinfeccion['puestos'],
     operadores: (operadores ?? []) as CatalogosDesinfeccion['operadores'],
     equipos: (equipos ?? []) as CatalogosDesinfeccion['equipos'],
     implementos: (implementos ?? []) as CatalogosDesinfeccion['implementos'],

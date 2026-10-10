@@ -235,6 +235,134 @@ dice.
 
 ## 3. Registro de cambios
 
+### 2026-10-10 — La noche, los envases y la cuadrilla por fase (migración 61)
+
+Nueve fricciones de campo auditadas sobre la 60.
+
+**a) Las horas que CRUZAN LA MEDIANOCHE.** Es el arreglo que más pesa.
+La 60 calculaba `greatest(fin - inicio, interval '0')`, y eso para un
+turno nocturno da **cero**: de 22:00 a 01:00 la resta es negativa y el
+`greatest` la aplasta. Era justo el caso que más importa, porque la
+desinfección se hace de noche. Peor todavía: un CHECK de la 59 ni
+siquiera dejaba GUARDAR un preriego que terminara antes de empezar.
+
+La regla nueva vive en una sola función —`fn_horas_entre`, `immutable`
+para que la admitan las columnas generadas— y de ahí la leen las cuatro.
+Dos decisiones dentro:
+
+- **La misma hora de inicio y fin son cero horas, no veinticuatro.** Un
+  turno de cero horas existe —se anotó y no se trabajó—; uno de
+  veinticuatro, no.
+- **No adivina turnos de más de un día.** De 22:00 a 21:00 se lee como
+  una hora, no como veintitrés. Para eso harían falta fechas, no horas.
+
+El lavado no tenía horas: era un número a mano, así que no podía cruzar
+nada. Ahora tiene su par de horas, y **el número viejo no se tira**: se
+queda en `horas_lavado_manual` y manda mientras no haya horas. Dos
+entradas, una salida y una precedencia explícita es mejor que perder lo
+capturado.
+
+**b) Los envases.** `cantidad_envases` y `tipo_envase` en la línea del
+químico, no en la cabecera: cada producto llega en lo suyo —el ácido en
+canaca y el desinfectante en barril—. El tipo es texto libre y la lista
+cerrada vive en la pantalla: con un enum, el día que llegue un envase
+nuevo hay que migrar la base y la captura se para.
+
+**c) El catálogo de materiales crece.** `ingrediente_activo` y
+`concentracion` —lo que de verdad actúa, para poder comparar dos
+productos que se llaman distinto y hacen lo mismo— y una tabla
+`historial_precios_materiales` con moneda y vigencia.
+
+**La moneda importa:** el químico se importa, y guardar dólares ya
+convertidos a la tasa de hoy es perder el dato original.
+`fn_precio_material` convierte con la tasa de **esa** fecha —la de la
+59— y devuelve nulo si no hay tasa, en vez de inventar una.
+
+El costo por litro se **copia a la fila** al guardar, como la tarifa del
+personal en la 59: si mañana sube el producto, lo ya capturado no cambia
+solo. Y **lo escrito a mano manda sobre el catálogo**: hay compras
+puntuales a otro precio y el catálogo no puede pisarlas.
+
+**d) El jornal, en el catálogo.** `operadores.es_jornal`. El selector de
+cuadrilla sólo ofrece jornales y los enseña como «código - nombre»; el
+de maquinaria sigue ofreciendo a todos. Es la misma tabla y hacía falta
+distinguirlos.
+
+**e) La cuadrilla, por fase y con salario a mano.** Tres cambios:
+
+- `fase` (`1_Preriego` / `3_Aplicacion`): la cuadrilla del preriego no es
+  la de la aplicación —son dos días y dos grupos— y juntarlas obligaba a
+  recordar de cuál era cada renglón.
+- **Fuera `jornadas`**: una línea es una cuadrilla de un día, y los días
+  ya son fases distintas. La fórmula queda
+  `personas × (salario + extras × (salario/8) × factor)`.
+- **`puesto_id` pasa a `puesto_texto`**: en campo se anota «Supervisor»,
+  «Jornal» u «Otro», y obligar a crear un puesto de trabajo para apuntar
+  un jornal era pedirle al de campo que administre un catálogo. Lo que
+  había se copia al texto antes de soltar la columna.
+
+El salario trae por omisión el mínimo vigente (`fn_salario_minimo_dia`) y
+se puede cambiar. **Ese mínimo se busca por NOMBRE** —un puesto que se
+llame «salario mínimo»— y conviene saberlo: si alguien lo renombra, el
+formulario deja de proponerlo (no calcula mal: deja el campo vacío). El
+día que estorbe, lo sólido es una bandera en `puestos_trabajo`, como
+`es_jornal`.
+
+**f) Las manzanas que quedan.** `fn_lotes_desinfeccion` da planeadas —del
+plan de trasplante— menos lo ya desinfectado. El selector las enseña como
+`[planeadas − ejecutadas]` y al elegir el lote **sugiere** lo que queda,
+sólo si el renglón está vacío. **No restringe:** el que está en el lote
+sabe mejor que el plan cuántas manzanas regó.
+
+**g) El bloqueo prematuro, que era el peor de los nueve.** El acordeón se
+cerraba solo **mientras se escribía**: el candado miraba el estado VIVO,
+así que terminar de llenar la fecha y la hora cerraba la sección en la
+cara de quien estaba capturando. Ahora se decide con una **foto tomada al
+cargar** (`seccionesGuardadas`): sólo se bloquea lo que ya venía guardado
+de la base. Lo que se está escribiendo ahora no se bloquea nunca.
+
+**h) El selector de «Fase» de la cabecera, fuera.** La fase es una
+consecuencia de lo capturado; un selector sólo servía para
+contradecirla. Se enseña y no se elige.
+
+**i) El Administrador y las Tarifas.** El encargo dice que no puede.
+**Sobre una base construida desde cero no se reproduce**, y está probado:
+`fn_permiso_de` devuelve `true` a quien tenga `acceso_total`,
+`fn_mis_permisos` le expande las seis acciones de la pantalla, la RLS de
+`tarifas_puesto` le deja insertar y editar, y la pantalla lee ese mismo
+conjunto (`t61.sql`, sección 6: inserta y edita de verdad).
+
+Así que la 61 **no «arregla» a ciegas** algo que aquí funciona: imprime
+el estado real de la instalación con `raise notice` —qué roles tienen
+`acceso_total`, qué acciones declara la pantalla, cuántas temporadas hay,
+qué roles de la matriz tienen «editar»— para que el aviso diga en cuál de
+los cuatro eslabones está. Lo único que repara, porque es objetivo, es
+devolverle a la pantalla sus acciones si se hubieran perdido: de esa
+lista se expande el permiso del Administrador.
+
+**Sospecha principal, por si el aviso no lo aclara:** la pantalla no
+puede guardar **sin una temporada** —`temporada_id` es obligatorio— y sin
+ninguna el botón de importar ni siquiera sale.
+
+**Verificado**
+
+| Prueba | Resultado |
+| --- | --- |
+| **Paridad del costo de cuadrilla**, navegador ↔ disparador, 192 combinaciones | **0 diferencias** |
+| **Paridad de las horas**, con los casos NOCTURNOS, 576 combinaciones | **0 diferencias** |
+| `t61.sql` — la noche, los precios en dos monedas, la cuadrilla por fase, las manzanas y el administrador | **41 / 0** |
+| `t60` · `t59` · `t58` · `t56` · `t55` · `t54` · `t53` · `t42_52` sobre la cadena 61 | **28/0 · 40/0 · 25/0 · 23/0 · 19/0 · 26/0 · 45/0 · 36/0** |
+| `tcalc.mjs` | **116 / 0** |
+| `tdesinf.mjs` — navegador a 390 px, con el no-bloqueo mientras se escribe | **58 / 0** |
+| `tsc --noEmit`, `eslint --max-warnings=0`, `next build` | limpios |
+
+`t59` y `t60` volvieron a tocarse, y es la suite haciendo su trabajo: el
+caso «un fin anterior al inicio no resta horas» de la 60 **cambió de
+significado** —ahora cruza la medianoche— y los asertos de la cuadrilla
+miraban columnas que ya no existen. Los números esperados del costo NO
+cambiaron: 2 × 80 siguen siendo 160.
+
+
 ### 2026-10-08 — Guardado incremental, filas fantasma y el DDT en todo el embudo
 
 Sin migración: las dos son de navegador. Salen de una auditoría de la
@@ -1082,6 +1210,17 @@ Cosas que ya costaron una sesión. No volver a tropezar.
   (`faseCerrada`) no lo aplica RLS, porque el módulo no cuelga de un
   ticket y no tiene el tope de NOTIFICADO. Evita el error de pasada; no
   es seguridad. El navegador nunca concede: sólo esconde.
+- **Un candado de pantalla se decide al CARGAR, no mientras se
+  escribe.** Mirar el estado vivo para bloquear una sección «ya
+  completa» la cierra en la cara de quien está capturando. La foto se
+  toma cuando llegan los datos de la base y no se vuelve a mirar.
+- **`greatest(fin - inicio, …)` NO sirve para horas que cruzan la
+  medianoche**: aplasta a cero justo el turno nocturno. La forma es
+  `case when fin < inicio then (fin - inicio) + interval '24 hours'`.
+  Y ojo con el CHECK que prohíba `fin >= inicio`: hay que quitarlo.
+- **Un componente declarado DENTRO del render se recrea en cada
+  pulsación** y React le reinicia el estado —el buscador de un selector
+  se cerraba solo a media palabra—. Va fuera, con sus props.
 - **Un renglón en blanco de una sub-tabla NO es un dato: es el hueco
   donde escribir.** Hay que descartarlo antes de validar y antes de
   guardar, comparándolo campo a campo con su plantilla. Y la plantilla no
@@ -1177,9 +1316,9 @@ La migración a ABAC está **cerrada en toda la plataforma**.
   una casilla y pasa a ser cinco bloques, aplicados por RLS tabla por
   tabla.
 - **Desinfección de suelo** — núcleo en la migración 59, pantallas en la
-  Fase 2 y, en la **60**, multiproducto (en el plan y en la aplicación),
-  el activador por turno y ciclo, las horas calculadas por la base y el
-  autollenado desde Trasplante.
+  Fase 2, multiproducto y activador en la **60**, y en la **61** los
+  turnos nocturnos, el historial de precios de materiales, los envases y
+  la cuadrilla separada por fase.
 
 Lo que queda abierto son ideas, no deuda, salvo UNA cosa que sí lo es y
 está anotada arriba: **desinfección no tiene importador de Excel**. El

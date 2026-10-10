@@ -21,7 +21,7 @@ import {
   zonasParaCrear,
   type ReglasPlanas,
 } from '@/lib/permisos/clientABAC'
-import { AVISO_SIN_MIGRACION, leerLotes } from '@/lib/desinfeccion/repositorioCliente'
+import { AVISO_SIN_MIGRACION, leerJornales, leerLotes } from '@/lib/desinfeccion/repositorioCliente'
 import { recortarDejandoSinZona } from '@/lib/desinfeccion/calculo'
 import type { CatalogosDesinfeccion, LoteDesinfeccion } from '@/lib/desinfeccion/tipos'
 import { GridPlan } from './GridPlan'
@@ -60,6 +60,23 @@ export function DesinfeccionTabs({
   const [pestana, setPestana] = useState<Pestana>('ejecucion')
   const [sinMigracion, setSinMigracion] = useState(false)
   const [lotes, setLotes] = useState<LoteDesinfeccion[]>([])
+  /**
+   * Los operadores, en estado y no sólo en la prop.
+   *
+   * El selector de cuadrilla deja crear un jornal sin salir del
+   * formulario, y recargar la página entera para verlo en la lista sería
+   * perder lo que se llevaba escrito.
+   */
+  const [operadores, setOperadores] = useState(catalogos.operadores)
+
+  const catalogosVivos = useMemo(
+    () => ({ ...catalogos, operadores }),
+    [catalogos, operadores]
+  )
+
+  const recargarJornales = useCallback(async () => {
+    setOperadores(await leerJornales())
+  }, [])
 
   const avisarMigracion = useCallback((falta: boolean) => setSinMigracion(falta), [])
 
@@ -167,10 +184,11 @@ export function DesinfeccionTabs({
       {pestana === 'ejecucion' && (
         <GridEjecucion
           temporadaId={temporadaId}
-          catalogos={catalogos}
+          catalogos={catalogosVivos}
           lotes={lotesVisibles}
           turnos={turnosVisibles}
           estaciones={estacionesVisibles}
+          onJornalCreado={() => void recargarJornales()}
           reglas={reglas}
           usuarioId={usuarioId}
           zonas={zonasDelPerfil}

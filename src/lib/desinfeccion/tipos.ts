@@ -77,8 +77,11 @@ export type FilaEjecucion = {
   horas_presurizacion: number | null
   hora_inicio_iny: string | null
   hora_fin_iny: string | null
-  /** Generada. */
+  /** Generada, cruzando la medianoche. */
   horas_inyeccion: number | null
+  hora_inicio_lavado: string | null
+  hora_fin_lavado: string | null
+  /** Generada: de sus horas si las tiene, del número viejo si no. */
   horas_lavado: number | null
   /** Generada: presurización + inyección + lavado. No se escribe. */
   total_horas_riego: number | null
@@ -93,7 +96,16 @@ export type FilaEjecucion = {
   /** Resumen de lo que cuelga, que la vista ya trae sumado. */
   mz_regadas: number
   lotes_regados: number
+  /**
+   * La mano de obra, SEPARADA por fase.
+   *
+   * «Cuánto costó el preriego» es una pregunta distinta de «cuánto costó
+   * la aplicación», y sumarlas antes de tiempo pierde esa respuesta.
+   */
+  costo_personal_preriego: number
+  costo_personal_aplicacion: number
   costo_personal: number
+  envases: number
   /**
    * La suma de TODOS los productos de la aplicación.
    *
@@ -145,9 +157,15 @@ export type FilaProducto = {
   producto_id: string
   producto_codigo: string | null
   producto_nombre: string | null
+  ingrediente_activo: string | null
+  concentracion: string | null
   total_litros: number
   costo_litro: number
   costo_total: number
+  cantidad_envases: number
+  tipo_envase: string | null
+  /** Lo que decía el catálogo ESE día, al lado de lo que se capturó. */
+  precio_catalogo: number | null
   mz_regadas: number
   dosis_mz: number | null
   usuario_id: string
@@ -156,23 +174,40 @@ export type FilaProducto = {
 
 export type JornadaTipo = 'Diurna' | 'Nocturna'
 
+/**
+ * De qué fase es una cuadrilla.
+ *
+ * Sólo dos: la del preriego y la de la aplicación. Las lecturas las toma
+ * una persona de paso y no se costean aparte.
+ */
+export type FasePersonal = '1_Preriego' | '3_Aplicacion'
+
+/**
+ * Una línea de cuadrilla, que desde la 61 pertenece a UNA fase.
+ *
+ * El puesto dejó de salir del catálogo: en campo se anota «Supervisor»,
+ * «Jornal» u «Otro», y obligar a crear un puesto de trabajo para apuntar
+ * un jornal era pedirle al de campo que administre un catálogo.
+ */
 export type FilaPersonal = {
   id: string
   ejecucion_id: string
   temporada_id: string
-  fecha_aplicacion: string | null
   turno_id: string
   turno_nombre: string | null
-  puesto_id: string
-  puesto_codigo: string | null
-  puesto_nombre: string | null
+  ciclo: number
+  fase: FasePersonal
+  /** La fecha de SU fase: preriego o aplicación. */
+  fecha: string | null
+  puesto_texto: string | null
   operador_id: string | null
+  operador_codigo: string | null
   operador_nombre: string | null
   cantidad_personas: number
-  jornadas: number
   horas_extras: number
   jornada_tipo: JornadaTipo
-  /** La tarifa con la que se calculó, copiada a la fila. */
+  salario_base_manual: number | null
+  /** El salario con el que se calculó, copiado a la fila. */
   tarifa_dia: number | null
   costo_total: number
   usuario_id: string
@@ -273,6 +308,14 @@ export const LECTURA_VACIA: LecturaTensiometro = {
 
 export type OpcionCatalogo = { id: string; nombre: string }
 
+/**
+ * Un lote con lo que le queda por desinfectar.
+ *
+ * `mz_planeadas` sale del plan de trasplante; `mz_ejecutadas`, de lo que
+ * ya se desinfectó esta temporada. La resta es una SUGERENCIA: el que
+ * está en el lote sabe mejor que el plan cuántas manzanas regó, así que
+ * la pantalla la propone y deja escribir otra cosa.
+ */
 export type LoteDesinfeccion = {
   /** El id de `lotes_temporada`, que es con el que se guarda. */
   lote_temporada_id: string
@@ -280,6 +323,9 @@ export type LoteDesinfeccion = {
   nombre: string | null
   zona_id: string | null
   area_neta: number
+  mz_planeadas: number
+  mz_ejecutadas: number
+  mz_restantes: number
 }
 
 export type CatalogosDesinfeccion = {
@@ -290,9 +336,20 @@ export type CatalogosDesinfeccion = {
   estaciones: { id: string; nombre: string; zona_id: string | null }[]
   variedades: OpcionCatalogo[]
   /** Insumos. El producto de desinfección sale de aquí, no de cultivos. */
-  materiales: { id: string; codigo: string; descripcion: string | null }[]
-  puestos: { id: string; codigo: string; descripcion: string | null }[]
-  operadores: OpcionCatalogo[]
+  materiales: {
+    id: string
+    codigo: string
+    descripcion: string | null
+    ingrediente_activo: string | null
+    concentracion: string | null
+  }[]
+  /**
+   * Los operadores, con su código y su marca de jornal.
+   *
+   * El selector de cuadrilla sólo ofrece los jornales; el de maquinaria,
+   * todos. Es la misma tabla y hacía falta distinguirlos (migración 61).
+   */
+  operadores: { id: string; codigo: string | null; nombre: string; es_jornal: boolean }[]
   equipos: { id: string; codigo: string; nombre: string }[]
   implementos: { id: string; codigo: string; nombre: string }[]
   lotes: LoteDesinfeccion[]
@@ -305,7 +362,6 @@ export const CATALOGOS_VACIOS: CatalogosDesinfeccion = {
   estaciones: [],
   variedades: [],
   materiales: [],
-  puestos: [],
   operadores: [],
   equipos: [],
   implementos: [],
@@ -417,7 +473,9 @@ export type EntradaEjecucion = {
   horasPresurizacion: string
   horaInicioIny: string
   horaFinIny: string
-  horasLavado: string
+  horasLavadoManual: string
+  horaInicioLavado: string
+  horaFinLavado: string
   ppm: string
   ceAntes: string
   ceDurante: string
@@ -444,7 +502,9 @@ export const EJECUCION_VACIA: EntradaEjecucion = {
   horasPresurizacion: '',
   horaInicioIny: '',
   horaFinIny: '',
-  horasLavado: '',
+  horasLavadoManual: '',
+  horaInicioLavado: '',
+  horaFinLavado: '',
   ppm: '',
   ceAntes: '',
   ceDurante: '',
@@ -463,33 +523,65 @@ export type LineaLote = {
 
 export const LINEA_LOTE_VACIA: LineaLote = { id: '', loteTemporadaId: '', mzCubiertas: '' }
 
+/**
+ * Un renglón de cuadrilla en el formulario.
+ *
+ * `puesto` es una lista corta y `puestoOtro` el texto que la acompaña
+ * cuando se elige «Otro». Se guardan en una sola columna de texto: lo que
+ * importa del puesto es poder leerlo después, no poder cruzarlo con un
+ * catálogo que en campo nadie mantiene.
+ */
 export type LineaPersonal = {
   id: string
-  puestoId: string
+  fase: FasePersonal
+  /** Quién. Opcional: una cuadrilla de seis se anota sin nombres. */
   operadorId: string
   cantidadPersonas: string
-  jornadas: string
+  /** Trae el mínimo vigente por omisión, y se puede cambiar. */
+  salario: string
   horasExtras: string
   jornadaTipo: JornadaTipo
+  puesto: string
+  puestoOtro: string
 }
 
-export const LINEA_PERSONAL_VACIA: LineaPersonal = {
-  id: '',
-  puestoId: '',
-  operadorId: '',
-  cantidadPersonas: '1',
-  jornadas: '1',
-  horasExtras: '0',
-  jornadaTipo: 'Diurna',
+/** Las tres formas de anotar un puesto en campo. */
+export const PUESTOS_CUADRILLA = ['Supervisor', 'Jornal', 'Otro'] as const
+
+export const PUESTO_OTRO = 'Otro'
+
+export function lineaPersonalVacia(fase: FasePersonal): LineaPersonal {
+  return {
+    id: '',
+    fase,
+    operadorId: '',
+    cantidadPersonas: '1',
+    salario: '',
+    horasExtras: '0',
+    jornadaTipo: 'Diurna',
+    puesto: 'Jornal',
+    puestoOtro: '',
+  }
 }
 
-/** Un químico en el formulario. `id` vacío = todavía no existe. */
+/**
+ * La plantilla con la que se compara una fila «intacta».
+ *
+ * Va por fase porque la fase forma parte de la fila: el renglón en
+ * blanco del preriego y el de la aplicación son huecos distintos.
+ */
+export const LINEA_PERSONAL_VACIA: LineaPersonal = lineaPersonalVacia('3_Aplicacion')
+
 export type LineaProducto = {
   id: string
   productoId: string
   /** El TOTAL aplicado. La dosis por manzana se deduce de las manzanas. */
   totalLitros: string
+  /** Vacío = lo toma del historial de precios del catálogo. */
   costoLitro: string
+  /** Cómo llegó al campo. */
+  cantidadEnvases: string
+  tipoEnvase: string
 }
 
 export const LINEA_PRODUCTO_VACIA: LineaProducto = {
@@ -497,7 +589,17 @@ export const LINEA_PRODUCTO_VACIA: LineaProducto = {
   productoId: '',
   totalLitros: '',
   costoLitro: '',
+  cantidadEnvases: '',
+  tipoEnvase: '',
 }
+
+/**
+ * Los envases con los que llega el producto.
+ *
+ * La lista vive AQUÍ y no en un enum de la base: el día que llegue en un
+ * envase nuevo, un enum obliga a una migración y la captura se para.
+ */
+export const TIPOS_ENVASE = ['Canaca', 'Barril', 'Galón', 'Litro'] as const
 
 export type EntradaLogistica = {
   id: string

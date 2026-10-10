@@ -14,7 +14,7 @@
  */
 
 import { sumarDias } from '@/lib/fechas'
-import { FASES, JORNADAS, LINEA_LOTE_VACIA, LINEA_PERSONAL_VACIA, LINEA_PRODUCTO_VACIA, type EntradaEjecucion, type EntradaLogistica, type EntradaPlan, type EstadoDesinfeccion, type JornadaTipo, type LecturaTensiometro, type LineaLote, type LineaPersonal, type LineaProducto } from './tipos'
+import { FASES, JORNADAS, LINEA_LOTE_VACIA, LINEA_PRODUCTO_VACIA, PUESTO_OTRO, lineaPersonalVacia, type FasePersonal, type EntradaEjecucion, type EntradaLogistica, type EntradaPlan, type EstadoDesinfeccion, type JornadaTipo, type LecturaTensiometro, type LineaLote, type LineaPersonal, type LineaProducto } from './tipos'
 
 /** La base sobre la que se calcula la hora extra. Es la de la migración 59. */
 export const HORAS_JORNADA = 8
@@ -43,43 +43,66 @@ export function factorDe(tipo: JornadaTipo): number {
 }
 
 /**
- * El costo de una línea de personal.
+ * El costo de una línea de cuadrilla.
  *
- *     costo = personas × ( tarifa_día × jornadas
- *                        + horas_extras × (tarifa_día / 8) × factor )
+ *     costo = personas × ( salario + horas_extras × (salario / 8) × factor )
  *
- * Es la misma expresión de `fn_desinfeccion_costo_personal`. Sin tarifa
- * devuelve `null` —no cero—: una cuadrilla cuyo puesto todavía no tiene
- * tarifa vigente no cuesta cero, es que no se sabe cuánto cuesta.
+ * Es la misma expresión de `fn_desinfeccion_costo_personal` desde la 61.
+ * **Ya no se multiplica por jornadas**: una línea es una cuadrilla de un
+ * día, y los días son fases distintas.
+ *
+ * Sin salario devuelve `null` —no cero—: una cuadrilla cuyo salario
+ * todavía no se sabe no cuesta cero, es que no se sabe cuánto cuesta.
  */
 export function costoPersonal(
-  linea: Pick<LineaPersonal, 'cantidadPersonas' | 'jornadas' | 'horasExtras' | 'jornadaTipo'>,
-  tarifaDia: number | null | undefined
+  linea: Pick<LineaPersonal, 'cantidadPersonas' | 'horasExtras' | 'jornadaTipo'>,
+  salario: number | null | undefined
 ): number | null {
-  if (tarifaDia === null || tarifaDia === undefined) return null
+  if (salario === null || salario === undefined) return null
   const personas = aNumeroCero(linea.cantidadPersonas)
-  const jornadas = aNumeroCero(linea.jornadas)
   const extras = aNumeroCero(linea.horasExtras)
-  return (
-    personas *
-    (tarifaDia * jornadas + extras * (tarifaDia / HORAS_JORNADA) * factorDe(linea.jornadaTipo))
-  )
+  return personas * (salario + extras * (salario / HORAS_JORNADA) * factorDe(linea.jornadaTipo))
 }
 
-/** Suma lo que se sepa. `null` sólo si NINGUNA línea tiene tarifa. */
+/** El salario de una línea: el escrito, o el mínimo vigente. */
+export function salarioDe(linea: LineaPersonal, minimo: number | null): number | null {
+  const propio = aNumero(linea.salario)
+  if (propio !== null) return propio
+  return minimo
+}
+
+/**
+ * Lo que cuesta la cuadrilla de UNA fase.
+ *
+ * Sin `fase` suma las dos. `null` sólo si no se sabe el salario de
+ * ninguna línea.
+ */
 export function costoCuadrilla(
   lineas: LineaPersonal[],
-  tarifaDe: (puestoId: string) => number | null | undefined
+  minimo: number | null,
+  fase?: FasePersonal
 ): number | null {
+  const suyas = fase ? lineas.filter((l) => l.fase === fase) : lineas
   let hay = false
   let total = 0
-  for (const l of lineas) {
-    const c = costoPersonal(l, tarifaDe(l.puestoId))
+  for (const l of suyas) {
+    const c = costoPersonal(l, salarioDe(l, minimo))
     if (c === null) continue
     hay = true
     total += c
   }
   return hay ? total : null
+}
+
+/**
+ * El puesto tal como se guarda: la lista, o lo escrito en «Otro».
+ *
+ * Una sola columna de texto y no un catálogo: lo que importa del puesto
+ * es poder leerlo después, no cruzarlo con una tabla que en campo nadie
+ * mantiene.
+ */
+export function puestoDe(linea: LineaPersonal): string {
+  return linea.puesto === PUESTO_OTRO ? linea.puestoOtro.trim() : linea.puesto
 }
 
 /** Lo que cuesta un químico: litros × costo por litro. */
@@ -115,18 +138,38 @@ export function mzDeLotes(lineas: LineaLote[]): number {
 }
 
 /**
- * Las horas entre dos horas del mismo día, sin negativos.
+ * Las horas entre dos horas del día, CRUZANDO LA MEDIANOCHE.
  *
- * Es el reflejo exacto de lo que hace la base con
- * `greatest(fin - inicio, interval '0')`: un fin anterior al inicio no
- * resta horas —un turno de duración negativa no existe— y una hora
- * todavía sin capturar cuenta como cero en vez de anular la suma entera.
+ * Es el reflejo exacto de `fn_horas_entre` (migración 61). Hasta la 60
+ * un fin anterior al inicio daba cero, y eso dejaba en cero justo los
+ * turnos que más importan: la desinfección se hace de noche, y de 22:00
+ * a 01:00 son tres horas.
+ *
+ * Una hora todavía sin capturar cuenta como cero en vez de anular la
+ * suma entera. Y la misma hora de inicio y fin son cero horas, no
+ * veinticuatro: un turno de cero horas existe —se anotó y no se trabajó—;
+ * uno de veinticuatro, no.
  */
 export function horasEntre(inicio: string, fin: string): number {
   const a = minutosDe(inicio)
   const b = minutosDe(fin)
-  if (a === null || b === null || b <= a) return 0
-  return (b - a) / 60
+  if (a === null || b === null) return 0
+  if (b >= a) return (b - a) / 60
+  return (b - a + 24 * 60) / 60
+}
+
+/**
+ * Las horas de lavado: de sus horas si las tiene, del número si no.
+ *
+ * El lavado no tenía horas antes de la 61 y se escribía un número. Ese
+ * número no se tira: manda mientras no haya horas, para no perder lo ya
+ * capturado.
+ */
+export function horasLavado(e: EntradaEjecucion): number {
+  if (e.horaInicioLavado && e.horaFinLavado) {
+    return horasEntre(e.horaInicioLavado, e.horaFinLavado)
+  }
+  return aNumeroCero(e.horasLavadoManual)
 }
 
 /** La duración del preriego. La base la guarda generada. */
@@ -147,7 +190,7 @@ export function horasInyeccion(e: EntradaEjecucion): number {
  * teclea; el que queda guardado es el de la base.
  */
 export function totalHorasRiego(e: EntradaEjecucion): number {
-  return aNumeroCero(e.horasPresurizacion) + horasInyeccion(e) + aNumeroCero(e.horasLavado)
+  return aNumeroCero(e.horasPresurizacion) + horasInyeccion(e) + horasLavado(e)
 }
 
 /**
@@ -400,7 +443,10 @@ export function limpiarLotes(lineas: LineaLote[]): LineaLote[] {
 }
 
 export function limpiarPersonal(lineas: LineaPersonal[]): LineaPersonal[] {
-  return lineas.filter((l) => !intacta(l, LINEA_PERSONAL_VACIA))
+  // La plantilla se arma con la fase de la propia línea: el renglón en
+  // blanco del preriego y el de la aplicación son huecos distintos, y
+  // compararlos contra una sola plantilla dejaría pasar uno de los dos.
+  return lineas.filter((l) => !intacta(l, lineaPersonalVacia(l.fase)))
 }
 
 export function limpiarProductos(lineas: LineaProducto[]): LineaProducto[] {
@@ -455,17 +501,10 @@ export function validarEjecucion(
     return 'Empieza por los lotes: sin manzanas no hay entre qué repartir el costo.'
   }
 
-  const ini = minutosDe(e.horaInicioPreriego)
-  const fin = minutosDe(e.horaFinPreriego)
-  if (ini !== null && fin !== null && fin < ini) {
-    return 'El preriego no puede terminar antes de empezar.'
-  }
-
-  const iniIny = minutosDe(e.horaInicioIny)
-  const finIny = minutosDe(e.horaFinIny)
-  if (iniIny !== null && finIny !== null && finIny < iniIny) {
-    return 'La inyección no puede terminar antes de empezar.'
-  }
+  // OJO: hasta la 60 una hora de fin anterior a la de inicio era un
+  // error. Desde la 61 NO lo es: es un turno que cruza la medianoche, y
+  // la desinfección se hace de noche. Quitar esta validación es parte
+  // del arreglo, no un descuido.
 
   // La fase manda sobre lo que tiene que estar lleno. Dejar guardar una
   // aplicación sin fecha es lo que después deja el costo sin tarifa y sin
@@ -487,21 +526,16 @@ export function validarEjecucion(
   }
 
   for (const p of personal) {
-    if (!p.puestoId) {
-      if (
-        aNumeroCero(p.jornadas) > 0 ||
-        aNumeroCero(p.horasExtras) > 0 ||
-        (p.operadorId ?? '') !== ''
-      ) {
-        return 'Hay un renglón de personal sin puesto de trabajo.'
-      }
-      continue
+    // «Otro» sin escribir qué es deja una línea que dentro de un año no
+    // dice nada: es el único caso en que el puesto bloquea.
+    if (p.puesto === PUESTO_OTRO && p.puestoOtro.trim() === '') {
+      return 'Dice «Otro» en un puesto de la cuadrilla: escribe cuál.'
     }
     const personas = aNumero(p.cantidadPersonas)
     if (personas === null || personas < 1) return 'El personal se cuenta de uno en adelante.'
-    if (aNumeroCero(p.jornadas) < 0 || aNumeroCero(p.horasExtras) < 0) {
-      return 'Ni las jornadas ni las horas extras pueden ser negativas.'
-    }
+    if (aNumeroCero(p.horasExtras) < 0) return 'Las horas extras no pueden ser negativas.'
+    const salario = aNumero(p.salario)
+    if (salario !== null && salario < 0) return 'El salario no puede ser negativo.'
   }
 
   /* ----------------------------- Químicos ---------------------------- */

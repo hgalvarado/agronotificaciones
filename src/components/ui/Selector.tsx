@@ -85,10 +85,28 @@ export function normalizar(s: string): string {
     .toLowerCase()
 }
 
-export function Selector({ className = '', children, ...props }: ComponentProps<'select'>) {
+export function Selector({
+  className = '',
+  children,
+  onCrear,
+  ...props
+}: ComponentProps<'select'> & {
+  /**
+   * Crear en el catálogo lo que falta, sin salir del selector.
+   *
+   * Devuelve el id de lo creado para dejarlo elegido. Es la regla de la
+   * casa —todo selector de catálogo deja crear— puesta donde la pantalla
+   * la puede cumplir: a media captura, ir a Catálogos y volver es perder
+   * lo que ya se llevaba escrito.
+   */
+  onCrear?: (texto: string) => Promise<string>
+}) {
   const opciones = useMemo(() => leerOpciones(children), [children])
 
-  if (opciones.length <= UMBRAL_BUSQUEDA || props.multiple) {
+  // Con pocas opciones se deja el control del sistema… salvo que se
+  // pueda CREAR: la rueda nativa del teléfono no tiene dónde poner un
+  // «crear esto», así que ahí manda el panel con buscador.
+  if ((opciones.length <= UMBRAL_BUSQUEDA && !onCrear) || props.multiple) {
     return (
       <select className={`${baseCampo} ${FLECHA} ${className}`} {...props}>
         {children}
@@ -96,7 +114,9 @@ export function Selector({ className = '', children, ...props }: ComponentProps<
     )
   }
 
-  return <SelectorBuscado className={className} opciones={opciones} {...props} />
+  return (
+    <SelectorBuscado className={className} opciones={opciones} onCrear={onCrear} {...props} />
+  )
 }
 
 function SelectorBuscado({
@@ -105,8 +125,12 @@ function SelectorBuscado({
   value,
   onChange,
   disabled,
+  onCrear,
   ...props
-}: ComponentProps<'select'> & { opciones: Opcion[] }) {
+}: ComponentProps<'select'> & {
+  opciones: Opcion[]
+  onCrear?: (texto: string) => Promise<string>
+}) {
   // La posición se calcula en el CLIC: leer `ref.current` durante el
   // render es lo que prohíbe `react-hooks/refs`.
   const [caja, setCaja] = useState<CajaPanel | null>(null)
@@ -166,6 +190,17 @@ function SelectorBuscado({
           onElegir={elegir}
           onCerrar={cerrar}
           refBuscador={buscador}
+          onCrear={
+            onCrear
+              ? async (texto) => {
+                  // Lo recién creado queda ELEGIDO. Crearlo y dejar el
+                  // campo vacío obliga a buscarlo en una lista que
+                  // todavía no se ha recargado.
+                  const id = await onCrear(texto)
+                  if (id) elegir(id)
+                }
+              : undefined
+          }
         />
       )}
     </>

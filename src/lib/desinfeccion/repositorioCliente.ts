@@ -19,7 +19,7 @@
 import { createClient } from '@/lib/supabase/client'
 import { leerTodo } from '@/lib/supabase/paginar'
 import { mensajeDeError } from '@/lib/errores'
-import { aNumero, aNumeroCero, idsSobrantes, lecturasParaGuardar } from './calculo'
+import { aNumero, aNumeroCero, idsSobrantes, lecturasParaGuardar, puestoDe } from './calculo'
 import type {
   CatalogosDesinfeccion,
   EntradaEjecucion,
@@ -390,7 +390,9 @@ function filaEjecucion(e: EntradaEjecucion, lecturas: LecturaTensiometro[]) {
     horas_presurizacion: aNumeroCero(e.horasPresurizacion),
     hora_inicio_iny: e.horaInicioIny || null,
     hora_fin_iny: e.horaFinIny || null,
-    horas_lavado: aNumeroCero(e.horasLavado),
+    horas_lavado_manual: aNumeroCero(e.horasLavadoManual),
+    hora_inicio_lavado: e.horaInicioLavado || null,
+    hora_fin_lavado: e.horaFinLavado || null,
     // `total_horas_riego`, `horas_preriego` y `horas_inyeccion` NO van
     // aquí: desde la 60 son columnas generadas y mandarlas sería un
     // error de Postgres, no un número ignorado.
@@ -491,16 +493,19 @@ export async function guardarEjecucion(
   }
 
   /* ---------------------------- Personal --------------------------- */
-  const personalValido = personal.filter((p) => p.puestoId !== '')
+  const personalValido = personal
   for (const p of personalValido) {
     const datos = {
       ejecucion_id: ejecucionId,
-      puesto_id: p.puestoId,
+      fase: p.fase,
+      puesto_texto: puestoDe(p) || null,
       operador_id: p.operadorId || null,
       cantidad_personas: Math.trunc(aNumeroCero(p.cantidadPersonas)) || 1,
-      jornadas: aNumeroCero(p.jornadas),
       horas_extras: aNumeroCero(p.horasExtras),
       jornada_tipo: p.jornadaTipo,
+      // Vacío = que la base ponga el mínimo vigente. Mandar cero diría
+      // que esa cuadrilla trabajó gratis, que es otra cosa.
+      salario_base_manual: aNumero(p.salario),
     }
     if (p.id) {
       const { error } = await cliente.from('desinfeccion_personal').update(datos).eq('id', p.id)
@@ -534,7 +539,11 @@ export async function guardarEjecucion(
       ejecucion_id: ejecucionId,
       producto_id: q.productoId,
       total_litros: aNumeroCero(q.totalLitros),
+      // Cero = que lo tome del historial de precios del catálogo, que es
+      // lo normal. Escrito, manda lo escrito (migración 61).
       costo_litro: aNumeroCero(q.costoLitro),
+      cantidad_envases: Math.trunc(aNumeroCero(q.cantidadEnvases)),
+      tipo_envase: q.tipoEnvase.trim() || null,
     }
     if (q.id) {
       const { error } = await cliente
@@ -632,7 +641,6 @@ const CAMPOS_EJECUCION: Record<string, string> = {
   fecha_aplicacion: 'fecha_aplicacion',
   estacion_riego_nombre: 'estacion_riego_id',
   horas_presurizacion: 'horas_presurizacion',
-  horas_lavado: 'horas_lavado',
   ppm: 'ppm',
   ce_antes: 'ce_antes',
   ce_durante: 'ce_durante',
@@ -646,7 +654,6 @@ const CAMPOS_EJECUCION: Record<string, string> = {
 const NUMERICOS_EJECUCION = new Set([
   'ciclo',
   'horas_presurizacion',
-  'horas_lavado',
   'ppm',
   'ce_antes',
   'ce_durante',
@@ -848,32 +855,97 @@ export async function tarifaPuesto(puestoId: string, fecha: string): Promise<num
  * Se piden desde el navegador y no desde la página porque dependen de la
  * temporada que se esté mirando, y ésa se cambia sin recargar.
  */
-export async function leerLotes(temporadaId: string): Promise<CatalogosDesinfeccion['lotes']> {
+/**
+ * Los lotes de la temporada, con lo que les queda por desinfectar.
+ *
+ * Va por `fn_lotes_desinfeccion` (migración 61) y no por un `select` a
+ * `lotes_temporada` porque las manzanas planeadas salen del plan de
+ * trasplante y las ejecutadas de lo ya desinfectado: dos tablas más que
+ * el navegador tendría que cruzar a mano.
+ *
+ * `ejecucionId` excluye el turno que se está editando: sin eso, corregir
+ * 9.99 a 10.00 parecería que ya no queda nada por hacer.
+ */
+export async function leerLotes(
+  temporadaId: string,
+  ejecucionId: string | null = null
+): Promise<CatalogosDesinfeccion['lotes']> {
   if (!temporadaId) return []
-  const { data } = await createClient()
-    .from('lotes_temporada')
-    .select('id, zona_id, area_neta, lotes(nomenclatura, nombre)')
-    .eq('temporada_id', temporadaId)
-    .eq('activo', true)
-    .order('id')
+  const { data, error } = await createClient().rpc('fn_lotes_desinfeccion', {
+    p_temporada_id: temporadaId,
+    p_ejecucion_id: ejecucionId || null,
+  })
+  if (error) return []
 
   type Cruda = {
-    id: string
+    lote_temporada_id: string
+    nomenclatura: string
+    lote_nombre: string | null
     zona_id: string | null
-    area_neta: number | null
-    lotes: { nomenclatura: string; nombre: string | null } | { nomenclatura: string; nombre: string | null }[] | null
+    area_neta: number
+    mz_planeadas: number
+    mz_ejecutadas: number
+    mz_restantes: number
   }
 
-  return ((data as Cruda[] | null) ?? [])
-    .map((d) => {
-      const lote = Array.isArray(d.lotes) ? d.lotes[0] : d.lotes
-      return {
-        lote_temporada_id: d.id,
-        nomenclatura: lote?.nomenclatura ?? '—',
-        nombre: lote?.nombre ?? null,
-        zona_id: d.zona_id,
-        area_neta: Number(d.area_neta ?? 0),
-      }
-    })
-    .sort((a, b) => a.nomenclatura.localeCompare(b.nomenclatura, 'es', { numeric: true }))
+  return ((data as Cruda[] | null) ?? []).map((d) => ({
+    lote_temporada_id: d.lote_temporada_id,
+    nomenclatura: d.nomenclatura,
+    nombre: d.lote_nombre,
+    zona_id: d.zona_id,
+    area_neta: Number(d.area_neta ?? 0),
+    mz_planeadas: Number(d.mz_planeadas ?? 0),
+    mz_ejecutadas: Number(d.mz_ejecutadas ?? 0),
+    mz_restantes: Number(d.mz_restantes ?? 0),
+  }))
+}
+
+/** Los jornales del catálogo, para refrescar el selector tras crear uno. */
+export async function leerJornales(): Promise<CatalogosDesinfeccion['operadores']> {
+  const { data } = await createClient()
+    .from('operadores')
+    .select('id, codigo, nombre, es_jornal')
+    .eq('activo', true)
+    .order('nombre')
+  return (data as CatalogosDesinfeccion['operadores'] | null) ?? []
+}
+
+/**
+ * El salario mínimo vigente de una fecha, por jornada.
+ *
+ * Es lo que el formulario propone en cada renglón de cuadrilla. Va por
+ * `fn_salario_minimo_dia` —definer— porque `tarifas_puesto` se lee con
+ * el permiso de Costos o de Tarifas, que quien captura en campo no suele
+ * tener.
+ */
+export async function salarioMinimo(fecha: string): Promise<number | null> {
+  if (!fecha) return null
+  const { data, error } = await createClient().rpc('fn_salario_minimo_dia', { p_fecha: fecha })
+  if (error) return null
+  const n = Number(data)
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
+/**
+ * Da de alta un jornal sin salir del selector.
+ *
+ * Es la regla de la casa —todo selector de catálogo deja crear— puesta
+ * donde hace falta: a media captura, ir a Catálogos y volver es perder
+ * lo que ya se llevaba escrito. Nace marcado como jornal, que es lo que
+ * lo hace aparecer en este mismo selector la próxima vez.
+ */
+export async function crearJornal(nombre: string): Promise<{ id: string } | { error: string }> {
+  const limpio = nombre.trim()
+  if (limpio === '') return { error: 'Escribe el nombre.' }
+
+  const { data, error } = await createClient()
+    .from('operadores')
+    .insert({ nombre: limpio, es_jornal: true, activo: true })
+    .select('id')
+    .single()
+
+  if (error || !data) {
+    return { error: mensajeDeError(error, 'No se pudo crear el jornal.') }
+  }
+  return { id: (data as { id: string }).id }
 }
