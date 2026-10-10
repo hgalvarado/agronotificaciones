@@ -387,14 +387,15 @@ function filaEjecucion(e: EntradaEjecucion, lecturas: LecturaTensiometro[]) {
 
     fecha_aplicacion: e.fechaAplicacion || null,
     estacion_riego_id: e.estacionRiegoId || null,
-    horas_presurizacion: aNumeroCero(e.horasPresurizacion),
+    inicio_presurizacion: e.inicioPresurizacion || null,
+    fin_presurizacion: e.finPresurizacion || null,
     hora_inicio_iny: e.horaInicioIny || null,
     hora_fin_iny: e.horaFinIny || null,
-    horas_lavado_manual: aNumeroCero(e.horasLavadoManual),
     hora_inicio_lavado: e.horaInicioLavado || null,
     hora_fin_lavado: e.horaFinLavado || null,
-    // `total_horas_riego`, `horas_preriego` y `horas_inyeccion` NO van
-    // aquí: desde la 60 son columnas generadas y mandarlas sería un
+    // Ninguna de las CUATRO horas va aquí: desde la 62 `horas_preriego`,
+    // `horas_presurizacion`, `horas_inyeccion`, `horas_lavado` y
+    // `total_horas_riego` son columnas generadas, y mandarlas sería un
     // error de Postgres, no un número ignorado.
     ppm: aNumero(e.ppm),
     ce_antes: aNumero(e.ceAntes),
@@ -640,7 +641,6 @@ const CAMPOS_EJECUCION: Record<string, string> = {
   fecha_lecturas: 'fecha_lecturas',
   fecha_aplicacion: 'fecha_aplicacion',
   estacion_riego_nombre: 'estacion_riego_id',
-  horas_presurizacion: 'horas_presurizacion',
   ppm: 'ppm',
   ce_antes: 'ce_antes',
   ce_durante: 'ce_durante',
@@ -648,12 +648,12 @@ const CAMPOS_EJECUCION: Record<string, string> = {
   obs_preriego: 'obs_preriego',
 }
 
-// `total_horas_riego`, `horas_preriego` y `horas_inyeccion` quedan FUERA
-// a propósito: son columnas generadas desde la 60. Dejarlas editables en
-// la celda sería ofrecer un campo que la base rechaza siempre.
+// Las CINCO columnas de horas quedan FUERA a propósito: desde la 62
+// `horas_preriego`, `horas_presurizacion`, `horas_inyeccion`,
+// `horas_lavado` y `total_horas_riego` son generadas. Dejarlas editables
+// en la celda sería ofrecer un campo que la base rechaza siempre.
 const NUMERICOS_EJECUCION = new Set([
   'ciclo',
-  'horas_presurizacion',
   'ppm',
   'ce_antes',
   'ce_durante',
@@ -921,6 +921,35 @@ export async function leerJornales(): Promise<CatalogosDesinfeccion['operadores'
 export async function salarioMinimo(fecha: string): Promise<number | null> {
   if (!fecha) return null
   const { data, error } = await createClient().rpc('fn_salario_minimo_dia', { p_fecha: fecha })
+  if (error) return null
+  const n = Number(data)
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
+/**
+ * El precio vigente de un químico en una fecha, YA EN LEMPIRAS.
+ *
+ * Sale de `fn_precio_material` (migración 61), que es la misma función
+ * que usa el disparador al guardar: si la pantalla calculara el precio
+ * por su cuenta, el número que se ve mientras se teclea y el que queda
+ * guardado podrían discrepar, y nadie sabría cuál creer.
+ *
+ * Es definer porque `historial_precios_materiales` se administra con el
+ * permiso de catálogos, que quien captura en campo no suele tener.
+ *
+ * `null` cuando no hay precio para esa fecha —o cuando el precio está en
+ * dólares y falta la tasa de cambio del día—: el formulario deja el
+ * costo como estaba en vez de proponer un cero que parece un dato.
+ */
+export async function precioMaterial(
+  materialId: string,
+  fecha: string
+): Promise<number | null> {
+  if (!materialId || !fecha) return null
+  const { data, error } = await createClient().rpc('fn_precio_material', {
+    p_material_id: materialId,
+    p_fecha: fecha,
+  })
   if (error) return null
   const n = Number(data)
   return Number.isFinite(n) && n > 0 ? n : null

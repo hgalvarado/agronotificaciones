@@ -89,8 +89,20 @@ export function Selector({
   className = '',
   children,
   onCrear,
+  buscable = false,
   ...props
 }: ComponentProps<'select'> & {
+  /**
+   * Fuerza el panel con buscador aunque haya pocas opciones.
+   *
+   * El umbral existe porque con cuatro opciones la rueda nativa del
+   * teléfono es más rápida que un panel. Pero hay listas que HOY son
+   * cortas y mañana no —el catálogo de químicos arranca con dos
+   * productos y termina con treinta—, y en ésas el control cambia de
+   * forma debajo de quien ya se había aprendido el gesto. Marcarlas aquí
+   * las deja iguales desde el primer día.
+   */
+  buscable?: boolean
   /**
    * Crear en el catálogo lo que falta, sin salir del selector.
    *
@@ -106,7 +118,7 @@ export function Selector({
   // Con pocas opciones se deja el control del sistema… salvo que se
   // pueda CREAR: la rueda nativa del teléfono no tiene dónde poner un
   // «crear esto», así que ahí manda el panel con buscador.
-  if ((opciones.length <= UMBRAL_BUSQUEDA && !onCrear) || props.multiple) {
+  if ((opciones.length <= UMBRAL_BUSQUEDA && !onCrear && !buscable) || props.multiple) {
     return (
       <select className={`${baseCampo} ${FLECHA} ${className}`} {...props}>
         {children}

@@ -74,6 +74,15 @@ export type FilaEjecucion = {
   fecha_aplicacion: string | null
   estacion_riego_id: string | null
   estacion_riego_nombre: string | null
+  /**
+   * La presurización, por reloj desde la 62.
+   *
+   * Era un número escrito a mano, y por eso era la única de las cuatro
+   * fases del riego que no podía cruzar la medianoche.
+   */
+  inicio_presurizacion: string | null
+  fin_presurizacion: string | null
+  /** Generada, cruzando la medianoche. */
   horas_presurizacion: number | null
   hora_inicio_iny: string | null
   hora_fin_iny: string | null
@@ -81,7 +90,7 @@ export type FilaEjecucion = {
   horas_inyeccion: number | null
   hora_inicio_lavado: string | null
   hora_fin_lavado: string | null
-  /** Generada: de sus horas si las tiene, del número viejo si no. */
+  /** Generada, cruzando la medianoche. */
   horas_lavado: number | null
   /** Generada: presurización + inyección + lavado. No se escribe. */
   total_horas_riego: number | null
@@ -470,10 +479,11 @@ export type EntradaEjecucion = {
 
   fechaAplicacion: string
   estacionRiegoId: string
-  horasPresurizacion: string
+  /** Las cuatro fases del riego se capturan igual: por reloj (migración 62). */
+  inicioPresurizacion: string
+  finPresurizacion: string
   horaInicioIny: string
   horaFinIny: string
-  horasLavadoManual: string
   horaInicioLavado: string
   horaFinLavado: string
   ppm: string
@@ -499,10 +509,10 @@ export const EJECUCION_VACIA: EntradaEjecucion = {
   fechaLecturas: '',
   fechaAplicacion: '',
   estacionRiegoId: '',
-  horasPresurizacion: '',
+  inicioPresurizacion: '',
+  finPresurizacion: '',
   horaInicioIny: '',
   horaFinIny: '',
-  horasLavadoManual: '',
   horaInicioLavado: '',
   horaFinLavado: '',
   ppm: '',
@@ -550,13 +560,22 @@ export const PUESTOS_CUADRILLA = ['Supervisor', 'Jornal', 'Otro'] as const
 
 export const PUESTO_OTRO = 'Otro'
 
-export function lineaPersonalVacia(fase: FasePersonal): LineaPersonal {
+/**
+ * Un renglón de cuadrilla recién agregado.
+ *
+ * `salario` llega ya escrito con el mínimo vigente desde la 62: antes era
+ * un *placeholder* —texto gris que parece un valor y no se guarda—, y lo
+ * que se guardaba era un vacío que la base volvía a resolver por su
+ * cuenta. Ahora es un VALOR de verdad en el input, visible y editable,
+ * que es lo que se pidió.
+ */
+export function lineaPersonalVacia(fase: FasePersonal, salario = ''): LineaPersonal {
   return {
     id: '',
     fase,
     operadorId: '',
     cantidadPersonas: '1',
-    salario: '',
+    salario,
     horasExtras: '0',
     jornadaTipo: 'Diurna',
     puesto: 'Jornal',

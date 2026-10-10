@@ -235,6 +235,85 @@ dice.
 
 ## 3. Registro de cambios
 
+### 2026-10-10 — La presurización en reloj y el salario mínimo marcado (migración 62)
+
+**Qué se pidió.** Nueve puntos. **Seis ya se habían entregado el día
+anterior en la migración 61** y conviene dejarlo escrito para que nadie
+los rehaga: el cruce de medianoche (`fn_horas_entre`), los envases del
+químico, el ingrediente activo y la concentración, el historial de
+precios con su RLS, `es_jornal` en operadores, la cuadrilla separada por
+fase dentro de cada sección y el DDT dinámico en las tres fases. Lo
+genuinamente nuevo son tres cosas de base y cuatro de pantalla.
+
+**El hilo que las une: quitar los dos últimos sitios donde un número se
+escribía a mano pudiendo calcularse.**
+
+#### Base (`sql/62_desinfeccion_presurizacion_y_salario_minimo.sql`)
+
+1. **La presurización, por reloj.** `inicio_presurizacion` y
+   `fin_presurizacion` (time), y `horas_presurizacion` pasa a columna
+   generada sobre `fn_horas_entre`. Era la única de las cuatro fases del
+   riego que seguía siendo un número escrito a mano, y por eso la única
+   que no podía cruzar la medianoche —en un módulo que se trabaja de
+   noche—. `total_horas_riego` vuelve a generarse repitiendo las tres
+   expresiones: una columna generada no puede leer otra generada.
+2. **Fuera `horas_lavado_manual`.** La 61 la había dejado como red para
+   no tirar lo ya capturado. Cumplida esa función, dos entradas para una
+   sola salida son una ambigüedad que un día cuesta cara. La migración
+   **no adivina** horas de reloj a partir del número viejo —«3.5 horas»
+   no dice si fue de 22:00 a 01:30 o de 06:00 a 09:30—: cuenta las filas
+   que van a perder el dato y lo dice con un `raise notice`.
+3. **`puestos_trabajo.es_salario_minimo`.** Reemplaza la búsqueda por
+   nombre de `fn_salario_minimo_dia`, que la propia 61 dejó escrita y
+   señalada como frágil. Lleva semilla desde el nombre viejo —para que
+   quien ya tenía el puesto no se quede sin propuesta— y un índice único
+   parcial, porque dos puestos marcados a la vez es una ambigüedad que
+   nadie resuelve después. Sin ninguno marcado devuelve **nulo**, no
+   cero: el formulario deja el campo vacío y la persona lo escribe.
+
+Sólo se rehace `v_desinfeccion_ejecucion` (cruda y expuesta): es la única
+de las siete que nombra las columnas que se van.
+
+#### Pantalla
+
+4. **La cuadrilla arranca VACÍA** (`[]`). El renglón de fábrica
+   «1 persona» sugería un dato que nadie había escrito, y en la mitad de
+   los turnos —los que se capturan por fases, un día cada una— había que
+   borrarlo antes de guardar.
+5. **El salario llega ESCRITO, no como texto gris.** Era un
+   *placeholder*: parecía un número puesto y lo que se guardaba era un
+   vacío. Ahora `lineaPersonalVacia(fase, salario)` lo escribe de verdad
+   en el input. Con eso, `limpiarPersonal` necesita saber **con qué valor
+   se escribió** para seguir distinguiendo un renglón intacto de uno
+   tocado; por eso el salario mínimo se subió de `EjecucionModal` a
+   `GridEjecucion`, que es quien guarda.
+6. **El selector de químico, siempre con buscador.** `Selector` gana un
+   `buscable` que fuerza el panel aunque haya pocas opciones: el catálogo
+   de químicos hoy tiene dos productos y mañana treinta, y con el umbral
+   el control cambiaba de forma debajo de quien ya se había aprendido el
+   gesto.
+7. **Elegir el químico trae su precio vigente.** Por `fn_precio_material`
+   y con la **fecha de aplicación**, no la de hoy. Es la misma función
+   que usa el disparador al guardar, así que el número que se ve mientras
+   se teclea y el que queda guardado son el mismo. Sólo rellena si el
+   costo está vacío: hay compras puntuales a otro precio.
+
+#### Cómo se comprobó
+
+- `t62.sql`: 17 verdes. Incluye que las **cinco** columnas de horas
+  rechacen una escritura, que un puesto llamado «Salario Mínimo» **sin
+  marcar** ya no mande, y que no se puedan marcar dos.
+- `t61` (41), `t59` (40), `t60` (6) y las suites de la 42 a la 58, todas
+  verdes sobre la base construida hasta la 62.
+- Paridad contra los disparadores y columnas generadas REALES: **1.152**
+  combinaciones de horas y **192** de cuadrilla, 0 diferencias.
+- `tcalc` (120) y `tdesinf` (65) en Chromium a 390 px.
+
+#### Lo que NO se hizo, a propósito
+
+El importador de Excel del módulo y la fórmula de PPM, pedidos
+expresamente para después. Siguen anotados como deuda.
+
 ### 2026-10-10 — La noche, los envases y la cuadrilla por fase (migración 61)
 
 Nueve fricciones de campo auditadas sobre la 60.
@@ -1145,6 +1224,26 @@ usuario).
 
 Cosas que ya costaron una sesión. No volver a tropezar.
 
+- **Un *placeholder* no es un valor.** El texto gris de un input parece
+  un número puesto y no se guarda: quien no lo toca guarda un vacío. Si
+  el formulario PROPONE un número, lo escribe. Y entonces la limpieza de
+  filas fantasma tiene que conocer ese valor por omisión, o un renglón
+  agregado por descuido deja de parecer un hueco.
+- **Un umbral que cambia el tipo de control según cuántas opciones haya
+  es una trampa de catálogos que crecen.** El selector con cuatro
+  opciones era la rueda nativa y con ocho un panel con buscador: el mismo
+  campo, dos gestos distintos según el día. Las listas que van a crecer
+  se marcan `buscable` desde el principio.
+- **Un número de horas no se convierte en un par de horas de reloj.**
+  «3.5 h» no dice si fue de 22:00 a 01:30 o de 06:00 a 09:30. Al
+  cambiar un campo de número a reloj, la migración no inventa: cuenta lo
+  que se pierde y lo dice.
+- **Una bandera en el catálogo vale más que una búsqueda por nombre.**
+  `fn_salario_minimo_dia` buscaba el puesto que «se llamara salario
+  mínimo» y se rompía en silencio el día que alguien lo renombrara —no
+  calculaba mal: dejaba de proponer—. La 62 lo cambió por
+  `es_salario_minimo`, con índice único parcial para que sólo pueda
+  haber uno.
 - **PostgREST corta en ~1.000 filas por respuesta.** Quitar el `.limit()`
   no sirve: hay que paginar con `.range()` (`lib/supabase/paginar.ts` →
   `leerTodo`).

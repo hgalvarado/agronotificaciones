@@ -25,14 +25,14 @@
  * teclado—. Ahora sólo se bloquea lo que ya venía guardado de la base.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Acordeon } from '@/components/ui/Acordeon'
 import { Alerta, Boton, Campo, Entrada, Insignia, Selector } from '@/components/ui/Primitivos'
 import { IconCheck, IconLock, IconPlus, IconTrash } from '@/components/ui/Icons'
 import { n2 } from '@/lib/trasplante/formato'
 import { hoyIso } from '@/lib/fechas'
-import { crearJornal, salarioMinimo } from '@/lib/desinfeccion/repositorioCliente'
+import { crearJornal, precioMaterial } from '@/lib/desinfeccion/repositorioCliente'
 import {
   SECCIONES,
   costoCuadrilla,
@@ -43,6 +43,7 @@ import {
   horasInyeccion,
   horasLavado,
   horasPreriego,
+  horasPresurizacion,
   mzDeLotes,
   salarioDe,
   seccionLlena,
@@ -94,6 +95,7 @@ export function EjecucionModal({
   fechasSiembra,
   /** Qué secciones venían llenas AL CARGAR. Es lo único que bloquea. */
   seccionesGuardadas,
+  minimo,
   guardando,
   buscando,
   onActivar,
@@ -117,6 +119,8 @@ export function EjecucionModal({
   estacionesDisponibles: CatalogosDesinfeccion['estaciones']
   fechasSiembra: string[]
   seccionesGuardadas: SeccionEjecucion[]
+  /** El salario mínimo vigente de la fecha de la fase. Lo trae la cuadrícula. */
+  minimo: number | null
   guardando: boolean
   buscando: boolean
   onActivar: (turnoId: string, ciclo: string) => void
@@ -171,24 +175,16 @@ export function EjecucionModal({
     [entrada, onCambiarEntrada]
   )
 
-  /* ------------------------- El salario mínimo ------------------------ */
-  // Es lo que el formulario PROPONE en cada renglón de cuadrilla. Se pide
-  // por la fecha de la fase, porque una jornada de marzo se paga con el
-  // mínimo de marzo aunque se capture en mayo.
-  const fechaSalario = entrada.fechaAplicacion || entrada.fechaPreriego || hoyIso()
-  const [minimo, setMinimo] = useState<number | null>(null)
-
-  useEffect(() => {
-    let vivo = true
-    async function cargar() {
-      const v = await salarioMinimo(fechaSalario)
-      if (vivo) setMinimo(v)
-    }
-    void cargar()
-    return () => {
-      vivo = false
-    }
-  }, [fechaSalario])
+  /**
+   * El salario que se ESCRIBE en cada renglón de cuadrilla nuevo.
+   *
+   * Desde la 62 es un valor de verdad en el input y no un *placeholder*:
+   * el texto gris parecía un número puesto y no lo era, así que quien no
+   * lo tocaba guardaba un vacío. Lo calcula la cuadrícula, que es también
+   * quien lo necesita al guardar para distinguir un renglón intacto de
+   * uno tocado.
+   */
+  const salarioPorOmision = minimo === null ? '' : String(minimo)
 
   /* ------------------------------ Cuentas ------------------------------ */
   const quimico = useMemo(() => costoQuimicos(productos), [productos])
@@ -201,6 +197,7 @@ export function EjecucionModal({
     [personal, minimo]
   )
   const duracionPreriego = horasPreriego(entrada)
+  const presurizacion = horasPresurizacion(entrada)
   const inyeccion = horasInyeccion(entrada)
   const lavado = horasLavado(entrada)
   const totalHoras = totalHorasRiego(entrada)
@@ -216,7 +213,7 @@ export function EjecucionModal({
   /* ------------------------------ Acciones ----------------------------- */
 
   function guardar() {
-    const problema = validarEjecucion(entrada, lotes, personal, productos)
+    const problema = validarEjecucion(entrada, lotes, personal, productos, salarioPorOmision)
     if (problema) {
       setError(problema)
       if (/lote|manzana/i.test(problema)) setAbierta('lotes')
@@ -255,6 +252,34 @@ export function EjecucionModal({
         ? { mzCubiertas: lote.mz_restantes.toFixed(2) }
         : {}),
     })
+  }
+
+  /**
+   * Elegir el químico trae su precio vigente del historial.
+   *
+   * Se pide por la FECHA DE APLICACIÓN, no por la de hoy: un turno de
+   * marzo se costea con el precio de marzo aunque se capture en mayo. Es
+   * la misma función (`fn_precio_material`) que usa el disparador al
+   * guardar, así que el número que se ve mientras se teclea y el que
+   * queda guardado son el mismo.
+   *
+   * Sólo rellena si el costo está VACÍO. Hay compras puntuales a otro
+   * precio, y pisar un número escrito sería cambiarle el dato a quien lo
+   * escribió sin decírselo —la misma regla de la sugerencia de manzanas—.
+   */
+  async function elegirProducto(i: number, productoId: string) {
+    const vacio = (productos[i]?.costoLitro ?? '').trim() === ''
+    cambiarProducto(i, { productoId })
+    if (!productoId || !vacio) return
+    const precio = await precioMaterial(productoId, entrada.fechaAplicacion || hoyIso())
+    // Sin precio en el historial se deja vacío: la base lo resolverá al
+    // guardar, y un cero en pantalla parecería un dato.
+    if (precio === null) return
+    onCambiarProductos(
+      productos.map((q, j) =>
+        j === i ? { ...q, productoId, costoLitro: String(precio) } : q
+      )
+    )
   }
 
   /* ------------------------- La cuadrilla, por fase -------------------- */
@@ -574,7 +599,12 @@ export function EjecucionModal({
                     subtotal={obraPreriego}
                     onCambiar={cambiarPersona}
                     onQuitar={(i) => onCambiarPersonal(personal.filter((_, j) => j !== i))}
-                    onAgregar={() => onCambiarPersonal([...personal, lineaPersonalVacia('1_Preriego')])}
+                    onAgregar={() =>
+                      onCambiarPersonal([
+                        ...personal,
+                        lineaPersonalVacia('1_Preriego', salarioPorOmision),
+                      ])
+                    }
                     onCrear={crearYElegir}
                   />
                 </Acordeon>
@@ -705,13 +735,24 @@ export function EjecucionModal({
                       </Selector>
                     </Campo>
 
-                    <Campo etiqueta="Horas de presurización">
+                    {/* Las cuatro fases del riego se capturan IGUAL desde la
+                        62: con reloj. La presurización era la última que se
+                        escribía a mano y por eso la única que no cruzaba la
+                        medianoche. */}
+                    <Campo etiqueta="Inicio de presurización">
                       <Entrada
-                        inputMode="decimal"
-                        value={entrada.horasPresurizacion}
-                        onChange={(e) => cambiar({ horasPresurizacion: e.target.value })}
+                        type="time"
+                        value={entrada.inicioPresurizacion}
+                        onChange={(e) => cambiar({ inicioPresurizacion: e.target.value })}
                         disabled={bloqueada('aplicacion')}
-                        placeholder="0.00"
+                      />
+                    </Campo>
+                    <Campo etiqueta="Fin de presurización" ayuda="Puede ser del día siguiente.">
+                      <Entrada
+                        type="time"
+                        value={entrada.finPresurizacion}
+                        onChange={(e) => cambiar({ finPresurizacion: e.target.value })}
+                        disabled={bloqueada('aplicacion')}
                       />
                     </Campo>
 
@@ -749,34 +790,15 @@ export function EjecucionModal({
                       />
                     </Campo>
 
+                    <Campo etiqueta="Horas de presurización" ayuda="Fin menos inicio.">
+                      <Entrada value={`${n2(presurizacion)} h`} readOnly disabled />
+                    </Campo>
                     <Campo etiqueta="Horas de inyección" ayuda="Fin menos inicio.">
                       <Entrada value={`${n2(inyeccion)} h`} readOnly disabled />
                     </Campo>
-                    <Campo
-                      etiqueta="Horas de lavado"
-                      ayuda={
-                        entrada.horaInicioLavado && entrada.horaFinLavado
-                          ? 'De sus horas.'
-                          : 'Sin horas de lavado, manda el número escrito abajo.'
-                      }
-                    >
+                    <Campo etiqueta="Horas de lavado" ayuda="Fin menos inicio.">
                       <Entrada value={`${n2(lavado)} h`} readOnly disabled />
                     </Campo>
-
-                    {!(entrada.horaInicioLavado && entrada.horaFinLavado) && (
-                      <Campo
-                        etiqueta="Horas de lavado (a mano)"
-                        ayuda="Se usa mientras no pongas las horas de arriba."
-                      >
-                        <Entrada
-                          inputMode="decimal"
-                          value={entrada.horasLavadoManual}
-                          onChange={(e) => cambiar({ horasLavadoManual: e.target.value })}
-                          disabled={bloqueada('aplicacion')}
-                          placeholder="0.00"
-                        />
-                      </Campo>
-                    )}
 
                     <Campo
                       etiqueta="Total de horas de riego"
@@ -874,7 +896,8 @@ export function EjecucionModal({
                           <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_2.5rem] sm:items-start">
                             <Selector
                               value={q.productoId}
-                              onChange={(e) => cambiarProducto(i, { productoId: e.target.value })}
+                              buscable
+                              onChange={(e) => void elegirProducto(i, e.target.value)}
                               disabled={bloqueada('aplicacion')}
                               className="w-full min-w-0"
                             >
@@ -992,7 +1015,12 @@ export function EjecucionModal({
                     subtotal={obraAplicacion}
                     onCambiar={cambiarPersona}
                     onQuitar={(i) => onCambiarPersonal(personal.filter((_, j) => j !== i))}
-                    onAgregar={() => onCambiarPersonal([...personal, lineaPersonalVacia('3_Aplicacion')])}
+                    onAgregar={() =>
+                      onCambiarPersonal([
+                        ...personal,
+                        lineaPersonalVacia('3_Aplicacion', salarioPorOmision),
+                      ])
+                    }
                     onCrear={crearYElegir}
                   />
                 </Acordeon>
@@ -1053,14 +1081,22 @@ function CuadrillaFase({
         <div className="min-w-0">
           <h3 className="text-sm font-semibold text-slate-900">Cuadrilla de esta fase</h3>
           <p className="text-xs text-slate-400">
-            El salario trae el mínimo vigente y se puede cambiar. La hora extra se calcula sobre
-            base de ocho horas.
+            {minimo === null
+              ? 'No hay salario mínimo vigente marcado en Puestos de trabajo: escríbelo en cada renglón.'
+              : `Cada renglón nace con el mínimo vigente (L ${n2(minimo)}) ya puesto y se puede cambiar. La hora extra se calcula sobre base de ocho horas.`}
           </p>
         </div>
         <span className="shrink-0 text-sm font-bold tabular-nums text-brand-700">
           {subtotal === null ? '—' : `L ${n2(subtotal)}`}
         </span>
       </div>
+
+      {suyas.length === 0 && (
+        <p className="mt-2 rounded-xl bg-slate-50 px-3 py-2.5 text-xs text-slate-500 ring-1 ring-inset ring-slate-200">
+          Todavía sin cuadrilla. Se agrega cuando toque: el trabajo de campo va por días, y un
+          turno se guarda sin ella.
+        </p>
+      )}
 
       <div className="mt-2 flex flex-col gap-2">
         {suyas.map(({ p, i }) => {
@@ -1111,7 +1147,7 @@ function CuadrillaFase({
                     inputMode="decimal"
                     value={p.salario}
                     onChange={(e) => onCambiar(i, { salario: e.target.value })}
-                    placeholder={minimo === null ? 'Escríbelo' : n2(minimo)}
+                    placeholder="Escríbelo"
                     disabled={cerrado}
                   />
                 </Campo>

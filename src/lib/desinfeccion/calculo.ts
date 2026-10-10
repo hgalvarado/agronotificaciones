@@ -159,17 +159,25 @@ export function horasEntre(inicio: string, fin: string): number {
 }
 
 /**
- * Las horas de lavado: de sus horas si las tiene, del número si no.
+ * Las horas de lavado.
  *
- * El lavado no tenía horas antes de la 61 y se escribía un número. Ese
- * número no se tira: manda mientras no haya horas, para no perder lo ya
- * capturado.
+ * Desde la 62 sólo salen del reloj: el número escrito a mano que la 61
+ * había dejado como red —`horas_lavado_manual`— ya no existe. Dos
+ * entradas para una sola salida son una ambigüedad que un día cuesta
+ * cara, y la red ya cumplió su turno.
  */
 export function horasLavado(e: EntradaEjecucion): number {
-  if (e.horaInicioLavado && e.horaFinLavado) {
-    return horasEntre(e.horaInicioLavado, e.horaFinLavado)
-  }
-  return aNumeroCero(e.horasLavadoManual)
+  return horasEntre(e.horaInicioLavado, e.horaFinLavado)
+}
+
+/**
+ * Las horas de presurización, también por reloj desde la 62.
+ *
+ * Era la última de las cuatro fases del riego que se escribía a mano, y
+ * por eso la única que no podía cruzar la medianoche.
+ */
+export function horasPresurizacion(e: EntradaEjecucion): number {
+  return horasEntre(e.inicioPresurizacion, e.finPresurizacion)
 }
 
 /** La duración del preriego. La base la guarda generada. */
@@ -190,7 +198,7 @@ export function horasInyeccion(e: EntradaEjecucion): number {
  * teclea; el que queda guardado es el de la base.
  */
 export function totalHorasRiego(e: EntradaEjecucion): number {
-  return aNumeroCero(e.horasPresurizacion) + horasInyeccion(e) + horasLavado(e)
+  return horasPresurizacion(e) + horasInyeccion(e) + horasLavado(e)
 }
 
 /**
@@ -442,11 +450,17 @@ export function limpiarLotes(lineas: LineaLote[]): LineaLote[] {
   return lineas.filter((l) => !intacta(l, LINEA_LOTE_VACIA))
 }
 
-export function limpiarPersonal(lineas: LineaPersonal[]): LineaPersonal[] {
+/**
+ * `salarioPorOmision` es el que el formulario ESCRIBE en el input al
+ * agregar un renglón (migración 62). Hay que pasárselo a la plantilla o
+ * un renglón agregado por descuido, con el salario ya puesto y nada
+ * más, dejaría de parecer intacto y se guardaría.
+ */
+export function limpiarPersonal(lineas: LineaPersonal[], salarioPorOmision = ''): LineaPersonal[] {
   // La plantilla se arma con la fase de la propia línea: el renglón en
   // blanco del preriego y el de la aplicación son huecos distintos, y
   // compararlos contra una sola plantilla dejaría pasar uno de los dos.
-  return lineas.filter((l) => !intacta(l, lineaPersonalVacia(l.fase)))
+  return lineas.filter((l) => !intacta(l, lineaPersonalVacia(l.fase, salarioPorOmision)))
 }
 
 export function limpiarProductos(lineas: LineaProducto[]): LineaProducto[] {
@@ -481,12 +495,13 @@ export function validarEjecucion(
   e: EntradaEjecucion,
   lotesCrudos: LineaLote[],
   personalCrudo: LineaPersonal[],
-  productosCrudos: LineaProducto[] = []
+  productosCrudos: LineaProducto[] = [],
+  salarioPorOmision = ''
 ): string | null {
   // Primero se tiran los renglones que nadie tocó. Validar el hueco en
   // blanco es lo que impedía guardar con sólo los lotes puestos.
   const lotes = limpiarLotes(lotesCrudos)
-  const personal = limpiarPersonal(personalCrudo)
+  const personal = limpiarPersonal(personalCrudo, salarioPorOmision)
   const productos = limpiarProductos(productosCrudos)
 
   if (!e.temporadaId) return 'Elige la temporada.'

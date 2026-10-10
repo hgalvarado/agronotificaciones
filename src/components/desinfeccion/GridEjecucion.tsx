@@ -40,8 +40,10 @@ import {
   leerDetalle,
   leerEjecuciones,
   leerLotes,
+  salarioMinimo,
   siembrasDeLotes,
 } from '@/lib/desinfeccion/repositorioCliente'
+import { hoyIso } from '@/lib/fechas'
 import {
   CICLOS,
   EJECUCION_VACIA,
@@ -52,7 +54,6 @@ import {
   LINEA_PRODUCTO_VACIA,
   etiquetaFase,
   lecturasPorOmision,
-  lineaPersonalVacia,
   type CatalogosDesinfeccion,
   type EntradaEjecucion,
   type FilaEjecucion,
@@ -433,7 +434,11 @@ export function GridEjecucion({
         setEntrada(base)
         setLecturas(lecturasPorOmision())
         setLineasLote([{ ...LINEA_LOTE_VACIA }])
-        setLineasPersonal([lineaPersonalVacia('1_Preriego'), lineaPersonalVacia('3_Aplicacion')])
+        // La cuadrilla arranca VACÍA desde la 62. El renglón de fábrica
+        // «1 persona» sugería un dato que nadie había escrito, y en la
+        // mitad de los turnos —los que se capturan por fases, un día cada
+        // una— había que borrarlo antes de guardar.
+        setLineasPersonal([])
         setLineasProducto([{ ...LINEA_PRODUCTO_VACIA }])
         // Un turno nuevo no tiene nada guardado: nada se bloquea.
         setSeccionesGuardadas([])
@@ -456,12 +461,12 @@ export function GridEjecucion({
         fechaLecturas: f.fecha_lecturas ?? '',
         fechaAplicacion: f.fecha_aplicacion ?? '',
         estacionRiegoId: f.estacion_riego_id ?? '',
-        horasPresurizacion: String(f.horas_presurizacion ?? ''),
+        inicioPresurizacion: t(f.inicio_presurizacion),
+        finPresurizacion: t(f.fin_presurizacion),
         horaInicioIny: t(f.hora_inicio_iny),
         horaFinIny: t(f.hora_fin_iny),
         horaInicioLavado: t(f.hora_inicio_lavado),
         horaFinLavado: t(f.hora_fin_lavado),
-        horasLavadoManual: String(f.horas_lavado ?? ''),
         ppm: String(f.ppm ?? ''),
         ceAntes: String(f.ce_antes ?? ''),
         ceDurante: String(f.ce_durante ?? ''),
@@ -486,11 +491,10 @@ export function GridEjecucion({
           : [{ ...LINEA_LOTE_VACIA }]
       setLineasLote(lotesCargados)
 
-      // Cada fase abre con un renglón en blanco si no trae ninguno: así
-      // hay dónde escribir sin tener que pulsar «Agregar» primero.
+      // Una fase sin cuadrilla guardada abre VACÍA desde la 62: el
+      // renglón de fábrica parecía un dato y había que borrarlo.
       const porFase = (fase: '1_Preriego' | '3_Aplicacion') => {
         const suyas = ps.filter((p) => p.fase === fase)
-        if (suyas.length === 0) return [lineaPersonalVacia(fase)]
         return suyas.map((p) => ({
           id: p.id,
           fase: p.fase,
@@ -609,13 +613,42 @@ export function GridEjecucion({
     }
   }, [lotesDelTurno, cicloActual])
 
+  /* ------------------------- El salario mínimo ------------------------- */
+  /**
+   * Vive AQUÍ y no en el formulario porque hacen falta dos cosas con él y
+   * sólo una es de pantalla: el formulario lo ESCRIBE en cada renglón de
+   * cuadrilla nuevo, y el guardado tiene que saber con qué valor se
+   * escribió para distinguir un renglón intacto de uno tocado. Con el
+   * número en dos sitios, un día dirían cosas distintas y se guardarían
+   * renglones que nadie llenó.
+   *
+   * Se pide por la fecha de la fase: una jornada de marzo se paga con el
+   * mínimo de marzo aunque se capture en mayo.
+   */
+  const fechaSalario = entrada?.fechaAplicacion || entrada?.fechaPreriego || hoyIso()
+  const [minimo, setMinimo] = useState<number | null>(null)
+
+  useEffect(() => {
+    let vivo = true
+    async function cargar() {
+      const v = await salarioMinimo(fechaSalario)
+      if (vivo) setMinimo(v)
+    }
+    void cargar()
+    return () => {
+      vivo = false
+    }
+  }, [fechaSalario])
+
+  const salarioPorOmision = minimo === null ? '' : String(minimo)
+
   /* ------------------------------ Acciones ----------------------------- */
 
   function nuevo() {
     setEntrada({ ...EJECUCION_VACIA, temporadaId })
     setLecturas(lecturasPorOmision())
     setLineasLote([{ ...LINEA_LOTE_VACIA }])
-    setLineasPersonal([lineaPersonalVacia('1_Preriego'), lineaPersonalVacia('3_Aplicacion')])
+    setLineasPersonal([])
     setLineasProducto([{ ...LINEA_PRODUCTO_VACIA }])
     setSeccionesGuardadas([])
   }
@@ -637,7 +670,7 @@ export function GridEjecucion({
       entrada,
       lecturas,
       limpiarLotes(lineasLote),
-      limpiarPersonal(lineasPersonal),
+      limpiarPersonal(lineasPersonal, salarioPorOmision),
       limpiarProductos(lineasProducto)
     )
     setOcupado(false)
@@ -784,6 +817,7 @@ export function GridEjecucion({
           estacionesDisponibles={estaciones}
           fechasSiembra={fechasSiembra}
           seccionesGuardadas={seccionesGuardadas}
+          minimo={minimo}
           guardando={ocupado}
           buscando={buscando}
           onActivar={(turnoId, ciclo) => void activar(turnoId, ciclo)}
