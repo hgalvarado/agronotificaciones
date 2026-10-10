@@ -68,7 +68,7 @@ export function PlanModal({
       const mapa = await siembrasDeLotes([loteTemporadaId], Number(entrada.ciclo) || null)
       const dato = mapa.get(loteTemporadaId)
       if (!dato) {
-        setAutollenado('Ese lote todavía no tiene siembra capturada en Trasplante.')
+        setAutollenado('Ese lote no tiene siembra capturada ni plan de siembra con fecha en Trasplante.')
         return
       }
 
@@ -81,8 +81,11 @@ export function PlanModal({
         return
       }
       onCambiar({ ...base, ...cambios })
+      // Se dice SI es prevista: desde la 63 el autollenado también mira
+      // el plan, y una fecha planificada todavía se puede mover.
       setAutollenado(
-        `Se tomó de Trasplante: siembra ${dato.fecha}${dato.variedad ? ` · ${dato.variedad}` : ''}.`
+        `Se tomó de Trasplante: siembra ${dato.origen === 'plan' ? 'prevista ' : ''}${dato.fecha}` +
+          `${dato.variedad ? ` · ${dato.variedad}` : ''}.`
       )
     },
     [entrada, onCambiar]

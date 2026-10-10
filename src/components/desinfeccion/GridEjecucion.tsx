@@ -45,6 +45,7 @@ import {
 } from '@/lib/desinfeccion/repositorioCliente'
 import { hoyIso } from '@/lib/fechas'
 import {
+  CAUDAL_POR_OMISION,
   CICLOS,
   EJECUCION_VACIA,
   PUESTOS_CUADRILLA,
@@ -117,6 +118,14 @@ export function GridEjecucion({
   ])
   /** Las siembras de los lotes del turno, para el DDT de las tres fases. */
   const [fechasSiembra, setFechasSiembra] = useState<string[]>([])
+  /**
+   * Si alguna de esas fechas es del PLAN y no de una siembra capturada.
+   *
+   * La desinfección se aplica ~70 días antes de trasplantar, así que lo
+   * normal es que TODAS lo sean. Hay que decirlo en la pantalla: un plan
+   * y un hecho no se leen igual, y el plan todavía se puede mover.
+   */
+  const [siembraPrevista, setSiembraPrevista] = useState(false)
   /**
    * Los lotes con sus manzanas, recalculados para el turno abierto.
    *
@@ -461,6 +470,10 @@ export function GridEjecucion({
         fechaLecturas: f.fecha_lecturas ?? '',
         fechaAplicacion: f.fecha_aplicacion ?? '',
         estacionRiegoId: f.estacion_riego_id ?? '',
+        // El caudal guardado, o el de siempre si la fila es anterior a
+        // la 64: un turno viejo no tiene caudal y sin él las ppm no se
+        // pueden calcular ni hacia atrás.
+        caudalAgua: String(f.caudal_agua ?? CAUDAL_POR_OMISION),
         inicioPresurizacion: t(f.inicio_presurizacion),
         finPresurizacion: t(f.fin_presurizacion),
         horaInicioIny: t(f.hora_inicio_iny),
@@ -601,11 +614,14 @@ export function GridEjecucion({
       const ids = lotesDelTurno ? lotesDelTurno.split(',') : []
       if (ids.length === 0) {
         setFechasSiembra([])
+        setSiembraPrevista(false)
         return
       }
       const mapa = await siembrasDeLotes(ids, Number(cicloActual) || null)
       if (!vivo) return
-      setFechasSiembra([...mapa.values()].map((v) => v.fecha).sort())
+      const datos = [...mapa.values()]
+      setFechasSiembra(datos.map((v) => v.fecha).sort())
+      setSiembraPrevista(datos.some((v) => v.origen === 'plan'))
     }
     void cargar()
     return () => {
@@ -816,6 +832,7 @@ export function GridEjecucion({
           turnosDisponibles={turnos}
           estacionesDisponibles={estaciones}
           fechasSiembra={fechasSiembra}
+          siembraPrevista={siembraPrevista}
           seccionesGuardadas={seccionesGuardadas}
           minimo={minimo}
           guardando={ocupado}

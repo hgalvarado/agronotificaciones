@@ -120,6 +120,117 @@ export function costoQuimicos(lineas: LineaProducto[]): number {
   return lineas.reduce((a, l) => a + costoProducto(l), 0)
 }
 
+/* ------------------------------------------------------------------ */
+/* Las partes por millón                                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * El número que lleva delante un porcentaje escrito a mano.
+ *
+ * `concentracion` es TEXTO en el catálogo —«42%», «42 %», «1,3 %»—
+ * porque así llega de la etiqueta del producto. Espejo exacto de
+ * `fn_numero_de_texto` (migración 64).
+ *
+ * `null` si no hay un número reconocible. **No se asume 100:** un
+ * producto sin concentración declarada no es producto puro, es un
+ * producto del que no se sabe la concentración, y calcular con 100
+ * daría unas ppm infladas que nadie sabría de dónde salieron.
+ */
+export function numeroDeTexto(texto: string | null | undefined): number | null {
+  const m = /[0-9]+[.,]?[0-9]*/.exec((texto ?? '').trim())
+  if (!m) return null
+  const n = Number(m[0].replace(',', '.'))
+  return Number.isFinite(n) ? n : null
+}
+
+/**
+ * El agua que pasó por la estación, en metros cúbicos.
+ *
+ *     (horas de inyección + horas de lavado) × caudal
+ *
+ * El lavado cuenta porque por ahí también pasa agua: dejarlo fuera
+ * subiría las ppm de un turno que se lavó mucho, que es justo al revés
+ * de lo que pasó en el suelo.
+ */
+export function aguaTotal(e: EntradaEjecucion): number {
+  return (horasInyeccion(e) + horasLavado(e)) * aNumeroCero(e.caudalAgua)
+}
+
+/** Los litros de ingrediente activo que llevaba lo aplicado. */
+export function productoPuro(litros: string, concentracion: string | null | undefined): number | null {
+  const pct = numeroDeTexto(concentracion)
+  if (pct === null) return null
+  return aNumeroCero(litros) * (pct / 100)
+}
+
+/**
+ * Las partes por millón de un químico aplicado.
+ *
+ *     ppm = producto puro (cc) / agua total (m³)
+ *
+ * **Por qué los mililitros por metro cúbico SON partes por millón.** Un
+ * metro cúbico de agua pesa un millón de gramos y un mililitro de
+ * producto pesa aproximadamente un gramo: la división ya viene en
+ * millonésimas. Por eso está el ×1000 —de litros a cc— y por eso NO hay
+ * ningún ×1.000.000 por ningún lado.
+ *
+ * Espejo de `fn_ppm_desinfeccion` (migración 64). Sin agua devuelve
+ * `null` y no cero: no es que la concentración sea cero, es que todavía
+ * no se sabe entre cuánta agua se reparte.
+ */
+export function ppmDe(
+  litros: string,
+  concentracion: string | null | undefined,
+  e: EntradaEjecucion
+): number | null {
+  const agua = aguaTotal(e)
+  if (agua <= 0) return null
+  const puro = productoPuro(litros, concentracion)
+  if (puro === null) return null
+  return (puro * 1000) / agua
+}
+
+/**
+ * Todo el desglose de una vez, para la tabla que lo explica.
+ *
+ * Se devuelven las PIEZAS y no sólo el resultado: un número que no se
+ * puede auditar no se discute, se cree o no se cree. Y quien discute un
+ * número de ppm en el campo quiere ver de dónde sale cada factor.
+ */
+export type DesglosePpm = {
+  caudal: number
+  horasInyeccion: number
+  horasLavado: number
+  aguaTotal: number
+  dosisMz: number | null
+  producto: string
+  concentracion: number | null
+  productoPuroLitros: number | null
+  productoPuroCc: number | null
+  ppm: number | null
+}
+
+export function desglosePpm(
+  linea: LineaProducto,
+  material: { descripcion: string | null; codigo: string; concentracion: string | null } | undefined,
+  e: EntradaEjecucion,
+  mz: number
+): DesglosePpm {
+  const puro = productoPuro(linea.totalLitros, material?.concentracion)
+  return {
+    caudal: aNumeroCero(e.caudalAgua),
+    horasInyeccion: horasInyeccion(e),
+    horasLavado: horasLavado(e),
+    aguaTotal: aguaTotal(e),
+    dosisMz: dosisPorMz(linea.totalLitros, mz),
+    producto: material ? (material.descripcion ?? material.codigo) : '—',
+    concentracion: numeroDeTexto(material?.concentracion),
+    productoPuroLitros: puro,
+    productoPuroCc: puro === null ? null : puro * 1000,
+    ppm: ppmDe(linea.totalLitros, material?.concentracion, e),
+  }
+}
+
 /**
  * La dosis por manzana de un producto.
  *
@@ -202,19 +313,26 @@ export function totalHorasRiego(e: EntradaEjecucion): number {
 }
 
 /**
- * Los días que faltan para el trasplante: siembra − lectura.
+ * DDT: los días transcurridos DESDE el trasplante. `fase − siembra`.
  *
- * Positivo quiere decir que la siembra todavía está por delante, que es
- * el caso normal al desinfectar. Negativo quiere decir que ya se sembró.
+ * **El signo es la mitad del dato.** Negativo quiere decir que la siembra
+ * todavía está por delante, que es el caso normal al desinfectar: se
+ * aplica el producto y se trasplanta dos meses después. Positivo quiere
+ * decir que ya se sembró.
+ *
+ * Preriego el 2026-10-09 y siembra prevista el 2026-12-17 son **−69
+ * días**, no 69: faltan 69 para el trasplante. Hasta la 62 esto se
+ * restaba al revés y el número salía con el signo cambiado —el mismo
+ * número, contando lo contrario—.
  */
-export function ddt(fechaSiembra: string | null | undefined, fechaLectura: string): number | null {
-  if (!fechaSiembra || !fechaLectura) return null
+export function ddt(fechaSiembra: string | null | undefined, fechaFase: string): number | null {
+  if (!fechaSiembra || !fechaFase) return null
   // Las dos son fechas de CALENDARIO, no instantes: se restan en UTC para
   // que ningún reloj les quite un día.
   const s = Date.parse(`${fechaSiembra}T12:00:00Z`)
-  const l = Date.parse(`${fechaLectura}T12:00:00Z`)
-  if (Number.isNaN(s) || Number.isNaN(l)) return null
-  return Math.round((s - l) / 86400000)
+  const f = Date.parse(`${fechaFase}T12:00:00Z`)
+  if (Number.isNaN(s) || Number.isNaN(f)) return null
+  return Math.round((f - s) / 86400000)
 }
 
 /** HH:MM a minutos desde medianoche. `null` si no es una hora. */
@@ -266,7 +384,14 @@ export function rangoDdt(
   return { min: Math.min(...dias), max: Math.max(...dias) }
 }
 
-/** Lo mismo, ya escrito para la pantalla. */
+/**
+ * Lo mismo, ya escrito para la pantalla.
+ *
+ * El signo va SIEMPRE escrito, también cuando es negativo, porque es la
+ * mitad del dato: «−69 días» es «faltan 69 para trasplantar» y «69 días»
+ * es «ya pasaron 69 desde que se trasplantó». Sin el signo son el mismo
+ * texto para dos situaciones opuestas.
+ */
 export function textoDdt(fechasSiembra: string[], fechaFase: string): string {
   const r = rangoDdt(fechasSiembra, fechaFase)
   if (r === null) return '—'

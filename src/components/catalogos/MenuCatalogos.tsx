@@ -167,6 +167,7 @@ export function MenuCatalogos({
               filas={pestanaAbierta.filas}
               clave={pestanaAbierta.clave}
               relaciones={pestanaAbierta.relaciones}
+              detalle={pestanaAbierta.detalle}
               soloLectura={soloLectura}
             />
           </div>

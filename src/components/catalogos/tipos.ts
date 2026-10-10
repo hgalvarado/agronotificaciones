@@ -7,7 +7,7 @@
  * por el tipo.
  */
 
-import type { CampoCatalogo } from './CatalogoTable'
+import type { CampoCatalogo, DetalleCatalogo } from './CatalogoTable'
 import type { RelacionCatalogo } from './ImportarExcel'
 
 export type PestanaCatalogo = {
@@ -20,4 +20,9 @@ export type PestanaCatalogo = {
   clave?: string
   /** Vinculaciones de muchos a muchos que el importador puede cargar. */
   relaciones?: RelacionCatalogo[]
+  /**
+   * Sub-panel que abre cada fila, cuando una fila no cabe en una fila:
+   * los materiales llevan un historial de precios con sus vigencias.
+   */
+  detalle?: DetalleCatalogo
 }

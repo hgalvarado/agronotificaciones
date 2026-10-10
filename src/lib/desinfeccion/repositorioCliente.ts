@@ -185,10 +185,17 @@ export async function sincronizarSiembra(
     porCiclo.set(f.ciclo, [...(porCiclo.get(f.ciclo) ?? []), f.lote_temporada_id])
   }
 
+  // Sólo la siembra REAL. Desde la 63 `siembrasDeLotes` también devuelve
+  // la prevista del plan —que es lo que salva al DDT—, pero re-planificar
+  // una desinfección contra un plan sería perseguir una fecha que todavía
+  // puede moverse: este botón existe para cuando la siembra ya ocurrió en
+  // otro día del que se había congelado.
   const primera = new Map<string, string>()
   for (const [ciclo, lotes] of porCiclo) {
     const mapa = await siembrasDeLotes([...new Set(lotes)], ciclo)
-    for (const [lote, dato] of mapa) primera.set(`${lote}|${ciclo}`, dato.fecha)
+    for (const [lote, dato] of mapa) {
+      if (dato.origen === 'real') primera.set(`${lote}|${ciclo}`, dato.fecha)
+    }
   }
 
   let cambiadas = 0
@@ -334,18 +341,34 @@ export async function buscarEjecucion(
 }
 
 /**
- * La siembra real de unos lotes, para rellenar sola la fila del plan.
+ * La siembra de unos lotes: la capturada si existe, la PREVISTA si no.
  *
  * Va por `fn_siembras_de_lotes` y no con un `select` a `siembras` porque
  * esa tabla se lee con el permiso de Trasplante, que quien planifica una
  * desinfección no tiene por qué tener. La función es `security definer` y
  * comprueba el permiso ella misma (migración 60).
+ *
+ * Desde la **63** también mira `planes_siembra`, y ahí estaba el fallo
+ * del DDT: la desinfección se aplica ~70 días ANTES de trasplantar, así
+ * que en el momento de capturarla la siembra real todavía no existe y
+ * nunca iba a existir. Leer sólo lo ya sembrado dejaba el DDT en blanco
+ * justo en el único momento en que hace falta.
+ *
+ * `origen` viaja con la fecha para que la pantalla pueda decir
+ * «previsto»: un plan y un hecho no se enseñan igual.
  */
+export type SiembraDeLote = {
+  fecha: string
+  variedadId: string | null
+  variedad: string | null
+  origen: 'real' | 'plan'
+}
+
 export async function siembrasDeLotes(
   lotes: string[],
   ciclo: number | null
-): Promise<Map<string, { fecha: string; variedadId: string | null; variedad: string | null }>> {
-  const salida = new Map<string, { fecha: string; variedadId: string | null; variedad: string | null }>()
+): Promise<Map<string, SiembraDeLote>> {
+  const salida = new Map<string, SiembraDeLote>()
   if (lotes.length === 0) return salida
 
   const { data, error } = await createClient().rpc('fn_siembras_de_lotes', {
@@ -359,12 +382,15 @@ export async function siembrasDeLotes(
     fecha_siembra: string
     variedad_id: string | null
     variedad_nombre: string | null
+    origen: string | null
   }
   for (const f of (data as Cruda[] | null) ?? []) {
+    if (!f.fecha_siembra) continue
     salida.set(f.lote_temporada_id, {
       fecha: f.fecha_siembra,
       variedadId: f.variedad_id,
       variedad: f.variedad_nombre,
+      origen: f.origen === 'plan' ? 'plan' : 'real',
     })
   }
   return salida
@@ -387,6 +413,7 @@ function filaEjecucion(e: EntradaEjecucion, lecturas: LecturaTensiometro[]) {
 
     fecha_aplicacion: e.fechaAplicacion || null,
     estacion_riego_id: e.estacionRiegoId || null,
+    caudal_agua: aNumeroCero(e.caudalAgua) || 20,
     inicio_presurizacion: e.inicioPresurizacion || null,
     fin_presurizacion: e.finPresurizacion || null,
     hora_inicio_iny: e.horaInicioIny || null,
@@ -941,18 +968,58 @@ export async function salarioMinimo(fecha: string): Promise<number | null> {
  * dólares y falta la tasa de cambio del día—: el formulario deja el
  * costo como estaba en vez de proponer un cero que parece un dato.
  */
+export type PrecioMaterial = {
+  precio: number | null
+  /**
+   * Por qué NO hay precio, cuando no lo hay.
+   *
+   * Esto es el arreglo del «no reacciona». Antes la pantalla se quedaba
+   * muda: elegías el químico y el costo seguía en blanco, sin decir si
+   * es que el material no tiene precios, si es que ninguno cubre esa
+   * fecha, o si es que está en dólares y falta la tasa de la temporada.
+   * Tres causas distintas con tres arreglos distintos, y la misma celda
+   * vacía para las tres. Un hueco explicado es una tarea; un hueco mudo
+   * es una llamada de teléfono.
+   */
+  motivo: 'sin_precio' | 'fuera_de_vigencia' | 'sin_tasa' | null
+}
+
 export async function precioMaterial(
   materialId: string,
-  fecha: string
-): Promise<number | null> {
-  if (!materialId || !fecha) return null
-  const { data, error } = await createClient().rpc('fn_precio_material', {
+  fecha: string,
+  temporadaId?: string | null
+): Promise<PrecioMaterial> {
+  if (!materialId || !fecha) return { precio: null, motivo: null }
+  const { data, error } = await createClient().rpc('fn_precio_material_detalle', {
     p_material_id: materialId,
     p_fecha: fecha,
+    p_temporada_id: temporadaId || null,
   })
-  if (error) return null
-  const n = Number(data)
-  return Number.isFinite(n) && n > 0 ? n : null
+  if (error) return { precio: null, motivo: null }
+
+  type Cruda = { precio: number | null; moneda: string | null; motivo: string | null }
+  const fila = ((data as Cruda[] | null) ?? [])[0]
+  if (!fila) return { precio: null, motivo: 'sin_precio' }
+
+  const n = Number(fila.precio)
+  return {
+    precio: Number.isFinite(n) && n > 0 ? n : null,
+    motivo: (fila.motivo as PrecioMaterial['motivo']) ?? null,
+  }
+}
+
+/** El hueco, dicho para quien está capturando en el campo. */
+export function textoMotivoPrecio(motivo: PrecioMaterial['motivo']): string | null {
+  switch (motivo) {
+    case 'sin_precio':
+      return 'Ese químico no tiene precios cargados. Se ponen en Catálogos → Materiales → Precios.'
+    case 'fuera_de_vigencia':
+      return 'Ese químico tiene precios, pero ninguno cubre la fecha de aplicación.'
+    case 'sin_tasa':
+      return 'El precio está en dólares y la temporada no tiene tasa de cambio. Se escribe en Catálogos → Temporadas.'
+    default:
+      return null
+  }
 }
 
 /**

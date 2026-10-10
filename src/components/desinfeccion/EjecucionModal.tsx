@@ -27,12 +27,17 @@
 
 import { useCallback, useMemo, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
+import { DesglosePpmModal } from './DesglosePpmModal'
 import { Acordeon } from '@/components/ui/Acordeon'
 import { Alerta, Boton, Campo, Entrada, Insignia, Selector } from '@/components/ui/Primitivos'
 import { IconCheck, IconLock, IconPlus, IconTrash } from '@/components/ui/Icons'
 import { n2 } from '@/lib/trasplante/formato'
 import { hoyIso } from '@/lib/fechas'
-import { crearJornal, precioMaterial } from '@/lib/desinfeccion/repositorioCliente'
+import {
+  crearJornal,
+  precioMaterial,
+  textoMotivoPrecio,
+} from '@/lib/desinfeccion/repositorioCliente'
 import {
   SECCIONES,
   costoCuadrilla,
@@ -41,9 +46,12 @@ import {
   costoQuimicos,
   dosisPorMz,
   horasInyeccion,
+  aguaTotal,
+  desglosePpm,
   horasLavado,
   horasPreriego,
   horasPresurizacion,
+  ppmDe,
   mzDeLotes,
   salarioDe,
   seccionLlena,
@@ -93,6 +101,7 @@ export function EjecucionModal({
   turnosDisponibles,
   estacionesDisponibles,
   fechasSiembra,
+  siembraPrevista,
   /** Qué secciones venían llenas AL CARGAR. Es lo único que bloquea. */
   seccionesGuardadas,
   minimo,
@@ -118,6 +127,8 @@ export function EjecucionModal({
   turnosDisponibles: CatalogosDesinfeccion['turnos']
   estacionesDisponibles: CatalogosDesinfeccion['estaciones']
   fechasSiembra: string[]
+  /** Si esas fechas salen del PLAN de trasplante y no de una siembra ya hecha. */
+  siembraPrevista: boolean
   seccionesGuardadas: SeccionEjecucion[]
   /** El salario mínimo vigente de la fecha de la fase. Lo trae la cuadrícula. */
   minimo: number | null
@@ -134,6 +145,10 @@ export function EjecucionModal({
   onCerrar: () => void
 }) {
   const [error, setError] = useState<string | null>(null)
+  /** Por qué el costo del químico se quedó en blanco, si se quedó. */
+  const [avisoPrecio, setAvisoPrecio] = useState<string | null>(null)
+  /** Qué línea de químico tiene abierto su desglose de ppm. */
+  const [desgloseAbierto, setDesgloseAbierto] = useState<number | null>(null)
   const [abierta, setAbierta] = useState<SeccionEjecucion | null>(null)
   /** Las secciones que se han reabierto a mano para corregirlas. */
   const [desbloqueadas, setDesbloqueadas] = useState<Set<SeccionEjecucion>>(new Set())
@@ -201,6 +216,7 @@ export function EjecucionModal({
   const inyeccion = horasInyeccion(entrada)
   const lavado = horasLavado(entrada)
   const totalHoras = totalHorasRiego(entrada)
+  const agua = aguaTotal(entrada)
 
   const ddtPreriego = textoDdt(fechasSiembra, entrada.fechaPreriego)
   const ddtLecturas = textoDdt(fechasSiembra, entrada.fechaLecturas)
@@ -257,28 +273,44 @@ export function EjecucionModal({
   /**
    * Elegir el químico trae su precio vigente del historial.
    *
-   * Se pide por la FECHA DE APLICACIÓN, no por la de hoy: un turno de
-   * marzo se costea con el precio de marzo aunque se capture en mayo. Es
-   * la misma función (`fn_precio_material`) que usa el disparador al
-   * guardar, así que el número que se ve mientras se teclea y el que
-   * queda guardado son el mismo.
+   * Se pide por la FECHA DE APLICACIÓN y por la TEMPORADA del turno, no
+   * por la de hoy: un turno de marzo se costea con el precio de marzo y
+   * con la tasa de cambio de SU temporada, aunque se capture en mayo. Es
+   * la misma función que usa el disparador al guardar, así que el número
+   * que se ve mientras se teclea y el que queda guardado son el mismo.
    *
    * Sólo rellena si el costo está VACÍO. Hay compras puntuales a otro
    * precio, y pisar un número escrito sería cambiarle el dato a quien lo
    * escribió sin decírselo —la misma regla de la sugerencia de manzanas—.
+   *
+   * **Y cuando no hay precio, lo DICE.** Ésa era la queja: la celda se
+   * quedaba en blanco sin explicar si faltaba el precio, si la fecha
+   * caía fuera de su vigencia o si estaba en dólares y faltaba la tasa.
+   * Tres arreglos distintos y el mismo silencio para los tres.
    */
   async function elegirProducto(i: number, productoId: string) {
     const vacio = (productos[i]?.costoLitro ?? '').trim() === ''
-    cambiarProducto(i, { productoId })
+    // La lista se actualiza DESDE la que había al entrar aquí, y el
+    // resultado del `await` se aplica sobre esa misma: usar `productos`
+    // después de esperar sería leer una foto vieja.
+    const base = productos.map((q, j) => (j === i ? { ...q, productoId } : q))
+    onCambiarProductos(base)
+    setAvisoPrecio(null)
     if (!productoId || !vacio) return
-    const precio = await precioMaterial(productoId, entrada.fechaAplicacion || hoyIso())
-    // Sin precio en el historial se deja vacío: la base lo resolverá al
-    // guardar, y un cero en pantalla parecería un dato.
-    if (precio === null) return
+
+    const r = await precioMaterial(
+      productoId,
+      entrada.fechaAplicacion || hoyIso(),
+      entrada.temporadaId
+    )
+    if (r.precio === null) {
+      // Un cero en pantalla parecería un dato; el hueco con su motivo es
+      // una tarea que alguien puede cerrar.
+      setAvisoPrecio(textoMotivoPrecio(r.motivo))
+      return
+    }
     onCambiarProductos(
-      productos.map((q, j) =>
-        j === i ? { ...q, productoId, costoLitro: String(precio) } : q
-      )
+      base.map((q, j) => (j === i ? { ...q, costoLitro: String(r.precio) } : q))
     )
   }
 
@@ -310,13 +342,24 @@ export function EjecucionModal({
     </span>
   )
 
+  /**
+   * El DDT de una fase.
+   *
+   * El número es `fecha de la fase − fecha de siembra`, así que **sale
+   * negativo** mientras falte para trasplantar, que es el caso normal al
+   * desinfectar: −69 quiere decir que faltan 69 días. La ayuda dice de
+   * dónde salió la fecha, porque una siembra prevista todavía se puede
+   * mover y una capturada ya no.
+   */
   const campoDdt = (texto: string) => (
     <Campo
-      etiqueta="DDT (días antes del trasplante)"
+      etiqueta="DDT (días desde el trasplante)"
       ayuda={
-        haySiembra
-          ? 'Siembra de los lotes del turno menos el día de esta fase.'
-          : 'Hará falta la siembra del lote en Trasplante para calcularlo.'
+        !haySiembra
+          ? 'Hará falta la siembra del lote, o su plan en Trasplante, para calcularlo.'
+          : siembraPrevista
+            ? 'Contra la siembra PREVISTA del plan. Negativo = faltan días para trasplantar.'
+            : 'Contra la siembra ya capturada. Negativo = faltan días para trasplantar.'
       }
     >
       <Entrada value={texto} readOnly disabled />
@@ -812,7 +855,30 @@ export function EjecucionModal({
                       />
                     </Campo>
 
-                    <Campo etiqueta="ppm" ayuda="A mano: la fórmula depende del caudal.">
+                    {/* El caudal va aquí, pegado a las horas, porque es su
+                        compañero: horas × caudal es el agua que pasó, y el
+                        agua es el divisor de las ppm. */}
+                    <Campo etiqueta="Caudal (m³/h)" ayuda="De la estación. 20 por omisión.">
+                      <Entrada
+                        inputMode="decimal"
+                        value={entrada.caudalAgua}
+                        onChange={(e) => cambiar({ caudalAgua: e.target.value })}
+                        disabled={bloqueada('aplicacion')}
+                        placeholder="20"
+                      />
+                    </Campo>
+
+                    <Campo
+                      etiqueta="Agua total (m³)"
+                      ayuda="(Inyección + lavado) × caudal. Es el divisor de las ppm."
+                    >
+                      <Entrada value={n2(agua)} readOnly disabled className="font-bold" />
+                    </Campo>
+
+                    <Campo
+                      etiqueta="ppm (captura manual)"
+                      ayuda="Las calculadas salen por químico, abajo: cada producto tiene las suyas."
+                    >
                       <Entrada
                         inputMode="decimal"
                         value={entrada.ppm}
@@ -884,10 +950,21 @@ export function EjecucionModal({
                     </span>
                   </div>
 
+                  {/* El costo se quedó en blanco y aquí se dice POR QUÉ.
+                      Antes la celda se quedaba muda y las tres causas
+                      —sin precios, fuera de vigencia, sin tasa— tenían el
+                      mismo aspecto y tres arreglos distintos. */}
+                  {avisoPrecio && (
+                    <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800 ring-1 ring-inset ring-amber-200">
+                      {avisoPrecio}
+                    </p>
+                  )}
+
                   <div className="mt-2 flex flex-col gap-2">
                     {productos.map((q, i) => {
                       const dosis = dosisPorMz(q.totalLitros, mz)
                       const material = catalogos.materiales.find((m) => m.id === q.productoId)
+                      const ppm = ppmDe(q.totalLitros, material?.concentracion, entrada)
                       return (
                         <div
                           key={i}
@@ -976,19 +1053,52 @@ export function EjecucionModal({
                             </Campo>
                           </div>
 
-                          <div className="mt-2 grid grid-cols-2 gap-2">
+                          <div className="mt-2 grid grid-cols-3 gap-2">
                             <Campo etiqueta="Dosis/mz">
                               <Entrada value={dosis === null ? '—' : n2(dosis)} readOnly disabled />
                             </Campo>
                             <Campo etiqueta="Costo total">
                               <Entrada value={n2(costoProducto(q))} readOnly disabled />
                             </Campo>
+                            {/* Las ppm de ESTE químico. Son por producto y no
+                                por turno: el ácido y el desinfectante de la
+                                misma aplicación llevan concentraciones
+                                distintas y un solo número sería de ninguno. */}
+                            <Campo etiqueta="ppm">
+                              <Entrada
+                                value={ppm === null ? '—' : n2(ppm)}
+                                readOnly
+                                disabled
+                                className="font-bold"
+                              />
+                            </Campo>
                           </div>
 
-                          {material?.ingrediente_activo && (
-                            <p className="mt-1.5 px-0.5 text-[11px] text-slate-400">
-                              {material.ingrediente_activo}
-                              {material.concentracion ? ` · ${material.concentracion}` : ''}
+                          <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2">
+                            {material?.ingrediente_activo ? (
+                              <p className="px-0.5 text-[11px] text-slate-400">
+                                {material.ingrediente_activo}
+                                {material.concentracion ? ` · ${material.concentracion}` : ''}
+                              </p>
+                            ) : (
+                              <span />
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setDesgloseAbierto(i)}
+                              className="rounded-lg px-1 py-1 text-xs font-semibold text-brand-700 underline-offset-2 hover:underline"
+                            >
+                              Ver cálculo PPM
+                            </button>
+                          </div>
+
+                          {/* Sin concentración en el catálogo no hay ppm que
+                              valgan, y callarlo deja un «—» que parece un
+                              fallo de la pantalla en vez de un hueco del
+                              catálogo. */}
+                          {q.productoId !== '' && material && !material.concentracion && (
+                            <p className="mt-1 px-0.5 text-[11px] text-amber-700">
+                              Sin concentración en el catálogo: las ppm no se pueden calcular.
                             </p>
                           )}
                         </div>
@@ -1035,6 +1145,21 @@ export function EjecucionModal({
           </>
         )}
       </div>
+
+      {/* El desglose va FUERA del acordeón y encima del formulario: se
+          abre para discutir un número, no para corregirlo, y plegar la
+          sección mientras se mira sería perder de vista el contexto. */}
+      {desgloseAbierto !== null && productos[desgloseAbierto] && (
+        <DesglosePpmModal
+          desglose={desglosePpm(
+            productos[desgloseAbierto],
+            catalogos.materiales.find((m) => m.id === productos[desgloseAbierto].productoId),
+            entrada,
+            mz
+          )}
+          onCerrar={() => setDesgloseAbierto(null)}
+        />
+      )}
     </Modal>
   )
 }

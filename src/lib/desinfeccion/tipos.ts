@@ -94,6 +94,16 @@ export type FilaEjecucion = {
   horas_lavado: number | null
   /** Generada: presurización + inyección + lavado. No se escribe. */
   total_horas_riego: number | null
+  /**
+   * Metros cúbicos por hora de la estación. 20 por omisión.
+   *
+   * Es lo que faltaba para calcular las partes por millón: la 59 dejó
+   * `ppm` como captura a mano diciendo que la fórmula dependía del
+   * caudal. Desde la 64 el caudal se captura.
+   */
+  caudal_agua: number
+  /** Deducida por la vista: (inyección + lavado) × caudal. */
+  agua_total_m3: number | null
   ppm: number | null
   ce_antes: number | null
   ce_durante: number | null
@@ -179,6 +189,19 @@ export type FilaProducto = {
   dosis_mz: number | null
   usuario_id: string
   created_at: string
+
+  /**
+   * El desglose de las partes por millón, pieza por pieza.
+   *
+   * La vista guarda las CINCO variables y no sólo el resultado: un
+   * número que no se puede auditar no se discute, se cree o no se cree.
+   */
+  caudal_agua: number
+  horas_inyeccion: number | null
+  horas_lavado: number | null
+  agua_total_m3: number | null
+  producto_puro_litros: number | null
+  ppm_calculada: number | null
 }
 
 export type JornadaTipo = 'Diurna' | 'Nocturna'
@@ -462,6 +485,9 @@ export const PLAN_VACIO: EntradaPlan = {
   comentarios: '',
 }
 
+/** El caudal que la finca usa casi siempre. Editable por turno. */
+export const CAUDAL_POR_OMISION = '20'
+
 export type EntradaEjecucion = {
   id: string
   temporadaId: string
@@ -479,6 +505,8 @@ export type EntradaEjecucion = {
 
   fechaAplicacion: string
   estacionRiegoId: string
+  /** Metros cúbicos por hora. Es el divisor de las ppm (migración 64). */
+  caudalAgua: string
   /** Las cuatro fases del riego se capturan igual: por reloj (migración 62). */
   inicioPresurizacion: string
   finPresurizacion: string
@@ -509,6 +537,7 @@ export const EJECUCION_VACIA: EntradaEjecucion = {
   fechaLecturas: '',
   fechaAplicacion: '',
   estacionRiegoId: '',
+  caudalAgua: CAUDAL_POR_OMISION,
   inicioPresurizacion: '',
   finPresurizacion: '',
   horaInicioIny: '',

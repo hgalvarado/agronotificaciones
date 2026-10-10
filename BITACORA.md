@@ -235,6 +235,175 @@ dice.
 
 ## 3. Registro de cambios
 
+### 2026-10-10 — El caudal, la tasa de la temporada y las ppm (migración 64)
+
+#### 1 · El costo del químico «no reaccionaba» — y la causa estaba en la base
+
+El autocompletado SÍ estaba conectado desde la 62 (`elegirProducto` →
+`fn_precio_material`), con su prueba en Chromium. Lo que fallaba es que
+la función **devolvía nulo** y la pantalla, que no rellena con nulos, se
+quedaba quieta.
+
+Por qué devolvía nulo: convertía los dólares con `fn_tasa_cambio`, que
+lee `catalogo_tasas_cambio` — una tabla de la 59 que **en la instalación
+está vacía**. La tasa que la finca registra a mano es la de la temporada.
+Ahora hay `temporadas.tasa_hnl_usd` y `fn_tasa_de_temporada`, con este
+orden: la tasa de la temporada (manda), el catálogo de la 59 (por si
+alguien lo alimenta, que es más fino: una tasa por fecha), y nulo. **No
+se inventa un 25**: una tasa inventada costea en silencio toda una
+temporada.
+
+`fn_precio_material` gana un tercer argumento opcional con la temporada
+—la fecha sola no desempata dos temporadas solapadas— y el disparador
+se lo pasa, porque él sí la conoce.
+
+**Trampa que costó una vuelta:** `create or replace function` con un
+argumento de más NO reemplaza, crea una segunda función. Con las dos
+vivas, `fn_precio_material(x, y)` deja de resolverse —«function is not
+unique»— y se caen el disparador y la pantalla a la vez. Hay que soltar
+la vieja, y antes las vistas que la nombran.
+
+#### 2 · Y cuando no hay precio, ahora lo DICE
+
+Ésa era la mitad del problema que ninguna migración arreglaba: la celda
+se quedaba en blanco y las tres causas —el material no tiene precios,
+los tiene pero ninguno cubre esa fecha, está en dólares y falta la tasa—
+tenían el mismo aspecto y tres arreglos distintos.
+`fn_precio_material_detalle` devuelve el precio **y el motivo**, y la
+pantalla lo escribe. Un hueco explicado es una tarea; un hueco mudo es
+una llamada de teléfono.
+
+#### 3 · El caudal y las partes por millón
+
+`desinfeccion_ejecucion.caudal_agua` (m³/h, 20 por omisión, editable).
+Es exactamente lo que la 59 dijo que faltaba cuando dejó `ppm` como
+captura a mano.
+
+    agua_total_m3   = (horas_inyeccion + horas_lavado) × caudal
+    producto_puro_L = litros × (I.A. % / 100)
+    ppm             = producto_puro_L × 1000 / agua_total_m3
+
+**Por qué no hay ningún ×1.000.000:** un metro cúbico de agua pesa un
+millón de gramos y un cc de producto pesa aproximadamente uno, así que
+los cc por m³ YA son partes por millón. El ×1000 es sólo de litros a cc.
+
+Las ppm van **por producto y no por turno**: el ácido y el desinfectante
+de la misma aplicación llevan concentraciones distintas, y un solo número
+no sería de ninguno de los dos. `concentracion` es texto en el catálogo
+(«42 %», «1,3%»), así que hay una función —`fn_numero_de_texto` y su
+espejo `numeroDeTexto`— y **no se asume 100** cuando falta: un producto
+sin concentración declarada no es producto puro, es un producto del que
+no se sabe la concentración.
+
+La vista `v_desinfeccion_productos` guarda las CINCO piezas del cálculo y
+no sólo el resultado, y el botón «Ver cálculo PPM» abre la tabla con los
+diez renglones. Un número que no se puede auditar no se discute: se cree
+o no se cree.
+
+#### Cómo se comprobó
+
+- `t64.sql`: 28 verdes. La conversión USD→HNL con la tasa de la temporada,
+  la precedencia frente al catálogo de la 59, los tres motivos del hueco,
+  y las ppm con la cuenta hecha a mano (100 L al 42 % en 60 m³ = 700 ppm).
+- `t42_52` y `t53`–`t63`: todas verdes sobre la base hasta la 64.
+- **Paridad nueva de ppm**: 720 combinaciones contra `fn_ppm_desinfeccion`
+  real, 0 diferencias, más el parseo del porcentaje (7/7).
+- `tcalc` (132) y `tdesinf` (81), con el caudal, las ppm vivas —cambiar el
+  caudal las mueve—, el desglose completo y el aviso del precio sin tasa.
+- Paridad de horas y cuadrilla: 1.152 y 192, 0 diferencias.
+
+#### Lo que NO se hizo, a propósito
+
+- La columna `ppm` de la cabecera sigue siendo captura manual. Ahora que
+  la calculada por producto existe, queda sin oficio: se retira cuando la
+  finca confirme que el número nuevo cuadra con el suyo. Se relabeló como
+  «ppm (captura manual)» para que no se confunda con la de abajo.
+- El importador de Excel del módulo. Sigue pendiente.
+
+### 2026-10-10 — El DDT que salía «—», los catálogos que faltaban (migración 63)
+
+Auditoría de la 62 en la finca. El SQL había entrado bien; faltaba la
+pantalla con la que se usa, y el DDT estaba roto por abajo.
+
+#### 1 · El DDT salía siempre «—» (y la cuenta iba al revés)
+
+**No era un fallo de React.** La pantalla preguntaba bien y la base
+contestaba vacío: `fn_siembras_de_lotes` leía sólo `siembras`, que es la
+captura DIARIA de trasplante —lo ya sembrado—. Pero **la desinfección se
+hace ~70 días ANTES de trasplantar**: cuando se aplica en octubre, la
+siembra de diciembre no existe en esa tabla y nunca va a existir. El dato
+que hace falta es el del PLAN (`planes_siembra`).
+
+La 63 hace que la función mire las dos fuentes con la precedencia
+natural —lo hecho manda sobre lo planeado— y devuelva `origen`
+(`'real'` / `'plan'`), para que la pantalla pueda decir «previsto»: un
+plan todavía se puede mover y una siembra capturada ya no.
+
+**Y el signo estaba invertido.** `ddt()` restaba `siembra − fase` y
+devolvía 69 donde el encargo pide **−69**. Ahora es `fase − siembra`:
+negativo quiere decir que todavía falta para trasplantar, que es el caso
+normal al desinfectar. El signo es la mitad del dato — «69 días» y «−69
+días» son situaciones opuestas, y sin el signo son el mismo texto. La
+etiqueta pasa de «días antes del trasplante» a «días desde el
+trasplante», que es lo que el número mide.
+
+No hacía falta tocar la reactividad: el efecto ya depende de
+`lotesDelTurno`, que es una CADENA derivada de los lotes elegidos. Por
+eso no hay bucle — un array nuevo en cada render dispararía el efecto sin
+parar; una cadena sólo cambia cuando cambia el conjunto de lotes.
+
+#### 2 · Los catálogos que faltaban
+
+- `puestos_trabajo.es_salario_minimo` no tenía columna en la cuadrícula,
+  así que **no había forma de marcarlo** — y sin marcarlo, la cuadrilla no
+  proponía salario. Ya está, como casilla.
+- `materiales` no enseñaba `ingrediente_activo` ni `concentracion`.
+  Añadidas.
+- **El historial de precios no tenía pantalla ninguna.** Un material no
+  tiene un precio: tiene una sucesión de precios con sus vigencias, y eso
+  no cabe en una celda. Se resolvió con un sub-panel maestro-detalle por
+  fila (`PreciosMaterial`), con su propia `TablaAvanzada` —filtros,
+  orden, edición en celda, borrado en masa— más un alta con moneda,
+  precio, desde y hasta. El «precio vigente hoy» que enseña arriba **no
+  lo calcula el panel**: se lo pregunta a `fn_precio_material`, la misma
+  función que el disparador usa al guardar un costo.
+
+  El enganche es un `detalle?: DetalleCatalogo` en la definición del
+  catálogo. Es un NOMBRE y no una función de dibujo porque la definición
+  la arma la página en el servidor y cruza serializada: una función no
+  cruza.
+
+#### 3 · Marcar el salario mínimo ya no revienta
+
+La 62 puso el índice único parcial pero no dijo qué pasa al marcar el
+segundo: saltaba un error de llave duplicada que al de catálogos no le
+dice nada. Ahora marcar uno **desmarca al anterior**, con un disparador
+en la base y no en React — porque el importador de Excel escribe en la
+misma tabla, y una regla que sólo vive en la pantalla se salta sola por
+ahí.
+
+#### Cómo se comprobó
+
+- `t63.sql`: 19 verdes. Incluye la cuenta del encargo tal cual —preriego
+  2026-10-09 contra siembra prevista 2026-12-17 = **−69 días**—, que lo
+  hecho le gane al plan, que las dos fuentes convivan en una respuesta
+  sin perder cuál es cuál, que sin permiso de Desinfección ni Trasplante
+  no entregue nada, y que marcar un segundo salario mínimo desmarque el
+  primero.
+- `t42_52`, `t53`–`t62`: todas verdes sobre la base construida hasta la 63.
+- `tprecios.mjs` (13 verdes, nuevo) para el panel de precios en Chromium a
+  390 px. **Encontró un fallo de verdad:** dejar el precio en blanco
+  guardaba un cero, porque `Number('')` es 0 y 0 pasa por «finito y no
+  negativo».
+- `tcalc` (121) y `tdesinf` (67), con sus asserts del DDT invertidos a
+  propósito.
+- Paridad contra los disparadores reales: 1.152 horas y 192 cuadrillas,
+  0 diferencias.
+
+#### Lo que NO se hizo, a propósito
+
+El importador de Excel del módulo de desinfección y la fórmula de PPM.
+
 ### 2026-10-10 — La presurización en reloj y el salario mínimo marcado (migración 62)
 
 **Qué se pidió.** Nueve puntos. **Seis ya se habían entregado el día
@@ -1224,6 +1393,58 @@ usuario).
 
 Cosas que ya costaron una sesión. No volver a tropezar.
 
+- **`create or replace function` con un argumento de más NO reemplaza:
+  crea una SEGUNDA función con el mismo nombre.** Y con las dos vivas,
+  la llamada vieja deja de resolverse («function is not unique») y se
+  caen a la vez el disparador y la pantalla. Una sobrecarga que sólo
+  añade un parámetro con valor por omisión es siempre ambigua con la que
+  no lo tiene: hay que soltar la vieja, y antes las vistas que la
+  nombran.
+- **Una función que devuelve NULL deja la pantalla muda, y mudo no es
+  igual a roto.** El costo del químico «no reaccionaba» porque
+  `fn_precio_material` devolvía nulo —la tasa vivía en una tabla vacía— y
+  la pantalla, que no rellena con nulos, se quedaba quieta. Cuando un
+  autocompletado puede no tener respuesta, la respuesta vacía tiene que
+  traer su MOTIVO: las tres causas posibles tenían tres arreglos
+  distintos y la misma celda en blanco.
+- **La tasa de cambio que gobierna un costo tiene que vivir donde
+  alguien la mantiene.** `catalogo_tasas_cambio` (59) era más fina —una
+  tasa por fecha— y por eso mismo nadie la llenaba. La de la temporada se
+  escribe una vez al año y manda.
+- **No se le pone valor por omisión a una tasa de cambio.** Un 25 de
+  fábrica costea en silencio toda una temporada; un hueco se ve.
+- **Los cc por metro cúbico YA son partes por millón.** Un m³ de agua
+  pesa un millón de gramos y un cc de producto pesa aproximadamente uno:
+  la división ya viene en millonésimas. Si aparece un ×1.000.000 en una
+  fórmula de ppm, sobra.
+- **Un porcentaje escrito a mano («42 %», «1,3%») se convierte a número
+  en UN solo sitio.** Sacarlo con una expresión regular en cada pantalla
+  que lo necesite garantiza que un día dos sitios lo saquen distinto. Y
+  cuando falta, no se asume 100.
+- **Un dato que no existe todavía no se busca donde está el dato
+  hecho.** El DDT de desinfección salía «—» porque se leía `siembras` —lo
+  ya sembrado— cuando lo que hace falta es `planes_siembra`: se
+  desinfecta ~70 días ANTES de trasplantar. Y cuando una pantalla lee un
+  PLAN donde podría leer un hecho, tiene que decir cuál de los dos está
+  enseñando.
+- **El signo de una diferencia de fechas es la mitad del dato.** «69
+  días» y «−69 días» son situaciones opuestas y sin el signo son el mismo
+  texto. El DDT es `fase − siembra`: negativo = falta para trasplantar.
+- **`Number('')` es 0, no `NaN`.** Una validación de «finito y no
+  negativo» deja pasar el campo vacío como un cero, y un cero guardado
+  parece un dato. El vacío se mira ANTES de convertir.
+- **Una definición que arma el servidor y consume el navegador no puede
+  llevar funciones**: cruza serializada. Un sub-panel por fila se engancha
+  con un NOMBRE que el componente de cliente traduce, no con un `render`.
+- **Un índice único sin una regla que lo acompañe es un error en la
+  cara del usuario.** La bandera de salario mínimo tenía índice parcial
+  desde la 62 y marcar el segundo reventaba con «duplicate key». La regla
+  —marcar uno desmarca al otro— va en un disparador y no en React, porque
+  el importador de Excel escribe en la misma tabla.
+- **Un efecto que depende de un ARRAY se dispara en cada render**; uno
+  que depende de una cadena derivada de ese array, sólo cuando el
+  conjunto cambia. Es lo que evita el bucle al recalcular el DDT con los
+  lotes elegidos.
 - **Un *placeholder* no es un valor.** El texto gris de un input parece
   un número puesto y no se guarda: quien no lo toca guarda un vacío. Si
   el formulario PROPONE un número, lo escribe. Y entonces la limpieza de

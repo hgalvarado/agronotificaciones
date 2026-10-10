@@ -283,10 +283,20 @@ export default async function CatalogosPage() {
       clave: 'codigo',
       label: 'Materiales',
       tabla: 'materiales',
+      // Cada material abre su historial de precios: un material no tiene
+      // un precio, tiene una sucesión de precios con sus vigencias, y eso
+      // no cabe en una celda (migración 61).
+      detalle: 'precios_material',
       campos: [
         { key: 'codigo', label: 'Código', tipo: 'text', requerido: true },
         { key: 'descripcion', label: 'Descripción', tipo: 'text' },
         { key: 'grupo', label: 'Grupo', tipo: 'text' },
+        // Lo que de verdad actúa, y en qué proporción. Dos productos con
+        // nombre comercial distinto y el mismo ingrediente activo son el
+        // mismo producto a efectos de dosis, y sin esta columna no hay
+        // forma de verlo (migración 61).
+        { key: 'ingrediente_activo', label: 'Ingrediente activo', tipo: 'text' },
+        { key: 'concentracion', label: 'Concentración', tipo: 'text' },
         // Las etiquetas se guardan como arreglo en la base para poder
         // buscar dentro; aquí se editan como lista separada por comas,
         // que es lo que un catálogo de texto sabe manejar. Un disparador
@@ -447,6 +457,12 @@ export default async function CatalogosPage() {
         { key: 'codigo', label: 'Puesto', tipo: 'text', requerido: true },
         { key: 'descripcion', label: 'Descripción', tipo: 'text' },
         { key: 'operacion_sap', label: 'Operación', tipo: 'number' },
+        // Marca de cuál de todos es el salario mínimo. De aquí sale el
+        // salario que el formulario de cuadrilla propone en cada renglón
+        // (migración 62). Marcar uno DESMARCA al anterior: lo hace un
+        // disparador de la base (63), no esta pantalla, porque el
+        // importador de Excel escribe en la misma tabla.
+        { key: 'es_salario_minimo', label: 'Salario mínimo', tipo: 'checkbox' },
         { key: 'activo', label: 'Activo', tipo: 'checkbox' },
       ],
       filas: puestos ?? [],
@@ -550,6 +566,12 @@ export default async function CatalogosPage() {
         { key: 'nombre', label: 'Temporada', tipo: 'text', requerido: true },
         { key: 'fecha_inicio', label: 'Inicio', tipo: 'date', requerido: true },
         { key: 'fecha_fin', label: 'Fin', tipo: 'date', requerido: true },
+        // Lempiras por dólar de ESTA temporada. De aquí sale la
+        // conversión de los químicos importados (migración 64). Sin
+        // escribirla, un precio en dólares no se puede pasar a lempiras
+        // y el costo del químico se queda en blanco a propósito: una
+        // tasa inventada costea en silencio toda una temporada.
+        { key: 'tasa_hnl_usd', label: 'Tasa L/US$', tipo: 'number' },
         { key: 'activa', label: 'Activa', tipo: 'checkbox' },
       ],
       filas: temporadas ?? [],

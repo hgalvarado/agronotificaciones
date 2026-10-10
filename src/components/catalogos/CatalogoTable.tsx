@@ -15,6 +15,17 @@ import {
   type PermisosTabla,
 } from '@/components/ui/TablaAvanzada'
 import { ImportarExcel, type RelacionCatalogo } from './ImportarExcel'
+import { PreciosMaterial } from './PreciosMaterial'
+
+/**
+ * Los sub-paneles que una fila de catálogo puede abrir.
+ *
+ * Es un NOMBRE y no una función de dibujo a propósito: la definición del
+ * catálogo la arma la página en el servidor y cruza al navegador
+ * serializada, y una función no cruza. El nombre sí, y aquí se traduce al
+ * componente.
+ */
+export type DetalleCatalogo = 'precios_material'
 
 export type CampoCatalogo = {
   key: string
@@ -108,6 +119,7 @@ export function CatalogoTable({
   soloLectura = false,
   permisos,
   relaciones,
+  detalle,
 }: {
   tabla: string
   /** Nombre visible del catálogo; se usa en la plantilla y el importador. */
@@ -127,6 +139,14 @@ export function CatalogoTable({
    * labores las usan para sus tareas SAP y sus implementos.
    */
   relaciones?: RelacionCatalogo[]
+  /**
+   * Sub-panel que se abre desde cada fila.
+   *
+   * Hay catálogos donde una fila NO es una fila: un material tiene una
+   * sucesión de precios con sus vigencias, y eso no cabe en una celda.
+   * En vez de inventar una pantalla aparte, la fila abre su detalle.
+   */
+  detalle?: DetalleCatalogo
 }) {
   const supabase = createClient()
   const router = useRouter()
@@ -138,6 +158,8 @@ export function CatalogoTable({
   const [nuevos, setNuevos] = useState<Record<string, string[]>>({})
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  /** La fila cuyo sub-panel está abierto. */
+  const [abierta, setAbierta] = useState<Fila | null>(null)
 
   const camposTexto = campos.filter((c) => c.tipo !== 'checkbox')
   const campoBool = campos.find((c) => c.tipo === 'checkbox')
@@ -262,6 +284,19 @@ export function CatalogoTable({
         onEditarCelda={efectivos.editar ? editarCelda : undefined}
         onEditarMasivo={efectivos.editar ? editarMasivo : undefined}
         onEliminar={efectivos.eliminar ? eliminar : undefined}
+        accionFila={
+          detalle
+            ? (f) => (
+                <Boton
+                  variante="secundario"
+                  tamano="sm"
+                  onClick={() => setAbierta(f as Fila)}
+                >
+                  Precios
+                </Boton>
+              )
+            : undefined
+        }
         acciones={
           !soloLectura && (
             <>
@@ -343,6 +378,16 @@ export function CatalogoTable({
           {error && <Alerta>{error}</Alerta>}
         </div>
       </Modal>
+
+      {detalle === 'precios_material' && abierta && (
+        <PreciosMaterial
+          abierto
+          materialId={String(abierta.id)}
+          titulo={[abierta.codigo, abierta.descripcion].filter(Boolean).join(' · ')}
+          soloLectura={efectivos.editar !== true}
+          onCerrar={() => setAbierta(null)}
+        />
+      )}
 
       <ImportarExcel
         abierto={abrirImportar}
