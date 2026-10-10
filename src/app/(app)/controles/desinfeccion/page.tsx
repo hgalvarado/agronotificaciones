@@ -14,7 +14,15 @@ export default async function DesinfeccionPage() {
     getUsuarioActual(),
     getMisZonas(),
   ])
-  if (!puede(permisos, 'desinfeccion', 'ver')) redirect('/tickets')
+  // Basta UNA de las cuatro sub-pantallas para entrar al módulo: dentro,
+  // `DesinfeccionTabs` sólo dibuja las pestañas que esta persona tenga
+  // (migración 66).
+  const entra =
+    puede(permisos, 'desinfeccion_plan', 'ver') ||
+    puede(permisos, 'desinfeccion_ejecucion', 'ver') ||
+    puede(permisos, 'desinfeccion_logistica', 'ver') ||
+    puede(permisos, 'desinfeccion_reporte', 'ver')
+  if (!entra) redirect('/tickets')
 
   const supabase = await createClient()
 

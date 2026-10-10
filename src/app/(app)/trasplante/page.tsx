@@ -33,7 +33,11 @@ export default async function TrasplantePage({
     getUsuarioActual(),
     getMisZonas(),
   ])
-  if (!puede(permisos, 'trasplante', 'ver')) redirect('/tickets')
+  // El plan y la siembra diaria son dos pantallas desde la 66: con
+  // cualquiera se entra, y dentro se dibuja lo que corresponda.
+  if (!puede(permisos, 'trasplante_plan', 'ver') && !puede(permisos, 'trasplante_diario', 'ver')) {
+    redirect('/tickets')
+  }
 
   const sp = await searchParams
   const supabase = await createClient()
@@ -101,7 +105,7 @@ export default async function TrasplantePage({
           >
             Reporte para gerencia
           </Link>
-          {puede(permisos, 'trasplante', 'crear') && (
+          {puede(permisos, 'trasplante_diario', 'crear') && (
             <Link
               href={`/trasplante/nueva?temporada=${temporada.id}`}
               className="inline-flex items-center rounded-lg bg-brand-700 px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-800"

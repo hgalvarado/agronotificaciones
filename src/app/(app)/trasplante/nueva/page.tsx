@@ -15,7 +15,7 @@ export default async function NuevaSiembraPage({
   searchParams: Promise<{ temporada?: string }>
 }) {
   const permisos = await getPermisos()
-  if (!puede(permisos, 'trasplante', 'crear')) redirect('/trasplante')
+  if (!puede(permisos, 'trasplante_diario', 'crear')) redirect('/trasplante')
 
   const sp = await searchParams
   const supabase = await createClient()

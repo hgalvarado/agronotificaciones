@@ -235,6 +235,103 @@ dice.
 
 ## 3. Registro de cambios
 
+### 2026-10-10 — ABAC granular y el sellado de la fuga zonal (migración 66)
+
+#### 1 · La fuga zonal era real, y era mía
+
+Había **cuatro** formas distintas de colarse, y la plataforma tenía las
+cuatro conviviendo. No fallaba `fn_mi_alcance` ni el `case`: fallaba cómo
+estaba escrita la rama zonal.
+
+1. **`else true`** — la rama zonal no filtraba nada.
+   `v_desinfeccion_ejecucion` y `v_desinfeccion_personal`: un usuario
+   zonal veía todos los turnos de la finca.
+2. **`else true or not fn_tiene_zonas() or (…)`** — peor, porque *parece*
+   que filtra. El `true or` cortocircuita y el predicado zonal es código
+   muerto. Seis vistas, entre ellas las de avance y costos. Viene del
+   bucle de la 61: sin columna de dueño el generador escribía `true` en
+   su sitio y lo pegaba con `or`.
+3. **`not fn_tiene_zonas()`** — un usuario con alcance zonal al que nadie
+   le asignó zonas veía todo. El fallo abierto tiene sentido en las
+   policies viejas; en una rama que **sólo** se alcanza con alcance zonal
+   está exactamente al revés.
+4. **La peor, y la última en aparecer: las ESCRITURAS.**
+   `fn_verificar_permiso` resuelve el eje zonal con
+   `p_dueno = auth.uid() or fn_ve_zona(p_zona)`, y **casi ningún sitio le
+   pasaba la zona**. Con `p_zona` nulo `fn_ve_zona` contesta que sí, así
+   que el eje zonal de todas las escrituras estaba desactivado: un
+   usuario zonal podía editar una fila de otra zona.
+
+**Sellar las vistas no sella nada si las tablas siguen abiertas.** Una
+vista es una comodidad; PostgREST deja consultar la tabla y ahí quien
+manda es la RLS. Por eso la 66 toca las dos puertas.
+
+El arreglo: `fn_ve_zona_estricta` y `fn_ve_lote_estricto`, que fallan
+CERRADAS (sin zonas asignadas, o con zona nula, devuelven falso), y
+`fn_verificar_permiso_zonal`, que delega permiso y condición en la de
+siempre y le suma la zona estricta. `fn_ve_zona` y `fn_verificar_permiso`
+**no se tocan**: las usan las policies de la 41 y la 42 con el fallo
+abierto a propósito, y endurecerlas a ciegas dejaría fuera a gente de
+módulos que aquí no se pueden probar.
+
+Las rejas de las 24 vistas expuestas se regeneran desde **una tabla de
+decisiones** —una fila por vista, con su pantalla y su recorte—. Escribir
+24 rejas a mano es lo que dejó cuatro formas de colarse sin que nadie las
+viera juntas; en una tabla se ven juntas.
+
+#### 2 · Pantallas granulares
+
+`desinfeccion` → `desinfeccion_plan` · `_ejecucion` · `_logistica` ·
+`_reporte`. `trasplante` → `trasplante_plan` · `trasplante_diario`.
+
+Los permisos del padre se **copian** a cada hija con su mismo alcance y
+su misma condición antes de borrar el padre: nadie pierde acceso al
+correr el script. Quitar lo que sobre es un segundo paso del
+Administrador.
+
+La matriz de `/admin/permisos` **no hizo falta tocarla**: se dibuja desde
+`public.pantallas`, así que se partió sola. Es la promesa de la 43
+cobrándose sola.
+
+#### 3 · Lo que casi se rompe en silencio
+
+`fn_siembras_de_lotes` (la que salva el DDT) comprobaba el permiso
+nombrando las dos pantallas padre. Al partirlas se habría quedado muda y
+el DDT volvería a «—». **Partir una pantalla obliga a buscar su nombre en
+TODO el SQL**, no sólo en la tabla de permisos. Hay dos guardianes nuevos
+para eso.
+
+#### Cómo se comprobó
+
+- `t66.sql`: **28 verdes**, y con usuarios de verdad —no mirando el texto
+  de la vista, que es lo que engañaba—. Un zonal no ve ni escribe en la
+  otra zona; sin zonas asignadas no ve nada; una fila con zona nula no la
+  ve nadie; el Administrador no nota el cambio.
+  Las pruebas de escritura van con `set role authenticated`: **el
+  superusuario se salta la RLS entera** y las habría dado todas por
+  buenas.
+- `t42_52` y `t53`–`t65`: las catorce suites verdes. Varias se parcharon
+  donde la 66 cambió la regla a propósito.
+- `tdesinf` (83), `tcalc` (134) y las demás, verdes. El banco de pruebas
+  tuvo que pasar a las cuatro llaves nuevas, que es la prueba de que la
+  pantalla de verdad las pide.
+
+#### Deuda, escrita y no escondida
+
+La migración IMPRIME por `raise notice` las tablas que siguen resolviendo
+el alcance zonal sin pasar la zona. Hoy queda **`tickets`**. Una deuda
+que se ve es una tarea; una que no, es un agujero.
+
+#### Qué cambia de comportamiento
+
+- Zonal **sin zonas asignadas** pasa de verlo todo a no ver nada. Si
+  alguien se queda con la pantalla en blanco, mirar sus zonas en
+  `/admin/usuarios`.
+- La rama zonal ya **no** incluye «o lo que yo capturé». Zonal es zonal;
+  para «sólo lo mío» está el alcance propietario.
+- Una fila con zona nula no la ve ningún usuario zonal. Son datos
+  incompletos y hay que completarlos.
+
 ### 2026-10-10 — Historial de tasas, y las ppm sobre la dosis (migración 65)
 
 #### 1 · La tasa de cambio, con vigencias
@@ -1459,6 +1556,37 @@ usuario).
 
 Cosas que ya costaron una sesión. No volver a tropezar.
 
+- **Una reja de vista no es seguridad: la seguridad es la RLS de la
+  tabla.** PostgREST deja consultar la tabla directamente. Sellar la
+  vista y dejar la policy abierta es poner una puerta nueva al lado de
+  la que sigue sin cerrojo.
+- **`else true` en la rama zonal de un `case` de alcance es una fuga
+  total**, y `else true or <predicado>` es peor: cortocircuita y deja el
+  predicado como código muerto que se lee como si funcionara. Cualquier
+  generador de rejas que escriba `true` cuando le falta una columna
+  acaba produciendo las dos.
+- **`fn_verificar_permiso` resuelve el eje zonal con la zona que le
+  pasen, y si no le pasan ninguna contesta que sí.** Toda policy que la
+  llame sin zona tiene el eje zonal desactivado para escrituras. Para
+  eso está `fn_verificar_permiso_zonal`, y un guardián que lista quién
+  sigue con la laxa.
+- **Fallar abierto y fallar cerrado dependen de dónde estés.** `sin zonas
+  asignadas = sin recorte` es razonable en una policy general y es un
+  agujero dentro de una rama que sólo se alcanza con alcance ZONAL. La
+  misma función no puede servir para los dos sitios: por eso conviven
+  `fn_ve_zona` y `fn_ve_zona_estricta`, y el nombre dice cuál es cuál.
+- **Una prueba de RLS que corre como superusuario no prueba nada.** El
+  superusuario se salta la RLS entera, así que todas las escrituras
+  pasan. Las pruebas de policy van con `set role authenticated` — y la
+  primera versión de `t66` daba por sellado el camino de escritura
+  justamente por esto.
+- **Partir una pantalla en sub-pantallas obliga a buscar su nombre en
+  TODO el SQL**: policies, funciones `security definer` que comprueban el
+  permiso por dentro, y el frontend. `fn_siembras_de_lotes` se habría
+  quedado muda y el DDT habría vuelto a «—» sin un solo error.
+- **Al partir una pantalla, los permisos del padre se COPIAN a las hijas
+  antes de borrarlo.** Partir es una decisión de granularidad, no de
+  permisos: nadie puede perder acceso por correr una migración.
 - **⚠ LAS PPM: LA DUDA DIMENSIONAL, SIN RESOLVER.** Desde la 65 la
   fórmula parte de `dosis_mz` y no de los litros totales, por encargo.
   Las dos no miden lo mismo y la diferencia es exactamente las manzanas

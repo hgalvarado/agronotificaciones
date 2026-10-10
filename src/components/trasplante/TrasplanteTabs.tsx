@@ -39,6 +39,24 @@ import { armarReglas, canExecuteAction, type ReglasPlanas } from '@/lib/permisos
 
 type Pestana = 'avance' | 'diaria' | 'plan' | 'recepcion'
 
+/**
+ * Cada pestaña con SU pantalla de permisos (migración 66).
+ *
+ * El plan de siembra y la siembra diaria son dos permisos distintos: el
+ * plan lo arma la jefatura una vez por temporada y la captura diaria la
+ * hace quien está en el campo. Con un solo identificador había que dar
+ * las dos o ninguna.
+ *
+ * El avance por UT y la recepción de plántulas leen lo que la siembra
+ * diaria captura, así que cuelgan de ella.
+ */
+const PESTANAS: { valor: Pestana; etiqueta: string; pantalla: string }[] = [
+  { valor: 'avance', etiqueta: 'Avance por UT', pantalla: 'trasplante_diario' },
+  { valor: 'diaria', etiqueta: 'Siembra diaria', pantalla: 'trasplante_diario' },
+  { valor: 'plan', etiqueta: 'Plan de siembra', pantalla: 'trasplante_plan' },
+  { valor: 'recepcion', etiqueta: 'Recepción de plántulas', pantalla: 'trasplante_diario' },
+]
+
 export function TrasplanteTabs({
   temporadas,
   temporadaId,
@@ -78,10 +96,20 @@ export function TrasplanteTabs({
   // Esta capa sólo decide pestañas y modales, que son de pantalla.
   // El recorte por fila lo hace cada cuadrícula con las mismas reglas.
   const reglasAbac = useMemo(() => armarReglas(reglas), [reglas])
-  const puedeEditar = canExecuteAction(reglasAbac, 'trasplante', 'editar')
+  // El avance por UT y la recepción son lectura/edición de lo que la
+  // siembra diaria captura: su permiso es el de ella.
+  const puedeEditar = canExecuteAction(reglasAbac, 'trasplante_diario', 'editar')
+
+  /** Sólo las pestañas que esta persona puede ver. Las demás no se dibujan. */
+  const visibles = useMemo(
+    () => PESTANAS.filter((p) => canExecuteAction(reglasAbac, p.pantalla, 'ver')),
+    [reglasAbac]
+  )
 
   const router = useRouter()
   const [pestana, setPestana] = useState<Pestana>('avance')
+  const activa: Pestana | null =
+    visibles.find((p) => p.valor === pestana)?.valor ?? visibles[0]?.valor ?? null
 
   return (
     <div className="flex flex-col gap-4">
@@ -115,19 +143,12 @@ export function TrasplanteTabs({
       />
 
       <div className="flex gap-1.5 overflow-x-auto pb-1">
-        {(
-          [
-            ['avance', 'Avance por UT'],
-            ['diaria', 'Siembra diaria'],
-            ['plan', 'Plan de siembra'],
-            ['recepcion', 'Recepción de plántulas'],
-          ] as const
-        ).map(([valor, etiqueta]) => (
+        {visibles.map(({ valor, etiqueta }) => (
           <button
             key={valor}
             onClick={() => setPestana(valor)}
             className={`shrink-0 rounded-full px-3.5 py-2 text-sm font-semibold transition-all ${
-              pestana === valor
+              activa === valor
                 ? 'bg-brand-700 text-white shadow-[var(--shadow-raised)]'
                 : 'bg-white text-slate-500 ring-1 ring-inset ring-slate-200 hover:text-slate-900'
             }`}
@@ -137,14 +158,14 @@ export function TrasplanteTabs({
         ))}
       </div>
 
-      {pestana === 'avance' && (
+      {activa === 'avance' && (
         <AvancePorUt
           filas={avance}
           puedeEditar={puedeEditar}
           onCambio={() => router.refresh()}
         />
       )}
-      {pestana === 'diaria' && (
+      {activa === 'diaria' && (
         <GridSiembras
           temporadaId={temporadaId}
           filas={siembras}
@@ -156,7 +177,7 @@ export function TrasplanteTabs({
           zonas={zonas}
         />
       )}
-      {pestana === 'plan' && (
+      {activa === 'plan' && (
         <PlanSiembra
           temporadaId={temporadaId}
           filas={plan}
@@ -167,7 +188,7 @@ export function TrasplanteTabs({
           zonas={zonas}
         />
       )}
-      {pestana === 'recepcion' && (
+      {activa === 'recepcion' && (
         <div className="flex flex-col gap-4">
           <GridRecepcion
             key={`${temporadaId}-${recepciones.length}`}

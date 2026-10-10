@@ -49,7 +49,9 @@ export default async function ReporteTrasplantePage({
   searchParams: Promise<{ temporada?: string; desde?: string; hasta?: string }>
 }) {
   const permisos = await getPermisos()
-  if (!puede(permisos, 'trasplante', 'ver')) redirect('/tickets')
+  if (!puede(permisos, 'trasplante_plan', 'ver') && !puede(permisos, 'trasplante_diario', 'ver')) {
+    redirect('/tickets')
+  }
 
   const sp = await searchParams
   const supabase = await createClient()

@@ -17,6 +17,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Alerta, Campo, Selector, Tarjeta } from '@/components/ui/Primitivos'
 import {
   armarReglas,
+  canExecuteAction,
   filtrarPorZona,
   zonasParaCrear,
   type ReglasPlanas,
@@ -31,11 +32,20 @@ import { ReporteCostos } from './ReporteCostos'
 
 type Pestana = 'plan' | 'ejecucion' | 'logistica' | 'reporte'
 
-const PESTANAS: [Pestana, string][] = [
-  ['plan', 'Planificación'],
-  ['ejecucion', 'Ejecución'],
-  ['logistica', 'Logística'],
-  ['reporte', 'Reporte'],
+/**
+ * Cada pestaña con SU pantalla de permisos.
+ *
+ * Hasta la 66 las cuatro compartían el identificador `desinfeccion`, y
+ * con eso no se podía dar la captura sin dar el reporte de costos —que
+ * es justo el reparto que la finca necesita—. Ahora son cuatro llaves
+ * distintas y esta tabla es el único sitio donde se dice cuál va con
+ * cuál.
+ */
+const PESTANAS: { valor: Pestana; etiqueta: string; pantalla: string }[] = [
+  { valor: 'plan', etiqueta: 'Planificación', pantalla: 'desinfeccion_plan' },
+  { valor: 'ejecucion', etiqueta: 'Ejecución', pantalla: 'desinfeccion_ejecucion' },
+  { valor: 'logistica', etiqueta: 'Logística', pantalla: 'desinfeccion_logistica' },
+  { valor: 'reporte', etiqueta: 'Reporte', pantalla: 'desinfeccion_reporte' },
 ]
 
 export function DesinfeccionTabs({
@@ -54,10 +64,26 @@ export function DesinfeccionTabs({
   const reglas = useMemo(() => armarReglas(reglasPlanas), [reglasPlanas])
   const zonasDelPerfil = useMemo(() => new Set(zonas), [zonas])
 
+  /**
+   * Las pestañas que esta persona puede ver, y SÓLO ésas.
+   *
+   * No se dibujan en gris: no se dibujan. Una pestaña visible que al
+   * pulsarla contesta «no tienes permiso» enseña el mapa del módulo a
+   * quien no tiene que verlo, y encima parece un fallo.
+   */
+  const visibles = useMemo(
+    () => PESTANAS.filter((p) => canExecuteAction(reglas, p.pantalla, 'ver')),
+    [reglas]
+  )
+
   const temporadaActiva =
     catalogos.temporadas.find((t) => t.activa)?.id ?? catalogos.temporadas[0]?.id ?? ''
   const [temporadaId, setTemporadaId] = useState(temporadaActiva)
+  // Se abre por la Ejecución, que es donde se trabaja a diario… salvo
+  // que no se tenga, en cuyo caso por la primera que sí.
   const [pestana, setPestana] = useState<Pestana>('ejecucion')
+  const activa: Pestana | null =
+    visibles.find((p) => p.valor === pestana)?.valor ?? visibles[0]?.valor ?? null
   const [sinMigracion, setSinMigracion] = useState(false)
   const [lotes, setLotes] = useState<LoteDesinfeccion[]>([])
   /**
@@ -110,7 +136,7 @@ export function DesinfeccionTabs({
    *     instala la migración no habría ninguna estación utilizable.
    */
   const zonasPermitidas = useMemo(
-    () => zonasParaCrear(reglas, 'desinfeccion', zonasDelPerfil),
+    () => zonasParaCrear(reglas, 'desinfeccion_ejecucion', zonasDelPerfil),
     [reglas, zonasDelPerfil]
   )
 
@@ -130,6 +156,15 @@ export function DesinfeccionTabs({
   )
 
   if (sinMigracion) return <Alerta tono="ambar">{AVISO_SIN_MIGRACION}</Alerta>
+
+  if (visibles.length === 0) {
+    return (
+      <Alerta tono="ambar">
+        No tienes permiso sobre ninguna parte de Desinfección. Si crees que sí deberías, pídele al
+        Administrador que lo revise en Permisos.
+      </Alerta>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -154,12 +189,12 @@ export function DesinfeccionTabs({
           renglones: con cuatro pestañas, dos renglones comen la mitad de
           lo que se ve antes de empezar a leer. */}
       <div className="flex gap-1.5 overflow-x-auto pb-1">
-        {PESTANAS.map(([valor, etiqueta]) => (
+        {visibles.map(({ valor, etiqueta }) => (
           <button
             key={valor}
             onClick={() => setPestana(valor)}
             className={`shrink-0 rounded-full px-3.5 py-2 text-sm font-semibold transition-all ${
-              pestana === valor
+              activa === valor
                 ? 'bg-brand-700 text-white shadow-[var(--shadow-raised)]'
                 : 'bg-white text-slate-500 ring-1 ring-inset ring-slate-200 hover:text-slate-900'
             }`}
@@ -169,7 +204,7 @@ export function DesinfeccionTabs({
         ))}
       </div>
 
-      {pestana === 'plan' && (
+      {activa === 'plan' && (
         <GridPlan
           temporadaId={temporadaId}
           catalogos={catalogos}
@@ -181,7 +216,7 @@ export function DesinfeccionTabs({
         />
       )}
 
-      {pestana === 'ejecucion' && (
+      {activa === 'ejecucion' && (
         <GridEjecucion
           temporadaId={temporadaId}
           catalogos={catalogosVivos}
@@ -196,7 +231,7 @@ export function DesinfeccionTabs({
         />
       )}
 
-      {pestana === 'logistica' && (
+      {activa === 'logistica' && (
         <GridLogistica
           temporadaId={temporadaId}
           catalogos={catalogos}
@@ -207,7 +242,7 @@ export function DesinfeccionTabs({
         />
       )}
 
-      {pestana === 'reporte' && (
+      {activa === 'reporte' && (
         <ReporteCostos
           temporadaId={temporadaId}
           reglas={reglas}

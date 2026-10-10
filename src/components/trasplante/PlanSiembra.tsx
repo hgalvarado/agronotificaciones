@@ -70,8 +70,8 @@ export function PlanSiembra({
   // fila coincide con la de pantalla. Se pregunta igual con el
   // helper para que el día que la fila gane un dueño o un estado
   // no haya que acordarse de cambiarlo aquí.
-  const puedeEditar = canExecuteAction(reglas, 'trasplante', 'editar')
-  const puedeEliminar = canExecuteAction(reglas, 'trasplante', 'eliminar')
+  const puedeEditar = canExecuteAction(reglas, 'trasplante_plan', 'editar')
+  const puedeEliminar = canExecuteAction(reglas, 'trasplante_plan', 'eliminar')
 
   // Y a nivel de FILA, que es lo que decide cada botón.
   const ctxAbac = useMemo(
@@ -79,11 +79,11 @@ export function PlanSiembra({
     [usuarioId, zonasDelPerfil]
   )
   const puedeEditarFila = useCallback(
-    (_f: FilaPlanSiembra) => canExecuteAction(reglas, 'trasplante', 'editar', { duenoId: null }, ctxAbac),
+    (_f: FilaPlanSiembra) => canExecuteAction(reglas, 'trasplante_plan', 'editar', { duenoId: null }, ctxAbac),
     [reglas, ctxAbac]
   )
   const puedeEliminarFila = useCallback(
-    (_f: FilaPlanSiembra) => canExecuteAction(reglas, 'trasplante', 'eliminar', { duenoId: null }, ctxAbac),
+    (_f: FilaPlanSiembra) => canExecuteAction(reglas, 'trasplante_plan', 'eliminar', { duenoId: null }, ctxAbac),
     [reglas, ctxAbac]
   )
 

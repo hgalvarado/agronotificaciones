@@ -290,7 +290,7 @@ export function ReporteCostos({
         ordenInicial={{ campo: 'costo_total', direccion: 'desc' }}
         minAncho="1400px"
         seleccionable={false}
-        puedeExportar={canExecuteAction(reglas, 'desinfeccion', 'exportar')}
+        puedeExportar={canExecuteAction(reglas, 'desinfeccion_reporte', 'exportar')}
         vacio={{
           titulo: 'Sin costos todavía',
           descripcion: 'El costo aparece cuando un turno ejecutado tiene lotes regados.',

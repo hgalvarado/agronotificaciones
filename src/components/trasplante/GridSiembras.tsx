@@ -101,8 +101,8 @@ export function GridSiembras({
   // A nivel de PANTALLA: ¿podría llegar a hacerlo? Es lo que decide si se
   // dibuja la barra de herramientas. Sin fila, alcance y condición no
   // recortan.
-  const puedeEditar = canExecuteAction(reglas, 'trasplante', 'editar')
-  const puedeEliminar = canExecuteAction(reglas, 'trasplante', 'eliminar')
+  const puedeEditar = canExecuteAction(reglas, 'trasplante_diario', 'editar')
+  const puedeEliminar = canExecuteAction(reglas, 'trasplante_diario', 'eliminar')
 
   // Y a nivel de FILA, que es lo que decide cada botón.
   const ctxAbac = useMemo(
@@ -110,11 +110,11 @@ export function GridSiembras({
     [usuarioId, zonasDelPerfil]
   )
   const puedeEditarFila = useCallback(
-    (f: FilaSiembra) => canExecuteAction(reglas, 'trasplante', 'editar', { duenoId: f.usuario_id }, ctxAbac),
+    (f: FilaSiembra) => canExecuteAction(reglas, 'trasplante_diario', 'editar', { duenoId: f.usuario_id }, ctxAbac),
     [reglas, ctxAbac]
   )
   const puedeEliminarFila = useCallback(
-    (f: FilaSiembra) => canExecuteAction(reglas, 'trasplante', 'eliminar', { duenoId: f.usuario_id }, ctxAbac),
+    (f: FilaSiembra) => canExecuteAction(reglas, 'trasplante_diario', 'eliminar', { duenoId: f.usuario_id }, ctxAbac),
     [reglas, ctxAbac]
   )
 

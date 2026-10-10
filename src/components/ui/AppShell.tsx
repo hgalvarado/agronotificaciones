@@ -118,10 +118,14 @@ export function AppShell({
       icono: <IconPlan />,
       visible:
         ve('plan') ||
-        ve('trasplante') ||
+        ve('trasplante_plan') ||
+        ve('trasplante_diario') ||
         ve('rotacion') ||
         ve('turnos_riego') ||
-        ve('desinfeccion') ||
+        ve('desinfeccion_plan') ||
+        ve('desinfeccion_ejecucion') ||
+        ve('desinfeccion_logistica') ||
+        ve('desinfeccion_reporte') ||
         ve('telecom'),
       hijos: [
         {
@@ -133,10 +137,13 @@ export function AppShell({
         },
         {
           href: '/trasplante',
-          pantalla: 'trasplante',
+          // Desde la 66 el módulo son DOS pantallas. El menú se enciende
+          // con cualquiera de las dos: quien sólo tiene el plan entra por
+          // el mismo sitio y ve su pestaña, no las otras.
+          pantalla: 'trasplante_diario',
           etiqueta: 'Trasplante',
           icono: <IconChart />,
-          visible: ve('trasplante'),
+          visible: ve('trasplante_plan') || ve('trasplante_diario'),
         },
         {
           href: '/controles/rotacion',
@@ -156,10 +163,16 @@ export function AppShell({
           // Va junto a Riego porque se ejecuta sobre el TURNO de riego:
           // quien entra aquí viene de mirar los turnos.
           href: '/controles/desinfeccion',
-          pantalla: 'desinfeccion',
+          // Cuatro pantallas desde la 66; basta una para que el menú
+          // aparezca, y dentro sólo se dibujan las pestañas que tenga.
+          pantalla: 'desinfeccion_ejecucion',
           etiqueta: 'Desinfección de suelo',
           icono: <IconGota />,
-          visible: ve('desinfeccion'),
+          visible:
+            ve('desinfeccion_plan') ||
+            ve('desinfeccion_ejecucion') ||
+            ve('desinfeccion_logistica') ||
+            ve('desinfeccion_reporte'),
         },
         {
           href: '/telecom',

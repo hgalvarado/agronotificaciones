@@ -63,15 +63,15 @@ export function GridPlan({
   const [entrada, setEntrada] = useState<EntradaPlan | null>(null)
 
   const ctx = useMemo(() => ({ usuarioId, zonas }), [usuarioId, zonas])
-  const puedeCrear = canExecuteAction(reglas, 'desinfeccion', 'crear')
-  const puedeEditar = canExecuteAction(reglas, 'desinfeccion', 'editar')
-  const puedeEliminar = canExecuteAction(reglas, 'desinfeccion', 'eliminar')
+  const puedeCrear = canExecuteAction(reglas, 'desinfeccion_plan', 'crear')
+  const puedeEditar = canExecuteAction(reglas, 'desinfeccion_plan', 'editar')
+  const puedeEliminar = canExecuteAction(reglas, 'desinfeccion_plan', 'eliminar')
 
   const puedeEditarFila = useCallback(
     (f: FilaPlan) =>
       canExecuteAction(
         reglas,
-        'desinfeccion',
+        'desinfeccion_plan',
         'editar',
         { duenoId: f.usuario_id, zonaId: f.zona_id },
         ctx
@@ -82,7 +82,7 @@ export function GridPlan({
     (f: FilaPlan) =>
       canExecuteAction(
         reglas,
-        'desinfeccion',
+        'desinfeccion_plan',
         'eliminar',
         { duenoId: f.usuario_id, zonaId: f.zona_id },
         ctx
@@ -403,7 +403,7 @@ export function GridPlan({
         seleccionable={puedeEditar || puedeEliminar}
         puedeEditarCelda={puedeEditar}
         onEditarCelda={editarCelda}
-        puedeExportar={canExecuteAction(reglas, 'desinfeccion', 'exportar')}
+        puedeExportar={canExecuteAction(reglas, 'desinfeccion_plan', 'exportar')}
         vacio={{
           titulo: 'Sin plan de desinfección',
           descripcion: 'Crea la primera línea: un lote, su fecha de siembra y los días a la aplicación.',

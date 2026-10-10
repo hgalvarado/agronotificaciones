@@ -57,15 +57,15 @@ export function GridLogistica({
   const [entrada, setEntrada] = useState<EntradaLogistica | null>(null)
 
   const ctx = useMemo(() => ({ usuarioId, zonas }), [usuarioId, zonas])
-  const puedeCrear = canExecuteAction(reglas, 'desinfeccion', 'crear')
-  const puedeEditar = canExecuteAction(reglas, 'desinfeccion', 'editar')
-  const puedeEliminar = canExecuteAction(reglas, 'desinfeccion', 'eliminar')
+  const puedeCrear = canExecuteAction(reglas, 'desinfeccion_logistica', 'crear')
+  const puedeEditar = canExecuteAction(reglas, 'desinfeccion_logistica', 'editar')
+  const puedeEliminar = canExecuteAction(reglas, 'desinfeccion_logistica', 'eliminar')
 
   // Al CREAR con alcance zonal, el selector sólo ofrece lo asignado: dejar
   // elegir una zona ajena es dejar llenar el formulario entero para que la
   // base lo rechace al guardar.
   const zonasPermitidas = useMemo(
-    () => zonasParaCrear(reglas, 'desinfeccion', zonas),
+    () => zonasParaCrear(reglas, 'desinfeccion_logistica', zonas),
     [reglas, zonas]
   )
 
@@ -73,7 +73,7 @@ export function GridLogistica({
     (f: FilaLogistica) =>
       canExecuteAction(
         reglas,
-        'desinfeccion',
+        'desinfeccion_logistica',
         'editar',
         { duenoId: f.usuario_id, zonaId: f.zona_id },
         ctx
@@ -84,7 +84,7 @@ export function GridLogistica({
     (f: FilaLogistica) =>
       canExecuteAction(
         reglas,
-        'desinfeccion',
+        'desinfeccion_logistica',
         'eliminar',
         { duenoId: f.usuario_id, zonaId: f.zona_id },
         ctx
@@ -349,7 +349,7 @@ export function GridLogistica({
         seleccionable={puedeEliminar}
         puedeEditarCelda={puedeEditar}
         onEditarCelda={editarCelda}
-        puedeExportar={canExecuteAction(reglas, 'desinfeccion', 'exportar')}
+        puedeExportar={canExecuteAction(reglas, 'desinfeccion_logistica', 'exportar')}
         vacio={{
           titulo: 'Sin acarreos registrados',
           descripcion: 'La bolsa de la zona se reparte entre sus lotes al leer el reporte de costos.',

@@ -136,15 +136,15 @@ export function GridEjecucion({
   const [lotesTurno, setLotesTurno] = useState<LoteDesinfeccion[]>(lotes)
 
   const ctx = useMemo(() => ({ usuarioId, zonas }), [usuarioId, zonas])
-  const puedeCrear = canExecuteAction(reglas, 'desinfeccion', 'crear')
-  const puedeEditar = canExecuteAction(reglas, 'desinfeccion', 'editar')
-  const puedeEliminar = canExecuteAction(reglas, 'desinfeccion', 'eliminar')
+  const puedeCrear = canExecuteAction(reglas, 'desinfeccion_ejecucion', 'crear')
+  const puedeEditar = canExecuteAction(reglas, 'desinfeccion_ejecucion', 'editar')
+  const puedeEliminar = canExecuteAction(reglas, 'desinfeccion_ejecucion', 'eliminar')
 
   const puedeEditarFila = useCallback(
     (f: FilaEjecucion) =>
       canExecuteAction(
         reglas,
-        'desinfeccion',
+        'desinfeccion_ejecucion',
         'editar',
         { duenoId: f.usuario_id, zonaId: f.zona_id },
         ctx
@@ -155,7 +155,7 @@ export function GridEjecucion({
     (f: FilaEjecucion) =>
       canExecuteAction(
         reglas,
-        'desinfeccion',
+        'desinfeccion_ejecucion',
         'eliminar',
         { duenoId: f.usuario_id, zonaId: f.zona_id },
         ctx
@@ -750,7 +750,7 @@ export function GridEjecucion({
         seleccionable={puedeEditar || puedeEliminar}
         puedeEditarCelda={puedeEditar}
         onEditarCelda={editarCelda}
-        puedeExportar={canExecuteAction(reglas, 'desinfeccion', 'exportar')}
+        puedeExportar={canExecuteAction(reglas, 'desinfeccion_ejecucion', 'exportar')}
         vacio={{
           titulo: 'Sin turnos ejecutados',
           descripcion: 'Registra el primero: elige turno y ciclo, y el formulario abre el que haya.',
