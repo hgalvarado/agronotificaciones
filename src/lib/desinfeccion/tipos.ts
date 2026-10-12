@@ -609,8 +609,14 @@ export type LineaPersonal = {
   puestoOtro: string
 }
 
-/** Las tres formas de anotar un puesto en campo. */
-export const PUESTOS_CUADRILLA = ['Supervisor', 'Jornal', 'Otro'] as const
+/**
+ * Los puestos de una cuadrilla de desinfección.
+ *
+ * «Estacionero» entra en la 68: es quien se queda en la estación de
+ * riego manejando las válvulas, y hasta ahora había que anotarlo como
+ * «Otro» y escribir el nombre del puesto a mano en cada renglón.
+ */
+export const PUESTOS_CUADRILLA = ['Supervisor', 'Jornal', 'Estacionero', 'Otro'] as const
 
 export const PUESTO_OTRO = 'Otro'
 

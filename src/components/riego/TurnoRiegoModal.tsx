@@ -15,7 +15,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Alerta, Boton, Campo, Entrada, Selector } from '@/components/ui/Primitivos'
-import { IconPlus, IconTrash } from '@/components/ui/Icons'
+import { IconInfo, IconPlus, IconTrash } from '@/components/ui/Icons'
+import { CAMPOS_PLAN_NUTRICIONAL, FormularioCatalogo } from '@/components/catalogos/FormularioCatalogo'
 import { leerLotesRegables } from '@/lib/riego/repositorioCliente'
 import { aNumero, validarCabecera, validarLineas } from '@/lib/riego/validacion'
 import {
@@ -52,6 +53,19 @@ export function TurnoRiegoModal({
   const [saldos, setSaldos] = useState<LoteRegable[]>([])
   const [cargandoSaldos, setCargandoSaldos] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  /** El lote cuyo globo de información está abierto. */
+  const [info, setInfo] = useState<string | null>(null)
+  /** Si está abierta el alta rápida de plan nutricional. */
+  const [altaPlan, setAltaPlan] = useState(false)
+  /**
+   * Los planes recién creados aquí.
+   *
+   * No se puede pedir al servidor que vuelva a renderizar —`router.refresh()`
+   * en medio de una captura rehace el árbol y se lleva lo escrito—, así
+   * que el plan nuevo se añade a la lista en memoria. Se junta con el
+   * catálogo al dibujar el selector.
+   */
+  const [planesNuevos, setPlanesNuevos] = useState<{ id: string; nombre: string }[]>([])
 
   /* ------------------------ El saldo de cada lote ---------------------- */
   // Se pide a la base y no se calcula aquí: el tope depende del plan de
@@ -68,10 +82,14 @@ export function TurnoRiegoModal({
         return
       }
       setCargandoSaldos(true)
+      // El CICLO entra desde la 68: sin él la base sumaba todos los
+      // ciclos del lote y el segundo salía con el área del primero
+      // encima.
       const { datos } = await leerLotesRegables(
         entrada.temporadaId,
         entrada.zonaId || null,
-        entrada.turnoId
+        entrada.turnoId,
+        Number(entrada.ciclo) || null
       )
       if (!vivo) return
       setSaldos(datos)
@@ -81,7 +99,7 @@ export function TurnoRiegoModal({
     return () => {
       vivo = false
     }
-  }, [entrada.temporadaId, entrada.zonaId, entrada.turnoId])
+  }, [entrada.temporadaId, entrada.zonaId, entrada.turnoId, entrada.ciclo])
 
   const porLote = useMemo(
     () => new Map(saldos.map((s) => [s.lote_temporada_id, s])),
@@ -141,6 +159,42 @@ export function TurnoRiegoModal({
   function cambiarLinea(i: number, cambios: Partial<LineaTurno>) {
     onCambiarLineas(lineas.map((l, j) => (i === j ? { ...l, ...cambios } : l)))
   }
+
+  /**
+   * Elegir un lote llena su área y su variedad.
+   *
+   * El área que se propone es la LIBRE, no la total: lo que queda por
+   * repartir después de los otros turnos. Proponer el área entera de un
+   * lote que ya se regó a medias es proponer un número que la base va a
+   * rechazar al guardar.
+   *
+   * **No se pisa lo escrito a mano.** Quien ya puso un área tenía un
+   * motivo —se riega media parcela—, y cambiárselo al volver a tocar el
+   * lote sería deshacerle el trabajo.
+   */
+  function elegirLote(i: number, loteTemporadaId: string) {
+    const linea = lineas[i]
+    const saldo = saldos.find((x) => x.lote_temporada_id === loteTemporadaId)
+    const cambios: Partial<LineaTurno> = { loteTemporadaId }
+
+    if (saldo && (linea.areaTurno ?? '').trim() === '') {
+      cambios.areaTurno = saldo.area_disponible.toFixed(2)
+    }
+    // La variedad también sale de la siembra, por lo mismo: es un dato
+    // que el sistema ya tiene y que si no se copia a mano.
+    if (saldo?.variedad && !linea.variedadId) {
+      const v = catalogos.variedades.find((x) => x.nombre === saldo.variedad)
+      if (v) cambios.variedadId = v.id
+    }
+    cambiarLinea(i, cambios)
+  }
+
+  const planes = useMemo(
+    () => [...catalogos.planes, ...planesNuevos],
+    [catalogos.planes, planesNuevos]
+  )
+
+  const loteInfo = info ? saldos.find((x) => x.lote_temporada_id === info) : null
 
   function guardar() {
     const problema = validarCabecera(entrada) ?? validarLineas(lineas, saldos)
@@ -261,12 +315,14 @@ export function TurnoRiegoModal({
           <Campo etiqueta="Plan nutricional">
             <Selector
               value={entrada.planNutricionalId}
+              buscable
+              onNuevo={() => setAltaPlan(true)}
               onChange={(e) =>
                 onCambiarEntrada({ ...entrada, planNutricionalId: e.target.value })
               }
             >
               <option value="">Sin plan</option>
-              {catalogos.planes.map((p) => (
+              {planes.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.nombre}
                 </option>
@@ -385,9 +441,17 @@ export function TurnoRiegoModal({
                       —un `select` sin mínimo propio— y anchos fijos para
                       las dos columnas que no deben moverse nunca. */}
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_7rem_minmax(0,11rem)_2.5rem] sm:items-start">
+                    {/* `buscable` fuerza el panel con buscador, y el
+                        panel se manda al `body` con un portal y se
+                        coloca con `anclarPanel`. Es lo que arregla el
+                        menú cortado dentro del modal: un desplegable
+                        dibujado DENTRO de un contenedor con `overflow`
+                        no puede salirse de él por mucho z-index que se
+                        le ponga, porque el recorte lo hace el padre. */}
                     <Selector
                       value={l.loteTemporadaId}
-                      onChange={(e) => cambiarLinea(i, { loteTemporadaId: e.target.value })}
+                      buscable
+                      onChange={(e) => elegirLote(i, e.target.value)}
                       className="w-full min-w-0"
                     >
                       <option value="">Elige el lote…</option>
@@ -399,13 +463,28 @@ export function TurnoRiegoModal({
                       ))}
                     </Selector>
 
-                    <Entrada
-                      inputMode="decimal"
-                      value={l.areaTurno}
-                      onChange={(e) => cambiarLinea(i, { areaTurno: e.target.value })}
-                      placeholder="Área"
-                      className="w-full min-w-0"
-                    />
+                    <div className="flex min-w-0 items-center gap-1">
+                      <Entrada
+                        inputMode="decimal"
+                        value={l.areaTurno}
+                        onChange={(e) => cambiarLinea(i, { areaTurno: e.target.value })}
+                        placeholder="Área"
+                        className="w-full min-w-0"
+                      />
+                      {/* El dato vivo del lote, sin salir a trasplante.
+                          Sólo aparece con un lote elegido: un botón que
+                          no tiene nada que enseñar es ruido. */}
+                      {saldo && (
+                        <button
+                          type="button"
+                          onClick={() => setInfo(saldo.lote_temporada_id)}
+                          aria-label={`Información del lote ${saldo.ut}`}
+                          className="flex h-11 w-7 shrink-0 items-center justify-center rounded-lg text-slate-300 transition-colors hover:bg-white hover:text-brand-700"
+                        >
+                          <IconInfo className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
 
                     <Selector
                       value={l.variedadId}
@@ -458,7 +537,72 @@ export function TurnoRiegoModal({
           </button>
         </div>
       </div>
+
+      {/* El dato vivo del lote. Va en un modal y no en un `title`: en un
+          teléfono no hay ratón que se pose encima. */}
+      {loteInfo && (
+        <Modal
+          abierto
+          onCerrar={() => setInfo(null)}
+          titulo={`${loteInfo.ut}${loteInfo.lote_nombre ? ` · ${loteInfo.lote_nombre}` : ''}`}
+        >
+          <dl className="flex flex-col gap-2.5 text-sm">
+            <Dato etiqueta="Zona" valor={loteInfo.zona ?? '—'} />
+            <Dato etiqueta="Fecha de siembra" valor={loteInfo.fecha_siembra ?? 'Sin sembrar'} />
+            <Dato etiqueta="Variedad" valor={loteInfo.variedad ?? '—'} />
+            <Dato
+              etiqueta="Área del ciclo"
+              valor={`${loteInfo.area_total.toFixed(2)} mz`}
+              pie={ORIGEN_AREA[loteInfo.origen_area]}
+            />
+            <Dato etiqueta="Ya asignada a otros turnos" valor={`${loteInfo.area_asignada.toFixed(2)} mz`} />
+            <Dato etiqueta="Libre" valor={`${loteInfo.area_disponible.toFixed(2)} mz`} />
+          </dl>
+        </Modal>
+      )}
+
+      {/* El alta de plan nutricional, con el MISMO formulario de
+          Catálogos. Sin `router.refresh()`: rehacer el árbol en medio de
+          una captura se lleva por delante lo que se llevaba escrito, así
+          que el plan nuevo se añade a la lista en memoria. */}
+      {altaPlan && (
+        <FormularioCatalogo
+          abierto
+          tabla="planes_nutricionales"
+          titulo="Planes nutricionales"
+          campos={CAMPOS_PLAN_NUTRICIONAL}
+          valoresIniciales={{ activo: true }}
+          recargarRuta={false}
+          onCerrar={() => setAltaPlan(false)}
+          onCreado={(id, fila) => {
+            const nombre = String(fila.nombre ?? '')
+            setPlanesNuevos((prev) => [...prev, { id, nombre }])
+            onCambiarEntrada({ ...entrada, planNutricionalId: id })
+          }}
+        />
+      )}
     </Modal>
+  )
+}
+
+/** De dónde salió el área, dicho en castellano. */
+const ORIGEN_AREA: Record<LoteRegable['origen_area'], string> = {
+  real: 'Lo sembrado de verdad',
+  plan: 'Todavía es lo previsto en el plan de siembra',
+  neta: 'Ni plan ni siembra: es el área neta del lote',
+}
+
+function Dato({ etiqueta, valor, pie }: { etiqueta: string; valor: string; pie?: string }) {
+  return (
+    <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-2 last:border-0">
+      <dt className="shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-400">
+        {etiqueta}
+      </dt>
+      <dd className="min-w-0 text-right">
+        <span className="font-semibold tabular-nums text-slate-900">{valor}</span>
+        {pie && <span className="block text-[11px] font-normal text-slate-400">{pie}</span>}
+      </dd>
+    </div>
   )
 }
 

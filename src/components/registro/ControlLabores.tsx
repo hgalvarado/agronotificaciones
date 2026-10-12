@@ -88,6 +88,9 @@ type FilaLabor = {
   usuario_id: string | null
   usuario_nombre: string | null
   lotes_del_registro: number
+  /** La zona del lote (migración 68). Es lo que deja filtrar por zona. */
+  zona_id?: string | null
+  zona_nombre?: string | null
   temporada_id?: string | null
   temporada_nombre?: string | null
   lote_id?: string | null
@@ -118,6 +121,7 @@ type Fila = FilaLabor & { id: string }
 export type TemporadaOpcion = { id: string; nombre: string; activa: boolean }
 
 const VACIOS = {
+  zonas: [] as string[],
   labores: [] as string[],
   lotes: [] as string[],
   ciclos: [] as string[],
@@ -311,6 +315,9 @@ export function ControlLabores({
 
   const opciones = useMemo(
     () => ({
+      // La zona va PRIMERA: es el recorte más grueso y el que cada jefe
+      // de zona aplica antes que ninguno.
+      zonas: distintos(cargadas.map((f) => f.zona_nombre ?? '')),
       labores: distintos(cargadas.map((f) => f.labor_nombre)),
       lotes: distintos(cargadas.map((f) => f.ut)),
       ciclos: distintos(cargadas.map((f) => String(f.ciclo))),
@@ -332,6 +339,7 @@ export function ControlLabores({
   )
 
   const lista = useMemo(() => {
+    const zo = new Set(externos.zonas)
     const la = new Set(externos.labores)
     const lo = new Set(externos.lotes)
     const ci = new Set(externos.ciclos)
@@ -340,6 +348,7 @@ export function ControlLabores({
     const pr = new Set(externos.procesos)
     const us = new Set(externos.usuarios)
     return cargadas.filter((f) => {
+      if (zo.size && !zo.has(f.zona_nombre ?? '')) return false
       if (la.size && !la.has(f.labor_nombre)) return false
       if (lo.size && !lo.has(f.ut)) return false
       if (ci.size && !ci.has(String(f.ciclo))) return false
@@ -372,6 +381,15 @@ export function ControlLabores({
     const cols: ColumnaGrid<Fila>[] = [
       // La fecha es de sólo lectura: la manda el ticket.
       { campo: 'fecha', label: 'Fecha', tipo: 'fecha', valor: (f) => f.fecha },
+      // La zona entra en la 68. Está en la vista desde la 57 y no se
+      // enseñaba: sin ella, exportar «lo de mi zona» obligaba a filtrar
+      // el Excel a mano por una lista de lotes aprendida de memoria.
+      {
+        campo: 'zona_nombre',
+        label: 'Zona',
+        tipo: 'texto',
+        valor: (f) => f.zona_nombre ?? '',
+      },
       {
         campo: 'ut',
         label: 'UT',
@@ -924,6 +942,12 @@ export function ControlLabores({
               }}
               ayuda="Al entrar se carga el mes en curso. La temporada, el proceso y los demás filtran al instante; el rango de fechas espera el botón. El rango trae TODAS sus líneas, sin tope: la tabla las va dibujando al bajar y el Excel las exporta todas."
             >
+              <SelectorMultiple
+                etiqueta="Zona"
+                opciones={opciones.zonas}
+                valores={externos.zonas}
+                onCambiar={(v) => setExternos({ ...externos, zonas: v })}
+              />
               <SelectorMultiple
                 etiqueta="Labor"
                 opciones={opciones.labores}

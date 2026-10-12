@@ -28,8 +28,12 @@
 import { useCallback, useMemo, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { DesglosePpmModal } from './DesglosePpmModal'
+import {
+  CAMPOS_PERSONAL,
+  FormularioCatalogo,
+} from '@/components/catalogos/FormularioCatalogo'
 import { Acordeon } from '@/components/ui/Acordeon'
-import { Alerta, Boton, Campo, Entrada, Insignia, Selector } from '@/components/ui/Primitivos'
+import { Alerta, Boton, Campo, Entrada, Grupo, Insignia, Selector } from '@/components/ui/Primitivos'
 import { IconCheck, IconLock, IconPlus, IconTrash } from '@/components/ui/Icons'
 import { n2 } from '@/lib/trasplante/formato'
 import { hoyIso } from '@/lib/fechas'
@@ -318,6 +322,15 @@ export function EjecucionModal({
 
   const cambiarPersona = (i: number, c: Partial<LineaPersonal>) =>
     onCambiarPersonal(personal.map((p, j) => (i === j ? { ...p, ...c } : p)))
+
+  /**
+   * El renglón que está esperando a que se dé de alta a alguien.
+   *
+   * Se guarda el ÍNDICE y no sólo «está abierto»: cuando el alta termina
+   * hay que meter a la persona en el renglón desde el que se pidió, no
+   * en el último, que es donde acabaría si sólo se guardara una bandera.
+   */
+  const [altaPersonal, setAltaPersonal] = useState<{ indice: number } | null>(null)
 
   async function crearYElegir(indice: number, texto: string): Promise<string> {
     const r = await crearJornal(texto)
@@ -641,6 +654,7 @@ export function EjecucionModal({
                     minimo={minimo}
                     subtotal={obraPreriego}
                     onCambiar={cambiarPersona}
+                    onNuevo={(i) => setAltaPersonal({ indice: i })}
                     onQuitar={(i) => onCambiarPersonal(personal.filter((_, j) => j !== i))}
                     onAgregar={() =>
                       onCambiarPersonal([
@@ -869,12 +883,55 @@ export function EjecucionModal({
                     </Campo>
 
                     <Campo
-                      etiqueta="Agua total (m³)"
-                      ayuda="(Inyección + lavado) × caudal. Es el divisor de las ppm."
+                      etiqueta="Agua con producto (m³)"
+                      ayuda="Inyección × caudal. Es el divisor de las ppm; el lavado es agua limpia y no entra."
                     >
                       <Entrada value={n2(agua)} readOnly disabled className="font-bold" />
                     </Campo>
+                  </div>
 
+                  {/* ------------------ Las calibraciones --------------- */}
+                  {/* Agrupadas desde la 68. Los seis números iban en una
+                      sola rejilla con las CE, y en el teléfono salían en
+                      una columna donde «Calibración salida» quedaba
+                      pegada a «CE después»: dos medidas de cosas
+                      distintas, con unidades distintas, leyéndose como
+                      si fueran la misma serie. */}
+                  <Grupo
+                    titulo="Calibraciones"
+                    ayuda="Las dos del equipo y la que se toma en el lote."
+                  >
+                    <Campo etiqueta="Presión de entrada">
+                      <Entrada
+                        inputMode="decimal"
+                        value={entrada.calibracionEntrada}
+                        onChange={(e) => cambiar({ calibracionEntrada: e.target.value })}
+                        disabled={bloqueada('aplicacion')}
+                      />
+                    </Campo>
+                    <Campo etiqueta="Presión de salida">
+                      <Entrada
+                        inputMode="decimal"
+                        value={entrada.calibracionSalida}
+                        onChange={(e) => cambiar({ calibracionSalida: e.target.value })}
+                        disabled={bloqueada('aplicacion')}
+                      />
+                    </Campo>
+                    <Campo etiqueta="Calibración del turno (campo)">
+                      <Entrada
+                        inputMode="decimal"
+                        value={entrada.calibracionCampo}
+                        onChange={(e) => cambiar({ calibracionCampo: e.target.value })}
+                        disabled={bloqueada('aplicacion')}
+                      />
+                    </Campo>
+                  </Grupo>
+
+                  {/* ------------- La conductividad eléctrica ----------- */}
+                  <Grupo
+                    titulo="Lecturas de la conductividad eléctrica (CE)"
+                    ayuda="Las tres del mismo turno: antes de inyectar, durante y después."
+                  >
                     <Campo etiqueta="CE antes">
                       <Entrada
                         inputMode="decimal"
@@ -899,31 +956,7 @@ export function EjecucionModal({
                         disabled={bloqueada('aplicacion')}
                       />
                     </Campo>
-                    <Campo etiqueta="Calibración entrada">
-                      <Entrada
-                        inputMode="decimal"
-                        value={entrada.calibracionEntrada}
-                        onChange={(e) => cambiar({ calibracionEntrada: e.target.value })}
-                        disabled={bloqueada('aplicacion')}
-                      />
-                    </Campo>
-                    <Campo etiqueta="Calibración salida">
-                      <Entrada
-                        inputMode="decimal"
-                        value={entrada.calibracionSalida}
-                        onChange={(e) => cambiar({ calibracionSalida: e.target.value })}
-                        disabled={bloqueada('aplicacion')}
-                      />
-                    </Campo>
-                    <Campo etiqueta="Calibración campo">
-                      <Entrada
-                        inputMode="decimal"
-                        value={entrada.calibracionCampo}
-                        onChange={(e) => cambiar({ calibracionCampo: e.target.value })}
-                        disabled={bloqueada('aplicacion')}
-                      />
-                    </Campo>
-                  </div>
+                  </Grupo>
 
                   {/* ------------------- Los químicos ------------------ */}
                   <div className="mt-4 flex items-start justify-between gap-3 border-t border-slate-100 pt-3">
@@ -1113,6 +1146,7 @@ export function EjecucionModal({
                     minimo={minimo}
                     subtotal={obraAplicacion}
                     onCambiar={cambiarPersona}
+                    onNuevo={(i) => setAltaPersonal({ indice: i })}
                     onQuitar={(i) => onCambiarPersonal(personal.filter((_, j) => j !== i))}
                     onAgregar={() =>
                       onCambiarPersonal([
@@ -1149,6 +1183,33 @@ export function EjecucionModal({
           onCerrar={() => setDesgloseAbierto(null)}
         />
       )}
+
+      {/* El alta de personal, con el MISMO formulario de Catálogos. No
+          es una copia reducida: si mañana la ficha de una persona gana
+          un campo obligatorio, lo gana aquí también.
+
+          `recargarRuta={false}` no es un detalle: un `router.refresh()`
+          en medio de una captura rehace el árbol y se lleva por delante
+          lo que se llevaba escrito. La lista se recarga por su cuenta
+          con `onJornalCreado`. */}
+      {altaPersonal && (
+        <FormularioCatalogo
+          abierto
+          tabla="operadores"
+          titulo="Personal"
+          campos={CAMPOS_PERSONAL}
+          valoresIniciales={{ es_jornal: true, activo: true }}
+          recargarRuta={false}
+          onCerrar={() => setAltaPersonal(null)}
+          onCreado={(id) => {
+            // Queda ELEGIDA en el renglón desde el que se pidió. Crearla
+            // y dejar el campo vacío obliga a buscarla en una lista que
+            // todavía no se ha recargado.
+            cambiarPersona(altaPersonal.indice, { operadorId: id })
+            onJornalCreado()
+          }}
+        />
+      )}
     </Modal>
   )
 }
@@ -1175,6 +1236,7 @@ function CuadrillaFase({
   onQuitar,
   onAgregar,
   onCrear,
+  onNuevo,
 }: {
   fase: FasePersonal
   cerrado: boolean
@@ -1186,6 +1248,8 @@ function CuadrillaFase({
   onQuitar: (indice: number) => void
   onAgregar: () => void
   onCrear: (indice: number, texto: string) => Promise<string>
+  /** Abre el alta completa de Personal para ESE renglón. */
+  onNuevo: (indice: number, texto: string) => void
 }) {
   const suyas = personal.map((p, i) => ({ p, i })).filter((x) => x.p.fase === fase)
 
@@ -1223,6 +1287,7 @@ function CuadrillaFase({
                   value={p.operadorId}
                   onChange={(e) => onCambiar(i, { operadorId: e.target.value })}
                   onCrear={(texto) => onCrear(i, texto)}
+                  onNuevo={(texto) => onNuevo(i, texto)}
                   disabled={cerrado}
                   className="w-full min-w-0"
                 >

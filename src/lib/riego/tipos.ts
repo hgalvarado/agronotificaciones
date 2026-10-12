@@ -95,9 +95,24 @@ export type LoteRegable = {
   ut: string
   lote_nombre: string | null
   zona: string | null
+  zona_id: string | null
   area_total: number
   area_asignada: number
   area_disponible: number
+  /**
+   * De dónde salió `area_total` (migración 68).
+   *
+   * `real` = hay siembra capturada y manda ella. `plan` = todavía es lo
+   * previsto. `neta` = ni plan ni siembra, se cae al área del lote.
+   *
+   * Viaja con el número porque un área sin su procedencia obliga a
+   * adivinar si se está mirando un plan o un hecho, y se adivina mal el
+   * día que coincidan.
+   */
+  origen_area: 'real' | 'plan' | 'neta'
+  /** Para el globo de información del selector. */
+  fecha_siembra: string | null
+  variedad: string | null
 }
 
 export type OpcionCatalogo = { id: string; nombre: string }

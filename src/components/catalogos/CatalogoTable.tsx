@@ -3,10 +3,8 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { Modal } from '@/components/ui/Modal'
 import { SelectorMultiple } from '@/components/ui/SelectorMultiple'
-import { Alerta, Boton, Campo, Entrada } from '@/components/ui/Primitivos'
-import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
+import { Boton } from '@/components/ui/Primitivos'
 import { IconPlus } from '@/components/ui/Icons'
 import {
   TablaAvanzada,
@@ -14,6 +12,7 @@ import {
   type FilaTabla,
   type PermisosTabla,
 } from '@/components/ui/TablaAvanzada'
+import { FormularioCatalogo } from './FormularioCatalogo'
 import { ImportarExcel, type RelacionCatalogo } from './ImportarExcel'
 import { PreciosMaterial } from './PreciosMaterial'
 import { TasasTemporada } from './TasasTemporada'
@@ -153,17 +152,8 @@ export function CatalogoTable({
   const router = useRouter()
   const [abrirNuevo, setAbrirNuevo] = useState(false)
   const [abrirImportar, setAbrirImportar] = useState(false)
-  const [nuevaFila, setNuevaFila] = useState<Record<string, string>>({})
-  // Los campos de array van aparte: no son texto y no se pueden guardar
-  // en el mismo diccionario sin convertirlos al vuelo en cada lectura.
-  const [nuevos, setNuevos] = useState<Record<string, string[]>>({})
-  const [guardando, setGuardando] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   /** La fila cuyo sub-panel está abierto. */
   const [abierta, setAbierta] = useState<Fila | null>(null)
-
-  const camposTexto = campos.filter((c) => c.tipo !== 'checkbox')
-  const campoBool = campos.find((c) => c.tipo === 'checkbox')
 
   const efectivos: PermisosTabla = {
     editar: !soloLectura && permisos?.editar !== false,
@@ -195,6 +185,11 @@ export function CatalogoTable({
     label: c.label,
     tipo: TIPOS[c.tipo],
     opciones: c.opciones,
+    // La columna de Perfil guarda un array. Sin esto, el filtro de la
+    // cabecera sale de las filas y ofrece «Operador, Jornal» como si
+    // fuera un valor, además de esconder las etiquetas que todavía no
+    // tiene nadie (migración 69).
+    multivalor: c.tipo === 'multiseleccion',
     onCrearOpcion:
       c.tipo === 'select' && c.catalogo
         ? (texto: string) => crearEnCatalogo(c.catalogo!, texto)
@@ -249,28 +244,6 @@ export function CatalogoTable({
     router.refresh()
   }
 
-  async function crearFila() {
-    setError(null)
-    const faltante = campos.find(
-      (c) => c.requerido && !(nuevaFila[c.key] ?? '').trim()
-    )
-    if (faltante) return setError(`Falta «${faltante.label}».`)
-
-    setGuardando(true)
-    const payload: Record<string, unknown> = Object.fromEntries(
-      Object.entries(nuevaFila).filter(([, v]) => v !== '')
-    )
-    for (const [k, v] of Object.entries(nuevos)) if (v.length > 0) payload[k] = v
-
-    const { error: e } = await supabase.from(tabla).insert(payload)
-    setGuardando(false)
-    if (e) return setError(e.message)
-    setNuevaFila({})
-    setNuevos({})
-    setAbrirNuevo(false)
-    router.refresh()
-  }
-
   return (
     <>
       <TablaAvanzada
@@ -313,72 +286,17 @@ export function CatalogoTable({
         }
       />
 
-      <Modal
+      {/* El alta vive en `FormularioCatalogo` desde la 68: el mismo
+          formulario lo abre el selector de cuadrilla de desinfección en
+          medio de una captura, y dos copias del mismo alta acaban
+          pidiendo campos distintos. */}
+      <FormularioCatalogo
         abierto={abrirNuevo}
+        tabla={tabla}
+        titulo={titulo}
+        campos={campos}
         onCerrar={() => setAbrirNuevo(false)}
-        titulo={`Agregar a ${titulo}`}
-        pie={
-          <div className="flex gap-2">
-            <Boton variante="secundario" className="flex-1" onClick={() => setAbrirNuevo(false)}>
-              Cancelar
-            </Boton>
-            <Boton className="flex-1" onClick={crearFila} disabled={guardando}>
-              {guardando ? 'Agregando…' : 'Agregar'}
-            </Boton>
-          </div>
-        }
-      >
-        <div className="flex flex-col gap-4">
-          {camposTexto.map((c, i) => (
-            <Campo key={c.key} etiqueta={c.label} requerido={c.requerido}>
-              {c.tipo === 'multiseleccion' ? (
-                <SelectorMultiple
-                  etiqueta=""
-                  opciones={(c.opciones ?? []).map((o) => ({ valor: o.value, etiqueta: o.label }))}
-                  valores={nuevos[c.key] ?? []}
-                  onCambiar={(v) => setNuevos((prev) => ({ ...prev, [c.key]: v }))}
-                />
-              ) : c.tipo === 'select' ? (
-                <SelectorBuscable
-                  valor={nuevaFila[c.key] ?? ''}
-                  onCambiar={(v) => setNuevaFila((prev) => ({ ...prev, [c.key]: v }))}
-                  opciones={(c.opciones ?? []).map((o) => ({ id: o.value, titulo: o.label }))}
-                  placeholder="—"
-                  // La misma regla que en la celda: lo que falta se crea
-                  // aquí, sin perder lo que ya se llevaba escrito en el
-                  // formulario.
-                  creacionRapida={
-                    c.catalogo
-                      ? {
-                          etiqueta: `Crear ${c.label.toLowerCase()}`,
-                          campos: [{ key: 'nombre', label: 'Nombre', requerido: true }],
-                          onCrear: async (valores) => {
-                            const id = await crearEnCatalogo(c.catalogo!, valores.nombre ?? '')
-                            return { id, titulo: (valores.nombre ?? '').trim() }
-                          },
-                        }
-                      : undefined
-                  }
-                />
-              ) : (
-                <Entrada
-                  type={c.tipo}
-                  autoFocus={i === 0}
-                  value={nuevaFila[c.key] ?? ''}
-                  onChange={(e) => setNuevaFila((prev) => ({ ...prev, [c.key]: e.target.value }))}
-                />
-              )}
-            </Campo>
-          ))}
-          {campoBool && (
-            <p className="text-xs text-slate-400">
-              El registro se crea activo por defecto; puedes desactivarlo después con el interruptor
-              de la tabla.
-            </p>
-          )}
-          {error && <Alerta>{error}</Alerta>}
-        </div>
-      </Modal>
+      />
 
       {detalle === 'tasas_temporada' && abierta && (
         <TasasTemporada

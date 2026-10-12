@@ -14,7 +14,7 @@
  */
 
 import { sumarDias } from '@/lib/fechas'
-import { FASES, JORNADAS, LINEA_LOTE_VACIA, LINEA_PRODUCTO_VACIA, PUESTO_OTRO, lineaPersonalVacia, type FasePersonal, type EntradaEjecucion, type EntradaLogistica, type EntradaPlan, type EstadoDesinfeccion, type JornadaTipo, type LecturaTensiometro, type LineaLote, type LineaPersonal, type LineaProducto } from './tipos'
+import { FASES, JORNADAS, LINEA_LOTE_VACIA, LINEA_PRODUCTO_VACIA, PUESTO_OTRO, type FasePersonal, type EntradaEjecucion, type EntradaLogistica, type EntradaPlan, type EstadoDesinfeccion, type JornadaTipo, type LecturaTensiometro, type LineaLote, type LineaPersonal, type LineaProducto } from './tipos'
 
 /** La base sobre la que se calcula la hora extra. Es la de la migración 59. */
 export const HORAS_JORNADA = 8
@@ -144,16 +144,20 @@ export function numeroDeTexto(texto: string | null | undefined): number | null {
 }
 
 /**
- * El agua que pasó por la estación, en metros cúbicos.
+ * El agua que llevó producto, en metros cúbicos.
  *
- *     (horas de inyección + horas de lavado) × caudal
+ *     horas de inyección × caudal
  *
- * El lavado cuenta porque por ahí también pasa agua: dejarlo fuera
- * subiría las ppm de un turno que se lavó mucho, que es justo al revés
- * de lo que pasó en el suelo.
+ * **El lavado NO cuenta, desde la 68.** Por el lavado pasa agua, sí,
+ * pero agua limpia: se echa después para sacar de la tubería el químico
+ * que quedó dentro. Sumarla al denominador diluye en el papel una
+ * dilución que no ocurrió, y el ppm sale más bajo que el que de verdad
+ * salió por el gotero.
+ *
+ * El error iba en la dirección mala: un ppm bajo no lo revisa nadie.
  */
 export function aguaTotal(e: EntradaEjecucion): number {
-  return (horasInyeccion(e) + horasLavado(e)) * aNumeroCero(e.caudalAgua)
+  return horasInyeccion(e) * aNumeroCero(e.caudalAgua)
 }
 
 /**
@@ -179,7 +183,8 @@ export function productoPuro(
  * Las partes por millón de un químico aplicado.
  *
  *     dosis_mz = litros / manzanas del turno
- *     ppm      = dosis_mz × (I.A.%/100) × 1000 / agua total (m³)
+ *     agua     = horas de INYECCIÓN × caudal   (el lavado no, desde la 68)
+ *     ppm      = dosis_mz × (I.A.%/100) × 1000 / agua
  *
  * El ×1000 es de litros a centímetros cúbicos, y no hay ningún
  * ×1.000.000: un metro cúbico de agua pesa un millón de gramos y un cc
@@ -596,16 +601,32 @@ export function limpiarLotes(lineas: LineaLote[]): LineaLote[] {
 }
 
 /**
- * `salarioPorOmision` es el que el formulario ESCRIBE en el input al
- * agregar un renglón (migración 62). Hay que pasárselo a la plantilla o
- * un renglón agregado por descuido, con el salario ya puesto y nada
- * más, dejaría de parecer intacto y se guardaría.
+ * La cuadrilla NO se limpia. Se devuelve entera.
+ *
+ * ── Por qué esto dejó de filtrar (migración 68) ─────────────────────
+ *
+ * Filtraba por «igual a la plantilla», y la plantilla de un renglón de
+ * cuadrilla viene con **todo puesto**: una persona, puesto Jornal,
+ * jornada Diurna, cero horas extras y el salario mínimo vigente. Eso no
+ * es un hueco: **es la cuadrilla del preriego**, que casi siempre es
+ * exactamente un jornal a mínimo en jornada normal.
+ *
+ * Es decir: el renglón que el usuario llenaba sin teclear nada —porque
+ * los valores por omisión ya decían la verdad— era byte a byte idéntico
+ * al renglón en blanco, y se borraba al guardar. Se perdía justo la
+ * captura más común de la fase 1, y sin un solo aviso.
+ *
+ * Y la limpieza ya no protegía de nada: desde la 62 la cuadrilla arranca
+ * en `[]` y un renglón sólo existe si alguien pulsó «Agregar personal».
+ * **Pulsar el botón es la afirmación.** Un renglón de sobra se quita con
+ * su propio botón, que es un gesto; borrarlo a sus espaldas no lo es.
+ *
+ * La función se conserva —con su firma— para que las dos llamadas sigan
+ * leyéndose igual que las de lotes y productos, donde la limpieza SÍ
+ * hace falta porque esos sí nacen con un renglón en blanco puesto.
  */
-export function limpiarPersonal(lineas: LineaPersonal[], salarioPorOmision = ''): LineaPersonal[] {
-  // La plantilla se arma con la fase de la propia línea: el renglón en
-  // blanco del preriego y el de la aplicación son huecos distintos, y
-  // compararlos contra una sola plantilla dejaría pasar uno de los dos.
-  return lineas.filter((l) => !intacta(l, lineaPersonalVacia(l.fase, salarioPorOmision)))
+export function limpiarPersonal(lineas: LineaPersonal[], _salarioPorOmision = ''): LineaPersonal[] {
+  return lineas
 }
 
 export function limpiarProductos(lineas: LineaProducto[]): LineaProducto[] {

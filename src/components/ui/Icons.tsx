@@ -128,6 +128,15 @@ export const IconCheck = ({ className }: IconProps) => (
   </Svg>
 )
 
+/** La «i» de información. Abre el dato que no cabe en la etiqueta. */
+export const IconInfo = ({ className }: IconProps) => (
+  <Svg className={className}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 11v5" />
+    <path d="M12 8h.01" />
+  </Svg>
+)
+
 export const IconTractor = ({ className }: IconProps) => (
   <Svg className={className}>
     <path d="M4 4h5l1 5" />

@@ -25,6 +25,22 @@ export type ColumnaTabla = {
   /** Sólo para 'seleccion': catálogo relacionado. */
   opciones?: { value: string; label: string }[]
   /**
+   * La celda guarda VARIOS valores del catálogo, no uno.
+   *
+   * Cambia dos cosas, y las dos importan (migración 69):
+   *
+   *   · La lista de casillas del filtro sale del CATÁLOGO y no de las
+   *     filas. Sacarla de las filas ofrece «Operador, Jornal» como si
+   *     fuera un valor más, y además **esconde los valores que todavía
+   *     no tiene nadie**: el día que se añade «Jornal» no se puede
+   *     filtrar por él hasta que alguien ya lo tenga, que es justo al
+   *     revés de lo que hace falta para empezar a clasificar.
+   *   · Una fila pasa el filtro si CONTIENE alguno de los marcados. Con
+   *     la comparación de texto, buscar jornales dejaba fuera a quien es
+   *     jornal y además operador.
+   */
+  multivalor?: boolean
+  /**
    * Sólo para 'seleccion': crear en el catálogo lo que falta sin salir
    * de la celda. Devuelve el id de lo recién creado, que queda elegido.
    */
@@ -79,10 +95,20 @@ function normalizar(texto: string) {
     .toLowerCase()
 }
 
+/** Las etiquetas de una celda que guarda varios valores del catálogo. */
+function valoresDe(fila: FilaTabla, col: ColumnaTabla): string[] {
+  const v = fila[col.key]
+  if (!Array.isArray(v)) return []
+  return v.map(
+    (x) => (col.opciones ?? []).find((o) => o.value === String(x))?.label ?? String(x)
+  )
+}
+
 /** Texto que se usa para ordenar, filtrar, buscar y exportar. */
 function textoDe(fila: FilaTabla, col: ColumnaTabla): string {
   const v = fila[col.key]
   if (v === null || v === undefined || v === '') return ''
+  if (col.multivalor) return valoresDe(fila, col).join(', ')
   if (col.tipo === 'booleano') return v ? 'Sí' : 'No'
   if (col.tipo === 'seleccion') {
     // El value de la opción es texto, pero la fila puede traer un número
@@ -212,6 +238,19 @@ export function TablaAvanzada({
           return !col || pasaFiltro(f, col, filtro)
         })
       )
+      // En una columna multivalor la lista es el CATÁLOGO: así se puede
+      // filtrar por una etiqueta recién añadida antes de que nadie la
+      // tenga, y no se ofrece «Operador, Jornal» como si fuera un valor.
+      if (c.multivalor) {
+        const usados = new Set<string>()
+        for (const f of base) if (valoresDe(f, c).length === 0) usados.add(VACIO)
+        out[c.key] = [
+          ...(c.opciones ?? []).map((o) => o.label),
+          ...(usados.has(VACIO) ? [VACIO] : []),
+        ]
+        continue
+      }
+
       const set = new Set<string>()
       for (const f of base) set.add(textoDe(f, c) || VACIO)
       out[c.key] = [...set].sort((a, b) => {
@@ -599,8 +638,17 @@ export function pasaFiltro(fila: FilaTabla, col: ColumnaTabla, f: Filtro): boole
   const bruto = fila[col.key]
 
   switch (f.tipo) {
-    case 'seleccion':
+    case 'seleccion': {
+      // Multivalor: basta con que la fila TENGA alguno de los marcados.
+      // Quien es jornal y además operador tiene que salir al buscar
+      // jornales, y con la comparación de texto se quedaba fuera.
+      if (col.multivalor) {
+        const suyos = valoresDe(fila, col)
+        if (suyos.length === 0) return f.valores.includes(VACIO)
+        return suyos.some((x) => f.valores.includes(x))
+      }
       return f.valores.includes(textoDe(fila, col) || VACIO)
+    }
 
     case 'texto': {
       const t = textoDe(fila, col)

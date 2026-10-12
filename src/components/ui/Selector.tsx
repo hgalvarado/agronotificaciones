@@ -89,6 +89,7 @@ export function Selector({
   className = '',
   children,
   onCrear,
+  onNuevo,
   buscable = false,
   ...props
 }: ComponentProps<'select'> & {
@@ -112,13 +113,27 @@ export function Selector({
    * lo que ya se llevaba escrito.
    */
   onCrear?: (texto: string) => Promise<string>
+  /**
+   * Abrir el alta COMPLETA del catálogo, en vez de crear con un nombre.
+   *
+   * `onCrear` sirve cuando el catálogo es sólo un nombre —una variedad,
+   * un cultivo—. Cuando la ficha tiene más campos que importan —una
+   * persona lleva código de nómina— crear a partir de lo tecleado deja a
+   * medias justo el dato con el que después se cruza la planilla. Con
+   * esto el panel ofrece «Nuevo», se cierra, y quien lo pasa abre su
+   * propio modal con el formulario de verdad.
+   *
+   * Recibe lo que hubiera escrito en el buscador, para no hacérselo
+   * teclear otra vez.
+   */
+  onNuevo?: (texto: string) => void
 }) {
   const opciones = useMemo(() => leerOpciones(children), [children])
 
   // Con pocas opciones se deja el control del sistema… salvo que se
   // pueda CREAR: la rueda nativa del teléfono no tiene dónde poner un
   // «crear esto», así que ahí manda el panel con buscador.
-  if ((opciones.length <= UMBRAL_BUSQUEDA && !onCrear && !buscable) || props.multiple) {
+  if ((opciones.length <= UMBRAL_BUSQUEDA && !onCrear && !onNuevo && !buscable) || props.multiple) {
     return (
       <select className={`${baseCampo} ${FLECHA} ${className}`} {...props}>
         {children}
@@ -127,7 +142,13 @@ export function Selector({
   }
 
   return (
-    <SelectorBuscado className={className} opciones={opciones} onCrear={onCrear} {...props} />
+    <SelectorBuscado
+      className={className}
+      opciones={opciones}
+      onCrear={onCrear}
+      onNuevo={onNuevo}
+      {...props}
+    />
   )
 }
 
@@ -138,10 +159,12 @@ function SelectorBuscado({
   onChange,
   disabled,
   onCrear,
+  onNuevo,
   ...props
 }: ComponentProps<'select'> & {
   opciones: Opcion[]
   onCrear?: (texto: string) => Promise<string>
+  onNuevo?: (texto: string) => void
 }) {
   // La posición se calcula en el CLIC: leer `ref.current` durante el
   // render es lo que prohíbe `react-hooks/refs`.
@@ -213,6 +236,17 @@ function SelectorBuscado({
                 }
               : undefined
           }
+          onNuevo={
+            onNuevo
+              ? (texto) => {
+                  // El panel se cierra ANTES de abrir el modal: dos capas
+                  // flotantes a la vez dejan el panel por encima del
+                  // formulario, que es donde hay que escribir.
+                  cerrar()
+                  onNuevo(texto)
+                }
+              : undefined
+          }
         />
       )}
     </>
@@ -242,6 +276,7 @@ export function PanelOpciones({
   onCerrar,
   refBuscador,
   onCrear,
+  onNuevo,
 }: {
   caja: CajaPanel
   opciones: Opcion[]
@@ -257,6 +292,8 @@ export function PanelOpciones({
    * pasa decide en qué tabla cae; el panel sólo pregunta.
    */
   onCrear?: (texto: string) => Promise<void>
+  /** Abrir el alta completa. Se ofrece siempre, con o sin búsqueda. */
+  onNuevo?: (texto: string) => void
 }) {
   const [busqueda, setBusqueda] = useState('')
   const [creando, setCreando] = useState(false)
@@ -320,6 +357,22 @@ export function PanelOpciones({
             )}
           </div>
         </div>
+
+        {/* El alta completa. A diferencia de «Crear «…»», se ofrece
+            SIEMPRE: no depende de haber escrito un nombre, porque lo que
+            abre es un formulario con sus campos. */}
+        {onNuevo && (
+          <button
+            type="button"
+            onClick={() => onNuevo(texto)}
+            className="mb-1 flex w-full items-center gap-2 rounded-lg border border-dashed border-brand-300 px-2 py-2 text-left text-sm font-semibold text-brand-700 transition-colors hover:bg-brand-50"
+          >
+            <span className="flex h-4 w-4 shrink-0 items-center justify-center text-base leading-none">
+              +
+            </span>
+            <span className="min-w-0 flex-1 truncate">Nuevo</span>
+          </button>
+        )}
 
         {puedeCrear && (
           <button

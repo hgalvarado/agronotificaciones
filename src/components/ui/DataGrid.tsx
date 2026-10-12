@@ -30,6 +30,7 @@ import {
   textoDe,
   filtrar as filtrarFilas,
 } from '@/lib/grid/filtros'
+import { useHidratado } from '@/lib/ui/hidratado'
 import type { ColumnaGrid, Filtro, Filtros, Orden } from '@/lib/grid/tipos'
 import {
   agregacionesDe,
@@ -244,19 +245,34 @@ export function DataGrid<T extends { id: string }>({
 
   /* --------------------- Los totales del pie ----------------------- */
 
-  // Qué total lleva cada columna. Se lee de `localStorage` en el primer
-  // render y no en un efecto, para que el pie salga ya con lo elegido en
-  // vez de parpadear en «Ninguno» durante un cuadro.
-  const [agregaciones, setAgregaciones] = useState<Agregaciones>(() =>
-    typeof window === 'undefined' ? {} : leerAgregaciones(titulo)
+  /*
+   * Qué total lleva cada columna.
+   *
+   * **Esto leía `localStorage` en el inicializador del `useState` y era
+   * un desajuste de hidratación en toda regla** (migración 69). El
+   * `typeof window === 'undefined'` no protegía de nada: durante la
+   * hidratación `window` YA existe, así que el servidor pintaba el pie
+   * en «Ninguno» y el navegador lo pintaba con lo guardado. React
+   * lanzaba el error 418, tiraba el HTML del servidor y **volvía a
+   * pintar el árbol entero en el cliente**. En una tabla de miles de
+   * filas eso es el congelamiento que se reportaba desde el campo.
+   *
+   * Ahora el primer render del navegador es idéntico al del servidor
+   * —sin totales— y lo guardado entra cuando la hidratación ya terminó.
+   * Se cambió un cuadro de parpadeo por no re-pintar la pantalla entera.
+   */
+  const hidratado = useHidratado()
+  const [elegidas, setElegidas] = useState<Agregaciones | null>(null)
+  const guardadas = useMemo(
+    () => (hidratado ? leerAgregaciones(titulo) : {}),
+    [hidratado, titulo]
   )
+  const agregaciones = elegidas ?? guardadas
 
   function elegirAgregacion(campo: string, tipo: TipoAgregacion) {
-    setAgregaciones((prev) => {
-      const siguiente = { ...prev, [campo]: tipo }
-      guardarAgregaciones(titulo, siguiente)
-      return siguiente
-    })
+    const siguiente = { ...agregaciones, [campo]: tipo }
+    guardarAgregaciones(titulo, siguiente)
+    setElegidas(siguiente)
   }
 
   // Se calcula sobre `visibles` —lo filtrado y buscado— y NO sobre

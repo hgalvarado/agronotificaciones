@@ -199,6 +199,46 @@ export function Campo({
   )
 }
 
+/**
+ * Un bloque de campos que van juntos, con su nombre encima.
+ *
+ * Es un `<fieldset>` de verdad y no un `<div>` con un título: el lector
+ * de pantalla anuncia la leyenda al entrar en cada campo, así que «CE
+ * antes» se oye como «Lecturas de la conductividad eléctrica, CE antes»
+ * y no suelto.
+ *
+ * Existe porque una rejilla larga de campos numéricos en un teléfono se
+ * convierte en una columna donde dos medidas de cosas distintas quedan
+ * pegadas y se leen como si fueran la misma serie. El marco es lo que
+ * dice dónde acaba una cosa y empieza la otra.
+ */
+export function Grupo({
+  titulo,
+  ayuda,
+  columnas = 'sm:grid-cols-3',
+  className = '',
+  children,
+}: {
+  titulo: string
+  ayuda?: string
+  /** Cuántas columnas en pantalla ancha. En el teléfono siempre es una. */
+  columnas?: string
+  className?: string
+  children: ReactNode
+}) {
+  return (
+    <fieldset
+      className={`mt-3 rounded-xl border border-slate-200/80 px-3 pb-3 pt-1 ${className}`}
+    >
+      <legend className="px-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        {titulo}
+      </legend>
+      {ayuda && <p className="mb-2 text-xs text-slate-400">{ayuda}</p>}
+      <div className={`grid grid-cols-1 gap-3 ${columnas}`}>{children}</div>
+    </fieldset>
+  )
+}
+
 export function Entrada({ className = '', ...props }: ComponentProps<'input'>) {
   return <input className={`${baseCampo} ${className}`} {...props} />
 }

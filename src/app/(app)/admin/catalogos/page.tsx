@@ -393,9 +393,16 @@ export default async function CatalogosPage() {
                 key: 'tipo_perfil',
                 label: 'Perfil',
                 tipo: 'multiseleccion' as const,
+                // «Jornal» entra en la 69. Antes la única forma de
+                // marcar a un jornalero era `es_jornal`, que no se ve
+                // desde aquí: el catálogo sólo ofrecía Operador y
+                // Administrativo y no había manera de clasificarlo ni de
+                // filtrarlo. Los dos campos los mantiene en paso un
+                // disparador, así que marcar aquí marca allá.
                 opciones: [
                   { value: 'OPERADOR', label: 'Operador' },
                   { value: 'ADMINISTRATIVO', label: 'Administrativo' },
+                  { value: 'JORNAL', label: 'Jornal' },
                 ],
               },
             ]

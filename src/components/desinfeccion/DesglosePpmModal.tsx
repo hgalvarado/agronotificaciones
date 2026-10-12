@@ -43,8 +43,12 @@ export function DesglosePpmModal({
   const renglones: Renglon[] = [
     { concepto: 'Caudal', valor: `${num(d.caudal)} m³/h` },
     { concepto: 'Horas de aplicación', valor: `${num(d.horasInyeccion)} h` },
-    { concepto: 'Horas de lavado', valor: `${num(d.horasLavado)} h` },
-    { concepto: 'Total caudal', valor: `${num(d.aguaTotal)} m³`, derivado: true },
+    // El lavado se enseña porque se capturó y porque la pregunta «¿y el
+    // lavado?» se la hace todo el mundo. Lleva escrito al lado que NO
+    // entra: es agua limpia que se echa después para sacar el químico de
+    // la tubería, así que no diluye la mezcla que salió por el gotero.
+    { concepto: 'Horas de lavado', valor: `${num(d.horasLavado)} h — no entra` },
+    { concepto: 'Agua con producto', valor: `${num(d.aguaTotal)} m³`, derivado: true },
     // De aquí parte el producto puro desde la 65, y no de los litros
     // totales. Va antes del producto para que el orden de la tabla sea
     // el orden del cálculo.
@@ -100,7 +104,8 @@ export function DesglosePpmModal({
 
         <p className="rounded-xl bg-slate-50 px-3 py-2.5 text-xs leading-relaxed text-slate-500 ring-1 ring-inset ring-slate-200">
           El producto puro sale de la <strong>dosis por manzana</strong>, no de los litros totales,
-          y se divide entre el agua total en m³. Un metro cúbico de agua pesa un millón de gramos y
+          y se divide entre el <strong>agua de la inyección</strong> en m³ — la del lavado es agua
+          limpia y no diluye nada. Un metro cúbico de agua pesa un millón de gramos y
           un centímetro cúbico de producto pesa aproximadamente uno: por eso los cc por m³ ya{' '}
           <strong>son</strong> partes por millón, sin ningún factor más.
         </p>
@@ -111,7 +116,7 @@ export function DesglosePpmModal({
               ? 'Falta la concentración del producto en Catálogos → Materiales.'
               : d.dosisMz === null
                 ? 'Faltan las manzanas del turno: sin ellas no hay dosis por manzana.'
-                : 'Falta el caudal o las horas de inyección y lavado del turno.'}
+                : 'Falta el caudal o las horas de inyección del turno. El lavado no cuenta: es agua limpia.'}
           </p>
         )}
 

@@ -235,6 +235,313 @@ dice.
 
 ## 3. Registro de cambios
 
+### 2026-10-12 — El congelamiento, encontrado: era la hidratación (migraciones 69 y 70)
+
+#### Lo que estaba pasando
+
+El Vigilante de la 68 hizo su trabajo: **no había bucle de React**. Con
+eso descartado, el error que quedaba en la consola era el bueno:
+
+    Uncaught Error: Minified React error #418
+
+El 418 es «Hydration failed». Y la respuesta de React a un 418 **no es un
+aviso**: tira el HTML que mandó el servidor y **vuelve a pintar el árbol
+entero en el cliente**. Con el armazón arriba y una cuadrícula de miles
+de filas debajo, eso es medio segundo largo de bloqueo con la pestaña
+sin responder. Se ve exactamente como «se guinda».
+
+Los dos culpables leían cosas del navegador **durante el render**:
+
+```ts
+// DataGrid: el pie de totales
+const [agregaciones, setAgregaciones] = useState(() =>
+  typeof window === 'undefined' ? {} : leerAgregaciones(titulo)   // ← 418
+)
+
+// SelectorTema: el icono del botón
+if (!montado && typeof window !== 'undefined') {                   // ← 418
+  const guardado = temaGuardado()
+  ...
+}
+```
+
+**El `typeof window === 'undefined'` no protege de esto, y ésa es la
+trampa.** Durante la hidratación `window` YA existe, así que se toma la
+rama del cliente: el servidor había pintado el pie en «Ninguno» y la luna
+de «Modo oscuro», y el navegador pintaba la suma guardada y el sol. Dos
+marcados distintos en el mismo sitio.
+
+Con el sistema operativo en oscuro —que es lo normal en un teléfono— el
+tema fallaba **siempre**. Y `SelectorTema` vive en el armazón, así que
+«el árbol entero» era la aplicación entera.
+
+#### El arreglo: `lib/ui/hidratado.ts`
+
+```ts
+export function useHidratado(): boolean {
+  return useSyncExternalStore(sinSuscripcion, enCliente, enServidor)
+}
+```
+
+React llama a `getServerSnapshot` en el servidor **y también durante la
+hidratación**, y sólo después pasa a `getSnapshot`. Es la API hecha para
+esto: sin `setState` en un efecto —que además es error de lint en React
+19— y sin un cuadro de parpadeo de más.
+
+Se cambió un cuadro de parpadeo por no repintar la pantalla entera.
+
+#### La sesión muerta: el caso que se escapaba
+
+`esSesionMuerta` reconocía los errores que Supabase marca con código
+(`refresh_token_not_found` y compañía) y el middleware los trataba bien.
+Pero hay un caso **sin código**: la cookie existe y no se puede leer
+—truncada, de otro proyecto, escrita con otra codificación—. Ahí
+`getUser` contesta `AuthSessionMissingError`, que es el mismo error que
+da un visitante que nunca entró, y se trataba como tal: redirigir al
+login **dejando la cookie puesta**.
+
+Eso no se cura solo. Cada petición vuelve a leer la misma basura, vuelve
+a no encontrar sesión y vuelve a redirigir, para siempre.
+
+> **La regla que queda**: si el navegador mandó cookies de sesión y
+> después de preguntar no hay usuario, esas cookies no sirven. Se borran,
+> venga el error que venga. Lo peor que puede pasar es que alguien tenga
+> que entrar otra vez; lo que había antes era quedarse fuera sin poder
+> volver.
+
+#### El perfil de Jornal (69 y 70)
+
+En Catálogos → Personal sólo se podía marcar «Operador» o
+«Administrativo». El jornalero —que es casi todo el personal de
+desinfección y riego— no tenía casilla: existía `es_jornal`, pero esa
+columna no se ve desde el catálogo ni se puede filtrar.
+
+**Son dos archivos por una regla de PostgreSQL**, no por capricho: un
+valor de enum no se puede usar en la misma transacción en que se crea, y
+el editor SQL de Supabase manda cada archivo como una sola transacción.
+
+    ERROR: unsafe use of new value "JORNAL" of enum type tipo_perfil
+
+La 69 crea el valor y deja puesto el disparador —cuyo cuerpo no se
+resuelve hasta que corre—; la 70 rellena lo que ya existía. **En ese
+orden.**
+
+Y las dos columnas se mantienen **en paso en las dos direcciones**:
+marcar el perfil enciende `es_jornal` y apagar la casilla quita el
+perfil. Dos columnas para un mismo hecho se separan solas, y el día que
+se separen el catálogo dirá que alguien es jornal y el selector de
+cuadrilla no se lo ofrecerá, con las dos pantallas teniendo razón. La
+regla vive en la base y no en React porque el importador de Excel
+escribe en la misma tabla.
+
+El disparador respeta **lo que cambió en esta escritura**: si sólo se
+tocó la casilla manda la casilla, y si sólo se tocó el perfil manda el
+perfil. Sin esa distinción, editar el perfil en la cuadrícula se
+revertiría solo al guardar y el usuario vería la celda volver atrás.
+
+#### El filtro de Perfil, que ahora filtra de verdad
+
+La columna guarda un array, y el filtro de la cabecera lo comparaba como
+texto. Dos consecuencias, las dos malas:
+
+- Quien es operador **y** jornal valía «Operador, Jornal» —un valor
+  suelto que no está en ningún catálogo— y no salía al buscar jornales.
+- La lista de casillas se armaba con los valores presentes, así que
+  **«Jornal» no se podía elegir hasta que alguien ya lo tuviera**, que es
+  justo al revés de lo que hace falta para empezar a clasificar.
+
+`ColumnaTabla` gana `multivalor`: la lista sale del catálogo y una fila
+pasa si **contiene** alguno de los marcados.
+
+#### Cómo se comprobó
+
+Las dos cosas se reprodujeron antes de arreglarlas, que es la única
+forma de saber que lo arreglado era lo roto:
+
+- **`/tmp/hidraverif`** (**8 verdes**, nuevo): renderiza el árbol con
+  `react-dom/server`, lo sirve por HTTP y lo hidrata en Chromium con el
+  sistema en **oscuro** y con totales ya guardados. Contra el código de
+  antes salían **6 rojas** con el texto de React palabra por palabra:
+  «Hydration failed because the server rendered HTML didn't match the
+  client. As a result this tree will be regenerated on the client.»
+- **`/tmp/authverif`** (**16 verdes**, nuevo): levanta un Supabase falso
+  que contesta 400 `refresh_token_not_found` y pasa el middleware REAL
+  por él. Contra el código de antes, **2 rojas**: la cookie ilegible
+  sobrevivía al redirección y al login.
+- `t69.sql` (**12 verdes**, nueva): el valor en el tipo, las dos columnas
+  en paso en las dos direcciones, que editar el perfil no se revierta
+  solo, y el relleno de la 70 —idempotente— sobre una fila vieja.
+- `ttabla.mjs` (**12 verdes**, nuevo): el filtro multivalor, con el que
+  es las dos cosas saliendo en las dos listas.
+- Las diecisiete suites SQL y las diecisiete de navegador, verdes. `tsc`,
+  `eslint` y `build` limpios.
+
+### 2026-10-12 — El ppm sin el lavado, el preriego que se borraba, el área por ciclo (migración 68)
+
+#### 1. El ppm se calculaba con agua que no llevaba producto
+
+El denominador era `(inyección + lavado) × caudal`. El lavado es agua
+limpia que se echa **después**, para sacar de la tubería el químico que
+quedó dentro: no diluye nada. Sumarla repartía el producto en más agua
+de la que lo llevó, y el número salía por debajo del que de verdad pasó
+por el gotero.
+
+El error iba en la dirección mala: **un ppm bajo no lo revisa nadie.**
+
+```sql
+-- agua = horas_inyeccion × caudal, y se acabó
+create function public.fn_ppm_desinfeccion(
+    p_litros numeric, p_concentracion text,
+    p_horas_inyeccion numeric, p_caudal numeric, p_mz numeric
+) ...
+```
+
+La de seis argumentos **se suelta**, no se deja viva: `create or replace`
+con otra lista de argumentos no reemplaza nada, crea una segunda
+función, y a partir de ahí media plataforma sigue calculando con la
+fórmula vieja sin un solo error que lo delate. Es la trampa que ya costó
+una vuelta con `fn_precio_material`.
+
+`horas_lavado` sigue a la vista en la pantalla y en el desglose, marcado
+«no entra»: la pregunta «¿y el lavado?» se la hace todo el mundo y el
+desglose tiene que contestarla.
+
+#### 2. El preriego perdía su cuadrilla al guardar
+
+`limpiarPersonal` descartaba los renglones «iguales a la plantilla». Y la
+plantilla de un renglón de cuadrilla viene **con todo puesto**: una
+persona, puesto Jornal, jornada Diurna, cero horas extras y el salario
+mínimo vigente.
+
+Eso no es un hueco: **es la cuadrilla del preriego**, que casi siempre es
+exactamente un jornal a mínimo en jornada normal. El renglón que el
+capataz llenaba sin teclear nada —porque los valores por omisión ya
+decían la verdad— era byte a byte idéntico al renglón en blanco, y se
+borraba al guardar. Sin un aviso.
+
+Y la limpieza ya no protegía de nada: desde la 62 la cuadrilla arranca en
+`[]` y un renglón sólo existe si alguien pulsó «Agregar personal».
+**Pulsar el botón es la afirmación.** Un renglón de sobra se quita con su
+propio botón, que es un gesto; borrarlo a sus espaldas no lo es.
+
+#### 3. El área del lote, por ciclo y con su procedencia
+
+`fn_area_regable` sumaba **todos** los ciclos del lote en un número, y
+sólo devolvía el área sembrada cuando alcanzaba o pasaba a la
+planificada. Un lote con 10 mz de plan y 6 sembradas enseñaba 10: cuatro
+manzanas que nadie regó, repartiendo el costo entre un área que no
+existe.
+
+`fn_area_lote_ciclo(lote, ciclo)` mira el ciclo y aplica la regla
+directa: **si ya se sembró manda lo sembrado; si no, el plan; y si no hay
+ni plan ni siembra, el área neta.** `fn_origen_area_lote_ciclo` dice
+cuál de las tres fue, porque un área sin su procedencia obliga a adivinar
+si se mira un plan o un hecho.
+
+`fn_lotes_regables` gana el ciclo (y suelta la de tres argumentos, por lo
+mismo de arriba), devuelve la procedencia, la fecha de siembra y la
+variedad — y **se sella por zona**, igual que la 67 hizo con los lotes de
+desinfección: también es una RPC de campo que el navegador llama
+directamente.
+
+#### 4. Un código, una persona
+
+`operadores.codigo` es con lo que se busca a alguien en campo y con lo que
+se cruza la planilla. Sin unicidad, dos altas con el mismo código parten
+las horas de una persona en dos fichas y ninguna cuadra. Índice único
+**parcial**: varios sin código conviven, que es el estado normal de un
+alta a medio llenar.
+
+La migración **normaliza primero** (espacios fuera, vacío a nulo) y, si
+quedan duplicados, se corta con la lista dentro del error en vez de
+dejar un «no se pudo crear el índice» que no dice cuál.
+
+#### 5. Lo demás del encargo
+
+- **Días negativos en el Excel del plan.** Se cuentan contra la fecha de
+  siembra y la desinfección va ANTES de sembrar: un preriego setenta días
+  antes es −70, y es el caso normal. Rebotarlo obligaba a planificar con
+  el signo cambiado.
+- **Calibraciones y CE, cada una en su marco.** Los seis números iban en
+  una sola rejilla; en el teléfono salían en una columna donde
+  «Calibración salida» quedaba pegada a «CE después» y se leían como la
+  misma serie. Son `<fieldset>` de verdad, así que el lector de pantalla
+  anuncia la leyenda al entrar en cada campo.
+- **«Estacionero» entra en los puestos de cuadrilla**, que hasta ahora
+  había que anotar como «Otro» escribiendo el puesto a mano.
+- **Alta in-situ de Personal y de Plan nutricional.** El formulario de
+  alta salió de `CatalogoTable` a `FormularioCatalogo` y lo abren los dos
+  sitios. No es una copia reducida: si mañana la ficha gana un campo
+  obligatorio, lo gana en los dos. Sin `router.refresh()` desde la
+  captura — rehacer el árbol se lleva por delante lo escrito.
+- **El selector de lotes de riego sale del modal.** Es `buscable`, así
+  que el panel se manda al `body` con un portal y se coloca con
+  `anclarPanel`. Un desplegable dibujado DENTRO de un contenedor con
+  `overflow` no se puede salir de él por mucho z-index que se le ponga:
+  el recorte lo hace el padre.
+- **El área se llena sola al elegir el lote** con la que queda LIBRE, no
+  la total, y **no pisa lo escrito a mano**. Un botón de información abre
+  la siembra, el área y la variedad del lote.
+- **Filtro y columna de Zona en Labores**, sobre `zona_id` de
+  `v_labores_control`. Estaba en la vista desde la 57 y no se enseñaba.
+
+#### 6. El congelamiento: lo que se hizo y lo que falta
+
+**No se encontró.** Se descartaron, uno por uno y con pruebas: dos
+clientes de Supabase peleándose por el candado de refresco (es
+*singleton*), `onAuthStateChange` (no existe en el código), bucles de
+redirección en el middleware, los `useEffect` del módulo de desinfección
+—el banco se deja quieto diez segundos y no sale ni una petición de
+más— y los reajustes de estado durante el render, que comparan cadenas y
+no objetos.
+
+En su lugar va **`components/ui/Vigilante.tsx`**, que no adivina: cuenta
+repintados y peticiones por segundo y, en cuanto una se dispara, escribe
+en la consola **qué tabla o función se está pidiendo en bucle** y se
+apaga. Se arma con `?diagnostico=1` en la dirección; sin ese parámetro
+no monta nada y no cuesta nada.
+
+Con una línea de esa consola se localiza el efecto en minutos.
+
+#### 7. Las suites de navegador llevaban tres migraciones mintiendo
+
+Al rehacer los números del ppm salió que `tcalc` seguía en verde contra
+un `calculo.mjs` **construido el 10 de octubre**. Los módulos que las
+suites de Node importan (`calculo`, `excelPlan`, `abac`, `agregacion`,
+`hojas`) eran bundles sueltos que nadie reconstruía.
+
+El daño concreto: `tabac` afirmaba que un usuario zonal **sin zonas
+asignadas** no se recortaba —el fallo ABIERTO que la 66 selló en la base
+y la 67 en el navegador—. Llevaba verde desde entonces contra el código
+de antes del arreglo.
+
+Ahora existe `buildLibs.mjs` y se corre antes del barrido.
+
+#### Cómo se comprobó
+
+- `t68.sql` (**26 verdes**, nueva): el ppm sin el lavado y la vieja de
+  seis argumentos muerta, las dos vistas rehechas sin perder la reja de
+  la 66, el código duplicado rechazado y los sin código conviviendo, el
+  área sembrada a medias mandando sobre el plan, y el ciclo separando lo
+  que antes se sumaba.
+- `t64` y `t65` **actualizadas** a la fórmula nueva, con la cuenta a mano
+  escrita al lado. Las dos habían quedado truncando en silencio al
+  cambiar la firma, que es cómo se detectó.
+- `tppm` (paridad base ↔ navegador): **2.160 combinaciones, 0
+  diferencias**. El abanico sigue recorriendo el lavado aunque ya no
+  entre, para comprobar que ninguno de los dos lados se lo quedó.
+- `triego.mjs` (**23 verdes**, nueva) en Chromium a 390 px: el panel de
+  lotes vive en el `body` y entra entero en la pantalla, el área se llena
+  con la libre, lo escrito a mano no se pisa, y el globo dice si el área
+  es un hecho o una previsión.
+- `tdesinf` (**94 verdes**): los cuatro puestos, los dos marcos nuevos
+  con sus campos dentro y ninguna CE colada entre las calibraciones, y
+  el alta completa de Personal abriéndose desde el selector.
+- `tcalc` (**134 verdes**) con el renglón de preriego que ahora SÍ se
+  guarda; `tabac` (**30**) con la aserción corregida.
+- Las dieciséis suites SQL y las dieciséis de navegador, verdes. `tsc`,
+  `eslint` y `build` limpios.
+
 ### 2026-10-10 — Parches del Excel, el hotfix zonal y el tablero (migración 67)
 
 Tres cosas que no se parecen entre sí, y la del medio es la que no podía
@@ -1743,6 +2050,54 @@ Cosas que ya costaron una sesión. No volver a tropezar.
   que deja un hueco en `sql/`, hay que corregirlo antes de escribir una
   línea — un hueco en la secuencia es una migración que alguien buscará y
   no encontrará.
+- **`typeof window === 'undefined'` NO protege de un desajuste de
+  hidratación.** Durante la hidratación `window` ya existe, así que se
+  toma la rama del cliente y el marcado difiere del que mandó el
+  servidor. Para leer `localStorage`, `document.cookie` o `matchMedia`
+  está `useHidratado()`, que es `useSyncExternalStore` con el valor del
+  servidor también durante la hidratación.
+- **El error 418 de React no es un aviso**: tira el HTML del servidor y
+  repinta el árbol ENTERO en el cliente. En una pantalla con miles de
+  filas, eso es el congelamiento que se reporta como «se guinda», y en
+  producción sólo deja un número en la consola.
+- **Una cookie de sesión que no da usuario es basura, venga el error que
+  venga.** Hay un caso sin código —cookie ilegible— que Supabase reporta
+  igual que «aquí nunca hubo sesión». Si no se borra, cada petición
+  repite el viaje al login para siempre.
+- **Un valor de enum no se puede usar en la misma transacción en que se
+  crea** (`unsafe use of new value`), y el editor SQL de Supabase manda
+  cada archivo como una transacción. El `alter type` va en su propio
+  archivo; el cuerpo de una función plpgsql sí puede nombrarlo, porque
+  es texto hasta que corre.
+- **Dos columnas para un mismo hecho se separan solas.** `es_jornal` y
+  el perfil `JORNAL` se mantienen en paso con un disparador, en las dos
+  direcciones, y el disparador respeta lo que cambió en esa escritura —si
+  no, editar una revierte la otra al guardar.
+- **Un bundle de prueba que nadie reconstruye es una suite que miente.**
+  `tcalc` y `tabac` estuvieron tres migraciones en verde contra código de
+  antes del arreglo, y una de las aserciones afirmaba justo el fallo
+  abierto que la 66 y la 67 sellaron. Correr `buildLibs.mjs` antes del
+  barrido.
+- **«Igual a la plantilla» NO quiere decir «nadie lo tocó».** Si la
+  plantilla trae valores por omisión que son la respuesta más común —una
+  persona, Jornal, salario mínimo—, el renglón bien llenado es idéntico
+  al vacío y se borra al guardar. Cuando una fila sólo existe porque
+  alguien pulsó un botón, **el botón es la afirmación** y no hay nada que
+  limpiar.
+- **El agua del lavado no lleva producto.** Lo que diluye el químico es
+  el agua de la INYECCIÓN; el lavado va después y es agua limpia.
+  Sumarla bajaba el ppm, y un ppm bajo no lo revisa nadie: el error iba
+  en la dirección que no se nota.
+- **Un desplegable dentro de un contenedor con `overflow` no se salva con
+  z-index**: el recorte lo hace el padre. Hay que sacarlo al `body` con
+  un portal y colocarlo con `anclarPanel`, que es lo que hace `Selector`
+  cuando es `buscable`.
+- **`router.refresh()` en medio de una captura borra lo escrito.** Rehace
+  el árbol desde el servidor. En un formulario abierto, lo recién creado
+  se añade a la lista en memoria y punto.
+- **Un área sin ciclo suma temporadas enteras.** `fn_area_regable`
+  juntaba todos los ciclos del lote, así que el segundo salía con el área
+  del primero encima.
 - **Una función `security definer` que devuelve filas de campo NO la
   protege la RLS**: se la está saltando por diseño. Tiene que recortar
   por zona a mano, igual que una vista. `fn_lotes_desinfeccion` ofreció

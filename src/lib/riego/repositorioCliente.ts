@@ -83,15 +83,24 @@ export async function editarCampo(
  * `turnoId` se manda al editar: sin él, el área que el propio turno tiene
  * puesta contaría como ocupada y corregir 8.99 a 9.00 parecería un exceso.
  */
+/**
+ * Los lotes que se pueden regar, con su área y su saldo.
+ *
+ * `ciclo` entra en la 68. Sin él la función sumaba TODOS los ciclos del
+ * lote en un solo número, así que el segundo ciclo de la temporada salía
+ * con el área del primero encima.
+ */
 export async function leerLotesRegables(
   temporadaId: string,
   zonaId: string | null,
-  turnoId: string | null
+  turnoId: string | null,
+  ciclo: number | null = null
 ): Promise<{ datos: LoteRegable[]; error: string | null }> {
   const { data, error } = await createClient().rpc('fn_lotes_regables', {
     p_temporada_id: temporadaId,
     p_zona_id: zonaId || null,
     p_turno_id: turnoId || null,
+    p_ciclo: ciclo,
   })
 
   if (error) return { datos: [], error: error.message }

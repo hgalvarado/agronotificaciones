@@ -96,9 +96,13 @@ export function interpretarFilaPlan(
     return { ok: false, error: 'El ciclo tiene que ser 1, 2 o 3.' }
   }
 
+  // **Los días a la aplicación SÍ pueden ser negativos.** Se cuentan
+  // contra la fecha de siembra, y la desinfección se hace ANTES de
+  // sembrar: un preriego setenta días antes del trasplante es −70, y es
+  // el caso normal, no el raro. Rebotarlo obligaba a planificar con el
+  // signo cambiado y luego acordarse de invertirlo al leer el DDT.
   const dias = aNumero(texto('dias_aplicacion'))
   if (dias === null) return { ok: false, error: 'Faltan los días a la aplicación.' }
-  if (dias < 0) return { ok: false, error: 'Los días a la aplicación no pueden ser negativos.' }
 
   const dosis = aNumero(texto('dosis_mz'))
   if (dosis === null) return { ok: false, error: 'Falta la dosis por manzana.' }

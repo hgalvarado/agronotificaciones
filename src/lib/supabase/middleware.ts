@@ -74,10 +74,44 @@ export async function updateSession(request: NextRequest) {
     return limpiarSesion(request, NextResponse.redirect(url))
   }
 
+  /*
+   * **Una cookie que no da usuario es una cookie muerta, venga el error
+   * que venga** (migración 69).
+   *
+   * `esSesionMuerta` reconoce los errores que Supabase marca con código.
+   * Pero hay un caso que no lleva código y que acaba igual de atascado:
+   * la cookie existe y NO SE PUEDE LEER —truncada, de otro proyecto,
+   * escrita con otra codificación—. Ahí `getUser` contesta
+   * `AuthSessionMissingError`, que es el mismo error que da un visitante
+   * que nunca entró, y antes se trataba como tal: se redirigía al login
+   * **dejando la cookie puesta**.
+   *
+   * Eso no se cura solo. Cada petición vuelve a leer la misma basura,
+   * vuelve a no encontrar sesión y vuelve a redirigir, para siempre, y
+   * la terminal se llena de intentos de refresco condenados.
+   *
+   * La regla, sin excepciones: si el navegador mandó cookies de sesión y
+   * después de preguntar no hay usuario, esas cookies no sirven. Se
+   * borran. Lo peor que puede pasar es que alguien tenga que entrar otra
+   * vez; lo que había antes era quedarse fuera sin poder volver.
+   */
+  const cookiesInutiles = !usuario && habiaCookies
+
   if (!usuario && !isAuthRoute && !esPublica) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
+    if (cookiesInutiles) {
+      url.searchParams.set('sesion', 'expirada')
+      return limpiarSesion(request, NextResponse.redirect(url))
+    }
     return NextResponse.redirect(url)
+  }
+
+  // En el login y en lo público no se redirige, pero la basura se tira
+  // igual: quien vuelve a entrar no debe arrastrar la cookie podrida
+  // hasta la siguiente pantalla.
+  if (cookiesInutiles) {
+    return limpiarSesion(request, supabaseResponse)
   }
 
   if (usuario && isAuthRoute) {

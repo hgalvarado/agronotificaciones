@@ -12,6 +12,7 @@
  */
 
 import { useState } from 'react'
+import { useHidratado } from '@/lib/ui/hidratado'
 import { IconMoon, IconSun } from './Icons'
 import {
   CLAVE_TEMA,
@@ -56,35 +57,42 @@ function aplicar(tema: Tema) {
 }
 
 export function SelectorTema({ compacto = false }: { compacto?: boolean }) {
-  // El estado arranca en 'sistema' tanto en el servidor como en la
-  // primera pintura del navegador —así la hidratación calza— y se
-  // corrige al primer toque. Lo que se VE ya lo puso el guion del head.
-  const [tema, setTema] = useState<Tema>('sistema')
-  const [montado, setMontado] = useState(false)
-
-  // Sin efectos: el valor real se lee en el primer gesto del usuario, y
-  // hasta entonces el icono muestra el del sistema, que es lo que el
-  // guion del head aplicó.
-  if (!montado && typeof window !== 'undefined') {
-    // Se hace en el render pero SIN tocar el DOM: sólo se sincroniza el
-    // estado con lo ya guardado, que es el patrón que React 19 permite
-    // para ajustar estado durante el render.
-    const guardado = temaGuardado()
-    setMontado(true)
-    if (guardado !== tema) setTema(guardado)
-  }
+  /*
+   * ── El desajuste de hidratación que había aquí (migración 69) ──────
+   *
+   * El bloque de abajo leía `localStorage` y `matchMedia` DURANTE el
+   * render, protegido por `typeof window !== 'undefined'`. Ese guardia
+   * no protege de nada: durante la hidratación `window` ya existe, así
+   * que el servidor pintaba la luna («Modo oscuro») y el navegador, con
+   * el sistema en oscuro, pintaba el sol («Modo claro»).
+   *
+   * Dos marcados distintos en el mismo sitio es el error 418 de React, y
+   * la respuesta de React al 418 **no es un aviso**: tira el HTML del
+   * servidor y vuelve a pintar el árbol ENTERO en el cliente. Este botón
+   * vive en el armazón, así que el árbol entero es la aplicación entera.
+   *
+   * `useHidratado` corre `false` en el servidor y también en la primera
+   * pintura del navegador, así que los dos marcados calzan; el valor de
+   * verdad entra después, ya con la página viva.
+   *
+   * El icono no parpadea porque lo que se VE —el fondo, los colores— ya
+   * lo puso el guion del `<head>` antes de pintar nada. Lo único que se
+   * ajusta un cuadro después es qué dibujo lleva el botón.
+   */
+  const hidratado = useHidratado()
+  const [elegido, setElegido] = useState<Tema | null>(null)
+  const tema: Tema = elegido ?? (hidratado ? temaGuardado() : 'sistema')
 
   const oscuroAhora =
-    typeof window !== 'undefined'
-      ? temaEfectivo(tema, window.matchMedia('(prefers-color-scheme: dark)').matches) === 'oscuro'
-      : false
+    hidratado &&
+    temaEfectivo(tema, window.matchMedia('(prefers-color-scheme: dark)').matches) === 'oscuro'
 
   function alternar() {
     // Dos estados y no tres: el desplegable con «Automático» estorba en
     // un botón de barra. Se guarda el tema explícito contrario al que se
     // está viendo, que es lo que el usuario quiere decir al pulsarlo.
     const siguiente: Tema = oscuroAhora ? 'claro' : 'oscuro'
-    setTema(siguiente)
+    setElegido(siguiente)
     aplicar(siguiente)
   }
 

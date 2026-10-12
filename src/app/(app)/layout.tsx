@@ -1,7 +1,9 @@
+import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 import { getNavegacion, getPerfilActual, getPermisos, getUsuarioActual } from '@/lib/auth'
 import { AppShell } from '@/components/ui/AppShell'
 import { LogoutButton } from '@/components/ui/LogoutButton'
+import { Vigilante } from '@/components/ui/Vigilante'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   // Ambas llamadas están memorizadas con cache(): getUsuarioActual() se
@@ -40,7 +42,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       permisos={[...permisos]}
       navegacion={navegacion}
     >
-      {children}
+      {/* El vigilante de bucles. Sin `?diagnostico=1` no monta nada y
+          no cuesta nada; con el parámetro, avisa en la consola qué se
+          está repitiendo antes de que la pestaña se cuelgue.
+
+          El `Suspense` es obligatorio: `useSearchParams` sin él obliga a
+          Next a renderizar toda la ruta en el cliente. */}
+      <Suspense fallback={children}>
+        <Vigilante>{children}</Vigilante>
+      </Suspense>
     </AppShell>
   )
 }
