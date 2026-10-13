@@ -38,7 +38,9 @@ export function FormularioLogin({ sesionExpirada = false }: { sesionExpirada?: b
       setError('Usuario o contraseña incorrectos.')
       return
     }
-    router.push('/tickets')
+    // A la portada: no todo el mundo tiene permiso en tickets, y entrar
+    // por una puerta que no es la suya es recibir una lista vacía.
+    router.push('/')
     router.refresh()
   }
 

@@ -21,11 +21,13 @@ import { formatearFecha } from '@/lib/estados'
 import { n2 } from '@/lib/trasplante/formato'
 import { canExecuteAction, zonasParaCrear, type Reglas } from '@/lib/permisos/clientABAC'
 import {
+  AVISO_SIN_MIGRACION,
   editarCampoLogistica,
   eliminarLogistica,
   guardarLogistica,
   leerLogistica,
 } from '@/lib/desinfeccion/repositorioCliente'
+import { diagnosticarLectura } from '@/lib/supabase/instalacion'
 import {
   LOGISTICA_VACIA,
   type CatalogosDesinfeccion,
@@ -47,7 +49,7 @@ export function GridLogistica({
   reglas: Reglas
   usuarioId: string | null
   zonas: Set<string>
-  onSinMigracion: (falta: boolean) => void
+  onSinMigracion: (falta: boolean, causa?: string | null) => void
 }) {
   const [filas, setFilas] = useState<FilaLogistica[]>([])
   const [cargando, setCargando] = useState(true)
@@ -92,38 +94,59 @@ export function GridLogistica({
     [reglas, ctx]
   )
 
+  /**
+   * Qué significa que una lectura falle.
+   *
+   * **No todo error es una migración que falta.** Antes cualquier fallo
+   * —un permiso, un `select` sin conceder, la caché de esquema de
+   * PostgREST sin recargar, la red— encendía «corre las migraciones 59
+   * y 60». Quien ya las tenía puestas las volvía a correr, no pasaba
+   * nada, y la pantalla seguía amarilla sin una sola pista. La decisión
+   * vive en un solo sitio para que las seis pantallas del módulo no
+   * puedan contestar cosas distintas al mismo error.
+   */
+  const diagnosticar = useCallback(
+    (mensaje: string, codigo?: string | null) => {
+      const d = diagnosticarLectura(AVISO_SIN_MIGRACION, { message: mensaje, code: codigo })
+      onSinMigracion(d.falta, d.avisoModulo)
+      setError(d.mensaje)
+    },
+    [onSinMigracion]
+  )
+
   const recargar = useCallback(async () => {
     setCargando(true)
-    const { datos, error: e } = await leerLogistica(temporadaId || null)
+    const { datos, error: e, codigo } = await leerLogistica(temporadaId || null)
     setCargando(false)
     if (e) {
-      onSinMigracion(true)
+      diagnosticar(e, codigo)
       setFilas([])
       return
     }
     setFilas(datos)
-  }, [temporadaId, onSinMigracion])
+  }, [temporadaId, diagnosticar])
 
   useEffect(() => {
     let vivo = true
     async function cargar() {
       setCargando(true)
-      const { datos, error: e } = await leerLogistica(temporadaId || null)
+      const { datos, error: e, codigo } = await leerLogistica(temporadaId || null)
       if (!vivo) return
       setCargando(false)
       if (e) {
-        onSinMigracion(true)
+        diagnosticar(e, codigo)
         setFilas([])
         return
       }
-      onSinMigracion(false)
+      onSinMigracion(false, null)
+      setError(null)
       setFilas(datos)
     }
     void cargar()
     return () => {
       vivo = false
     }
-  }, [temporadaId, onSinMigracion])
+  }, [temporadaId, onSinMigracion, diagnosticar])
 
   /** La bolsa, por zona. Es la unidad con la que de verdad se reparte. */
   const porZona = useMemo(() => {

@@ -235,6 +235,235 @@ dice.
 
 ## 3. Registro de cambios
 
+### 2026-10-13 — El aviso de «falta la migración» era un diagnóstico inventado (sin migración)
+
+El informe de desinfección enseñaba el amarillo de «corre las migraciones
+59 y 60» con la 71 y la 72 ya instaladas. **No era un falso positivo de
+una consulta concreta: era que el módulo entero contestaba eso a
+cualquier error.** Las seis pantallas tenían la misma línea:
+
+```ts
+if (error) { onSinMigracion(true); setFilas([]); return }
+```
+
+Un permiso que falta, una vista sin `grant select`, la caché de esquema
+de PostgREST sin recargar, el wifi caído — todos acababan diciendo lo
+mismo. Quien ya tenía las migraciones puestas las volvía a correr, no
+pasaba nada, y la pantalla seguía amarilla sin una sola pista de la
+causa. El comentario del tablero lo decía en voz alta: «un error aquí
+casi siempre es falta la migración». «Casi siempre» no es un
+diagnóstico.
+
+La causa de raíz estaba más abajo: `leerTodo` se quedaba con
+`error.message` y **tiraba el `code`**. Sin código, la pantalla no tenía
+con qué distinguir un caso del otro aunque hubiera querido.
+
+Ahora el código viaja (`Tramo`, `Todo`, `Lectura`) y la decisión vive en
+un solo sitio, `lib/supabase/instalacion.ts`: sólo falta la migración con
+`42P01`, `42703`, `42883`, `PGRST202`, `PGRST204` o `PGRST205`. Todo lo
+demás se enseña con el texto de la base **sin tapar el módulo**: que un
+informe no cargue no es razón para esconder la captura.
+
+Los tres códigos de PostgREST llevan trampa aparte: también salen cuando
+la relación existe y lo que no se ha recargado es su caché. En ese caso
+el aviso añade la salida —`notify pgrst, 'reload schema';`— en vez de
+mandar a correr SQL que ya está puesto.
+
+`tinstalacion` (26) prueba justamente el caso del encargo: un `42501`
+sobre `v_desinfeccion_informe_ejecutivo` ya no dice que falten las 59 y
+60, dice «permission denied» y deja el módulo en pie.
+
+### 2026-10-13 — Hotfix post-71: la portada que no se veía y el área de dos ciclos (migración 72)
+
+#### 1. El bucle a `/tickets` no estaba en el código
+
+Reportado como «tras entrar, o al ir a `/`, el sistema sigue forzando
+`/tickets`». **El repositorio ya estaba limpio** desde el lote anterior:
+el middleware manda a `/`, `FormularioLogin` hace `router.push('/')`, los
+catorce porteros de pantalla redirigen a `/`, no existe
+`app/auth/callback/route.ts` ni ninguna constante tipo
+`DEFAULT_LOGIN_REDIRECT`, y `tportada` llevaba tres lotes verificándolo.
+Las tres referencias a `/tickets` que quedan son legítimas: el enlace del
+menú, el `push` tras borrar un ticket y una comparación de `pathname`.
+
+Lo que pasaba estaba en el disco de la máquina, no en el repositorio.
+`src/app/page.tsx` —la vieja, de cinco líneas, con `redirect('/tickets')`
+dentro— **seguía allí**. `(app)` es un *grupo de ruta*: no añade segmento
+a la URL, así que `src/app/page.tsx` y `src/app/(app)/page.tsx` resuelven
+la MISMA ruta, y mientras la vieja exista gana ella.
+
+Sobrevivió porque **copiar archivos no borra archivos**. La entrega
+escribe lo nuevo y lo modificado; lo eliminado se queda. Un borrado
+tiene que viajar como una orden aparte.
+
+El guardián nuevo va en `tportada`: cuenta cuántas páginas resuelven
+«/» —la raíz suelta y las de los grupos— y exige que sea exactamente
+una, y que sea la del armazón. Ningún `grep` de `/tickets` habría
+encontrado esto, porque el archivo culpable no estaba donde se miraba.
+
+#### 2. El área de desinfección era de la temporada, no del ciclo
+
+En «0. Lotes y manzanas» se elige el ciclo en la cabecera del turno, pero
+el catálogo de lotes no se enteraba: `fn_lotes_desinfeccion` pedía las
+manzanas a `fn_area_regable`, que suma **todos** los ciclos. Un lote de
+10 mz planificado en el ciclo 1 y de 7 en el 2 se ofrecía como 17.
+
+No es un número feo en una lista. La sugerencia de `mz_restantes` es la
+que acaba escrita en el renglón, y las manzanas del turno son el divisor
+con el que se reparte el químico: **un área inflada es una dosis mal
+calculada**, y eso sale al campo.
+
+Lo mismo con lo ya desinfectado: `mz_ejecutadas` contaba las pasadas de
+cualquier ciclo. Lo regado en el ciclo 1 no está hecho para el ciclo 2
+—es otra desinfección, con otro producto y otra fecha—, así que
+descontarlo dejaba el lote en «no queda nada» cuando quedaba todo.
+
+La función gana `p_ciclo`. Con ciclo, las planeadas salen de
+`fn_area_lote_ciclo` —la misma que riego usa desde la 68, con el mismo
+criterio: sembrado > planificado > neta— y las ejecutadas se recortan a
+las ejecuciones de ese ciclo. Sin ciclo (`null`) se comporta como antes,
+y eso es a propósito: la pestaña enseña el catálogo de la temporada
+entera y ahí la suma sí es lo que se quiere. `fn_area_regable` se queda
+viva para el reporte y el histórico.
+
+En React, `leerLotes` acepta el ciclo y `GridEjecucion` lo pasa siempre
+desde la cabecera. El `cicloActual` tuvo que subir por encima del efecto:
+va en sus dependencias, y declararlo después lo dejaba en la zona muerta
+del `const` —un error de render, no un aviso de consola—. La línea de
+ayuda bajo cada lote ahora dice de qué ciclo habla: el mismo lote se
+siembra dos veces al año y un número sin ciclo al lado no se puede
+revisar.
+
+#### 3. La reja de la 67, intacta
+
+Cambiar la firma de una función `security definer` es el momento exacto
+en que se pierde un filtro sin que nadie lo note. La 72 vuelve a exigir
+en sus guardianes `fn_ve_zona_estricta`, `fn_permitido_de`, que haya
+**una sola** `fn_lotes_desinfeccion` —la trampa de la sobrecarga— y,
+nuevo, que el cuerpo nombre `fn_area_lote_ciclo` y recorte por `e.ciclo`.
+`t72` (25 verdes) lo prueba contra una base de verdad: el zonal sigue
+viendo un lote, sin zonas asignadas no ve ninguno, y con alcance global
+vuelve a verlos todos.
+
+Diecinueve suites SQL, veintiuna de navegador, más los bancos de
+hidratación (`tportada` sube a 14) y de sesión. `tsc`, `eslint` y `build`
+limpios.
+
+### 2026-10-13 — Objetivos de control e informe ejecutivo (migración 71)
+
+#### 1. Contra qué se aplicó
+
+Un químico se aplica contra algo —nematodos, hongos de suelo, malezas— y
+eso no se guardaba en ningún sitio. El dato vivía en la cabeza del
+agrónomo, así que «¿qué hicimos contra el nematodo esta temporada?» no se
+podía contestar con la base.
+
+Va en **dos** sitios y no en uno:
+
+- En `materiales`, el objetivo que el producto trae de fábrica —lo que
+  dice su etiqueta—.
+- En la aplicación, contra qué se usó **ESE día**. El mismo producto se
+  aplica contra cosas distintas según la presión que haya en el lote, y
+  guardar sólo el del catálogo sería contestar con el bote en vez de con
+  lo que pasó.
+
+Un disparador hereda el de la etiqueta al anotar un químico sin decir
+nada, y **no vuelve a tocarlo**: lo que se dice en campo manda.
+
+`text[]` y no una tabla de catálogo, a propósito: nadie mantiene una
+lista cerrada de plagas, y obligar a darlas de alta antes de poder
+anotarlas es la clase de fricción que acaba con el campo vacío. Se
+normaliza el espacio —fuera vacíos, extremos y repetidos— pero **no las
+mayúsculas**: «Mal de Panamá» es un nombre propio y bajarlo a minúsculas
+lo haría ilegible.
+
+#### 2. `v_desinfeccion_informe_ejecutivo`
+
+Para contar qué pasó en un lote había que abrir cinco pantallas. Esta
+vista consolida el flujo entero.
+
+**El grano es LOTE × CICLO**, y los dos motivos importan: no por lote a
+secas, porque los dos ciclos de una temporada son dos campañas distintas
+y juntarlas sumaría costos de siembras diferentes; y no por ejecución,
+porque un turno riega varios lotes y la pregunta gerencial es siempre
+«¿cuánto me costó ESTE lote?».
+
+> **Lo que NO hace: inventar un plan donde no lo hay.** Un lote ejecutado
+> sin plan trae los campos del plan en **nulo**, y la pantalla dice «Sin
+> plan». Un cero diría «se planificó cero», que es una afirmación
+> distinta.
+
+Detrás de `desinfeccion_reporte` y no de `desinfeccion_ejecucion`: quien
+mira números no es necesariamente quien captura.
+
+#### 3. El tablero: cuatro preguntas, en orden
+
+Va de lo general a lo particular, porque es una pantalla para quien **no**
+capturó el turno:
+
+1. **Cuándo** — la línea de tiempo, a escala de días, con el DDT. Los
+   hitos van a escala y no repartidos: el dato es cuánto tiempo pasó
+   entre uno y otro, y la desinfección se aplica ~70 días antes de
+   sembrar. El orden lo da la **fecha**, no el nombre: un preriego que se
+   adelantó al plan sale antes que el plan, porque la línea cuenta lo que
+   pasó.
+2. **¿Se cumplió?** — dosis y costo contra lo planificado.
+3. **¿Dónde se fue el dinero?** — las tres piezas y la fase más cara.
+4. **¿Contra qué se aplicó?** — los químicos con sus objetivos.
+
+> **La banda del ±5 %, y por qué no un signo.** Pintar de rojo cualquier
+> número por encima del plan haría que todo saliera rojo: un turno nunca
+> clava la dosis al decimal, y un informe donde todo está en rojo no
+> señala nada. Dentro del ±5 % es ruido de campo. Y quedarse **muy**
+> corto tampoco es buena noticia automática: puede ser ahorro y puede ser
+> que al lote le faltara producto, así que va en ámbar y no en verde.
+
+El tablero de la 67 sigue vivo al lado, con un interruptor: contesta otra
+pregunta —cuál se me fue de precio en el periodo— y juntarlas haría que
+ninguna de las dos se contestara bien.
+
+#### 4. El PDF, maquetado y no volcado
+
+Un PDF que repite la cuadrícula de la pantalla no sirve para lo que se
+usa: llevarlo a una reunión donde nadie va a abrir la aplicación. Se
+maqueta como documento —encabezado corporativo, tres bloques con marco, y
+el reparto del costo **dibujado** en vez de listado—.
+
+El motor de `lib/pdf/documento` gana color (`rg`/`RG`). Hasta ahora sólo
+sabía gris, y tres tonos próximos de gris se confunden al fotocopiarlos.
+
+**Las cuentas no se hacen en el PDF**: salen de `lib/desinfeccion/informe`,
+las mismas que usa la pantalla. Un papel que dice algo distinto del
+tablero es peor que no tener papel, porque quien lo lleva a una reunión no
+sabe cuál de los dos defender. La prueba del PDF comprueba exactamente
+eso, y **encontró una**: `conSigno` escribía `+8000.00` mientras la
+pantalla decía `+8,000.00`.
+
+#### 5. Y lo que faltaba del enrutamiento
+
+`FormularioLogin` todavía empujaba a `/tickets` después de entrar. Las
+pantallas y el middleware ya se arreglaron ayer; éste se escapó porque la
+redirección vive en un manejador de evento, no en un `redirect()`.
+
+#### Cómo se comprobó
+
+- `t71.sql` (**29 verdes**, nueva): la limpieza de objetivos, la herencia
+  de la etiqueta y que lo de campo mande sobre ella, el flujo entero de
+  un lote —tiempos, DDT con su signo, agronomía, reparto del dinero y
+  desviaciones—, que un lote sin plan NO traiga ceros, y la reja sobre
+  `desinfeccion_reporte` con un jefe de la zona equivocada.
+- `tinforme.mjs` (**32 verdes**, nuevo): las cuentas puras. Los químicos
+  de dos pasadas se suman pero **sus ppm no** —se queda la del que más
+  pesa—, el cronograma se ordena por fecha, y la banda del tono.
+- `tinformepdf.mjs` (**32 verdes**, nuevo): se genera el PDF y se le mira
+  dentro. Que sea un archivo válido, que lleve el encabezado y los tres
+  bloques, que tenga recuadros y color —no un volcado—, y que **cada
+  número sea el de la pantalla**.
+- `tinformeui.mjs` (**31 verdes**, nuevo) en Chromium a 390 px: las
+  cuatro secciones, y el lote sin plan sin un solo cero inventado.
+- Las dieciocho suites SQL y las veintiuna de navegador, más los bancos
+  de hidratación, sesión y portada. `tsc`, `eslint` y `build` limpios.
+
 ### 2026-10-13 — La portada, la hora que se teclea y las ayudas que no estorban (sin migración)
 
 > **Sin SQL, así que no consume número.** Se habló como «la 71», pero no
@@ -2157,6 +2386,32 @@ usuario).
 
 Cosas que ya costaron una sesión. No volver a tropezar.
 
+- **«Si hay error, falta la migración» es un diagnóstico inventado.** Un
+  permiso, una vista sin `grant`, la caché de esquema de PostgREST o la
+  red caída no son una tabla ausente. Sólo lo son `42P01`, `42703`,
+  `42883` y los `PGRST202/204/205`, y estos tres últimos pueden ser la
+  caché sin recargar (`notify pgrst, 'reload schema';`). La decisión vive
+  en `lib/supabase/instalacion.ts` y **no se copia a mano** en cada
+  pantalla: seis copias de una regla de tres líneas son seis respuestas
+  distintas al mismo fallo.
+- **Un error que no es de instalación no debe tapar el módulo.** Que un
+  informe no cargue no es razón para esconder la captura. Se enseña el
+  texto de la base donde falló, y lo demás sigue utilizable.
+- **Copiar archivos no borra archivos.** La entrega escribe lo nuevo y lo
+  modificado; lo que se eliminó del repositorio **se queda** en la
+  máquina y sigue ejecutándose. Un borrado viaja como orden aparte, en
+  consola. Así sobrevivió `src/app/page.tsx` con su `redirect('/tickets')`
+  a dos entregas, y ningún `grep` del repositorio lo encontraba.
+- **`(app)` no añade segmento a la URL.** Un grupo de ruta es sólo una
+  carpeta para compartir `layout`: `app/page.tsx` y `app/(app)/page.tsx`
+  resuelven LA MISMA ruta, y la suelta en la raíz gana. `tportada` cuenta
+  las páginas que resuelven «/» y exige que haya una.
+- **El área de un lote es de un CICLO.** El mismo lote se siembra dos
+  veces en una temporada, y sumarlas infla el divisor con el que se
+  reparte el químico: un área mal contada es una dosis mal calculada.
+  `fn_area_lote_ciclo(lote, ciclo)` es la única que se debe llamar desde
+  una pantalla de captura; `fn_area_regable` suma la temporada entera y
+  es para el reporte y el histórico.
 - **La numeración de las migraciones la lleva el asistente, no el
   encargo.** Un lote de trabajo sin SQL **no consume número**: el
   importador de Excel se habló como «la 67» y no creó ningún archivo, así
@@ -2164,6 +2419,23 @@ Cosas que ya costaron una sesión. No volver a tropezar.
   que deja un hueco en `sql/`, hay que corregirlo antes de escribir una
   línea — un hueco en la secuencia es una migración que alguien buscará y
   no encontrará.
+- **Un informe en papel y una pantalla que discrepan en el formato de un
+  número es un informe que no se puede defender.** Las cuentas y el
+  formato viven en un módulo puro que usan los dos. La prueba del PDF
+  compara contra lo que escribe la pantalla, y así encontró que
+  `conSigno` no ponía separador de miles.
+- **Las ppm no se promedian.** Al juntar dos pasadas del mismo químico se
+  suman los litros y el costo, pero se conserva la ppm del que más pesa:
+  una media de ppm no significa nada.
+- **Un cero donde no hay plan dice «se planificó cero».** No es lo mismo
+  que «no se planificó». Los campos del plan van en nulo y la pantalla
+  escribe «Sin plan».
+- **Una desviación pintada por el signo deja el informe entero en rojo.**
+  Un turno nunca clava la dosis al decimal: dentro del ±5 % es ruido de
+  campo. Y quedarse muy corto tampoco es buena noticia automática.
+- **El grano de un informe gerencial es lote × ciclo.** Por lote a secas
+  suma dos campañas de siembras distintas; por ejecución contesta otra
+  pregunta, porque un turno riega varios lotes.
 - **`<button>` es un elemento ETIQUETABLE.** Dentro de un `<label>`, el
   navegador le da la etiqueta a él y el campo se queda sin nombre
   accesible. Un icono de ayuda dentro de una etiqueta va como `span` con

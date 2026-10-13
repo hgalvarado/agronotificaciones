@@ -37,10 +37,12 @@ import type { ColumnaGrid } from '@/lib/grid/tipos'
 import { n2 } from '@/lib/trasplante/formato'
 import { canExecuteAction, type Reglas } from '@/lib/permisos/clientABAC'
 import {
+  AVISO_SIN_MIGRACION,
   leerCostos,
   leerEjecuciones,
   leerLogistica,
 } from '@/lib/desinfeccion/repositorioCliente'
+import { diagnosticarLectura } from '@/lib/supabase/instalacion'
 import type {
   CatalogosDesinfeccion,
   FilaCosto,
@@ -65,7 +67,7 @@ export function DesinfeccionDashboard({
   temporadaId: string
   zonas: CatalogosDesinfeccion['zonas']
   reglas: Reglas
-  onSinMigracion: (falta: boolean) => void
+  onSinMigracion: (falta: boolean, causa?: string | null) => void
 }) {
   const [ejecuciones, setEjecuciones] = useState<FilaEjecucion[]>([])
   const [logistica, setLogistica] = useState<FilaLogistica[]>([])
@@ -78,7 +80,10 @@ export function DesinfeccionDashboard({
   const [desde, setDesde] = useState('')
   const [hasta, setHasta] = useState('')
 
-  const avisar = useCallback((falta: boolean) => onSinMigracion(falta), [onSinMigracion])
+  const avisar = useCallback(
+    (falta: boolean, causa: string | null = null) => onSinMigracion(falta, causa),
+    [onSinMigracion]
+  )
 
   useEffect(() => {
     let vivo = true
@@ -92,17 +97,33 @@ export function DesinfeccionDashboard({
       if (!vivo) return
       setCargando(false)
 
-      // Un error aquí casi siempre es «falta la migración», que es lo
-      // que la pestaña sabe decir. Los tres se piden juntos porque las
-      // tarjetas no significan nada sin los tres.
-      if (e.error || l.error || c.error) {
-        avisar(true)
+      /*
+       * **Un error NO es, por sí solo, una migración que falta.**
+       *
+       * Decía «casi siempre es falta la migración» y contestaba eso a
+       * todo: a un permiso, a un `select` sin conceder, a la caché de
+       * esquema de PostgREST sin recargar. Quien ya las tenía puestas
+       * las volvía a correr, no pasaba nada, y la pantalla seguía
+       * amarilla. Ahora se mira el CÓDIGO, y lo que no es una relación
+       * ausente se enseña con su texto.
+       *
+       * Los tres se piden juntos porque las tarjetas no significan nada
+       * sin los tres.
+       */
+      const malo = [e, l, c].find((r) => r.error)
+      if (malo) {
+        const d = diagnosticarLectura(AVISO_SIN_MIGRACION, {
+          message: malo.error,
+          code: malo.codigo,
+        })
+        avisar(d.falta, d.avisoModulo)
+        setError(d.mensaje)
         setEjecuciones([])
         setLogistica([])
         setCostos([])
         return
       }
-      avisar(false)
+      avisar(false, null)
       setError(null)
       setEjecuciones(e.datos)
       setLogistica(l.datos)

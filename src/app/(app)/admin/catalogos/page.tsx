@@ -306,6 +306,16 @@ export default async function CatalogosPage() {
           label: 'Etiquetas (separadas por coma)',
           tipo: 'text',
         },
+        // Contra qué sirve el producto, según su etiqueta (migración 71).
+        // Es texto LIBRE y no una lista cerrada: nadie mantiene un
+        // catálogo de plagas, y obligar a darlas de alta antes de poder
+        // anotarlas deja el campo vacío. Lo que se aplicó de verdad se
+        // anota en la ejecución, que puede no coincidir con el bote.
+        {
+          key: 'objetivos_control',
+          label: 'Objetivos de control',
+          tipo: 'etiquetas',
+        },
         { key: 'activo', label: 'Activo', tipo: 'checkbox' },
       ],
       filas: materiales ?? [],

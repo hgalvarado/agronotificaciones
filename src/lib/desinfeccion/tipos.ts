@@ -198,6 +198,10 @@ export type FilaProducto = {
   costo_total: number
   cantidad_envases: number
   tipo_envase: string | null
+  /** Contra qué se aplicó ESTE día (migración 71). */
+  objetivos_control: string[] | null
+  /** Lo que dice la etiqueta del producto, al lado de lo que se anotó. */
+  objetivos_catalogo: string[] | null
   /** Lo que decía el catálogo ESE día, al lado de lo que se capturó. */
   precio_catalogo: number | null
   mz_regadas: number
@@ -661,6 +665,16 @@ export type LineaProducto = {
   /** Cómo llegó al campo. */
   cantidadEnvases: string
   tipoEnvase: string
+  /**
+   * Contra qué se aplicó ESTE día (migración 71).
+   *
+   * Nace con lo que dice la etiqueta del producto —lo pone un disparador
+   * al insertar— y se puede cambiar: el mismo químico se aplica contra
+   * cosas distintas según la presión que haya en el lote, y guardar sólo
+   * el del catálogo sería contestar con el bote en vez de con lo que
+   * pasó.
+   */
+  objetivosControl: string[]
 }
 
 export const LINEA_PRODUCTO_VACIA: LineaProducto = {
@@ -670,6 +684,7 @@ export const LINEA_PRODUCTO_VACIA: LineaProducto = {
   costoLitro: '',
   cantidadEnvases: '',
   tipoEnvase: '',
+  objetivosControl: [],
 }
 
 /**

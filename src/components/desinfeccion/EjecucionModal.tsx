@@ -35,6 +35,7 @@ import {
 import { Acordeon } from '@/components/ui/Acordeon'
 import { Alerta, Boton, Campo, Entrada, Grupo, Insignia, Selector } from '@/components/ui/Primitivos'
 import { EntradaReloj } from '@/components/ui/EntradaReloj'
+import { EntradaEtiquetas } from '@/components/ui/EntradaEtiquetas'
 import { IconCheck, IconLock, IconPlus, IconTrash } from '@/components/ui/Icons'
 import { n2 } from '@/lib/trasplante/formato'
 import { hoyIso } from '@/lib/fechas'
@@ -566,7 +567,13 @@ export function EjecucionModal({
                         // más, se guarda más: el que está en el lote
                         // sabe mejor que el plan.
                         <p className="mt-1.5 px-0.5 text-[11px] text-slate-400">
-                          Planeadas {n2(lote.mz_planeadas)} · ya desinfectadas{' '}
+                          {/* **Del ciclo de la cabecera, no de la
+                              temporada** (migración 72). Se dice cuál
+                              es: el mismo lote se siembra dos veces al
+                              año y un número sin ciclo al lado no se
+                              puede revisar. */}
+                          Planeadas {n2(lote.mz_planeadas)}
+                          {entrada.ciclo ? ` en el ciclo ${entrada.ciclo}` : ''} · ya desinfectadas{' '}
                           {n2(lote.mz_ejecutadas)} ·{' '}
                           <strong className="text-slate-600">
                             quedan {n2(lote.mz_restantes)} mz
@@ -1057,6 +1064,26 @@ export function EjecucionModal({
                               </Selector>
                             </Campo>
                           </div>
+
+                          {/* Contra qué se aplicó ESTE día (migración 71).
+                              Nace con lo que dice la etiqueta del producto
+                              y se puede cambiar: el mismo químico se usa
+                              contra cosas distintas según la presión que
+                              haya en el lote, y guardar sólo el del
+                              catálogo sería contestar con el bote en vez
+                              de con lo que pasó. */}
+                          <Campo
+                            etiqueta="Objetivos de control"
+                            ayuda="Contra qué se aplicó hoy. Viene de la etiqueta del producto y se puede cambiar: escribe y pulsa Enter."
+                            className="mt-2"
+                          >
+                            <EntradaEtiquetas
+                              valores={q.objetivosControl}
+                              onCambiar={(v) => cambiarProducto(i, { objetivosControl: v })}
+                              disabled={bloqueada('aplicacion')}
+                              placeholder="Nematodos, hongos de suelo…"
+                            />
+                          </Campo>
 
                           <div className="mt-2 grid grid-cols-3 gap-2">
                             <Campo etiqueta="Dosis/mz">

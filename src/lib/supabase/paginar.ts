@@ -29,7 +29,13 @@
  * de la pantalla y obligaría a un `as` en cada llamada. El tipo bueno lo
  * pone quien llama, en `leerTodo<Fila>`, que es donde se sabe.
  */
-export type Tramo = { data: unknown; error: { message: string } | null }
+export type Tramo = {
+  data: unknown
+  // **El código viaja con el mensaje.** Se perdía aquí, y sin él la
+  // pantalla no podía distinguir «falta la vista» de «no tienes
+  // permiso»: encendía el aviso de «corre las migraciones» para todo.
+  error: { message: string; code?: string | null } | null
+}
 
 /** Filas por viaje. Mil es el tope por defecto de PostgREST. */
 export const POR_TRAMO = 1000
@@ -48,6 +54,8 @@ const TRAMOS_MAXIMOS = 200
 export type Todo<T> = {
   datos: T[]
   error: string | null
+  /** El código de Postgres o de PostgREST, para poder diagnosticar. */
+  codigo: string | null
   /** `false` sólo si se alcanzó el freno: lo que se ve está incompleto. */
   completo: boolean
 }
@@ -66,7 +74,9 @@ export async function leerTodo<T>(
   for (let vuelta = 0; vuelta < TRAMOS_MAXIMOS; vuelta++) {
     const desde = vuelta * tamano
     const { data, error } = await tramo(desde, desde + tamano - 1)
-    if (error) return { datos: todas, error: error.message, completo: false }
+    if (error) {
+      return { datos: todas, error: error.message, codigo: error.code ?? null, completo: false }
+    }
 
     const lote = (data as T[] | null) ?? []
     todas.push(...lote)
@@ -74,8 +84,8 @@ export async function leerTodo<T>(
     // Un tramo corto es el final. Un tramo VACÍO también, y hay que
     // tratarlo aparte: sin esto, una consulta que devolviera siempre
     // cero filas daría vueltas hasta el freno.
-    if (lote.length < tamano) return { datos: todas, error: null, completo: true }
+    if (lote.length < tamano) return { datos: todas, error: null, codigo: null, completo: true }
   }
 
-  return { datos: todas, error: null, completo: false }
+  return { datos: todas, error: null, codigo: null, completo: false }
 }

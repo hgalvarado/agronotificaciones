@@ -24,6 +24,7 @@ import { Modal } from '@/components/ui/Modal'
 import { SelectorMultiple } from '@/components/ui/SelectorMultiple'
 import { Alerta, Boton, Campo, Entrada } from '@/components/ui/Primitivos'
 import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
+import { EntradaEtiquetas } from '@/components/ui/EntradaEtiquetas'
 import type { CampoCatalogo } from './CatalogoTable'
 
 export function FormularioCatalogo({
@@ -157,7 +158,13 @@ export function FormularioCatalogo({
       <div className="flex flex-col gap-4">
         {camposTexto.map((c, i) => (
           <Campo key={c.key} etiqueta={c.label} requerido={c.requerido}>
-            {c.tipo === 'multiseleccion' ? (
+            {c.tipo === 'etiquetas' ? (
+              <EntradaEtiquetas
+                valores={arrays[c.key] ?? []}
+                onCambiar={(v) => setArrays((prev) => ({ ...prev, [c.key]: v }))}
+                aria-label={c.label}
+              />
+            ) : c.tipo === 'multiseleccion' ? (
               <SelectorMultiple
                 etiqueta=""
                 opciones={(c.opciones ?? []).map((o) => ({ valor: o.value, etiqueta: o.label }))}

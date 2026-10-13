@@ -37,6 +37,7 @@ import type {
   LineaPersonal,
   LineaProducto,
 } from './tipos'
+import type { FilaInforme } from './informe'
 
 export type Resultado = { ok: boolean; mensaje: string }
 
@@ -48,8 +49,16 @@ export function faltaMigracion(mensaje: string | null | undefined): boolean {
   return t.includes('does not exist') || t.includes('schema cache')
 }
 
-/** Lo que devuelve una lectura: los datos, y por qué no hay si no los hay. */
-export type Lectura<T> = { datos: T[]; error: string | null }
+/**
+ * Lo que devuelve una lectura: los datos, y por qué no hay si no los hay.
+ *
+ * `codigo` es el de Postgres o PostgREST. Va aparte del mensaje porque
+ * es lo único con lo que la pantalla puede distinguir «falta la vista»
+ * de «no tienes permiso»: sin él, cualquier fallo encendía el aviso de
+ * «corre las migraciones» y mandaba a la persona a ejecutar SQL que ya
+ * tenía puesto.
+ */
+export type Lectura<T> = { datos: T[]; error: string | null; codigo?: string | null }
 
 /* ================================================================== */
 /* PLAN                                                                */
@@ -576,6 +585,10 @@ export async function guardarEjecucion(
       costo_litro: aNumeroCero(q.costoLitro),
       cantidad_envases: Math.trunc(aNumeroCero(q.cantidadEnvases)),
       tipo_envase: q.tipoEnvase.trim() || null,
+      // Vacío NO se manda: así el disparador de la 71 puede heredar lo
+      // que dice la etiqueta del producto. Mandar un arreglo vacío sería
+      // afirmar «no se aplicó contra nada», que es otra cosa.
+      ...(q.objetivosControl.length > 0 ? { objetivos_control: q.objetivosControl } : {}),
     }
     if (q.id) {
       const { error } = await cliente
@@ -837,7 +850,7 @@ export async function eliminarLogistica(ids: string[]): Promise<Resultado> {
 export async function leerCostos(
   temporadaId: string | null
 ): Promise<Lectura<FilaCosto & { id: string }>> {
-  const { datos, error } = await leerTodo<FilaCosto>((desde, hasta) => {
+  const { datos, error, codigo } = await leerTodo<FilaCosto>((desde, hasta) => {
     let q = createClient()
       .from('v_desinfeccion_costos')
       .select('*')
@@ -847,7 +860,39 @@ export async function leerCostos(
     if (temporadaId) q = q.eq('temporada_id', temporadaId)
     return q
   })
-  return { datos: datos.map((d) => ({ ...d, id: d.lote_temporada_id })), error }
+  return { datos: datos.map((d) => ({ ...d, id: d.lote_temporada_id })), error, codigo }
+}
+
+/**
+ * El informe ejecutivo: el flujo entero de cada lote y ciclo.
+ *
+ * Una sola consulta a `v_desinfeccion_informe_ejecutivo`, que ya trae
+ * los tiempos, la agronomía, el dinero y las desviaciones. La reja la
+ * pone la vista sobre `desinfeccion_reporte`, así que aquí no se filtra
+ * por permiso: lo que no se puede ver, la base no lo manda.
+ */
+export async function leerInforme(
+  temporadaId: string | null,
+  zonaId: string | null = null
+): Promise<Lectura<FilaInforme & { id: string }>> {
+  const { datos, error, codigo } = await leerTodo<FilaInforme>((desde, hasta) => {
+    let q = createClient()
+      .from('v_desinfeccion_informe_ejecutivo')
+      .select('*')
+      .order('lote_nomenclatura', { ascending: true })
+      .order('ciclo', { ascending: true })
+      .range(desde, hasta)
+    if (temporadaId) q = q.eq('temporada_id', temporadaId)
+    if (zonaId) q = q.eq('zona_id', zonaId)
+    return q
+  })
+  // La cuadrícula identifica por `id`, y aquí la fila es el lote EN UN
+  // CICLO: los dos ciclos del mismo lote son dos campañas distintas.
+  return {
+    datos: datos.map((d) => ({ ...d, id: `${d.lote_temporada_id}|${d.ciclo}` })),
+    error,
+    codigo,
+  }
 }
 
 /* ================================================================== */
@@ -903,17 +948,26 @@ export async function tarifaPuesto(puestoId: string, fecha: string): Promise<num
  * alcances distintos. El recorte lo hace la BASE (migración 67): esta
  * función se llama por RPC y filtrar sólo en React sería poner la puerta
  * donde nadie la va a usar para entrar.
+ *
+ * `ciclo` recorta el área al ciclo que se está capturando (migración
+ * 72). Sin él, un lote planificado en el ciclo 1 y otra vez en el 2
+ * llegaba con las manzanas de los dos sumadas, y esas manzanas son el
+ * divisor con el que se reparte el químico: un área inflada es una
+ * dosis mal calculada. `null` —la pestaña, que enseña el catálogo de la
+ * temporada entera— sigue sumándolos a propósito.
  */
 export async function leerLotes(
   temporadaId: string,
   ejecucionId: string | null = null,
-  pantalla: 'desinfeccion_plan' | 'desinfeccion_ejecucion' = 'desinfeccion_ejecucion'
+  pantalla: 'desinfeccion_plan' | 'desinfeccion_ejecucion' = 'desinfeccion_ejecucion',
+  ciclo: number | null = null
 ): Promise<CatalogosDesinfeccion['lotes']> {
   if (!temporadaId) return []
   const { data, error } = await createClient().rpc('fn_lotes_desinfeccion', {
     p_temporada_id: temporadaId,
     p_ejecucion_id: ejecucionId || null,
     p_pantalla: pantalla,
+    p_ciclo: ciclo && ciclo > 0 ? ciclo : null,
   })
   if (error) return []
 

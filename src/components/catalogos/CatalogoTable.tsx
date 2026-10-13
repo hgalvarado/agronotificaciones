@@ -12,6 +12,7 @@ import {
   type FilaTabla,
   type PermisosTabla,
 } from '@/components/ui/TablaAvanzada'
+import { EntradaEtiquetas } from '@/components/ui/EntradaEtiquetas'
 import { FormularioCatalogo } from './FormularioCatalogo'
 import { ImportarExcel, type RelacionCatalogo } from './ImportarExcel'
 import { PreciosMaterial } from './PreciosMaterial'
@@ -36,7 +37,13 @@ export type CampoCatalogo = {
    * maneja el tractor y lleva el teléfono de la finca, y obligarla a ser
    * una cosa sola la sacaría de una de las dos listas.
    */
-  tipo: 'text' | 'number' | 'date' | 'checkbox' | 'select' | 'multiseleccion'
+  /**
+   * `etiquetas` guarda un `text[]` de texto LIBRE, sin catálogo detrás.
+   * Es distinto de `multiseleccion`, que elige de una lista cerrada: los
+   * objetivos de control no están dados de alta en ningún sitio y
+   * obligar a crearlos antes de anotarlos deja el campo vacío.
+   */
+  tipo: 'text' | 'number' | 'date' | 'checkbox' | 'select' | 'multiseleccion' | 'etiquetas'
   requerido?: boolean
   /** Para 'select' y 'multiseleccion': los valores que admite la columna. */
   opciones?: { value: string; label: string }[]
@@ -62,6 +69,9 @@ const TIPOS = {
   select: 'seleccion',
   // Se filtra y se ordena como texto: es la lista de valores, legible.
   multiseleccion: 'texto',
+  // Se filtra y se ordena como texto, pero el filtro es multivalor: una
+  // fila pasa si CONTIENE la etiqueta marcada (migración 69).
+  etiquetas: 'texto',
 } as const
 
 /**
@@ -189,7 +199,7 @@ export function CatalogoTable({
     // cabecera sale de las filas y ofrece «Operador, Jornal» como si
     // fuera un valor, además de esconder las etiquetas que todavía no
     // tiene nadie (migración 69).
-    multivalor: c.tipo === 'multiseleccion',
+    multivalor: c.tipo === 'multiseleccion' || c.tipo === 'etiquetas',
     onCrearOpcion:
       c.tipo === 'select' && c.catalogo
         ? (texto: string) => crearEnCatalogo(c.catalogo!, texto)
@@ -207,7 +217,35 @@ export function CatalogoTable({
               onCambiar={(v) => editarCelda(String(f.id), c.key, v)}
             />
           )
-        : undefined,
+        : c.tipo === 'etiquetas'
+          ? (f) => {
+              const puestas = Array.isArray(f[c.key]) ? (f[c.key] as string[]) : []
+              if (efectivos.editar !== true) {
+                return puestas.length === 0 ? (
+                  <span className="text-xs text-slate-300">—</span>
+                ) : (
+                  <span className="flex flex-wrap gap-1">
+                    {puestas.map((v) => (
+                      <span
+                        key={v}
+                        className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold text-slate-600"
+                      >
+                        {v}
+                      </span>
+                    ))}
+                  </span>
+                )
+              }
+              return (
+                <EntradaEtiquetas
+                  valores={puestas}
+                  onCambiar={(v) => editarCelda(String(f.id), c.key, v)}
+                  className="min-w-[180px]"
+                  aria-label={c.label}
+                />
+              )
+            }
+          : undefined,
     // La clave natural no entra en los cambios en masa: poner el mismo
     // código en veinte filas sólo puede terminar mal.
     sinMasivo: c.key === clave,

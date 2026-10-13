@@ -29,6 +29,7 @@ import { GridPlan } from './GridPlan'
 import { GridEjecucion } from './GridEjecucion'
 import { GridLogistica } from './GridLogistica'
 import { DesinfeccionDashboard } from './DesinfeccionDashboard'
+import { InformeEjecutivo } from './InformeEjecutivo'
 
 type Pestana = 'plan' | 'ejecucion' | 'logistica' | 'reporte'
 
@@ -82,9 +83,12 @@ export function DesinfeccionTabs({
   // Se abre por la Ejecución, que es donde se trabaja a diario… salvo
   // que no se tenga, en cuyo caso por la primera que sí.
   const [pestana, setPestana] = useState<Pestana>('ejecucion')
+  /** Qué mirada de Reportes está puesta. El informe primero: es el nuevo. */
+  const [vista, setVista] = useState<'informe' | 'tablero'>('informe')
   const activa: Pestana | null =
     visibles.find((p) => p.valor === pestana)?.valor ?? visibles[0]?.valor ?? null
   const [sinMigracion, setSinMigracion] = useState(false)
+  const [causaMigracion, setCausaMigracion] = useState<string | null>(null)
   const [lotes, setLotes] = useState<LoteDesinfeccion[]>([])
   /**
    * Los operadores, en estado y no sólo en la prop.
@@ -104,7 +108,21 @@ export function DesinfeccionTabs({
     setOperadores(await leerJornales())
   }, [])
 
-  const avisarMigracion = useCallback((falta: boolean) => setSinMigracion(falta), [])
+  /*
+   * El aviso de instalación, con su causa.
+   *
+   * Antes era un booleano suelto y el texto estaba escrito en la
+   * pantalla: cualquier fallo de lectura —un permiso, la caché de
+   * esquema de PostgREST, la red— acababa diciendo «corre las
+   * migraciones 59 y 60», que para quien ya las tenía puestas es un
+   * diagnóstico falso y un callejón sin salida. Ahora quien detecta el
+   * fallo manda también el texto, y sólo lo manda cuando la base dice
+   * que la relación no existe.
+   */
+  const avisarMigracion = useCallback((falta: boolean, causa: string | null = null) => {
+    setSinMigracion(falta)
+    setCausaMigracion(causa)
+  }, [])
 
   useEffect(() => {
     let vivo = true
@@ -155,7 +173,8 @@ export function DesinfeccionTabs({
     [catalogos.estaciones, zonasPermitidas]
   )
 
-  if (sinMigracion) return <Alerta tono="ambar">{AVISO_SIN_MIGRACION}</Alerta>
+  if (sinMigracion)
+    return <Alerta tono="ambar">{causaMigracion ?? AVISO_SIN_MIGRACION}</Alerta>
 
   if (visibles.length === 0) {
     return (
@@ -242,16 +261,58 @@ export function DesinfeccionTabs({
         />
       )}
 
-      {/* Desde la 67 la pestaña es un TABLERO, no una lista: cuatro
-          tarjetas, dos gráficos y la auditoría por lote debajo. El
-          reporte de lotes sigue existiendo dentro, como tabla. */}
+      {/*
+        Dos miradas, y son dos preguntas distintas (migración 71):
+
+          · El INFORME baja a un lote y cuenta su historia entera —cuándo,
+            si se cumplió, dónde se fue el dinero, contra qué se aplicó—.
+            Es lo que se lleva a una reunión.
+          · El TABLERO de la 67 mira el periodo completo: cuál se me fue
+            de precio, cuántas manzanas llevo. Es lo que se mira a diario.
+
+        Juntarlas en una pantalla haría que ninguna de las dos se
+        contestara bien, así que conviven con un interruptor.
+      */}
       {activa === 'reporte' && (
-        <DesinfeccionDashboard
-          temporadaId={temporadaId}
-          zonas={catalogos.zonas}
-          reglas={reglas}
-          onSinMigracion={avisarMigracion}
-        />
+        <div className="flex flex-col gap-3">
+          <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
+            {(
+              [
+                ['informe', 'Informe por lote'],
+                ['tablero', 'Tablero del periodo'],
+              ] as const
+            ).map(([v, texto]) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setVista(v)}
+                className={`flex-1 rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
+                  vista === v
+                    ? 'bg-white text-slate-900 shadow-[var(--shadow-card)]'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                {texto}
+              </button>
+            ))}
+          </div>
+
+          {vista === 'informe' ? (
+            <InformeEjecutivo
+              temporadaId={temporadaId}
+              zonas={catalogos.zonas}
+              reglas={reglas}
+              onSinMigracion={avisarMigracion}
+            />
+          ) : (
+            <DesinfeccionDashboard
+              temporadaId={temporadaId}
+              zonas={catalogos.zonas}
+              reglas={reglas}
+              onSinMigracion={avisarMigracion}
+            />
+          )}
+        </div>
       )}
     </div>
   )

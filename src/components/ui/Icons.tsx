@@ -128,6 +128,15 @@ export const IconCheck = ({ className }: IconProps) => (
   </Svg>
 )
 
+/** Una flecha a una bandeja: bajar un archivo. */
+export const IconDescargar = ({ className }: IconProps) => (
+  <Svg className={className}>
+    <path d="M12 3v12" />
+    <path d="m7 10 5 5 5-5" />
+    <path d="M4 21h16" />
+  </Svg>
+)
+
 /** La «i» de información. Abre el dato que no cabe en la etiqueta. */
 export const IconInfo = ({ className }: IconProps) => (
   <Svg className={className}>

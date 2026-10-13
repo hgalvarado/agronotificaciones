@@ -32,6 +32,7 @@ import {
   type SeccionEjecucion,
 } from '@/lib/desinfeccion/calculo'
 import {
+  AVISO_SIN_MIGRACION,
   buscarEjecucion,
   cambiarFase,
   editarCampoEjecucion,
@@ -43,6 +44,7 @@ import {
   salarioMinimo,
   siembrasDeLotes,
 } from '@/lib/desinfeccion/repositorioCliente'
+import { diagnosticarLectura } from '@/lib/supabase/instalacion'
 import { hoyIso } from '@/lib/fechas'
 import {
   CAUDAL_POR_OMISION,
@@ -90,7 +92,7 @@ export function GridEjecucion({
   reglas: Reglas
   usuarioId: string | null
   zonas: Set<string>
-  onSinMigracion: (falta: boolean) => void
+  onSinMigracion: (falta: boolean, causa?: string | null) => void
   /** Un jornal creado desde el selector: hay que recargar el catálogo. */
   onJornalCreado: () => void
 }) {
@@ -169,38 +171,59 @@ export function GridEjecucion({
     [puedeEditarFila]
   )
 
+  /**
+   * Qué significa que una lectura falle.
+   *
+   * **No todo error es una migración que falta.** Antes cualquier fallo
+   * —un permiso, un `select` sin conceder, la caché de esquema de
+   * PostgREST sin recargar, la red— encendía «corre las migraciones 59
+   * y 60». Quien ya las tenía puestas las volvía a correr, no pasaba
+   * nada, y la pantalla seguía amarilla sin una sola pista. La decisión
+   * vive en un solo sitio para que las seis pantallas del módulo no
+   * puedan contestar cosas distintas al mismo error.
+   */
+  const diagnosticar = useCallback(
+    (mensaje: string, codigo?: string | null) => {
+      const d = diagnosticarLectura(AVISO_SIN_MIGRACION, { message: mensaje, code: codigo })
+      onSinMigracion(d.falta, d.avisoModulo)
+      setError(d.mensaje)
+    },
+    [onSinMigracion]
+  )
+
   const recargar = useCallback(async () => {
     setCargando(true)
-    const { datos, error: e } = await leerEjecuciones(temporadaId || null)
+    const { datos, error: e, codigo } = await leerEjecuciones(temporadaId || null)
     setCargando(false)
     if (e) {
-      onSinMigracion(true)
+      diagnosticar(e, codigo)
       setFilas([])
       return
     }
     setFilas(datos)
-  }, [temporadaId, onSinMigracion])
+  }, [temporadaId, diagnosticar])
 
   useEffect(() => {
     let vivo = true
     async function cargar() {
       setCargando(true)
-      const { datos, error: e } = await leerEjecuciones(temporadaId || null)
+      const { datos, error: e, codigo } = await leerEjecuciones(temporadaId || null)
       if (!vivo) return
       setCargando(false)
       if (e) {
-        onSinMigracion(true)
+        diagnosticar(e, codigo)
         setFilas([])
         return
       }
-      onSinMigracion(false)
+      onSinMigracion(false, null)
+      setError(null)
       setFilas(datos)
     }
     void cargar()
     return () => {
       vivo = false
     }
-  }, [temporadaId, onSinMigracion])
+  }, [temporadaId, onSinMigracion, diagnosticar])
 
   /* ------------------------------ Columnas ----------------------------- */
 
@@ -538,6 +561,7 @@ export function GridEjecucion({
               costoLitro: String(q.costo_litro),
               cantidadEnvases: String(q.cantidad_envases ?? ''),
               tipoEnvase: q.tipo_envase ?? '',
+              objetivosControl: q.objetivos_control ?? [],
             }))
           : [{ ...LINEA_PRODUCTO_VACIA }]
       )
@@ -585,6 +609,11 @@ export function GridEjecucion({
   // una sola sería enseñar un número que no vale para los demás lotes. Con
   // todas, la pantalla puede decir un rango.
   const ejecucionAbierta = entrada?.id ?? ''
+  // El ciclo de la cabecera. Va ANTES del efecto porque el efecto lo
+  // lleva en sus dependencias: declararlo después lo dejaría en la zona
+  // muerta del `const` y reventaría en el render, no en la consola.
+  const cicloActual = entrada?.ciclo ?? ''
+
   useEffect(() => {
     let vivo = true
     async function cargar() {
@@ -597,20 +626,28 @@ export function GridEjecucion({
       // lista vacía puede significar «esta persona no tiene lotes en su
       // zona», y caer al respaldo volvía a enseñárselos todos: el mismo
       // fallo abierto de siempre, disfrazado de cortesía.
-      const datos = await leerLotes(temporadaId, ejecucionAbierta || null, 'desinfeccion_ejecucion')
+      // **El ciclo va obligatoriamente** (migración 72). El mismo lote
+      // se siembra dos veces en una temporada, y sin el ciclo llegaban
+      // las manzanas de los dos ciclos sumadas: el área que se sugiere
+      // aquí es la que acaba repartiendo el químico.
+      const datos = await leerLotes(
+        temporadaId,
+        ejecucionAbierta || null,
+        'desinfeccion_ejecucion',
+        Number(cicloActual) || null
+      )
       if (vivo) setLotesTurno(datos)
     }
     void cargar()
     return () => {
       vivo = false
     }
-  }, [temporadaId, ejecucionAbierta, lotes])
+  }, [temporadaId, ejecucionAbierta, cicloActual, lotes])
 
   const lotesDelTurno = useMemo(
     () => lineasLote.map((l) => l.loteTemporadaId).filter(Boolean).sort().join(','),
     [lineasLote]
   )
-  const cicloActual = entrada?.ciclo ?? ''
 
   useEffect(() => {
     let vivo = true

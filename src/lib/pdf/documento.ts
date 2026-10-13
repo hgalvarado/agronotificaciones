@@ -29,7 +29,27 @@ export type OpcionesTexto = {
   negrita?: boolean
   /** Gris en 0..1. 0 es negro. */
   gris?: number
+  /**
+   * Color, en 0..1 por canal. Manda sobre `gris` si se pone.
+   *
+   * Entra en la 71, con el informe ejecutivo: un acta de entrega se lee
+   * igual en gris, pero un informe que va a gerencia necesita separar
+   * las tres piezas del costo de un vistazo, y en una escala de grises
+   * tres tonos próximos se confunden al fotocopiarlos.
+   */
+  color?: Rgb
   alineacion?: 'izquierda' | 'derecha' | 'centro'
+}
+
+/** Un color, en 0..1 por canal. */
+export type Rgb = { r: number; g: number; b: number }
+
+/** El operador de relleno de un color o de un gris. */
+function tinta(color: Rgb | undefined, gris: number, trazo = false): string {
+  const op = trazo ? 'RG' : 'rg'
+  const opGris = trazo ? 'G' : 'g'
+  if (!color) return `${dos(gris)} ${opGris}`
+  return `${dos(color.r)} ${dos(color.g)} ${dos(color.b)} ${op}`
 }
 
 /** Carta, en puntos. Es el tamaño en el que se imprime en Honduras. */
@@ -113,7 +133,7 @@ export class Pagina {
     if (op.alineacion === 'centro') izquierda = x - anchoTexto(texto, tamano, op.negrita) / 2
 
     this.ordenes.push(
-      `BT ${dos(gris)} g ${fuente} ${dos(tamano)} Tf ` +
+      `BT ${tinta(op.color, gris)} ${fuente} ${dos(tamano)} Tf ` +
         `1 0 0 1 ${dos(izquierda)} ${dos(this.aPdf(y) - tamano)} Tm ` +
         `(${aCadenaPdf(texto)}) Tj ET`
     )
@@ -155,9 +175,9 @@ export class Pagina {
     return cursor
   }
 
-  linea(desde: Punto, hasta: Punto, gris = 0.6, grosor = 0.6): this {
+  linea(desde: Punto, hasta: Punto, gris = 0.6, grosor = 0.6, color?: Rgb): this {
     this.ordenes.push(
-      `${dos(gris)} G ${dos(grosor)} w ${dos(desde.x)} ${dos(this.aPdf(desde.y))} m ` +
+      `${tinta(color, gris, true)} ${dos(grosor)} w ${dos(desde.x)} ${dos(this.aPdf(desde.y))} m ` +
         `${dos(hasta.x)} ${dos(this.aPdf(hasta.y))} l S`
     )
     return this
@@ -169,17 +189,25 @@ export class Pagina {
     y: number,
     ancho: number,
     alto: number,
-    op: { gris?: number; relleno?: number; grosor?: number } = {}
+    op: {
+      gris?: number
+      relleno?: number
+      grosor?: number
+      /** Color del relleno. Manda sobre `relleno`. */
+      color?: Rgb
+      /** Color del borde. Manda sobre `gris`. */
+      colorBorde?: Rgb
+    } = {}
   ): this {
     const yPdf = this.aPdf(y + alto)
-    if (op.relleno !== undefined) {
+    if (op.relleno !== undefined || op.color) {
       this.ordenes.push(
-        `${dos(op.relleno)} g ${dos(x)} ${dos(yPdf)} ${dos(ancho)} ${dos(alto)} re f`
+        `${tinta(op.color, op.relleno ?? 1)} ${dos(x)} ${dos(yPdf)} ${dos(ancho)} ${dos(alto)} re f`
       )
     }
-    if (op.gris !== undefined) {
+    if (op.gris !== undefined || op.colorBorde) {
       this.ordenes.push(
-        `${dos(op.gris)} G ${dos(op.grosor ?? 0.6)} w ` +
+        `${tinta(op.colorBorde, op.gris ?? 0.6, true)} ${dos(op.grosor ?? 0.6)} w ` +
           `${dos(x)} ${dos(yPdf)} ${dos(ancho)} ${dos(alto)} re S`
       )
     }
