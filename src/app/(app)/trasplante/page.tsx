@@ -36,7 +36,7 @@ export default async function TrasplantePage({
   // El plan y la siembra diaria son dos pantallas desde la 66: con
   // cualquiera se entra, y dentro se dibuja lo que corresponda.
   if (!puede(permisos, 'trasplante_plan', 'ver') && !puede(permisos, 'trasplante_diario', 'ver')) {
-    redirect('/tickets')
+    redirect('/')
   }
 
   const sp = await searchParams

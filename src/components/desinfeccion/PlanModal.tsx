@@ -151,8 +151,12 @@ export function PlanModal({
           </Campo>
 
           <Campo etiqueta="Lote" requerido className="sm:col-span-2">
+            {/* Buscable: el panel sale al `body` y no lo recorta el
+                modal (migración 71). Y con treinta lotes, un buscador
+                vale más que una rueda. */}
             <Selector
               value={entrada.loteTemporadaId}
+              buscable
               onChange={(e) => void elegirLote(e.target.value)}
             >
               <option value="">Elige el lote…</option>

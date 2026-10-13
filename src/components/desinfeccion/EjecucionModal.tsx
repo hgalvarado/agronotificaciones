@@ -34,6 +34,7 @@ import {
 } from '@/components/catalogos/FormularioCatalogo'
 import { Acordeon } from '@/components/ui/Acordeon'
 import { Alerta, Boton, Campo, Entrada, Grupo, Insignia, Selector } from '@/components/ui/Primitivos'
+import { EntradaReloj } from '@/components/ui/EntradaReloj'
 import { IconCheck, IconLock, IconPlus, IconTrash } from '@/components/ui/Icons'
 import { n2 } from '@/lib/trasplante/formato'
 import { hoyIso } from '@/lib/fechas'
@@ -516,8 +517,17 @@ export function EjecucionModal({
                       className="rounded-xl bg-slate-50 p-2.5 ring-1 ring-inset ring-slate-200"
                     >
                       <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_7rem_2.5rem] sm:items-start">
+                        {/* `buscable` fuerza el panel con buscador, y ese
+                            panel va al `body` con un portal, colocado por
+                            `anclarPanel` (migración 71). Dentro del modal,
+                            la rueda nativa quedaba recortada por el
+                            `overflow` del acordeón: no es cuestión de
+                            `z-index`, el recorte lo hace el padre. Y con
+                            treinta lotes, un buscador vale más que una
+                            lista. */}
                         <Selector
                           value={l.loteTemporadaId}
+                          buscable
                           onChange={(e) => elegirLote(i, e.target.value)}
                           disabled={bloqueada('lotes')}
                           className="w-full min-w-0"
@@ -614,29 +624,7 @@ export function EjecucionModal({
                         disabled={bloqueada('preriego')}
                       />
                     </Campo>
-                    <Campo
-                      etiqueta="Duración"
-                      ayuda="Fin menos inicio, cruzando la medianoche. La calcula la base."
-                    >
-                      <Entrada value={`${n2(duracionPreriego)} h`} readOnly disabled />
-                    </Campo>
                     {campoDdt(ddtPreriego)}
-                    <Campo etiqueta="Hora de inicio">
-                      <Entrada
-                        type="time"
-                        value={entrada.horaInicioPreriego}
-                        onChange={(e) => cambiar({ horaInicioPreriego: e.target.value })}
-                        disabled={bloqueada('preriego')}
-                      />
-                    </Campo>
-                    <Campo etiqueta="Hora de fin" ayuda="Puede ser del día siguiente.">
-                      <Entrada
-                        type="time"
-                        value={entrada.horaFinPreriego}
-                        onChange={(e) => cambiar({ horaFinPreriego: e.target.value })}
-                        disabled={bloqueada('preriego')}
-                      />
-                    </Campo>
                     <Campo etiqueta="Observaciones" className="sm:col-span-2">
                       <Entrada
                         value={entrada.obsPreriego}
@@ -645,6 +633,17 @@ export function EjecucionModal({
                       />
                     </Campo>
                   </div>
+
+                  <Reloj
+                    titulo="Riego del preriego"
+                    ayuda="Fin menos inicio, cruzando la medianoche. La duración la calcula la base."
+                    inicio={entrada.horaInicioPreriego}
+                    fin={entrada.horaFinPreriego}
+                    total={duracionPreriego}
+                    bloqueado={bloqueada('preriego')}
+                    onInicio={(v) => cambiar({ horaInicioPreriego: v })}
+                    onFin={(v) => cambiar({ horaFinPreriego: v })}
+                  />
 
                   <CuadrillaFase
                     fase="1_Preriego"
@@ -792,70 +791,6 @@ export function EjecucionModal({
                       </Selector>
                     </Campo>
 
-                    {/* Las cuatro fases del riego se capturan IGUAL desde la
-                        62: con reloj. La presurización era la última que se
-                        escribía a mano y por eso la única que no cruzaba la
-                        medianoche. */}
-                    <Campo etiqueta="Inicio de presurización">
-                      <Entrada
-                        type="time"
-                        value={entrada.inicioPresurizacion}
-                        onChange={(e) => cambiar({ inicioPresurizacion: e.target.value })}
-                        disabled={bloqueada('aplicacion')}
-                      />
-                    </Campo>
-                    <Campo etiqueta="Fin de presurización" ayuda="Puede ser del día siguiente.">
-                      <Entrada
-                        type="time"
-                        value={entrada.finPresurizacion}
-                        onChange={(e) => cambiar({ finPresurizacion: e.target.value })}
-                        disabled={bloqueada('aplicacion')}
-                      />
-                    </Campo>
-
-                    <Campo etiqueta="Inicio de inyección">
-                      <Entrada
-                        type="time"
-                        value={entrada.horaInicioIny}
-                        onChange={(e) => cambiar({ horaInicioIny: e.target.value })}
-                        disabled={bloqueada('aplicacion')}
-                      />
-                    </Campo>
-                    <Campo etiqueta="Fin de inyección" ayuda="Puede ser del día siguiente.">
-                      <Entrada
-                        type="time"
-                        value={entrada.horaFinIny}
-                        onChange={(e) => cambiar({ horaFinIny: e.target.value })}
-                        disabled={bloqueada('aplicacion')}
-                      />
-                    </Campo>
-
-                    <Campo etiqueta="Inicio de lavado">
-                      <Entrada
-                        type="time"
-                        value={entrada.horaInicioLavado}
-                        onChange={(e) => cambiar({ horaInicioLavado: e.target.value })}
-                        disabled={bloqueada('aplicacion')}
-                      />
-                    </Campo>
-                    <Campo etiqueta="Fin de lavado">
-                      <Entrada
-                        type="time"
-                        value={entrada.horaFinLavado}
-                        onChange={(e) => cambiar({ horaFinLavado: e.target.value })}
-                        disabled={bloqueada('aplicacion')}
-                      />
-                    </Campo>
-
-                    <Campo etiqueta="Horas de presurización" ayuda="Fin menos inicio.">
-                      <Entrada value={`${n2(presurizacion)} h`} readOnly disabled />
-                    </Campo>
-                    <Campo etiqueta="Horas de inyección" ayuda="Fin menos inicio.">
-                      <Entrada value={`${n2(inyeccion)} h`} readOnly disabled />
-                    </Campo>
-                    <Campo etiqueta="Horas de lavado" ayuda="Fin menos inicio.">
-                      <Entrada value={`${n2(lavado)} h`} readOnly disabled />
-                    </Campo>
 
                     <Campo
                       etiqueta="Total de horas de riego"
@@ -889,6 +824,54 @@ export function EjecucionModal({
                       <Entrada value={n2(agua)} readOnly disabled className="font-bold" />
                     </Campo>
                   </div>
+
+                  {/* ------------------- Los tres relojes ---------------- */}
+                  {/*
+                    Cada fase del riego va en su marco, con **inicio, fin y
+                    total en la misma fila** (migración 71). Antes los seis
+                    relojes y los tres totales caían en una rejilla de dos
+                    columnas y salían en este orden: inicio y fin de
+                    presurización, inicio y fin de inyección, inicio y fin
+                    de lavado, y los tres totales al final, lejos de la
+                    fase a la que pertenecen. En el teléfono eran nueve
+                    filas y había que desplazar para comprobar si el total
+                    de la presurización cuadraba con lo que se acababa de
+                    escribir.
+
+                    Juntos, el total se lee al lado de los dos relojes que
+                    lo producen: si sale un número raro, se ve en el acto
+                    cuál de los dos está mal tecleado.
+                  */}
+                  <Reloj
+                    titulo="Presurización"
+                    ayuda="Desde que se abre hasta que la línea toma presión. Puede cruzar la medianoche."
+                    inicio={entrada.inicioPresurizacion}
+                    fin={entrada.finPresurizacion}
+                    total={presurizacion}
+                    bloqueado={bloqueada('aplicacion')}
+                    onInicio={(v) => cambiar({ inicioPresurizacion: v })}
+                    onFin={(v) => cambiar({ finPresurizacion: v })}
+                  />
+                  <Reloj
+                    titulo="Inyección"
+                    ayuda="Mientras entra el químico. Es la única que cuenta para las ppm."
+                    inicio={entrada.horaInicioIny}
+                    fin={entrada.horaFinIny}
+                    total={inyeccion}
+                    bloqueado={bloqueada('aplicacion')}
+                    onInicio={(v) => cambiar({ horaInicioIny: v })}
+                    onFin={(v) => cambiar({ horaFinIny: v })}
+                  />
+                  <Reloj
+                    titulo="Lavado"
+                    ayuda="Agua limpia para sacar el químico de la tubería. No diluye: no entra en las ppm."
+                    inicio={entrada.horaInicioLavado}
+                    fin={entrada.horaFinLavado}
+                    total={lavado}
+                    bloqueado={bloqueada('aplicacion')}
+                    onInicio={(v) => cambiar({ horaInicioLavado: v })}
+                    onFin={(v) => cambiar({ horaFinLavado: v })}
+                  />
 
                   {/* ------------------ Las calibraciones --------------- */}
                   {/* Agrupadas desde la 68. Los seis números iban en una
@@ -1211,6 +1194,73 @@ export function EjecucionModal({
         />
       )}
     </Modal>
+  )
+}
+
+/**
+ * Una fase del riego, con sus dos relojes y su total.
+ *
+ * ── Por qué los tres juntos (migración 71) ──────────────────────────
+ *
+ * Los seis relojes del turno y los tres totales caían en una rejilla de
+ * dos columnas, y los totales quedaban al final, lejos de la fase a la
+ * que pertenecen. En el teléfono eran nueve filas, y comprobar si el
+ * total de la presurización cuadraba con lo tecleado obligaba a
+ * desplazar arriba y abajo.
+ *
+ * Juntos, el total se lee al lado de los dos relojes que lo producen: si
+ * sale un número raro, se ve en el acto cuál de los dos está mal
+ * tecleado. Tres columnas en pantalla ancha; en el teléfono los dos
+ * relojes comparten fila —son dos campos cortos— y el total va debajo,
+ * que es el orden en que se escriben.
+ *
+ * Las horas se teclean con `EntradaReloj` y no con la rueda nativa:
+ * seis ruedas a pantalla completa por turno es medio minuto de gestos
+ * para algo que se teclea con una mano en diez segundos.
+ */
+function Reloj({
+  titulo,
+  ayuda,
+  inicio,
+  fin,
+  total,
+  bloqueado,
+  onInicio,
+  onFin,
+}: {
+  titulo: string
+  ayuda: string
+  inicio: string
+  fin: string
+  total: number
+  bloqueado: boolean
+  onInicio: (hora: string) => void
+  onFin: (hora: string) => void
+}) {
+  return (
+    <Grupo titulo={titulo} ayuda={ayuda} columnas="grid-cols-2 sm:grid-cols-3">
+      <Campo etiqueta="Inicio">
+        <EntradaReloj
+          value={inicio}
+          onChange={onInicio}
+          disabled={bloqueado}
+          aria-label={`Inicio de ${titulo.toLowerCase()}`}
+        />
+      </Campo>
+      <Campo etiqueta="Fin" ayuda="Puede ser del día siguiente.">
+        <EntradaReloj
+          value={fin}
+          onChange={onFin}
+          disabled={bloqueado}
+          aria-label={`Fin de ${titulo.toLowerCase()}`}
+        />
+      </Campo>
+      {/* El total ocupa la fila entera en el teléfono: es el que se mira
+          para comprobar, y partido en media columna se lee peor. */}
+      <Campo etiqueta="Total" className="col-span-2 sm:col-span-1">
+        <Entrada value={`${n2(total)} h`} readOnly disabled className="font-bold" />
+      </Campo>
+    </Grupo>
   )
 }
 

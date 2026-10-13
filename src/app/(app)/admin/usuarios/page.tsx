@@ -6,7 +6,7 @@ import { GestionUsuarios } from '@/components/admin/GestionUsuarios'
 export default async function UsuariosPage() {
   const { perfil } = await getPerfilActual()
   const permisos = await getPermisos()
-  if (!puede(permisos, 'usuarios', 'ver')) redirect('/tickets')
+  if (!puede(permisos, 'usuarios', 'ver')) redirect('/')
 
   const supabase = await createClient()
   const [{ data: roles }, { data: departamentos }, { data: zonas }] = await Promise.all([

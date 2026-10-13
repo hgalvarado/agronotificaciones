@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 import { IconCampana, IconTicket, IconX } from './Icons'
 import { formatearFechaHora } from '@/lib/estados'
+import { anclarA, type Anclaje } from '@/lib/ui/anclaje'
 
 type Aviso = {
   id: number
@@ -27,12 +28,18 @@ const INTERVALO = 60_000
 /**
  * Campana de avisos.
  *
- * `compacta` es la del encabezado del celular: el panel se manda al body con
- * un portal porque el encabezado tiene `backdrop-blur`, y cualquier ancestro
- * con filtro o transform se convierte en el marco de referencia de los
- * elementos `fixed` — el mismo problema que nos recortaba los modales.
- * Sin `compacta` es la de la barra lateral de escritorio, donde el panel se
- * ancla al botón y se abre hacia arriba.
+ * **Las DOS variantes van por portal desde la 71.** La del celular ya iba:
+ * el encabezado tiene `backdrop-blur`, y cualquier ancestro con filtro o
+ * transform se convierte en el marco de referencia de los elementos
+ * `fixed`. La de escritorio se dibujaba DENTRO de la barra lateral, que
+ * tiene su propio desplazamiento, así que el panel se recortaba contra el
+ * borde de la barra y quedaba medio tapado —el mismo fallo que ya se
+ * arregló en los selectores: no es cuestión de `z-index`, el recorte lo
+ * hace el padre—.
+ *
+ * Dónde cae lo decide `anclarPanel`, que mira los cuatro bordes y voltea
+ * el panel si no cabe. Es la misma cuenta que usan los demás paneles del
+ * sistema, así que el gesto se comporta igual en todos.
  */
 export function CampanaNotificaciones({ compacta = false }: { compacta?: boolean }) {
   const supabase = createClient()
@@ -40,6 +47,9 @@ export function CampanaNotificaciones({ compacta = false }: { compacta?: boolean
   const [abierto, setAbierto] = useState(false)
   const [avisos, setAvisos] = useState<Aviso[] | null>(null)
   const contenedor = useRef<HTMLDivElement>(null)
+  const boton = useRef<HTMLButtonElement>(null)
+  /** Dónde cae el panel de escritorio. Se calcula al abrir, no al pintar. */
+  const [caja, setCaja] = useState<Anclaje | null>(null)
   // El panel del celular vive en el body por el portal, así que no está
   // dentro de `contenedor`: sin su propia referencia, tocar el panel para
   // desplazarlo contaría como un clic de afuera y lo cerraría.
@@ -99,7 +109,14 @@ export function CampanaNotificaciones({ compacta = false }: { compacta?: boolean
   async function alternar() {
     if (abierto) {
       setAbierto(false)
+      setCaja(null)
       return
+    }
+    // La posición se lee en el CLIC y no durante el render: mirar
+    // `ref.current` en el cuerpo del render es lo que prohíbe
+    // `react-hooks/refs`.
+    if (!compacta && boton.current) {
+      setCaja(anclarA(boton.current, { ancho: 320, altoDeseado: 420 }))
     }
     setAbierto(true)
     setAvisos(null)
@@ -122,12 +139,17 @@ export function CampanaNotificaciones({ compacta = false }: { compacta?: boolean
 
   const clasesPanel = compacta
     ? 'fixed inset-x-3 top-16 z-50 max-h-[70svh] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[var(--shadow-raised)]'
-    : 'absolute bottom-full left-0 z-50 mb-2 max-h-[70svh] w-80 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[var(--shadow-raised)]'
+    : 'fixed z-50 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[var(--shadow-raised)]'
+
+  const estiloPanel =
+    compacta || !caja
+      ? undefined
+      : { left: caja.left, top: caja.top, width: caja.ancho, maxHeight: caja.maxAlto }
 
   const panel = !abierto ? null : (
     <>
       {compacta && <div className="fixed inset-0 z-40 bg-slate-900/20" aria-hidden="true" />}
-      <div ref={refPanel} className={clasesPanel}>
+      <div ref={refPanel} className={clasesPanel} style={estiloPanel}>
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
           <p className="text-sm font-bold text-slate-900">Avisos</p>
           <button
@@ -139,7 +161,10 @@ export function CampanaNotificaciones({ compacta = false }: { compacta?: boolean
           </button>
         </div>
 
-        <div className="max-h-[calc(70svh-3.25rem)] overflow-y-auto overscroll-contain">
+        <div
+          className="overflow-y-auto overscroll-contain"
+          style={{ maxHeight: compacta ? 'calc(70svh - 3.25rem)' : (caja?.maxAlto ?? 420) - 52 }}
+        >
           {avisos === null ? (
             <p className="px-4 py-8 text-center text-sm text-slate-400">Cargando…</p>
           ) : avisos.length === 0 ? (
@@ -189,6 +214,7 @@ export function CampanaNotificaciones({ compacta = false }: { compacta?: boolean
   return (
     <div ref={contenedor} className="relative">
       <button
+        ref={boton}
         onClick={alternar}
         className="relative rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
         aria-label={pendientes > 0 ? `${pendientes} avisos sin leer` : 'Avisos'}
@@ -202,9 +228,9 @@ export function CampanaNotificaciones({ compacta = false }: { compacta?: boolean
         )}
       </button>
 
-      {compacta && panel && typeof document !== 'undefined'
-        ? createPortal(panel, document.body)
-        : panel}
+      {/* Las dos variantes al `body`. La de escritorio también: la barra
+          lateral tiene su propio desplazamiento y recortaba el panel. */}
+      {panel && typeof document !== 'undefined' ? createPortal(panel, document.body) : null}
     </div>
   )
 }

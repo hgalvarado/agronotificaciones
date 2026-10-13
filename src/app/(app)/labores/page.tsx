@@ -11,7 +11,7 @@ import { aplanarReglas } from '@/lib/permisos/clientABAC'
 
 export default async function LaboresControlPage() {
   const permisos = await getPermisos()
-  if (!puede(permisos, 'labores', 'ver')) redirect('/tickets')
+  if (!puede(permisos, 'labores', 'ver')) redirect('/')
 
   // Las reglas enteras, no su resultado: editar y eliminar se deciden
   // fila por fila, porque el alcance y la condición miran el registro.

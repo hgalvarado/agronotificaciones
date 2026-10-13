@@ -7,7 +7,7 @@ import { ControlHorometros } from '@/components/horometro/ControlHorometros'
 export default async function HorometrosPage() {
   // Pantalla de revisión: sólo quien tenga el permiso de la pantalla.
   const permisos = await getPermisos()
-  if (!puede(permisos, 'horometros', 'ver')) redirect('/tickets')
+  if (!puede(permisos, 'horometros', 'ver')) redirect('/')
 
   // Las reglas enteras, no su resultado: editar y eliminar se deciden
   // fila por fila.

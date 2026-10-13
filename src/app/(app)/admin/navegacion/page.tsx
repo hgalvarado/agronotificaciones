@@ -15,7 +15,7 @@ export default async function NavegacionPage() {
   // todo el sistema. La base aplica su propia regla en
   // `fn_guardar_navegacion`.
   const permisos = await getPermisos()
-  if (!puede(permisos, 'permisos', 'editar')) redirect('/tickets')
+  if (!puede(permisos, 'permisos', 'editar')) redirect('/')
 
   const supabase = await createClient()
 

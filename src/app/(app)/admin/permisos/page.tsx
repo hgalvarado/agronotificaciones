@@ -15,7 +15,7 @@ export default async function PermisosPage() {
   const permisos = await getPermisos()
   // Desde la 43, quien tenga «Permisos: editar» entra y puede guardar: la
   // policy de la tabla `permisos` acepta exactamente eso.
-  if (!puede(permisos, 'permisos', 'editar')) redirect('/tickets')
+  if (!puede(permisos, 'permisos', 'editar')) redirect('/')
 
   const supabase = await createClient()
   const [

@@ -108,7 +108,14 @@ export function LogisticaModal({
           </Campo>
 
           <Campo etiqueta="Equipo" requerido ayuda="De aquí sale la tarifa por hora.">
-            <Selector value={entrada.equipoId} onChange={(e) => cambiar({ equipoId: e.target.value })}>
+            {/* Buscables: el panel sale al `body` con `anclarPanel` y el
+                modal ya no lo recorta (migración 71). Son los tres
+                catálogos largos de esta pantalla. */}
+            <Selector
+              value={entrada.equipoId}
+              buscable
+              onChange={(e) => cambiar({ equipoId: e.target.value })}
+            >
               <option value="">Elige el equipo…</option>
               {catalogos.equipos.map((x) => (
                 <option key={x.id} value={x.id}>
@@ -124,6 +131,7 @@ export function LogisticaModal({
           >
             <Selector
               value={entrada.implementoId}
+              buscable
               onChange={(e) => cambiar({ implementoId: e.target.value })}
             >
               <option value="">Sin implemento</option>
@@ -138,6 +146,7 @@ export function LogisticaModal({
           <Campo etiqueta="Operador">
             <Selector
               value={entrada.operadorId}
+              buscable
               onChange={(e) => cambiar({ operadorId: e.target.value })}
             >
               <option value="">Sin operador</option>

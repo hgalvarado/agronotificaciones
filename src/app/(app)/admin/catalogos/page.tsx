@@ -22,7 +22,7 @@ export default async function CatalogosPage() {
     (g) => puede(permisos, g.pantalla, 'editar') || puede(permisos, g.pantalla, 'crear')
   )
 
-  if (!GRUPOS.some((g) => puedeVerBloque(g.pantalla))) redirect('/tickets')
+  if (!GRUPOS.some((g) => puedeVerBloque(g.pantalla))) redirect('/')
 
   const [
     { data: zonas },

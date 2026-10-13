@@ -235,6 +235,120 @@ dice.
 
 ## 3. Registro de cambios
 
+### 2026-10-13 — La portada, la hora que se teclea y las ayudas que no estorban (sin migración)
+
+> **Sin SQL, así que no consume número.** Se habló como «la 71», pero no
+> crea ningún archivo en `sql/`. La siguiente migración de verdad será la
+> 71. Es la misma regla que obligó a renumerar la 68 como 67.
+
+#### 1. La raíz dejó de forzar la entrada a tickets
+
+`/` redirigía a `/tickets` sin preguntar nada. Para quien no tiene
+permiso sobre tickets —un capataz de riego, alguien de desinfección— eso
+era entrar a la aplicación por una puerta que no es la suya: una lista
+vacía, sin un aviso que lo explicara, y la sensación de que el sistema
+está roto.
+
+Ahora `/` es una portada que **no consulta ningún módulo**: sólo el
+perfil, que el armazón ya tiene cargado para poner el nombre en la barra.
+No hay pantalla a la que se pueda entrar sin permiso porque no hay nada
+que pedir.
+
+Vive en `(app)/page.tsx` y no en la raíz del proyecto para que traiga el
+armazón: una bienvenida sin menú es una pantalla sin salida. Y la marca
+de las dos barras pasa a enlazar a `/`, que es donde todo el mundo busca
+el inicio.
+
+Los ocho `redirect('/tickets')` de los guardianes de permiso pasan a
+`redirect('/')`, y el middleware también: mandar a alguien a una pantalla
+que no es la suya es recibirlo con una lista vacía.
+
+#### 2. La hora se teclea: `EntradaReloj`
+
+Capturar un turno son **seis horas distintas** —preriego, presurización,
+inyección y lavado, cada una con inicio y fin—. El `type="time"` nativo
+abre en el teléfono una rueda a pantalla completa que tapa el formulario,
+pide dos gestos por cifra y en Android obliga a pasar por AM/PM aunque el
+turno se anote en reloj de 24 horas. Seis ruedas es medio minuto de
+gestos para algo que se teclea en diez segundos.
+
+Y la captura se hace **con una mano**, de pie en el lote, a veces con
+guantes.
+
+```
+0 8 3 0  →  08:30
+7 4 5    →  07:45   (una sola cifra de hora se completa sola)
+8        →  08:00
+```
+
+Lo que **no** hace: recortar. «2500» no se guarda como 23:59 — se
+descarta. Un 23:59 inventado es una hora que nadie escribió y que nadie
+va a revisar; un hueco al menos se ve.
+
+#### 3. Las ayudas bajan a un icono
+
+La explicación de cada campo se escribía debajo, en gris pequeño. Dicha
+una vez aclara; repetida en diecisiete campos **duplica el alto del
+formulario**, y en un teléfono con el teclado subido eso son dos campos a
+la vista en vez de cinco.
+
+Y la ayuda se lee **una vez**: quien captura turnos todos los días ya
+sabe que el fin puede ser del día siguiente. Lo que necesita a diario es
+ver más campos.
+
+Ahora va detrás de una «i» junto a la etiqueta (`components/ui/Ayuda`),
+en un globo que sale al `body` con `anclarPanel` para que no lo recorte
+el acordeón. `ayudaVisible` deja a la vista los pocos avisos que hay que
+leer siempre.
+
+> **`<button>` es un elemento ETIQUETABLE.** El icono vive dentro del
+> `<label>` del campo, y el navegador le da la etiqueta al primer
+> elemento etiquetable que encuentra: con un `<button>` ahí, **el campo
+> se quedaba sin nombre accesible** y tocar el texto dejaba de enfocarlo.
+> Es un `span` con `role="button"` por eso, no por capricho.
+
+Y Escape cierra **el globo y nada más**: se escucha en fase de captura y
+se para la propagación. Sin eso, pedir una ayuda y cerrarla se llevaba
+por delante el formulario entero — perder un turno a medio capturar por
+pedir una explicación es el peor intercambio posible.
+
+#### 4. Cada fase del riego, con su total al lado
+
+Los seis relojes y los tres totales caían en una rejilla de dos columnas,
+y los totales quedaban al final, lejos de la fase a la que pertenecen. En
+el teléfono eran nueve filas, y comprobar si el total de la presurización
+cuadraba obligaba a desplazar arriba y abajo.
+
+Ahora cada fase es un marco con **inicio, fin y total en la misma fila**:
+si sale un número raro, se ve en el acto cuál de los dos relojes está mal
+tecleado.
+
+#### 5. Los paneles que se recortaban
+
+- **La campana de escritorio** se dibujaba dentro de la barra lateral,
+  que tiene su propio desplazamiento, así que el panel se recortaba
+  contra el borde de la barra. La variante del teléfono ya iba por
+  portal; ahora van las dos, colocadas con `anclarPanel`.
+- **El selector de lotes de la ejecución**, el del plan y los tres
+  catálogos largos de logística pasan a `buscable`: su panel sale al
+  `body`. Dentro de un modal, la rueda nativa la recortaba el `overflow`
+  del acordeón — no es cuestión de `z-index`, el recorte lo hace el
+  padre.
+
+#### Cómo se comprobó
+
+- `treloj.mjs` (**22 verdes**, nuevo): las cuatro cifras, las abreviadas,
+  y que una hora imposible se descarte en vez de recortarse.
+- `tportada.mjs` (**12 verdes**, nuevo): saluda por el primer nombre,
+  lleva marca, lema, versión y crédito, **no toca Supabase ni pide
+  permisos**, y ya no queda un solo `redirect('/tickets')` en el código.
+- `tdesinf` (**102 verdes**): los relojes tecleados, los tres marcos con
+  su total dentro, el globo de ayuda saliendo al `body` y cerrándose con
+  Escape **sin cerrar el formulario**, y el panel de lotes fuera del
+  modal.
+- Las diecisiete suites SQL y las dieciocho de navegador, más los bancos
+  de hidratación y de sesión. `tsc`, `eslint` y `build` limpios.
+
 ### 2026-10-12 — El congelamiento, encontrado: era la hidratación (migraciones 69 y 70)
 
 #### Lo que estaba pasando
@@ -2050,6 +2164,20 @@ Cosas que ya costaron una sesión. No volver a tropezar.
   que deja un hueco en `sql/`, hay que corregirlo antes de escribir una
   línea — un hueco en la secuencia es una migración que alguien buscará y
   no encontrará.
+- **`<button>` es un elemento ETIQUETABLE.** Dentro de un `<label>`, el
+  navegador le da la etiqueta a él y el campo se queda sin nombre
+  accesible. Un icono de ayuda dentro de una etiqueta va como `span` con
+  `role="button"`.
+- **Escape dentro de un globo no puede cerrar el formulario de atrás.**
+  Se escucha en fase de captura y se para la propagación; si no, pedir
+  una ayuda y cerrarla pierde lo que se llevaba escrito.
+- **Una ayuda escrita debajo de cada campo duplica el alto del
+  formulario.** Se lee una vez y se paga todos los días. Va detrás de una
+  «i», salvo los avisos que hay que leer siempre (`ayudaVisible`).
+- **`type="time"` en un teléfono es una rueda a pantalla completa.** Con
+  seis horas por turno, se teclea: `EntradaReloj` admite «0830».
+- **Una portada no consulta módulos.** Si pide permisos, se cae por el
+  permiso que falta, que es justo lo que viene a evitar.
 - **`typeof window === 'undefined'` NO protege de un desajuste de
   hidratación.** Durante la hidratación `window` ya existe, así que se
   toma la rama del cliente y el marcado difiere del que mandó el

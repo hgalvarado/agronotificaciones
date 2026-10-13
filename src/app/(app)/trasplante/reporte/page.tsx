@@ -50,7 +50,7 @@ export default async function ReporteTrasplantePage({
 }) {
   const permisos = await getPermisos()
   if (!puede(permisos, 'trasplante_plan', 'ver') && !puede(permisos, 'trasplante_diario', 'ver')) {
-    redirect('/tickets')
+    redirect('/')
   }
 
   const sp = await searchParams
