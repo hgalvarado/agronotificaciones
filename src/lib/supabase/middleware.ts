@@ -116,7 +116,10 @@ export async function updateSession(request: NextRequest) {
 
   if (usuario && isAuthRoute) {
     const url = request.nextUrl.clone()
-    url.pathname = '/tickets'
+    // A la PORTADA y no a tickets: no todo el mundo tiene permiso ahí,
+    // y mandar a alguien a una pantalla que no es la suya es recibirlo
+    // con una lista vacía y sin explicación (migración 71).
+    url.pathname = '/'
     return NextResponse.redirect(url)
   }
 

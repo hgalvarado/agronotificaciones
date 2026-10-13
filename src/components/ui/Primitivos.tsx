@@ -4,6 +4,7 @@
 
 import Link from 'next/link'
 import type { ComponentProps, ReactNode } from 'react'
+import { Ayuda } from './Ayuda'
 
 /* ------------------------------------------------------------------ */
 /* Botón                                                               */
@@ -174,27 +175,48 @@ const baseCampo =
   'focus:border-brand-600 focus:outline-none focus:ring-4 focus:ring-brand-600/10 ' +
   'disabled:bg-slate-50 disabled:text-slate-400'
 
+/**
+ * Un campo con su etiqueta.
+ *
+ * **`ayuda` ya no se escribe debajo (migración 71)**: va detrás de una
+ * «i» junto a la etiqueta. Dicha una vez aclara; repetida en diecisiete
+ * campos duplica el alto del formulario, y en un teléfono con el teclado
+ * subido eso son dos campos a la vista en vez de cinco.
+ *
+ * `ayudaVisible` deja la explicación a la vista para el caso contrario:
+ * un aviso que hay que leer SIEMPRE, no una aclaración que se lee una
+ * vez. Son pocos y se marcan a mano.
+ */
 export function Campo({
   etiqueta,
   ayuda,
+  ayudaVisible = false,
   requerido,
   className = '',
   children,
 }: {
   etiqueta: string
   ayuda?: string
+  /** Deja la ayuda escrita debajo, como antes. Para avisos, no para aclaraciones. */
+  ayudaVisible?: boolean
   requerido?: boolean
   className?: string
   children: ReactNode
 }) {
   return (
+    // Sigue siendo un `<label>` que ENVUELVE el campo: así tocar el
+    // texto enfoca el control sin necesidad de inventar un `id` para
+    // cada uno. El botón de la «i» vive dentro y cancela el gesto del
+    // `label` con `preventDefault`, para que tocarlo abra el globo en
+    // vez de enfocar el campo de atrás.
     <label className={`flex flex-col gap-1.5 ${className}`}>
-      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+      <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
         {etiqueta}
         {requerido && <span className="ml-0.5 text-red-500">*</span>}
+        {ayuda && !ayudaVisible && <Ayuda texto={ayuda} etiqueta={etiqueta} />}
       </span>
       {children}
-      {ayuda && <span className="text-xs text-slate-400">{ayuda}</span>}
+      {ayuda && ayudaVisible && <span className="text-xs text-slate-400">{ayuda}</span>}
     </label>
   )
 }
@@ -215,13 +237,20 @@ export function Campo({
 export function Grupo({
   titulo,
   ayuda,
-  columnas = 'sm:grid-cols-3',
+  columnas = 'grid-cols-1 sm:grid-cols-3',
   className = '',
   children,
 }: {
   titulo: string
   ayuda?: string
-  /** Cuántas columnas en pantalla ancha. En el teléfono siempre es una. */
+  /**
+   * Las clases de rejilla, ENTERAS.
+   *
+   * Antes esto sólo decía las columnas anchas y el componente añadía
+   * `grid-cols-1` por su cuenta. Con eso, pasar `grid-cols-2` para el
+   * teléfono dejaba las dos clases puestas a la vez y mandaba la que
+   * estuviera más abajo en la hoja de estilos, no la que se pidió.
+   */
   columnas?: string
   className?: string
   children: ReactNode
@@ -230,11 +259,14 @@ export function Grupo({
     <fieldset
       className={`mt-3 rounded-xl border border-slate-200/80 px-3 pb-3 pt-1 ${className}`}
     >
-      <legend className="px-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+      {/* La ayuda del marco va detrás de la «i», igual que la de los
+          campos (migración 71): un párrafo bajo cada leyenda son tres
+          renglones más de formulario por cada grupo. */}
+      <legend className="flex items-center gap-1.5 px-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
         {titulo}
+        {ayuda && <Ayuda texto={ayuda} etiqueta={titulo} />}
       </legend>
-      {ayuda && <p className="mb-2 text-xs text-slate-400">{ayuda}</p>}
-      <div className={`grid grid-cols-1 gap-3 ${columnas}`}>{children}</div>
+      <div className={`grid gap-3 ${columnas}`}>{children}</div>
     </fieldset>
   )
 }

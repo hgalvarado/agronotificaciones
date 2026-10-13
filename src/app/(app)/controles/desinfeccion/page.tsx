@@ -22,7 +22,7 @@ export default async function DesinfeccionPage() {
     puede(permisos, 'desinfeccion_ejecucion', 'ver') ||
     puede(permisos, 'desinfeccion_logistica', 'ver') ||
     puede(permisos, 'desinfeccion_reporte', 'ver')
-  if (!entra) redirect('/tickets')
+  if (!entra) redirect('/')
 
   const supabase = await createClient()
 

@@ -54,7 +54,7 @@ export default async function ReporteRotacionPage({
   searchParams: Promise<{ temporada?: string; desde?: string; hasta?: string }>
 }) {
   const permisos = await getPermisos()
-  if (!puede(permisos, 'rotacion', 'ver')) redirect('/tickets')
+  if (!puede(permisos, 'rotacion', 'ver')) redirect('/')
 
   const sp = await searchParams
   const supabase = await createClient()

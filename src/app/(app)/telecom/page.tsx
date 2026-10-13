@@ -20,7 +20,7 @@ export default async function TelecomPage() {
     getUsuarioActual(),
     getMisZonas(),
   ])
-  if (!puede(permisos, 'telecom', 'ver')) redirect('/tickets')
+  if (!puede(permisos, 'telecom', 'ver')) redirect('/')
 
   const [lineas, equipos, asignaciones, alertas, catalogos] = await Promise.all([
     leerLineas(),

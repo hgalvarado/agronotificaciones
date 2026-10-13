@@ -257,13 +257,19 @@ export function AppShell({
     <div className="min-h-dvh lg:flex">
       {/* ---------------- Barra lateral (escritorio) ---------------- */}
       <aside className="no-imprimir sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r border-slate-200 bg-white lg:flex">
-        <div className="flex items-center gap-2.5 px-5 py-5">
+        {/* La marca es el camino de vuelta a la portada (migración 71).
+            Es donde todo el mundo busca el inicio, y sin eso la portada
+            sólo se alcanzaba escribiendo la dirección a mano. */}
+        <Link
+          href="/"
+          className="flex items-center gap-2.5 rounded-xl px-5 py-5 transition-colors hover:bg-slate-50"
+        >
           <Logo tamano={36} />
           <div>
             <p className="text-sm font-bold leading-tight text-slate-900">AgroNotificaciones</p>
             <p className="text-[11px] text-slate-400">Maquinaria agrícola</p>
           </div>
-        </div>
+        </Link>
 
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3">
           {visibles.map((item) => {
@@ -363,13 +369,13 @@ export function AppShell({
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Encabezado móvil */}
         <header className="no-imprimir sticky top-0 z-20 flex items-center justify-between border-b border-slate-200 bg-white/85 px-4 py-3 backdrop-blur-md lg:hidden">
-          <div className="flex items-center gap-2.5">
+          <Link href="/" className="flex min-w-0 items-center gap-2.5" aria-label="Ir al inicio">
             <Logo tamano={32} className="rounded-lg" />
-            <div>
-              <p className="text-sm font-bold leading-tight text-slate-900">{nombre}</p>
-              <p className="text-[11px] text-slate-400">{rolNombre}</p>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-bold leading-tight text-slate-900">{nombre}</p>
+              <p className="truncate text-[11px] text-slate-400">{rolNombre}</p>
             </div>
-          </div>
+          </Link>
           <div className="flex items-center gap-0.5">
             <SelectorTema compacto />
             {verAvisos && <CampanaNotificaciones compacta />}

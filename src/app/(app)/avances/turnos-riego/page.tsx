@@ -14,7 +14,7 @@ export default async function TurnosRiegoPage() {
     getUsuarioActual(),
     getMisZonas(),
   ])
-  if (!puede(permisos, 'turnos_riego', 'ver')) redirect('/tickets')
+  if (!puede(permisos, 'turnos_riego', 'ver')) redirect('/')
 
   const supabase = await createClient()
 

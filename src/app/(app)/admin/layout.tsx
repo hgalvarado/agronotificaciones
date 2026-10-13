@@ -6,7 +6,7 @@ import { PANTALLAS_CATALOGO } from '@/lib/catalogos/grupos'
 /**
  * El grupo de administración ya no se decide por rol.
  *
- * Antes decía `if (!esAdmin && !esTorre) redirect('/tickets')`, así que a
+ * Antes decía `if (!esAdmin && !esTorre) redirect('/')`, así que a
  * un usuario al que se le daba permiso de ver Catálogos o Tarifas la
  * plataforma lo sacaba igual — justo lo que él reportó. Ahora se entra si
  * tiene permiso de al menos una de las pantallas de aquí, y cada pantalla
@@ -29,7 +29,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     { pantalla: 'permisos', href: '/admin/navegacion', etiqueta: 'Navegación' },
   ].filter((s) => puede(permisos, s.pantalla, 'ver'))
 
-  if (secciones.length === 0) redirect('/tickets')
+  if (secciones.length === 0) redirect('/')
 
   return (
     <div className="flex flex-col">

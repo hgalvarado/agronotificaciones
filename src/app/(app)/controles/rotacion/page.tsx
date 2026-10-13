@@ -26,7 +26,7 @@ export default async function RotacionPage({
   searchParams: Promise<{ temporada?: string; corte?: string }>
 }) {
   const permisos = await getPermisos()
-  if (!puede(permisos, 'rotacion', 'ver')) redirect('/tickets')
+  if (!puede(permisos, 'rotacion', 'ver')) redirect('/')
 
   // Rotación no cuelga de un ticket: sus filas no tienen proceso ni
   // estado, así que la condición no las recorta y la decisión por fila
