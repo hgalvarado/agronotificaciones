@@ -235,6 +235,278 @@ dice.
 
 ## 3. Registro de cambios
 
+### 2026-10-14 — El informe que reventaba, el catálogo de objetivos y las dos fechas del plan (migración 75)
+
+#### 1. `cannot accumulate null arrays`: el informe no daba menos datos, no daba ninguno
+
+```
+ERROR:  cannot accumulate null arrays
+```
+
+`interno.v_desinfeccion_informe_crudo` agregaba los objetivos así:
+
+```sql
+fn_limpiar_objetivos(array(select unnest(array_agg(qu.objetivos))))
+```
+
+`qu` viene de un LEFT JOIN con los químicos. **Un turno sin químicos
+capturados —o con sólo químicos de lavado— deja `qu.objetivos` en NULO**,
+y `array_agg` sobre una columna que ya es `text[]` se niega a acumular un
+nulo. No es un aviso que recorte una columna: **la consulta entera
+revienta**, así que el informe no enseñaba menos datos, no enseñaba
+ninguno.
+
+Y era invisible desde fuera: `count(*)` no evalúa la columna, así que
+toda prueba de humo pasaba. Sólo falla cuando alguien pide
+`objetivos_control` — es decir, cuando un gerente abre el informe.
+
+La regla, de aquí en adelante: **nunca `array_agg` sobre una columna que
+ya es un arreglo.** Se desempaca con `unnest` en origen y se agregan
+ESCALARES, que admiten nulos y se filtran.
+
+Y la otra mitad, que es igual de importante: **ese desempaque va en su
+propia consulta, unida DESPUÉS de agrupar.** Unirlo antes multiplica las
+filas de `regado`, y un químico con tres objetivos triplicaría las
+manzanas y los costos del lote. Es la forma silenciosa de romper esto, y
+`t75` la vigila con números exactos.
+
+#### 2. Los objetivos dejan de ser texto libre
+
+La 71 los hizo `text[]` libre a propósito —nadie mantiene un catálogo de
+plagas, y obligar a darlas de alta deja el campo vacío— y dejó el precio
+anotado como deuda: «Nematodos» y «nematodos» eran dos objetivos
+distintos en el informe.
+
+Ahora hay catálogo `public.objetivos_control` (código, nombre, grupo),
+gobernado por `catalogo_cultivos`, con el nombre único **sin distinguir
+mayúsculas**. Pero cerrarlo a secas habría traído el problema contrario:
+el día que aparece una plaga que no está dada de alta, quien captura
+tendría que abandonar el turno a medio llenar e irse a Catálogos. En la
+práctica eso no se hace — se elige lo más parecido y el dato queda mal.
+Por eso el selector **crea desde su propio buscador**, sin
+`router.refresh()`, igual que el alta de personal.
+
+**Nada de lo ya escrito se pierde**: la migración rescata con `unnest` lo
+que exista en `materiales` y en `desinfeccion_ejecucion_productos` y lo
+da de alta con grupo «General».
+
+Lo que se guarda sigue siendo el NOMBRE y no el identificador: la columna
+es `text[]` y lo que se lee es lo que está escrito. Guardar ids obligaría
+a resolverlos en cada vista y en el PDF, y dejaría lo anotado antes de la
+75 sin poder enseñarse al lado.
+
+#### 3. El equipo de aplicación
+
+Con qué se aplicó —sistema de riego, inyección u otra cosa— no se
+guardaba, y es lo primero que se pregunta cuando un turno sale raro.
+«Otros» **obliga a decir cuál**: un «Otros» a secas no contesta nada
+dentro de un año, que es justo el hueco que el campo venía a llenar. Y al
+cambiar de opción el detalle se limpia solo —dejarlo colgando sería
+basura que alguien leería como buena—.
+
+Va en un DISPARADOR y no sólo en un CHECK porque la limpieza no la puede
+hacer un CHECK: un CHECK rechaza, no corrige.
+
+#### 4. Las dos fechas del plan
+
+El plan sabía cuándo aplicar, pero no cuándo preparar el suelo ni cuándo
+se levanta el lote.
+
+- `desinfeccion_plan.dias_preriego` + `fecha_preriego` **generada**.
+- `variedades.ddt_cosecha` → `fecha_cosecha` en la vista del plan.
+
+**Vacío no es cero, en los dos extremos de la cadena.** «No se ha
+planificado el preriego» y «se preriega el mismo día que se aplica» son
+dos cosas distintas; la segunda se escribe con un cero. Eso obligó a una
+rama propia en la edición en celda, donde todos los numéricos mandaban
+vacío como 0: borrar la celda habría inventado una fecha de preriego
+igual a la de aplicación.
+
+Y sin `ddt_cosecha` en la variedad **no se inventa una fecha**: va en
+nulo y la pantalla dice dónde se configura. Una fecha inventada aquí
+acaba en el calendario de la finca.
+
+#### 5. Cuatro cosas que salieron al hacerlo
+
+- **La trampa de la columna generada.** `fecha_aplicacion` ya es generada,
+  y Postgres no deja que una generada se apoye en otra: «cannot use
+  generated column in column generation expression». Hay que repetir la
+  suma entera — `(fecha_siembra_congelada + dias_aplicacion) +
+  dias_preriego` — y el módulo puro repite la misma expresión por lo
+  mismo, no por descuido.
+- **Un valor elegido que no está en la lista se escondía.**
+  `SelectorMultiple` caía en «1 seleccionado» cuando el valor no estaba
+  entre las opciones. Eso tapaba dos casos que importan: el objetivo
+  recién creado y, sobre todo, **lo anotado en texto libre antes de la
+  75**, que sigue guardado y que nadie dio de alta. Ahora se enseña el
+  valor tal cual y se añade al final de la lista, para poder quitarlo.
+- **Un banco que pasa con el *bundle* viejo no prueba nada.** `build.mjs`
+  falló al faltarle los stubs del catálogo nuevo, y `tdesinf` siguió
+  dando 124 verdes contra el código de antes. Es la trampa de la 68 otra
+  vez: el banco sólo vale si se reconstruye, y por eso `buildLibs` y
+  `build` van antes de correr nada.
+- **Una prueba que depende de la paridad de los clics es frágil.** El
+  `tdesinf` alternaba una sección con dos clics y daba por hecho en qué
+  estado quedaba; al cambiar qué sección abre el banner de guardado, el
+  segundo clic la cerró. Ahora se deja en el estado pedido, se tarde lo
+  que se tarde.
+
+#### Cómo se comprobó
+
+`t75` (39) nuevo contra PostgreSQL 16 real: el informe con un turno sin
+químicos, con sólo químicos de lavado y con tres químicos de 1, 2 y 0
+objetivos —y las manzanas y el costo SIN multiplicar—; el catálogo con su
+reja probada contra dos usuarios de verdad (el capturador lee pero no da
+de alta); el rescate del texto libre, idempotente; el equipo con sus tres
+opciones y los tres rechazos; y las dos fechas al día exacto, con el cero
+distinguido del nulo.
+
+En el navegador a 390 px: `tdesinf` 136 (el selector de catálogo, el alta
+desde el buscador y el equipo con su «Otros»), `texcelplan` 57 (la
+columna opcional, con el vacío distinguido del cero), `tinforme` 41 (el
+hito de cosecha). Veintiuna suites SQL y veintidós de navegador, más los
+bancos de hidratación y sesión. `tsc`, `eslint` y `build` limpios.
+
+### 2026-10-14 — La fase 4, personas con decimales y los avisos que señalan (migraciones 73 y 74)
+
+#### 1. El lavado de cinta no se podía capturar
+
+Después de inyectar hay que lavar la cinta: **otra gente, otro químico,
+otro día**. Todo eso caía dentro de «3 · Aplicación» o no se anotaba, y
+el costo de CERRAR un turno quedaba escondido dentro del de aplicarlo.
+
+Entra como cuarta fase en los dos enums, y el `4_Lavado` va en **archivo
+propio** (la 73): es la trampa #14 de esta misma bitácora, y la 74 usa el
+valor nuevo en un CHECK, en un DEFAULT y en tres `FILTER`. Juntos, el
+archivo entero reventaría con «unsafe use of new value».
+
+Lo que el lavado **no** hace, y es a propósito:
+
+- **No calcula ppm.** No es una dilución: es agua que enjuaga una
+  tubería, no agua que lleva producto al suelo. `ppm_calculada`,
+  `agua_total_m3` y `producto_puro_litros` van en NULO y no en cero — un
+  cero diría «salieron cero ppm», que es una afirmación; aquí la
+  pregunta no aplica.
+- **No hereda objetivos de control.** Enjuagar no es aplicar «contra
+  nematodos», y heredar el objetivo del catálogo sería afirmarlo en el
+  informe. Lo vacía un disparador al insertar **y otro al actualizar**:
+  `fn_objetivos_por_omision` es BEFORE INSERT solamente, así que sin el
+  segundo un UPDATE podía colarlos después.
+
+Las ppm y los objetivos AGREGADOS del informe y de la ejecución pasan a
+mirar sólo `'3_Aplicacion'` por lo mismo. Y `dosis_mz_real` también: se
+compara contra un plan que no tiene línea de lavado, así que sumarle los
+litros del enjuague inventaría una sobredosis contra algo que nunca se
+previó.
+
+Los COSTOS sí lo suman todo —el lavado se paga—, y
+`costo_personal_lavado` sale aparte en las tres vistas para poder
+contestar cuánto cuesta cerrar un turno. `fase_mas_cara` ya compara las
+tres.
+
+#### 2. Una persona no siempre es una persona entera
+
+Un estacionero que atiende tres turnos pone **un tercio** de su jornal en
+cada uno. `cantidad_personas integer` obligaba a escribir 1 —y a inflar
+el costo tres veces— o 0, que el CHECK rechazaba.
+
+Pasa a `numeric(6,2)`, con tope de 500: sin tope, un dedo resbalado mete
+11 en vez de 1.1 y el costo del turno se multiplica por diez sin que
+nada chille.
+
+**El `Math.trunc` del repositorio era el fallo gemelo.** Guardaba
+`Math.trunc(aNumeroCero(p.cantidadPersonas)) || 1`: 0.33 se truncaba a 0
+y el `|| 1` lo subía a 1. Aunque la columna hubiera admitido decimales,
+el navegador los habría tirado antes de llegar.
+
+El costo se redondea ahora a dos decimales **en los dos sitios** —el
+disparador y el módulo puro—: con 0.33 personas la pantalla decía
+1,234.5567 y el informe 1,234.56.
+
+#### 3. El mismo químico en dos fases
+
+La llave única era `(ejecucion_id, producto_id)`, así que el ácido de la
+inyección y el ácido del lavado eran la misma fila y la segunda
+rebotaba. Pasa a `(ejecucion_id, fase, producto_id)`. Repetirlo DENTRO de
+una fase sigue prohibido, que eso sí es un renglón duplicado.
+
+#### 4. Los avisos señalan, en vez de describir
+
+`validarEjecucion` devuelve UN texto: el primer problema. Sirve para no
+guardar basura, pero deja a la persona buscando a ojo cuál de los
+cuarenta campos se queja — y con el acordeón plegado, ni sabe en qué
+sección mirar. Peor: si el problema no encajaba en ninguna de las tres
+expresiones regulares, **se pulsaba Guardar y no pasaba nada**, que para
+quien está en campo es la aplicación colgada.
+
+`validarFormularioDetallado` devuelve las dos cosas que la pantalla
+necesita para señalar: el mapa `campo → qué corregir` y el resumen por
+sección. Con eso:
+
+- El borde del campo se pinta en rojo y debajo sale qué escribir **con un
+  ejemplo** («ej. 0.33, 0.5 o 2»). El color es un segundo canal, nunca el
+  único.
+- La cabecera del acordeón lleva «⚠️ Revisar datos» **aunque esté
+  plegada**, que es justo cuando hace falta.
+- Al guardar se abre la primera sección con problema y el banner dice
+  cuál es y qué pasa. Si el fallo viene de la base, lleva además una
+  línea `Detalle técnico para supervisor: [code] message` — la traducción
+  al castellano es para quien captura; un `constraint` no se arregla con
+  ella.
+
+**La regla que no se podía romper: el guardado incremental.** Se asignan
+los lotes un día, se riega otro, se aplica un tercero y se lava un
+cuarto. Una sección vacía no es un error, es que todavía no le toca. Lo
+que sí es un error es una fila TOCADA y a medias. Y hasta el primer
+intento de guardar sólo se marcan los errores de FORMATO: un formulario
+que nace en rojo enseña a ignorar el rojo.
+
+#### 5. Tres cosas que salieron al hacerlo
+
+- **`fn_objetivos_en_orden` la comparten dos tablas.** Meterle
+  `new.fase` dentro reventó el alta de `materiales` entero con «record
+  "new" has no field fase»: un producto del catálogo no tiene fases.
+  Normalizar un arreglo de texto y saber qué significa una fase son dos
+  responsabilidades distintas; la segunda vive ahora en
+  `fn_objetivos_fase`, y sólo la oye la tabla que tiene fase.
+- **El `<button>` dentro del `<label>`, otra vez.** Envolví el selector
+  de producto en un `Campo` para colgarle el mensaje de error, y `Campo`
+  es un `<label>`: el botón del selector le robó el nombre accesible y
+  `tdesinf` dejó de encontrarlo. El error va como hermano, no como hijo.
+- **Doce vistas de `interno` tenían un `grant select` a
+  `authenticated`** desde antes del patrón de la 56/57. Inerte mientras
+  no haya `usage` sobre el esquema, pero una puerta entornada: el día
+  que alguien conceda `usage`, quedan abiertas sin reja. La 74 lo revoca
+  — las vistas públicas son de `postgres` y corren con los derechos de
+  su dueño, así que no hacía falta para nada.
+
+#### 6. Y una que se vio en el papel
+
+Los cinco hitos del PDF no cabían en cuatro columnas calculadas a mano:
+la siembra y «Contra el plan» acababan dibujados uno encima del otro. En
+un PDF eso no es un aviso de consola, es un informe ilegible que alguien
+lleva a una reunión. Ahora la lista se arma con lo que HAY y se reparte
+sola en filas de cuatro, y el marco crece con ella.
+
+#### Cómo se comprobó
+
+`t74` (44) nuevo contra PostgreSQL 16 real: 0.33 y 0.5 personas con la
+paridad del disparador al centavo, el mismo ácido en las dos fases sin
+colisión, el lavado sin heredar objetivos ni al insertar ni al
+actualizar —ni colándolos a mano, que el informe los ignora—, los costos
+sumando el lavado, y las rejas ABAC probadas contra un usuario zonal de
+verdad. `t59` sube a 40 con la llave y el enum nuevos.
+
+En el navegador a 390 px: `tcalc` 170 (decimales, químicos por fase, las
+cinco secciones y veintitantas del diagnóstico), `tdesinf` 124 (la
+sección 4 entera, lo que esconde, la coma que se normaliza, el borde
+rojo, el distintivo plegado y el banner), `tinforme` 39 y `tinformepdf`
+36 (el hito del lavado y el reparto de la cuadrilla, idénticos en
+pantalla y en papel).
+
+Veinte suites SQL y veintidós de navegador, más los bancos de hidratación
+y sesión. `tsc`, `eslint` y `build` limpios.
+
 ### 2026-10-13 — El aviso de «falta la migración» era un diagnóstico inventado (sin migración)
 
 El informe de desinfección enseñaba el amarillo de «corre las migraciones
@@ -2386,6 +2658,45 @@ usuario).
 
 Cosas que ya costaron una sesión. No volver a tropezar.
 
+- **Nunca `array_agg` sobre una columna que ya es un arreglo.** Un nulo
+  —de un LEFT JOIN sin pareja— revienta la consulta ENTERA con «cannot
+  accumulate null arrays», y `count(*)` no lo detecta porque no evalúa la
+  columna. Se desempaca con `unnest` en origen y se agregan escalares.
+- **Y ese desempaque va DESPUÉS de agrupar.** Unir el `unnest` antes
+  multiplica las filas y con ellas las manzanas y los costos. Es la forma
+  silenciosa de romper lo mismo.
+- **Una columna generada no se puede apoyar en otra generada.** Hay que
+  repetir la expresión entera: `(siembra + dias_aplicacion) +
+  dias_preriego`, no `fecha_aplicacion + dias_preriego`.
+- **Vacío no es cero en un numérico opcional.** La edición en celda
+  mandaba todos los numéricos a 0 al borrarlos; en `dias_preriego` eso
+  inventa una fecha de preriego igual a la de aplicación. Los nulables
+  van en su propia lista.
+- **Un valor elegido fuera de la lista tiene que enseñarse igual.** Si no,
+  lo guardado antes de cerrar el catálogo queda invisible y no se puede
+  ni quitar.
+- **Un disparador compartido no puede nombrar una columna que sólo tiene
+  una de sus tablas.** `fn_objetivos_en_orden` la usan `materiales` y
+  `desinfeccion_ejecucion_productos`; meterle `new.fase` reventó el alta
+  del catálogo entero con «record "new" has no field fase». Lo que
+  depende de la fase vive en su propia función.
+- **`Campo` es un `<label>` y `Selector` dibuja un `<button>`.** Envolver
+  un selector en un `Campo` le roba el nombre accesible al control. Es la
+  misma trampa del icono de ayuda, por otra puerta: el mensaje de error
+  de un selector va como HERMANO, no como hijo.
+- **Un permiso inerte sigue siendo un permiso.** Doce vistas de `interno`
+  llevaban `grant select` a `authenticated`, inofensivo sólo mientras no
+  hubiera `usage` sobre el esquema. Un sello que depende de que nadie
+  conceda otra cosa no es un sello: se revoca lo que no hace falta.
+- **Las posiciones calculadas a mano en el PDF se solapan en silencio.**
+  Cinco hitos en `col * n` escritos uno a uno acabaron dibujados
+  encima. Se arma la lista de lo que hay y se reparte sola; el marco
+  crece con ella.
+- **Las personas se cuentan en `numeric`, no en entero.** Un
+  `Math.trunc` en el repositorio tira el decimal antes de que la columna
+  pueda guardarlo: 0.33 se vuelve 0 y el `|| 1` lo sube a un jornal
+  entero. Si la base admite fracciones, el camino entero tiene que
+  admitirlas.
 - **«Si hay error, falta la migración» es un diagnóstico inventado.** Un
   permiso, una vista sin `grant`, la caché de esquema de PostgREST o la
   red caída no son una tabla ausente. Sólo lo son `42P01`, `42703`,

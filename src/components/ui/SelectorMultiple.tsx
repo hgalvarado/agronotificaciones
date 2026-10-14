@@ -43,12 +43,26 @@ export function SelectorMultiple({
   opciones,
   valores,
   onCambiar,
+  /**
+   * Crear lo que falta SIN salir de aquí (migración 75).
+   *
+   * Una lista cerrada resuelve el «Nematodos» contra «nematodos», pero
+   * trae su propio problema: el día que aparece una plaga que no está
+   * dada de alta, quien captura tiene que abandonar el formulario a
+   * medio llenar, irse a Catálogos y volver a empezar. En la práctica
+   * eso no se hace: se elige lo más parecido, y el dato queda mal.
+   *
+   * Recibe lo que el usuario escribió en el buscador y devuelve el
+   * valor con el que quedará marcado.
+   */
+  onCrear,
   className = '',
 }: {
   etiqueta: string
   opciones: OpcionSelector[]
   valores: string[]
   onCambiar: (valores: string[]) => void
+  onCrear?: (texto: string) => Promise<string | null>
   className?: string
 }) {
   // La posición se calcula en el CLIC: leer `ref.current` durante el
@@ -60,11 +74,20 @@ export function SelectorMultiple({
   const boton = useRef<HTMLButtonElement>(null)
 
   const marcados = useMemo(() => new Set(valores), [valores])
+  /*
+   * **Un valor que no está en la lista se enseña igual.**
+   *
+   * Antes caía en «1 seleccionado», y eso escondía dos casos que
+   * importan: el objetivo recién creado —que todavía no ha vuelto a
+   * bajar del catálogo— y, sobre todo, lo anotado en texto libre antes
+   * de la 75, que sigue guardado y que nadie dio de alta. En los dos
+   * casos el usuario tiene algo elegido y la pantalla no le dice qué.
+   */
   const resumen =
     marcados.size === 0
       ? 'Todos'
       : marcados.size === 1
-        ? (opciones.find((o) => o.valor === valores[0])?.etiqueta ?? '1 seleccionado')
+        ? (opciones.find((o) => o.valor === valores[0])?.etiqueta ?? valores[0])
         : `${marcados.size} seleccionados`
 
   function abrir(e: React.MouseEvent<HTMLButtonElement>) {
@@ -112,6 +135,7 @@ export function SelectorMultiple({
           modo={modo}
           onModo={cambiarModo}
           onCambiar={onCambiar}
+          onCrear={onCrear}
           onCerrar={() => setPosicion(null)}
         />
       )}
@@ -128,6 +152,7 @@ function Panel({
   modo,
   onModo,
   onCambiar,
+  onCrear,
   onCerrar,
 }: {
   posicion: Anclaje
@@ -138,15 +163,24 @@ function Panel({
   modo: ModoSelector
   onModo: (modo: ModoSelector) => void
   onCambiar: (valores: string[]) => void
+  onCrear?: (texto: string) => Promise<string | null>
   onCerrar: () => void
 }) {
   const [busqueda, setBusqueda] = useState('')
+  const [creando, setCreando] = useState(false)
   const panel = useRef<HTMLDivElement>(null)
 
   const listadas = useMemo(() => {
+    // Lo que está marcado pero no está en el catálogo se añade a la
+    // lista: si no, tocarlo para quitarlo sería imposible —no habría
+    // dónde tocar— y quedaría pegado al registro para siempre.
+    const sueltos = [...marcados]
+      .filter((v) => !opciones.some((o) => o.valor === v))
+      .map((v) => ({ valor: v, etiqueta: v }))
+    const todas = [...opciones, ...sueltos]
     const q = busqueda.trim().toLowerCase()
-    return q ? opciones.filter((o) => o.etiqueta.toLowerCase().includes(q)) : opciones
-  }, [opciones, busqueda])
+    return q ? todas.filter((o) => o.etiqueta.toLowerCase().includes(q)) : todas
+  }, [opciones, marcados, busqueda])
 
   useEffect(() => {
     const fuera = (e: MouseEvent) => {
@@ -236,7 +270,33 @@ function Panel({
       </div>
 
       <div className="scroll-suave max-h-60 overflow-y-auto overscroll-contain border-t border-slate-100">
-        {listadas.length === 0 && (
+        {/* Crear lo que falta, con lo escrito en el buscador ya puesto.
+            Sale cuando NADA coincide —que es cuando hace falta— y
+            también con resultados, porque «Hongos» existiendo no quiere
+            decir que «Hongos de raíz» no haga falta. */}
+        {onCrear && busqueda.trim() !== '' && (
+          <button
+            type="button"
+            disabled={creando}
+            onClick={async () => {
+              setCreando(true)
+              const valor = await onCrear(busqueda.trim())
+              setCreando(false)
+              if (!valor) return
+              // Se marca el recién creado, que es a lo que se venía.
+              onCambiar(modo === 'unica' ? [valor] : [...marcados, valor])
+              setBusqueda('')
+            }}
+            className="flex w-full items-center gap-2 border-b border-slate-100 bg-brand-50/60 px-3 py-2 text-left text-sm font-semibold text-brand-700 hover:bg-brand-50 disabled:opacity-50"
+          >
+            <span aria-hidden="true">+</span>
+            <span className="truncate">
+              {creando ? 'Creando…' : `Crear «${busqueda.trim()}»`}
+            </span>
+          </button>
+        )}
+
+        {listadas.length === 0 && !onCrear && (
           <p className="px-3 py-4 text-center text-xs text-slate-400">Ningún valor coincide.</p>
         )}
         {listadas.map((o) => (

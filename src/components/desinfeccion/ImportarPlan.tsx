@@ -309,6 +309,7 @@ export function ImportarPlan({
         ciclo: String(l.ciclo),
         fechaSiembraCongelada: l.fechaSiembra,
         diasAplicacion: String(l.diasAplicacion),
+        diasPreriego: l.diasPreriego === null ? '' : String(l.diasPreriego),
         variedadId: l.variedadId,
         productoId: l.productoId,
         dosisMz: String(l.dosisMz),

@@ -14,7 +14,26 @@
  */
 
 import { sumarDias } from '@/lib/fechas'
-import { FASES, JORNADAS, LINEA_LOTE_VACIA, LINEA_PRODUCTO_VACIA, PUESTO_OTRO, type FasePersonal, type EntradaEjecucion, type EntradaLogistica, type EntradaPlan, type EstadoDesinfeccion, type JornadaTipo, type LecturaTensiometro, type LineaLote, type LineaPersonal, type LineaProducto } from './tipos'
+import {
+  EQUIPO_OTROS,
+  FASES,
+  FASE_FINAL,
+  JORNADAS,
+  LINEA_LOTE_VACIA,
+  PUESTO_OTRO,
+  lineaProductoVacia,
+  type FasePersonal,
+  type FaseProducto,
+  type EntradaEjecucion,
+  type EntradaLogistica,
+  type EntradaPlan,
+  type EstadoDesinfeccion,
+  type JornadaTipo,
+  type LecturaTensiometro,
+  type LineaLote,
+  type LineaPersonal,
+  type LineaProducto,
+} from './tipos'
 
 /** La base sobre la que se calcula la hora extra. Es la de la migración 59. */
 export const HORAS_JORNADA = 8
@@ -38,6 +57,18 @@ export function aNumeroCero(texto: string | null | undefined): number {
   return aNumero(texto) ?? 0
 }
 
+/**
+ * Dos decimales, que es lo que la base guarda desde la 74.
+ *
+ * `fn_desinfeccion_costo_personal` redondea a dos. Si aquí no se
+ * redondeara, con 0.33 personas la pantalla diría 1,234.5567 y el
+ * informe 1,234.56: el mismo turno con dos cifras distintas, que es
+ * exactamente el fallo que el módulo puro existe para evitar.
+ */
+export function redondear2(n: number): number {
+  return Math.round((n + Number.EPSILON) * 100) / 100
+}
+
 export function factorDe(tipo: JornadaTipo): number {
   return JORNADAS.find((j) => j.valor === tipo)?.factor ?? 1.25
 }
@@ -56,12 +87,18 @@ export function factorDe(tipo: JornadaTipo): number {
  */
 export function costoPersonal(
   linea: Pick<LineaPersonal, 'cantidadPersonas' | 'horasExtras' | 'jornadaTipo'>,
-  salario: number | null | undefined
+  salario: number | null | undefined,
 ): number | null {
   if (salario === null || salario === undefined) return null
+  // **Personas con decimales desde la 74.** Un estacionero repartido
+  // entre tres turnos pone 0.33 en cada uno. `aNumeroCero` ya normaliza
+  // la coma, así que «0,33» y «0.33» son el mismo número: en el teclado
+  // del teléfono la coma es lo que sale primero.
   const personas = aNumeroCero(linea.cantidadPersonas)
   const extras = aNumeroCero(linea.horasExtras)
-  return personas * (salario + extras * (salario / HORAS_JORNADA) * factorDe(linea.jornadaTipo))
+  return redondear2(
+    personas * (salario + extras * (salario / HORAS_JORNADA) * factorDe(linea.jornadaTipo)),
+  )
 }
 
 /** El salario de una línea: el escrito, o el mínimo vigente. */
@@ -80,7 +117,7 @@ export function salarioDe(linea: LineaPersonal, minimo: number | null): number |
 export function costoCuadrilla(
   lineas: LineaPersonal[],
   minimo: number | null,
-  fase?: FasePersonal
+  fase?: FasePersonal,
 ): number | null {
   const suyas = fase ? lineas.filter((l) => l.fase === fase) : lineas
   let hay = false
@@ -91,7 +128,7 @@ export function costoCuadrilla(
     hay = true
     total += c
   }
-  return hay ? total : null
+  return hay ? redondear2(total) : null
 }
 
 /**
@@ -116,8 +153,24 @@ export function costoProducto(l: Pick<LineaProducto, 'totalLitros' | 'costoLitro
  * Desde la 60 una aplicación lleva varios —el desinfectante y el ácido, y
  * mañana otro—, así que esto es una suma y no una multiplicación.
  */
-export function costoQuimicos(lineas: LineaProducto[]): number {
-  return lineas.reduce((a, l) => a + costoProducto(l), 0)
+export function costoQuimicos(lineas: LineaProducto[], fase?: FaseProducto): number {
+  return productosDeFase(lineas, fase).reduce((a, l) => a + costoProducto(l), 0)
+}
+
+/**
+ * Los químicos de UNA fase. Sin fase, todos.
+ *
+ * El lavado de cinta usa químico propio (migración 74) y vive en la
+ * misma lista: separarlos en dos arreglos obligaría a duplicar el
+ * guardado, la limpieza y el borrado de sobrantes. Lo que los distingue
+ * es un campo, no una estructura.
+ *
+ * Una línea sin fase —las que vienen de antes de la 74— cuenta como
+ * aplicación, que es lo que eran.
+ */
+export function productosDeFase(lineas: LineaProducto[], fase?: FaseProducto): LineaProducto[] {
+  if (!fase) return lineas
+  return lineas.filter((l) => (l.fase ?? '3_Aplicacion') === fase)
 }
 
 /* ------------------------------------------------------------------ */
@@ -170,7 +223,7 @@ export function aguaTotal(e: EntradaEjecucion): number {
 export function productoPuro(
   litros: string,
   concentracion: string | null | undefined,
-  mz: number
+  mz: number,
 ): number | null {
   const pct = numeroDeTexto(concentracion)
   if (pct === null) return null
@@ -206,7 +259,7 @@ export function ppmDe(
   litros: string,
   concentracion: string | null | undefined,
   e: EntradaEjecucion,
-  mz: number
+  mz: number,
 ): number | null {
   const agua = aguaTotal(e)
   if (agua <= 0) return null
@@ -237,9 +290,10 @@ export type DesglosePpm = {
 
 export function desglosePpm(
   linea: LineaProducto,
-  material: { descripcion: string | null; codigo: string; concentracion: string | null } | undefined,
+  material:
+    { descripcion: string | null; codigo: string; concentracion: string | null } | undefined,
   e: EntradaEjecucion,
-  mz: number
+  mz: number,
 ): DesglosePpm {
   const puro = productoPuro(linea.totalLitros, material?.concentracion, mz)
   return {
@@ -376,6 +430,47 @@ export function fechaAplicacionPrevista(e: EntradaPlan): string | null {
   return sumarDias(e.fechaSiembraCongelada, Math.trunc(aNumeroCero(e.diasAplicacion)))
 }
 
+/**
+ * La fecha del preriego planificado (migración 75).
+ *
+ * Es `(siembra + días de aplicación) + días de preriego`, la MISMA
+ * expresión de la columna generada. Se repite la suma entera y no se
+ * parte de `fechaAplicacionPrevista` porque en la base no se puede:
+ * Postgres no deja que una columna generada se apoye en otra generada.
+ *
+ * **Vacío devuelve `null`, no la fecha de aplicación.** «No se ha
+ * planificado el preriego» y «se preriega el mismo día que se aplica»
+ * son dos cosas distintas, y la segunda se escribe con un cero.
+ */
+export function fechaPreriegoPrevista(e: EntradaPlan): string | null {
+  if (!e.fechaSiembraCongelada) return null
+  if ((e.diasPreriego ?? '').trim() === '') return null
+  const dias = aNumero(e.diasPreriego)
+  if (dias === null) return null
+  return sumarDias(
+    e.fechaSiembraCongelada,
+    Math.trunc(aNumeroCero(e.diasAplicacion)) + Math.trunc(dias)
+  )
+}
+
+/**
+ * La cosecha prevista: siembra + DDT de cosecha de la variedad.
+ *
+ * Se cuenta desde la SIEMBRA y no desde la aplicación: el DDT es «días
+ * desde el trasplante», y el trasplante es la siembra.
+ *
+ * Sin DDT en la variedad devuelve `null` y la pantalla lo dice. Una
+ * fecha inventada aquí acabaría en el calendario de la finca.
+ */
+export function fechaCosechaPrevista(
+  e: EntradaPlan,
+  ddtCosecha: number | null | undefined
+): string | null {
+  if (!e.fechaSiembraCongelada) return null
+  if (ddtCosecha === null || ddtCosecha === undefined || !Number.isFinite(ddtCosecha)) return null
+  return sumarDias(e.fechaSiembraCongelada, Math.trunc(ddtCosecha))
+}
+
 /** Los tres totales del plan, tal como los genera la base. */
 export function totalesPlan(e: EntradaPlan): { litros: number; costo: number; costoMz: number } {
   const dosis = aNumeroCero(e.dosisMz)
@@ -399,12 +494,10 @@ export function totalesPlan(e: EntradaPlan): { litros: number; costo: number; co
  */
 export function rangoDdt(
   fechasSiembra: string[],
-  fechaFase: string
+  fechaFase: string,
 ): { min: number; max: number } | null {
   if (!fechaFase) return null
-  const dias = fechasSiembra
-    .map((f) => ddt(f, fechaFase))
-    .filter((d): d is number => d !== null)
+  const dias = fechasSiembra.map((f) => ddt(f, fechaFase)).filter((d): d is number => d !== null)
   if (dias.length === 0) return null
   return { min: Math.min(...dias), max: Math.max(...dias) }
 }
@@ -447,7 +540,11 @@ export function nivelDeFase(estado: EstadoDesinfeccion): number {
  * sólo se esconde, nunca se concede.
  */
 export function faseCerrada(estado: EstadoDesinfeccion): boolean {
-  return nivelDeFase(estado) >= nivelDeFase('3_Aplicacion')
+  // **Hasta la FASE FINAL, que desde la 74 es el lavado de cinta.**
+  // Dejarlo en '3_Aplicacion' cerraba el formulario justo antes de la
+  // sección nueva: el turno llegaba a Aplicación, se bloqueaba, y el
+  // lavado no se podía capturar nunca.
+  return nivelDeFase(estado) >= nivelDeFase(FASE_FINAL)
 }
 
 /* ------------------------------------------------------------------ */
@@ -462,9 +559,24 @@ export function faseCerrada(estado: EstadoDesinfeccion): boolean {
  * cuadrilla se pueden repartir entre nadie — el costo se quedaría en el
  * aire. Por eso bloquea a las demás.
  */
-export type SeccionEjecucion = 'lotes' | 'preriego' | 'lecturas' | 'aplicacion'
+export type SeccionEjecucion = 'lotes' | 'preriego' | 'lecturas' | 'aplicacion' | 'lavado'
 
-export const SECCIONES: SeccionEjecucion[] = ['lotes', 'preriego', 'lecturas', 'aplicacion']
+export const SECCIONES: SeccionEjecucion[] = [
+  'lotes',
+  'preriego',
+  'lecturas',
+  'aplicacion',
+  'lavado',
+]
+
+/** Cómo se llama cada sección cuando hay que nombrarla en un aviso. */
+export const NOMBRE_SECCION: Record<SeccionEjecucion, string> = {
+  lotes: '0 · Lotes y manzanas',
+  preriego: '1 · Preriego',
+  lecturas: '2 · Lecturas',
+  aplicacion: '3 · Aplicación',
+  lavado: '4 · Lavado de cinta',
+}
 
 /**
  * ¿Esta sección ya tiene lo suyo?
@@ -478,7 +590,7 @@ export function seccionLlena(
   seccion: SeccionEjecucion,
   e: EntradaEjecucion,
   lotes: LineaLote[],
-  lecturas: LecturaTensiometro[]
+  lecturas: LecturaTensiometro[],
 ): boolean {
   switch (seccion) {
     case 'lotes':
@@ -489,6 +601,11 @@ export function seccionLlena(
       return e.fechaLecturas !== '' && lecturas.some((l) => l.lectura.trim() !== '')
     case 'aplicacion':
       return e.fechaAplicacion !== '' && totalHorasRiego(e) > 0
+    case 'lavado':
+      // El dato mínimo es la FECHA. Un lavado puede cerrarse sin químico
+      // —a veces se enjuaga sólo con agua— y sin cuadrilla propia si la
+      // misma gente de la aplicación se queda a hacerlo.
+      return e.fechaLavado !== ''
   }
 }
 
@@ -503,7 +620,7 @@ export function seccionLlena(
 export function siguienteSeccion(
   e: EntradaEjecucion,
   lotes: LineaLote[],
-  lecturas: LecturaTensiometro[]
+  lecturas: LecturaTensiometro[],
 ): SeccionEjecucion | null {
   return SECCIONES.find((s) => !seccionLlena(s, e, lotes, lecturas)) ?? null
 }
@@ -539,7 +656,7 @@ export function idsSobrantes(antes: { id: string }[], vivos: Iterable<string>): 
 export function recortarDejandoSinZona<T>(
   opciones: T[],
   zonaDe: (o: T) => string | null | undefined,
-  permitidas: Set<string> | null
+  permitidas: Set<string> | null,
 ): T[] {
   if (permitidas === null) return opciones
   return opciones.filter((o) => {
@@ -551,7 +668,7 @@ export function recortarDejandoSinZona<T>(
 /** Las lecturas que de verdad tienen algo escrito. */
 export function lecturasParaGuardar(lecturas: LecturaTensiometro[]): LecturaTensiometro[] {
   return lecturas.filter((l) =>
-    [l.punto, l.profundidad, l.lectura, l.hora, l.nota].some((v) => (v ?? '').trim() !== '')
+    [l.punto, l.profundidad, l.lectura, l.hora, l.nota].some((v) => (v ?? '').trim() !== ''),
   )
 }
 
@@ -575,7 +692,7 @@ export function lecturasParaGuardar(lecturas: LecturaTensiometro[]): LecturaTens
 export function intacta<T extends Record<string, unknown>>(linea: T, plantilla: T): boolean {
   if ((linea.id ?? '') !== '') return false
   return Object.keys(plantilla).every(
-    (k) => k === 'id' || String(linea[k] ?? '') === String(plantilla[k] ?? '')
+    (k) => k === 'id' || String(linea[k] ?? '') === String(plantilla[k] ?? ''),
   )
 }
 
@@ -630,7 +747,11 @@ export function limpiarPersonal(lineas: LineaPersonal[], _salarioPorOmision = ''
 }
 
 export function limpiarProductos(lineas: LineaProducto[]): LineaProducto[] {
-  return lineas.filter((l) => !intacta(l, LINEA_PRODUCTO_VACIA))
+  // La plantilla se compara CONTRA SU PROPIA FASE (migración 74). Con
+  // `LINEA_PRODUCTO_VACIA` a secas, el renglón en blanco del lavado
+  // nunca era «intacto» —su fase difiere— y se mandaba a guardar un
+  // químico sin producto cada vez que alguien abría la sección 4.
+  return lineas.filter((l) => !intacta(l, lineaProductoVacia(l.fase ?? '3_Aplicacion')))
 }
 
 /* ------------------------------------------------------------------ */
@@ -662,7 +783,7 @@ export function validarEjecucion(
   lotesCrudos: LineaLote[],
   personalCrudo: LineaPersonal[],
   productosCrudos: LineaProducto[] = [],
-  salarioPorOmision = ''
+  salarioPorOmision = '',
 ): string | null {
   // Primero se tiran los renglones que nadie tocó. Validar el hueco en
   // blanco es lo que impedía guardar con sólo los lotes puestos.
@@ -713,16 +834,26 @@ export function validarEjecucion(
       return 'Dice «Otro» en un puesto de la cuadrilla: escribe cuál.'
     }
     const personas = aNumero(p.cantidadPersonas)
-    if (personas === null || personas < 1) return 'El personal se cuenta de uno en adelante.'
+    // **Mayor que cero, no mayor o igual que uno** (migración 74). Una
+    // persona repartida entre tres turnos pone 0.33 en cada uno, y la
+    // regla vieja lo rechazaba obligando a inflar el costo a 1.
+    if (personas === null || personas <= 0) {
+      return 'Las personas de la cuadrilla tienen que ser más de cero (ej. 0.33, 0.5 o 2).'
+    }
+    if (personas > 500) return 'Quinientas personas en un renglón son un dedo resbalado.'
     if (aNumeroCero(p.horasExtras) < 0) return 'Las horas extras no pueden ser negativas.'
     const salario = aNumero(p.salario)
     if (salario !== null && salario < 0) return 'El salario no puede ser negativo.'
   }
 
   /* ----------------------------- Químicos ---------------------------- */
+  // El repetido se mira DENTRO de cada fase: el mismo ácido en la
+  // inyección y en el lavado son dos renglones legítimos desde la 74, y
+  // la llave única de la base también lleva la fase.
   const conProducto = productos.filter((q) => q.productoId !== '')
-  if (new Set(conProducto.map((q) => q.productoId)).size !== conProducto.length) {
-    return 'Hay un producto repetido: suma los litros en una sola línea.'
+  const llaves = conProducto.map((q) => `${q.fase ?? '3_Aplicacion'}|${q.productoId}`)
+  if (new Set(llaves).size !== llaves.length) {
+    return 'Hay un producto repetido en la misma fase: suma los litros en una sola línea.'
   }
   for (const q of conProducto) {
     if (aNumeroCero(q.totalLitros) < 0 || aNumeroCero(q.costoLitro) < 0) {
@@ -746,4 +877,263 @@ export function validarLogistica(e: EntradaLogistica): string | null {
   const costo = aNumero(e.costoHora)
   if (costo !== null && costo < 0) return 'El costo por hora no puede ser negativo.'
   return null
+}
+
+/* ------------------------------------------------------------------ */
+/* Validación detallada: qué campo, y qué hay que escribir en él       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * ── Por qué esto existe aparte de `validarEjecucion` ────────────────
+ *
+ * `validarEjecucion` devuelve UN texto: el primer problema que
+ * encuentra. Sirve para no guardar basura, pero deja al usuario
+ * buscando a ojo cuál de los cuarenta campos del formulario es el que
+ * se queja —y con el acordeón plegado, ni siquiera sabe en qué sección
+ * mirar—.
+ *
+ * Esto devuelve las dos cosas que la pantalla necesita para señalar en
+ * vez de describir: el mapa `campo → qué corregir`, para pintar el
+ * borde y poner el mensaje debajo, y el resumen por sección, para el
+ * distintivo de la cabecera y para saber cuál abrir.
+ *
+ * ── La regla que NO se puede romper ─────────────────────────────────
+ *
+ * **El guardado incremental manda.** El trabajo de campo es asíncrono:
+ * se asignan los lotes un día, se riega otro, se aplica un tercero y se
+ * lava un cuarto. Una sección vacía no es un error, es que todavía no
+ * le toca. Lo que sí es un error es una fila TOCADA y a medias —litros
+ * escritos sin producto, un puesto «Otro» sin decir cuál—, porque ésa
+ * sí se va a guardar y nadie va a volver a mirarla.
+ *
+ * Por eso cada comprobación de aquí se hace sobre lo que el usuario
+ * escribió, no sobre lo que falta por escribir.
+ */
+
+/** `campo → qué hay que corregir`. La llave la usa el formulario para señalar. */
+export type ErroresCampo = Record<string, string>
+
+export type ResumenSeccion = {
+  seccion: SeccionEjecucion
+  /** Su posición en el flujo: sirve para abrir la PRIMERA con problema. */
+  indice: number
+  nombre: string
+  mensajes: string[]
+}
+
+export type Diagnostico = {
+  campos: ErroresCampo
+  secciones: ResumenSeccion[]
+  hay: boolean
+  /** La primera sección con problema, para abrirla sola. */
+  primera: SeccionEjecucion | null
+}
+
+/** Un ejemplo vale más que «valor inválido»: se dice qué se espera. */
+const EJEMPLO_DECIMAL = 'ej. 0.33, 0.5 o 2'
+
+/**
+ * ¿Escribió algo que no es un número?
+ *
+ * Un vacío NO es un error aquí: puede ser un campo que todavía no toca.
+ * Lo que es un error es haber escrito algo que no se puede sumar —una
+ * letra, dos puntos, un guion suelto—, porque eso se guarda como nulo y
+ * el total sale mal sin que nada avise.
+ */
+export function textoNoNumerico(texto: string | null | undefined): boolean {
+  const t = (texto ?? '').trim()
+  return t !== '' && aNumero(t) === null
+}
+
+/**
+ * ¿Esta fila de cuadrilla la tocó alguien?
+ *
+ * Un renglón de cuadrilla nace con todo puesto —una persona, Jornal,
+ * Diurna, el mínimo vigente—, así que no se puede comparar con una
+ * plantilla en blanco. Lo que lo convierte en un dato es haber pulsado
+ * «Agregar personal», que es la afirmación (migración 68). Se validan
+ * todos.
+ */
+export function validarFormularioDetallado(
+  e: EntradaEjecucion,
+  lotes: LineaLote[],
+  personal: LineaPersonal[],
+  productos: LineaProducto[],
+  lecturas: LecturaTensiometro[] = [],
+): Diagnostico {
+  const campos: ErroresCampo = {}
+  const porSeccion = new Map<SeccionEjecucion, string[]>()
+
+  const anotar = (seccion: SeccionEjecucion, campo: string | null, mensaje: string) => {
+    if (campo) campos[campo] = mensaje
+    const antes = porSeccion.get(seccion) ?? []
+    if (!antes.includes(mensaje)) antes.push(mensaje)
+    porSeccion.set(seccion, antes)
+  }
+
+  /** Numérico suelto: si hay texto, tiene que ser número; y no negativo. */
+  const numero = (
+    seccion: SeccionEjecucion,
+    campo: string,
+    valor: string | null | undefined,
+    etiqueta: string,
+    { positivo = false }: { positivo?: boolean } = {},
+  ) => {
+    if (textoNoNumerico(valor)) {
+      anotar(seccion, campo, `${etiqueta} tiene que ser un número (${EJEMPLO_DECIMAL}).`)
+      return
+    }
+    const n = aNumero(valor)
+    if (n === null) {
+      if (positivo) anotar(seccion, campo, `${etiqueta} hace falta (${EJEMPLO_DECIMAL}).`)
+      return
+    }
+    if (positivo && n <= 0) {
+      anotar(seccion, campo, `${etiqueta} tiene que ser mayor que 0 (${EJEMPLO_DECIMAL}).`)
+      return
+    }
+    if (!positivo && n < 0) anotar(seccion, campo, `${etiqueta} no puede ser negativa.`)
+  }
+
+  /* --------------------- 0 · Lotes y manzanas ---------------------- */
+  lotes.forEach((l, i) => {
+    const tocada = !intacta(l, LINEA_LOTE_VACIA)
+    if (!tocada) return
+    if (l.loteTemporadaId === '') {
+      anotar('lotes', `lote.${i}.loteTemporadaId`, 'Escribiste manzanas sin elegir el lote.')
+    }
+    if ((l.mzCubiertas ?? '').trim() === '' && l.loteTemporadaId !== '') {
+      anotar('lotes', `lote.${i}.mzCubiertas`, 'Elegiste el lote pero faltan sus manzanas.')
+    } else {
+      numero('lotes', `lote.${i}.mzCubiertas`, l.mzCubiertas, 'Las manzanas', { positivo: true })
+    }
+  })
+
+  const conLote = lotes.filter((l) => l.loteTemporadaId !== '')
+  const vistos = new Set<string>()
+  conLote.forEach((l) => {
+    const i = lotes.indexOf(l)
+    if (vistos.has(l.loteTemporadaId)) {
+      anotar('lotes', `lote.${i}.loteTemporadaId`, 'Este lote ya está más arriba: va una sola vez.')
+    }
+    vistos.add(l.loteTemporadaId)
+  })
+
+  /* --------------------------- Cuadrilla --------------------------- */
+  const seccionDeFase = (f: FasePersonal): SeccionEjecucion =>
+    f === '1_Preriego' ? 'preriego' : f === '4_Lavado' ? 'lavado' : 'aplicacion'
+
+  personal.forEach((p, i) => {
+    const s = seccionDeFase(p.fase)
+    if (p.puesto === PUESTO_OTRO && p.puestoOtro.trim() === '') {
+      anotar(s, `personal.${i}.puestoOtro`, 'Dice «Otro»: escribe qué puesto es.')
+    }
+    numero(s, `personal.${i}.cantidadPersonas`, p.cantidadPersonas, 'Las personas', {
+      positivo: true,
+    })
+    const personas = aNumero(p.cantidadPersonas)
+    if (personas !== null && personas > 500) {
+      anotar(s, `personal.${i}.cantidadPersonas`, 'Quinientas personas son un dedo resbalado.')
+    }
+    numero(s, `personal.${i}.horasExtras`, p.horasExtras, 'Las horas extras')
+    numero(s, `personal.${i}.salario`, p.salario, 'El salario')
+  })
+
+  /* --------------------------- Químicos ---------------------------- */
+  const llaves = new Map<string, number>()
+  productos.forEach((q, i) => {
+    const fase: FaseProducto = q.fase ?? '3_Aplicacion'
+    const s: SeccionEjecucion = fase === '4_Lavado' ? 'lavado' : 'aplicacion'
+    if (intacta(q, lineaProductoVacia(fase))) return
+
+    if (q.productoId === '') {
+      anotar(s, `producto.${i}.productoId`, 'Escribiste litros sin elegir el químico.')
+    }
+    if (q.productoId !== '' && (q.totalLitros ?? '').trim() === '') {
+      anotar(s, `producto.${i}.totalLitros`, 'Elegiste el químico pero faltan sus litros.')
+    } else {
+      numero(s, `producto.${i}.totalLitros`, q.totalLitros, 'Los litros', { positivo: true })
+    }
+    numero(s, `producto.${i}.costoLitro`, q.costoLitro, 'El costo por litro')
+    // Los envases NO se piden en el lavado: ahí no se controla logística
+    // de envase, se enjuaga con lo que haya abierto.
+    if (fase !== '4_Lavado') {
+      numero(s, `producto.${i}.cantidadEnvases`, q.cantidadEnvases, 'Los envases')
+    }
+
+    if (q.productoId !== '') {
+      const llave = `${fase}|${q.productoId}`
+      if (llaves.has(llave)) {
+        anotar(
+          s,
+          `producto.${i}.productoId`,
+          'Este químico ya está en esta misma fase: suma los litros en una línea.',
+        )
+      }
+      llaves.set(llave, i)
+    }
+  })
+
+  /* ------------------------- 2 · Lecturas -------------------------- */
+  lecturas.forEach((l, i) => {
+    numero('lecturas', `lectura.${i}.lectura`, l.lectura, 'La lectura')
+  })
+
+  /* ----------------- 3 · Aplicación: los medidores ----------------- */
+  for (const [campo, etiqueta] of [
+    ['caudalAgua', 'El caudal'],
+    ['ceAntes', 'La CE antes'],
+    ['ceDurante', 'La CE durante'],
+    ['ceDespues', 'La CE después'],
+    ['calibracionEntrada', 'La calibración de entrada'],
+    ['calibracionSalida', 'La calibración de salida'],
+    ['calibracionCampo', 'La calibración de campo'],
+  ] as const) {
+    numero('aplicacion', `ejecucion.${campo}`, e[campo], etiqueta)
+  }
+
+  // La fase manda: una aplicación sin fecha deja el costo sin tarifa y
+  // sin forma de saber de qué día era.
+  if (nivelDeFase(e.estado) >= nivelDeFase('3_Aplicacion') && !e.fechaAplicacion) {
+    anotar('aplicacion', 'ejecucion.fechaAplicacion', 'Falta la fecha de aplicación.')
+  }
+
+  // **«Otros» sin decir cuál no es un dato** (migración 75). Dentro de un
+  // año no contesta con qué se aplicó, que es justo el hueco que el
+  // campo venía a llenar. La base lo rechaza; aquí se avisa antes de
+  // gastar el viaje.
+  if (e.equipoAplicacion === EQUIPO_OTROS && e.equipoAplicacionOtro.trim() === '') {
+    anotar(
+      'aplicacion',
+      'ejecucion.equipoAplicacionOtro',
+      'Elegiste «Otros» como equipo: escribe cuál fue.'
+    )
+  }
+
+  /* --------------------- 4 · Lavado de cinta ----------------------- */
+  // Si hay algo capturado del lavado —químico o cuadrilla— tiene que
+  // saberse de qué día es: la tarifa del jornal sale de esa fecha.
+  const hayLavado =
+    productosDeFase(productos, '4_Lavado').some(
+      (q) => !intacta(q, lineaProductoVacia('4_Lavado')),
+    ) || personal.some((p) => p.fase === '4_Lavado')
+  if (hayLavado && !e.fechaLavado) {
+    anotar('lavado', 'ejecucion.fechaLavado', 'Hay lavado capturado: falta su fecha.')
+  }
+
+  const secciones: ResumenSeccion[] = SECCIONES.filter(
+    (s) => (porSeccion.get(s) ?? []).length > 0,
+  ).map((s) => ({
+    seccion: s,
+    indice: SECCIONES.indexOf(s),
+    nombre: NOMBRE_SECCION[s],
+    mensajes: porSeccion.get(s) ?? [],
+  }))
+
+  return {
+    campos,
+    secciones,
+    hay: secciones.length > 0,
+    primera: secciones[0]?.seccion ?? null,
+  }
 }

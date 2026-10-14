@@ -47,7 +47,9 @@ export default async function DesinfeccionPage() {
     supabase.from('turnos').select('id, codigo, zona_id').eq('activo', true).order('codigo'),
     // Con su zona desde la 60: es lo que permite recortar el selector.
     supabase.from('estaciones_riego').select('id, nombre, zona_id').eq('activo', true).order('nombre'),
-    supabase.from('variedades').select('id, nombre').eq('activo', true).order('nombre'),
+    // Con su DDT de cosecha desde la 75: de ahí sale la fecha de cosecha
+    // prevista que el plan enseña al lado de la de aplicación.
+    supabase.from('variedades').select('id, nombre, ddt_cosecha').eq('activo', true).order('nombre'),
     // Con ingrediente activo y concentración desde la 61: es lo que deja
     // comparar dos productos que se llaman distinto y hacen lo mismo.
     supabase

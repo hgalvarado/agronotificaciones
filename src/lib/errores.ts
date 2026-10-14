@@ -68,3 +68,22 @@ export function mensajeDeError(e: unknown, respaldo = 'No se pudo guardar.'): st
 
   return respaldo
 }
+
+/**
+ * El error crudo, para quien pueda arreglarlo.
+ *
+ * `mensajeDeError` traduce a castellano de campo, y eso es lo que tiene
+ * que leer quien captura. Pero una regla de seguridad o un `constraint`
+ * no se arreglan con la traducción: hacen falta el código y el texto
+ * literal de Postgres. Van juntos en una línea aparte, marcada como lo
+ * que es.
+ *
+ * `null` cuando no hay nada técnico que añadir: una línea «Detalle
+ * técnico: undefined» es ruido que estorba al que sí sabe leerlo.
+ */
+export function detalleDeError(e: unknown): string | null {
+  if (!e || typeof e !== 'object') return null
+  const p = e as ErrorPostgrest
+  const piezas = [p.code ? `[${p.code}]` : '', p.message ?? '', p.details ?? ''].filter(Boolean)
+  return piezas.length > 0 ? piezas.join(' ').trim() : null
+}

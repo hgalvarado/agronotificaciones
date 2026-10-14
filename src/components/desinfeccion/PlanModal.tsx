@@ -15,7 +15,13 @@ import { Modal } from '@/components/ui/Modal'
 import { Alerta, Boton, Campo, Entrada, Selector } from '@/components/ui/Primitivos'
 import { formatearFecha } from '@/lib/estados'
 import { n2 } from '@/lib/trasplante/formato'
-import { fechaAplicacionPrevista, totalesPlan, validarPlan } from '@/lib/desinfeccion/calculo'
+import {
+  fechaAplicacionPrevista,
+  fechaCosechaPrevista,
+  fechaPreriegoPrevista,
+  totalesPlan,
+  validarPlan,
+} from '@/lib/desinfeccion/calculo'
 import { siembrasDeLotes } from '@/lib/desinfeccion/repositorioCliente'
 import { MONEDAS_PLAN } from '@/lib/desinfeccion/tipos'
 import type {
@@ -48,7 +54,15 @@ export function PlanModal({
 
   const totales = useMemo(() => totalesPlan(entrada), [entrada])
   const aplicacion = fechaAplicacionPrevista(entrada)
+  const preriego = fechaPreriegoPrevista(entrada)
   const lote = lotes.find((l) => l.lote_temporada_id === entrada.loteTemporadaId)
+
+  // El DDT de cosecha sale de la VARIEDAD elegida (migración 75). Sin
+  // él no hay fecha, y la pantalla lo dice en vez de inventarla: una
+  // fecha inventada aquí acabaría en el calendario de la finca.
+  const variedad = catalogos.variedades.find((v) => v.id === entrada.variedadId)
+  const ddtCosecha = variedad?.ddt_cosecha ?? null
+  const cosecha = fechaCosechaPrevista(entrada, ddtCosecha)
 
   /**
    * Elegir el lote trae su siembra y su variedad.
@@ -189,6 +203,21 @@ export function PlanModal({
             />
           </Campo>
 
+          {/* Días del preriego CONTRA la aplicación (migración 75).
+              Déjalo vacío y el preriego se queda sin planificar, que es
+              distinto de planificarlo para el mismo día —eso es un cero—. */}
+          <Campo
+            etiqueta="Días pre-riego"
+            ayuda="Contra la aplicación, no contra la siembra. Negativo = antes de aplicar, que es lo normal. Vacío = todavía sin planificar."
+          >
+            <Entrada
+              inputMode="numeric"
+              value={entrada.diasPreriego}
+              onChange={(e) => cambiar({ diasPreriego: e.target.value })}
+              placeholder="Sin planificar"
+            />
+          </Campo>
+
           <Campo etiqueta="Variedad">
             <Selector value={entrada.variedadId} onChange={(e) => cambiar({ variedadId: e.target.value })}>
               <option value="">Sin variedad</option>
@@ -285,6 +314,39 @@ export function PlanModal({
             </p>
             <p className="mt-1 text-[11px] text-slate-400">
               Siembra + días. La calcula la base; aquí sólo se ve.
+            </p>
+          </div>
+
+          <div className="rounded-xl bg-slate-50 px-3.5 py-3 ring-1 ring-inset ring-slate-200">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+              Fecha pre-riego
+            </p>
+            <p className="mt-0.5 text-sm font-bold text-slate-900">
+              {preriego ? formatearFecha(preriego) : '—'}
+            </p>
+            <p className="mt-1 text-[11px] text-slate-400">
+              {preriego
+                ? 'Aplicación + días de pre-riego. La calcula la base.'
+                : 'Escribe los días de pre-riego y sale sola.'}
+            </p>
+          </div>
+
+          <div className="rounded-xl bg-slate-50 px-3.5 py-3 ring-1 ring-inset ring-slate-200">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+              Fecha de cosecha
+            </p>
+            <p className="mt-0.5 text-sm font-bold text-slate-900">
+              {cosecha ? formatearFecha(cosecha) : '—'}
+            </p>
+            {/* Sin DDT en la variedad se dice POR QUÉ y dónde se arregla:
+                un «—» mudo parece un fallo de la pantalla en vez de un
+                hueco del catálogo. */}
+            <p className="mt-1 text-[11px] text-slate-400">
+              {cosecha
+                ? `Siembra + ${ddtCosecha} días de la variedad.`
+                : entrada.variedadId
+                  ? 'Falta el DDT de cosecha de esta variedad: se configura en Catálogos → Variedades.'
+                  : 'Elige la variedad y sale sola.'}
             </p>
           </div>
 

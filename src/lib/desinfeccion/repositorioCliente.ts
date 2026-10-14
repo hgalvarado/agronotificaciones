@@ -18,7 +18,7 @@
 
 import { createClient } from '@/lib/supabase/client'
 import { leerTodo } from '@/lib/supabase/paginar'
-import { mensajeDeError } from '@/lib/errores'
+import { detalleDeError, mensajeDeError } from '@/lib/errores'
 import { aNumero, aNumeroCero, idsSobrantes, lecturasParaGuardar, puestoDe } from './calculo'
 import type {
   CatalogosDesinfeccion,
@@ -36,10 +36,16 @@ import type {
   LineaLote,
   LineaPersonal,
   LineaProducto,
+  ObjetivoControl,
 } from './tipos'
 import type { FilaInforme } from './informe'
 
-export type Resultado = { ok: boolean; mensaje: string }
+export type Resultado = {
+  ok: boolean
+  mensaje: string
+  /** El `[code] message` crudo de Postgres, para el supervisor. */
+  detalle?: string | null
+}
 
 export const AVISO_SIN_MIGRACION =
   'El módulo de desinfección de suelo todavía no está instalado. Corre las migraciones 59 y 60 en el SQL Editor de Supabase.'
@@ -84,6 +90,7 @@ const CAMPOS_PLAN: Record<string, string> = {
   ciclo: 'ciclo',
   fecha_siembra_congelada: 'fecha_siembra_congelada',
   dias_aplicacion: 'dias_aplicacion',
+  dias_preriego: 'dias_preriego',
   variedad_nombre: 'variedad_id',
   producto_nombre: 'producto_id',
   dosis_mz: 'dosis_mz',
@@ -100,6 +107,17 @@ const NUMERICOS_PLAN = new Set([
   'costo_litro',
 ])
 
+/**
+ * Numéricos donde VACÍO ES NULO y no cero.
+ *
+ * `dias_preriego` es el caso (migración 75): «todavía no se planificó el
+ * preriego» y «se preriega el mismo día que se aplica» son dos cosas
+ * distintas, y la segunda se escribe con un cero. Mandarlo a cero al
+ * borrar la celda inventaría una fecha de preriego igual a la de
+ * aplicación, que es lo que la columna generada enseñaría acto seguido.
+ */
+const NUMERICOS_NULABLES_PLAN = new Set(['dias_preriego'])
+
 export function campoPlan(columna: string): string | null {
   return CAMPOS_PLAN[columna] ?? null
 }
@@ -107,24 +125,33 @@ export function campoPlan(columna: string): string | null {
 export async function editarCampoPlan(
   id: string,
   columna: string,
-  valor: unknown
+  valor: unknown,
 ): Promise<Resultado> {
   const campo = campoPlan(columna)
   if (!campo) return { ok: false, mensaje: 'Esa columna no se edita.' }
 
   const texto = valor === null || valor === undefined ? '' : String(valor)
-  const dato = NUMERICOS_PLAN.has(campo)
-    ? (aNumero(texto) ?? 0)
-    : texto.trim() === ''
+  const dato = NUMERICOS_NULABLES_PLAN.has(campo)
+    ? texto.trim() === ''
       ? null
-      : texto.trim()
+      : (aNumero(texto) ?? null)
+    : NUMERICOS_PLAN.has(campo)
+      ? (aNumero(texto) ?? 0)
+      : texto.trim() === ''
+        ? null
+        : texto.trim()
 
   const { error } = await createClient()
     .from('desinfeccion_plan')
     .update({ [campo]: dato })
     .eq('id', id)
 
-  if (error) return { ok: false, mensaje: mensajeDeError(error, 'No se pudo guardar el cambio.') }
+  if (error)
+    return {
+      ok: false,
+      mensaje: mensajeDeError(error, 'No se pudo guardar el cambio.'),
+      detalle: detalleDeError(error),
+    }
   return { ok: true, mensaje: '' }
 }
 
@@ -135,6 +162,11 @@ export async function guardarPlan(e: EntradaPlan): Promise<Resultado> {
     ciclo: Math.trunc(aNumeroCero(e.ciclo)) || 1,
     fecha_siembra_congelada: e.fechaSiembraCongelada,
     dias_aplicacion: Math.trunc(aNumeroCero(e.diasAplicacion)),
+    // Vacío en NULO y no en cero (migración 75): «no se ha planificado el
+    // preriego» y «se preriega el mismo día que se aplica» son dos cosas
+    // distintas, y la segunda se escribe con un cero.
+    dias_preriego:
+      (e.diasPreriego ?? '').trim() === '' ? null : Math.trunc(aNumeroCero(e.diasPreriego)),
     variedad_id: e.variedadId || null,
     producto_id: e.productoId || null,
     dosis_mz: aNumeroCero(e.dosisMz),
@@ -153,14 +185,24 @@ export async function guardarPlan(e: EntradaPlan): Promise<Resultado> {
     ? await cliente.from('desinfeccion_plan').update(fila).eq('id', e.id)
     : await cliente.from('desinfeccion_plan').insert(fila)
 
-  if (error) return { ok: false, mensaje: mensajeDeError(error, 'No se pudo guardar el plan.') }
+  if (error)
+    return {
+      ok: false,
+      mensaje: mensajeDeError(error, 'No se pudo guardar el plan.'),
+      detalle: detalleDeError(error),
+    }
   return { ok: true, mensaje: e.id ? 'Plan guardado.' : 'Plan creado.' }
 }
 
 export async function eliminarPlanes(ids: string[]): Promise<Resultado> {
   if (ids.length === 0) return { ok: true, mensaje: '' }
   const { error } = await createClient().from('desinfeccion_plan').delete().in('id', ids)
-  if (error) return { ok: false, mensaje: mensajeDeError(error, 'No se pudo eliminar.') }
+  if (error)
+    return {
+      ok: false,
+      mensaje: mensajeDeError(error, 'No se pudo eliminar.'),
+      detalle: detalleDeError(error),
+    }
   return { ok: true, mensaje: `${ids.length} línea(s) de plan eliminadas.` }
 }
 
@@ -182,7 +224,12 @@ export async function eliminarPlanes(ids: string[]): Promise<Resultado> {
  * haber cambiado nada.
  */
 export async function sincronizarSiembra(
-  filas: { id: string; lote_temporada_id: string; ciclo: number; fecha_siembra_congelada: string }[]
+  filas: {
+    id: string
+    lote_temporada_id: string
+    ciclo: number
+    fecha_siembra_congelada: string
+  }[],
 ): Promise<Resultado & { cambiadas: number; sinSiembra: number }> {
   if (filas.length === 0) {
     return { ok: true, mensaje: '', cambiadas: 0, sinSiembra: 0 }
@@ -260,7 +307,9 @@ export async function leerEjecuciones(temporadaId: string | null): Promise<Lectu
   })
 }
 
-export async function leerLotesRegados(temporadaId: string | null): Promise<Lectura<FilaLoteRegado>> {
+export async function leerLotesRegados(
+  temporadaId: string | null,
+): Promise<Lectura<FilaLoteRegado>> {
   return leerTodo<FilaLoteRegado>((desde, hasta) => {
     let q = createClient()
       .from('v_desinfeccion_lotes')
@@ -339,7 +388,7 @@ export async function leerDetalle(ejecucionId: string): Promise<{
 export async function buscarEjecucion(
   temporadaId: string,
   turnoId: string,
-  ciclo: number
+  ciclo: number,
 ): Promise<{ fila: FilaEjecucion | null; error: string | null }> {
   if (!temporadaId || !turnoId) return { fila: null, error: null }
   const { data, error } = await createClient()
@@ -380,7 +429,7 @@ export type SiembraDeLote = {
 
 export async function siembrasDeLotes(
   lotes: string[],
-  ciclo: number | null
+  ciclo: number | null,
 ): Promise<Map<string, SiembraDeLote>> {
   const salida = new Map<string, SiembraDeLote>()
   if (lotes.length === 0) return salida
@@ -426,7 +475,14 @@ function filaEjecucion(e: EntradaEjecucion, lecturas: LecturaTensiometro[]) {
     lecturas_tensiometro: lecturasParaGuardar(lecturas),
 
     fecha_aplicacion: e.fechaAplicacion || null,
+    fecha_lavado: e.fechaLavado || null,
     estacion_riego_id: e.estacionRiegoId || null,
+    equipo_aplicacion: e.equipoAplicacion || null,
+    // Vacío en NULO y no en cadena vacía: el disparador de la 75 exige
+    // detalle cuando el equipo es «Otros», y una cadena de espacios
+    // pasaría por «escrito» en el camino.
+    equipo_aplicacion_otro:
+      e.equipoAplicacion === 'Otros' ? e.equipoAplicacionOtro.trim() || null : null,
     caudal_agua: aNumeroCero(e.caudalAgua) || 20,
     inicio_presurizacion: e.inicioPresurizacion || null,
     fin_presurizacion: e.finPresurizacion || null,
@@ -465,16 +521,23 @@ export async function guardarEjecucion(
   lecturas: LecturaTensiometro[],
   lotes: LineaLote[],
   personal: LineaPersonal[],
-  productos: LineaProducto[] = []
+  productos: LineaProducto[] = [],
 ): Promise<Resultado> {
   const cliente = createClient()
   const fila = filaEjecucion(e, lecturas)
 
   let ejecucionId = e.id
   if (ejecucionId) {
-    const { error } = await cliente.from('desinfeccion_ejecucion').update(fila).eq('id', ejecucionId)
+    const { error } = await cliente
+      .from('desinfeccion_ejecucion')
+      .update(fila)
+      .eq('id', ejecucionId)
     if (error) {
-      return { ok: false, mensaje: mensajeDeError(error, 'No se pudo guardar la ejecución.') }
+      return {
+        ok: false,
+        mensaje: mensajeDeError(error, 'No se pudo guardar la ejecución.'),
+        detalle: detalleDeError(error),
+      }
     }
   } else {
     const { data, error } = await cliente
@@ -483,7 +546,11 @@ export async function guardarEjecucion(
       .select('id')
       .single()
     if (error || !data) {
-      return { ok: false, mensaje: mensajeDeError(error, 'No se pudo crear la ejecución.') }
+      return {
+        ok: false,
+        mensaje: mensajeDeError(error, 'No se pudo crear la ejecución.'),
+        detalle: detalleDeError(error),
+      }
     }
     ejecucionId = (data as { id: string }).id
   }
@@ -514,6 +581,7 @@ export async function guardarEjecucion(
         return {
           ok: false,
           mensaje: mensajeDeError(error, 'La ejecución se guardó, pero un lote regado no.'),
+          detalle: detalleDeError(error),
         }
       }
       vivosLotes.push(l.id)
@@ -527,6 +595,7 @@ export async function guardarEjecucion(
         return {
           ok: false,
           mensaje: mensajeDeError(error, 'La ejecución se guardó, pero un lote regado no.'),
+          detalle: detalleDeError(error),
         }
       }
       vivosLotes.push((data as { id: string }).id)
@@ -541,7 +610,11 @@ export async function guardarEjecucion(
       fase: p.fase,
       puesto_texto: puestoDe(p) || null,
       operador_id: p.operadorId || null,
-      cantidad_personas: Math.trunc(aNumeroCero(p.cantidadPersonas)) || 1,
+      // **Sin truncar** (migración 74). `Math.trunc` convertía 0.33 en 0
+      // y el `|| 1` lo subía a 1: un estacionero repartido entre tres
+      // turnos acababa cobrando tres jornales enteros, y el número que
+      // se guardaba no era el que se había escrito.
+      cantidad_personas: aNumeroCero(p.cantidadPersonas) || 1,
       horas_extras: aNumeroCero(p.horasExtras),
       jornada_tipo: p.jornadaTipo,
       // Vacío = que la base ponga el mínimo vigente. Mandar cero diría
@@ -554,6 +627,7 @@ export async function guardarEjecucion(
         return {
           ok: false,
           mensaje: mensajeDeError(error, 'La ejecución se guardó, pero un renglón de personal no.'),
+          detalle: detalleDeError(error),
         }
       }
       vivosPersonal.push(p.id)
@@ -567,6 +641,7 @@ export async function guardarEjecucion(
         return {
           ok: false,
           mensaje: mensajeDeError(error, 'La ejecución se guardó, pero un renglón de personal no.'),
+          detalle: detalleDeError(error),
         }
       }
       vivosPersonal.push((data as { id: string }).id)
@@ -576,19 +651,33 @@ export async function guardarEjecucion(
   /* ---------------------------- Químicos --------------------------- */
   const productosValidos = productos.filter((q) => q.productoId !== '')
   for (const q of productosValidos) {
+    const esLavado = (q.fase ?? '3_Aplicacion') === '4_Lavado'
     const datos = {
       ejecucion_id: ejecucionId,
+      fase: q.fase ?? '3_Aplicacion',
       producto_id: q.productoId,
       total_litros: aNumeroCero(q.totalLitros),
       // Cero = que lo tome del historial de precios del catálogo, que es
       // lo normal. Escrito, manda lo escrito (migración 61).
       costo_litro: aNumeroCero(q.costoLitro),
-      cantidad_envases: Math.trunc(aNumeroCero(q.cantidadEnvases)),
-      tipo_envase: q.tipoEnvase.trim() || null,
+      // El lavado de cinta no lleva control de envase: se enjuaga con lo
+      // que haya abierto. Se manda en cero y en nulo a propósito, para
+      // que un renglón que cambie de fase no arrastre los de antes.
+      cantidad_envases: esLavado ? 0 : Math.trunc(aNumeroCero(q.cantidadEnvases)),
+      tipo_envase: esLavado ? null : q.tipoEnvase.trim() || null,
       // Vacío NO se manda: así el disparador de la 71 puede heredar lo
       // que dice la etiqueta del producto. Mandar un arreglo vacío sería
       // afirmar «no se aplicó contra nada», que es otra cosa.
-      ...(q.objetivosControl.length > 0 ? { objetivos_control: q.objetivosControl } : {}),
+      //
+      // En el LAVADO sí se manda vacío, y es lo correcto: no se enjuaga
+      // «contra nematodos». El disparador de la 74 lo vacía igual, pero
+      // mandarlo aquí evita que un renglón movido de fase conserve en
+      // pantalla unos objetivos que la base ya tiró.
+      ...(esLavado
+        ? { objetivos_control: [] as string[] }
+        : q.objetivosControl.length > 0
+          ? { objetivos_control: q.objetivosControl }
+          : {}),
     }
     if (q.id) {
       const { error } = await cliente
@@ -599,6 +688,7 @@ export async function guardarEjecucion(
         return {
           ok: false,
           mensaje: mensajeDeError(error, 'La ejecución se guardó, pero un químico no.'),
+          detalle: detalleDeError(error),
         }
       }
       vivosProductos.push(q.id)
@@ -612,6 +702,7 @@ export async function guardarEjecucion(
         return {
           ok: false,
           mensaje: mensajeDeError(error, 'La ejecución se guardó, pero un químico no.'),
+          detalle: detalleDeError(error),
         }
       }
       vivosProductos.push((data as { id: string }).id)
@@ -637,10 +728,15 @@ async function borrarSobrantes(
   ejecucionId: string,
   vivosLotes: string[],
   vivosPersonal: string[],
-  vivosProductos: string[]
+  vivosProductos: string[],
 ): Promise<Resultado> {
   const cliente = createClient()
-  const { lotes: antes, personal: antesP, productos: antesQ, error } = await leerDetalle(ejecucionId)
+  const {
+    lotes: antes,
+    personal: antesP,
+    productos: antesQ,
+    error,
+  } = await leerDetalle(ejecucionId)
   if (error) {
     // Lo guardado ya está bien; lo único que no se pudo es limpiar.
     return { ok: false, mensaje: `Se guardó, pero no se pudo revisar lo anterior: ${error}` }
@@ -655,18 +751,36 @@ async function borrarSobrantes(
       .from('desinfeccion_ejecucion_lotes')
       .delete()
       .in('id', sobranLotes)
-    if (e) return { ok: false, mensaje: mensajeDeError(e, 'No se pudo quitar un lote.') }
+    if (e)
+      return {
+        ok: false,
+        mensaje: mensajeDeError(e, 'No se pudo quitar un lote.'),
+        detalle: detalleDeError(e),
+      }
   }
   if (sobranPersonal.length > 0) {
-    const { error: e } = await cliente.from('desinfeccion_personal').delete().in('id', sobranPersonal)
-    if (e) return { ok: false, mensaje: mensajeDeError(e, 'No se pudo quitar un renglón de personal.') }
+    const { error: e } = await cliente
+      .from('desinfeccion_personal')
+      .delete()
+      .in('id', sobranPersonal)
+    if (e)
+      return {
+        ok: false,
+        mensaje: mensajeDeError(e, 'No se pudo quitar un renglón de personal.'),
+        detalle: detalleDeError(e),
+      }
   }
   if (sobranProductos.length > 0) {
     const { error: e } = await cliente
       .from('desinfeccion_ejecucion_productos')
       .delete()
       .in('id', sobranProductos)
-    if (e) return { ok: false, mensaje: mensajeDeError(e, 'No se pudo quitar un químico.') }
+    if (e)
+      return {
+        ok: false,
+        mensaje: mensajeDeError(e, 'No se pudo quitar un químico.'),
+        detalle: detalleDeError(e),
+      }
   }
   return { ok: true, mensaje: '' }
 }
@@ -695,12 +809,7 @@ const CAMPOS_EJECUCION: Record<string, string> = {
 // `horas_preriego`, `horas_presurizacion`, `horas_inyeccion`,
 // `horas_lavado` y `total_horas_riego` son generadas. Dejarlas editables
 // en la celda sería ofrecer un campo que la base rechaza siempre.
-const NUMERICOS_EJECUCION = new Set([
-  'ciclo',
-  'ce_antes',
-  'ce_durante',
-  'ce_despues',
-])
+const NUMERICOS_EJECUCION = new Set(['ciclo', 'ce_antes', 'ce_durante', 'ce_despues'])
 
 export function campoEjecucion(columna: string): string | null {
   return CAMPOS_EJECUCION[columna] ?? null
@@ -709,7 +818,7 @@ export function campoEjecucion(columna: string): string | null {
 export async function editarCampoEjecucion(
   id: string,
   columna: string,
-  valor: unknown
+  valor: unknown,
 ): Promise<Resultado> {
   const campo = campoEjecucion(columna)
   if (!campo) return { ok: false, mensaje: 'Esa columna no se edita.' }
@@ -726,7 +835,12 @@ export async function editarCampoEjecucion(
     .update({ [campo]: dato })
     .eq('id', id)
 
-  if (error) return { ok: false, mensaje: mensajeDeError(error, 'No se pudo guardar el cambio.') }
+  if (error)
+    return {
+      ok: false,
+      mensaje: mensajeDeError(error, 'No se pudo guardar el cambio.'),
+      detalle: detalleDeError(error),
+    }
   return { ok: true, mensaje: '' }
 }
 
@@ -736,14 +850,24 @@ export async function cambiarFase(ids: string[], estado: string): Promise<Result
     .from('desinfeccion_ejecucion')
     .update({ estado })
     .in('id', ids)
-  if (error) return { ok: false, mensaje: mensajeDeError(error, 'No se pudo cambiar la fase.') }
+  if (error)
+    return {
+      ok: false,
+      mensaje: mensajeDeError(error, 'No se pudo cambiar la fase.'),
+      detalle: detalleDeError(error),
+    }
   return { ok: true, mensaje: `${ids.length} ejecución(es) actualizadas.` }
 }
 
 export async function eliminarEjecuciones(ids: string[]): Promise<Resultado> {
   if (ids.length === 0) return { ok: true, mensaje: '' }
   const { error } = await createClient().from('desinfeccion_ejecucion').delete().in('id', ids)
-  if (error) return { ok: false, mensaje: mensajeDeError(error, 'No se pudo eliminar.') }
+  if (error)
+    return {
+      ok: false,
+      mensaje: mensajeDeError(error, 'No se pudo eliminar.'),
+      detalle: detalleDeError(error),
+    }
   return { ok: true, mensaje: `${ids.length} ejecución(es) eliminadas.` }
 }
 
@@ -784,7 +908,7 @@ export function campoLogistica(columna: string): string | null {
 export async function editarCampoLogistica(
   id: string,
   columna: string,
-  valor: unknown
+  valor: unknown,
 ): Promise<Resultado> {
   const campo = campoLogistica(columna)
   if (!campo) return { ok: false, mensaje: 'Esa columna no se edita.' }
@@ -801,7 +925,12 @@ export async function editarCampoLogistica(
     .update({ [campo]: dato })
     .eq('id', id)
 
-  if (error) return { ok: false, mensaje: mensajeDeError(error, 'No se pudo guardar el cambio.') }
+  if (error)
+    return {
+      ok: false,
+      mensaje: mensajeDeError(error, 'No se pudo guardar el cambio.'),
+      detalle: detalleDeError(error),
+    }
   return { ok: true, mensaje: '' }
 }
 
@@ -825,14 +954,24 @@ export async function guardarLogistica(e: EntradaLogistica): Promise<Resultado> 
     ? await cliente.from('desinfeccion_logistica').update(fila).eq('id', e.id)
     : await cliente.from('desinfeccion_logistica').insert(fila)
 
-  if (error) return { ok: false, mensaje: mensajeDeError(error, 'No se pudo guardar el acarreo.') }
+  if (error)
+    return {
+      ok: false,
+      mensaje: mensajeDeError(error, 'No se pudo guardar el acarreo.'),
+      detalle: detalleDeError(error),
+    }
   return { ok: true, mensaje: e.id ? 'Acarreo guardado.' : 'Acarreo registrado.' }
 }
 
 export async function eliminarLogistica(ids: string[]): Promise<Resultado> {
   if (ids.length === 0) return { ok: true, mensaje: '' }
   const { error } = await createClient().from('desinfeccion_logistica').delete().in('id', ids)
-  if (error) return { ok: false, mensaje: mensajeDeError(error, 'No se pudo eliminar.') }
+  if (error)
+    return {
+      ok: false,
+      mensaje: mensajeDeError(error, 'No se pudo eliminar.'),
+      detalle: detalleDeError(error),
+    }
   return { ok: true, mensaje: `${ids.length} acarreo(s) eliminados.` }
 }
 
@@ -848,7 +987,7 @@ export async function eliminarLogistica(ids: string[]): Promise<Resultado> {
  * que no hay forma de que dos compartan identificador.
  */
 export async function leerCostos(
-  temporadaId: string | null
+  temporadaId: string | null,
 ): Promise<Lectura<FilaCosto & { id: string }>> {
   const { datos, error, codigo } = await leerTodo<FilaCosto>((desde, hasta) => {
     let q = createClient()
@@ -873,7 +1012,7 @@ export async function leerCostos(
  */
 export async function leerInforme(
   temporadaId: string | null,
-  zonaId: string | null = null
+  zonaId: string | null = null,
 ): Promise<Lectura<FilaInforme & { id: string }>> {
   const { datos, error, codigo } = await leerTodo<FilaInforme>((desde, hasta) => {
     let q = createClient()
@@ -960,7 +1099,7 @@ export async function leerLotes(
   temporadaId: string,
   ejecucionId: string | null = null,
   pantalla: 'desinfeccion_plan' | 'desinfeccion_ejecucion' = 'desinfeccion_ejecucion',
-  ciclo: number | null = null
+  ciclo: number | null = null,
 ): Promise<CatalogosDesinfeccion['lotes']> {
   if (!temporadaId) return []
   const { data, error } = await createClient().rpc('fn_lotes_desinfeccion', {
@@ -1054,7 +1193,7 @@ export type PrecioMaterial = {
 export async function precioMaterial(
   materialId: string,
   fecha: string,
-  temporadaId?: string | null
+  temporadaId?: string | null,
 ): Promise<PrecioMaterial> {
   if (!materialId || !fecha) return { precio: null, motivo: null }
   const { data, error } = await createClient().rpc('fn_precio_material_detalle', {
@@ -1111,4 +1250,60 @@ export async function crearJornal(nombre: string): Promise<{ id: string } | { er
     return { error: mensajeDeError(error, 'No se pudo crear el jornal.') }
   }
   return { id: (data as { id: string }).id }
+}
+
+/* ================================================================== */
+/* OBJETIVOS DE CONTROL                                                */
+/* ================================================================== */
+
+/**
+ * El catálogo de objetivos de control, para el selector de la fase 3.
+ *
+ * Desde la 75 son una lista cerrada y no texto libre: «Nematodos» y
+ * «nematodos» eran dos objetivos distintos en el informe, que es la
+ * deuda que la 71 dejó anotada.
+ *
+ * Sólo los ACTIVOS: un objetivo desactivado se dejó de usar a propósito,
+ * y seguir ofreciéndolo invita a volver a elegirlo.
+ */
+export async function leerObjetivosControl(): Promise<ObjetivoControl[]> {
+  const { data, error } = await createClient()
+    .from('objetivos_control')
+    .select('id, codigo, nombre, grupo')
+    .eq('activo', true)
+    .order('nombre')
+  if (error) return []
+  return (data as ObjetivoControl[] | null) ?? []
+}
+
+/**
+ * Da de alta un objetivo nuevo desde la captura.
+ *
+ * Existe por lo mismo que `crearJornal`: una lista cerrada sin alta
+ * in-situ obliga a quien captura a abandonar el formulario a medio
+ * llenar, irse a Catálogos y volver a empezar. En la práctica eso no se
+ * hace — se elige lo más parecido, y el dato queda mal.
+ *
+ * Devuelve el NOMBRE y no el identificador: la columna sigue siendo
+ * `text[]` y lo que se guarda es lo que se lee.
+ */
+export async function crearObjetivoControl(
+  nombre: string
+): Promise<{ nombre: string } | { error: string }> {
+  const limpio = nombre.trim()
+  if (limpio === '') return { error: 'Escribe el objetivo de control.' }
+
+  const { error } = await createClient()
+    .from('objetivos_control')
+    .insert({ nombre: limpio, grupo: 'General', activo: true })
+    .select('id')
+    .single()
+
+  if (error) {
+    // El nombre es único sin distinguir mayúsculas: si ya existe, no es
+    // un fallo —es que ya está— y se devuelve para marcarlo igual.
+    if ((error as { code?: string }).code === '23505') return { nombre: limpio }
+    return { error: mensajeDeError(error, 'No se pudo crear el objetivo de control.') }
+  }
+  return { nombre: limpio }
 }

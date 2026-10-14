@@ -49,6 +49,7 @@ export default async function CatalogosPage() {
     { data: turnosCatalogo },
     { data: estacionesRiego },
     { data: productos },
+    { data: objetivosControl },
   ] = await Promise.all([
     supabase.from('zonas').select('*').order('nombre'),
     supabase.from('familias_equipo').select('*').order('nombre'),
@@ -98,6 +99,9 @@ export default async function CatalogosPage() {
     // Llegan con la migración 51. Si no está corrida, la pestaña sale
     // vacía en vez de tumbar la pantalla completa.
     supabase.from('catalogo_productos').select('*').order('nombre'),
+    // Llegan con la migración 75. Si no está corrida, la pestaña sale
+    // vacía en vez de tumbar la pantalla completa.
+    supabase.from('objetivos_control').select('*').order('nombre'),
   ])
 
   const soportaContador = !sondaContador.error
@@ -162,6 +166,26 @@ export default async function CatalogosPage() {
 
   // El cultivo dejó de ser texto libre en la variedad: «Melon», «Melón» y
   // «MELON» eran tres cultivos distintos para cualquier agrupación.
+  /*
+   * Los objetivos de control, para el selector de materiales.
+   *
+   * Desde la 75 son un catálogo y no texto libre. La etiqueta lleva el
+   * GRUPO al lado —«Nematodos · Nematodos», «Mosca Blanca · Insectos»—
+   * porque con veinte objetivos en una lista plana nadie encuentra el
+   * suyo, y el grupo es lo que la gente de campo usa para orientarse.
+   *
+   * **El valor es el NOMBRE y no el id**: la columna sigue siendo
+   * `text[]` y lo que se guarda es lo que se lee. Guardar ids obligaría
+   * a resolverlos en cada vista y en el PDF, y dejaría los datos de
+   * antes de la 75 —texto suelto— sin poder mostrarse al lado.
+   */
+  const opcionesObjetivo = (objetivosControl ?? [])
+    .filter((o) => o.activo !== false)
+    .map((o) => ({
+      value: o.nombre as string,
+      label: o.grupo ? `${o.nombre} · ${o.grupo}` : (o.nombre as string),
+    }))
+
   const opcionesProducto = (productos ?? []).map((p) => ({
     value: p.id as string,
     label: p.nombre as string,
@@ -252,6 +276,11 @@ export default async function CatalogosPage() {
       campos: [
         { key: 'nombre', label: 'Variedad', tipo: 'text', requerido: true },
         { key: 'codigo_sap', label: 'Código SAP', tipo: 'text' },
+        // Días desde el trasplante hasta la cosecha (migración 75). De
+        // aquí sale la fecha de cosecha prevista del plan de
+        // desinfección: sin esto, el plan sabe cuándo aplicar pero no
+        // cuándo se levanta el lote.
+        { key: 'ddt_cosecha', label: 'DDT de cosecha', tipo: 'number' },
         // El cultivo vive en la variedad y la siembra lo hereda: el
         // digitador no lo escribe y no puede equivocarse. Desde la 51 se
         // elige del catálogo en vez de escribirse.
@@ -265,6 +294,22 @@ export default async function CatalogosPage() {
         { key: 'activo', label: 'Activo', tipo: 'checkbox' },
       ],
       filas: variedades ?? [],
+    },
+    {
+      key: 'objetivos_control',
+      clave: 'nombre',
+      label: 'Objetivos de control',
+      tabla: 'objetivos_control',
+      campos: [
+        { key: 'codigo', label: 'Código', tipo: 'text' },
+        { key: 'nombre', label: 'Objetivo de control', tipo: 'text', requerido: true },
+        // Hongos, Nematodos, Malezas, Insectos… Agrupa el informe sin
+        // obligar a una tabla de grupos: son cuatro y cambian cada
+        // varios años.
+        { key: 'grupo', label: 'Grupo', tipo: 'text' },
+        { key: 'activo', label: 'Activo', tipo: 'checkbox' },
+      ],
+      filas: objetivosControl ?? [],
     },
     {
       key: 'catalogo_productos',
@@ -306,15 +351,25 @@ export default async function CatalogosPage() {
           label: 'Etiquetas (separadas por coma)',
           tipo: 'text',
         },
-        // Contra qué sirve el producto, según su etiqueta (migración 71).
-        // Es texto LIBRE y no una lista cerrada: nadie mantiene un
-        // catálogo de plagas, y obligar a darlas de alta antes de poder
-        // anotarlas deja el campo vacío. Lo que se aplicó de verdad se
-        // anota en la ejecución, que puede no coincidir con el bote.
+        /*
+         * Contra qué sirve el producto, según su etiqueta.
+         *
+         * La 71 lo dejó como texto LIBRE a propósito: nadie mantiene un
+         * catálogo de plagas y obligar a darlas de alta antes de poder
+         * anotarlas deja el campo vacío. El precio se vio enseguida y
+         * quedó anotado como deuda: «Nematodos» y «nematodos» eran dos
+         * objetivos distintos en el informe.
+         *
+         * Desde la 75 es una lista cerrada **con alta in-situ**, que es
+         * lo que resuelve las dos cosas a la vez: se elige de una lista
+         * y, si falta uno, se crea sin salir de aquí.
+         */
         {
           key: 'objetivos_control',
           label: 'Objetivos de control',
-          tipo: 'etiquetas',
+          tipo: 'multiseleccion',
+          opciones: opcionesObjetivo,
+          catalogo: { tabla: 'objetivos_control', campo: 'nombre' },
         },
         { key: 'activo', label: 'Activo', tipo: 'checkbox' },
       ],

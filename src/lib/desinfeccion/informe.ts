@@ -10,6 +10,8 @@
 
 /** Un químico aplicado, tal como lo arma la vista en su `jsonb`. */
 export type ProductoInforme = {
+  /** En qué fase se usó (migración 74). El lavado no lleva ppm. */
+  fase?: string | null
   codigo: string | null
   nombre: string | null
   concentracion: string | null
@@ -37,14 +39,22 @@ export type FilaInforme = {
   /* Tiempos */
   fecha_siembra_plan: string | null
   fecha_aplicacion_plan: string | null
+  /** El preriego PLANIFICADO, y la cosecha prevista (migración 75). */
+  fecha_preriego_plan: string | null
+  fecha_cosecha_plan: string | null
   fecha_preriego: string | null
   fecha_aplicacion: string | null
+  /** El día en que se lavó la cinta (migración 74). */
+  fecha_lavado: string | null
   fecha_siembra: string | null
   /** `real` = ya se sembró. `plan` = todavía es lo previsto. */
   origen_siembra: 'real' | 'plan' | null
   variedad: string | null
+  /** Con qué se aplicó (migración 75). */
+  equipo_aplicacion: string | null
   ddt_preriego: number | null
   ddt_aplicacion: number | null
+  ddt_lavado: number | null
   ddt_plan: number | null
 
   /* Agronomía */
@@ -65,6 +75,7 @@ export type FilaInforme = {
   costo_personal: number | null
   costo_personal_preriego: number | null
   costo_personal_aplicacion: number | null
+  costo_personal_lavado: number | null
   costo_logistica: number | null
   costo_plan: number | null
   costo_total: number | null
@@ -171,7 +182,7 @@ export function conSigno(v: number | null | undefined, decimales = 2): string {
 /* ------------------------------------------------------------------ */
 
 export type Hito = {
-  clave: 'plan' | 'preriego' | 'aplicacion' | 'siembra'
+  clave: 'plan' | 'preriego' | 'aplicacion' | 'lavado' | 'siembra' | 'cosecha'
   etiqueta: string
   fecha: string | null
   /** Días contra la siembra. Negativo = todavía falta para trasplantar. */
@@ -213,6 +224,21 @@ export function hitosDe(fila: FilaInforme): Hito[] {
       fecha: fila.fecha_aplicacion,
       ddt: fila.ddt_aplicacion,
       previsto: false,
+    },
+    {
+      clave: 'lavado',
+      etiqueta: 'Lavado de cinta',
+      fecha: fila.fecha_lavado,
+      ddt: fila.ddt_lavado,
+      previsto: false,
+    },
+    {
+      clave: 'cosecha',
+      etiqueta: 'Cosecha prevista',
+      fecha: fila.fecha_cosecha_plan,
+      // Se cuenta contra la siembra, así que SU DDT es el de la variedad.
+      ddt: null,
+      previsto: true,
     },
     {
       clave: 'siembra',
@@ -259,6 +285,27 @@ export function piezasDe(fila: FilaInforme): Pieza[] {
   )
     .filter((p) => p.valor > 0)
     .sort((a, b) => b.valor - a.valor)
+}
+
+/**
+ * El reparto de la cuadrilla entre sus fases.
+ *
+ * Vive aquí y no en cada consumidor por la misma razón que todo lo
+ * demás de este archivo: lo usan la pantalla y el PDF, y un papel que
+ * reparte el jornal distinto de como lo reparte el tablero es un papel
+ * que no se puede defender.
+ *
+ * Una fase en cero no entra: una línea «Lavado L 0.00» en un turno que
+ * no se lavó no informa de nada y empuja hacia abajo lo que sí.
+ */
+export type FaseCuadrilla = { etiqueta: string; valor: number }
+
+export function fasesCuadrilla(fila: FilaInforme): FaseCuadrilla[] {
+  return [
+    { etiqueta: 'Preriego', valor: n(fila.costo_personal_preriego) },
+    { etiqueta: 'Aplicación', valor: n(fila.costo_personal_aplicacion) },
+    { etiqueta: 'Lavado de cinta', valor: n(fila.costo_personal_lavado) },
+  ].filter((f) => f.valor > 0)
 }
 
 /** Qué porcentaje del total es cada pieza. */

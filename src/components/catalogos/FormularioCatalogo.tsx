@@ -170,6 +170,23 @@ export function FormularioCatalogo({
                 opciones={(c.opciones ?? []).map((o) => ({ valor: o.value, etiqueta: o.label }))}
                 valores={arrays[c.key] ?? []}
                 onCambiar={(v) => setArrays((prev) => ({ ...prev, [c.key]: v }))}
+                /* Crear lo que falta sin salir del formulario (migración
+                   75). Lo que se guarda en la columna es el NOMBRE —es
+                   un `text[]`—, así que se devuelve el texto y no el
+                   identificador que acaba de nacer. */
+                onCrear={
+                  c.catalogo
+                    ? async (texto) => {
+                        try {
+                          await crearEnCatalogo(c.catalogo!, texto)
+                          return texto.trim()
+                        } catch (e) {
+                          setError(e instanceof Error ? e.message : 'No se pudo crear.')
+                          return null
+                        }
+                      }
+                    : undefined
+                }
               />
             ) : c.tipo === 'select' ? (
               <SelectorBuscable

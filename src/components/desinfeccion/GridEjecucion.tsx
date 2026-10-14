@@ -59,12 +59,15 @@ import {
   lecturasPorOmision,
   type CatalogosDesinfeccion,
   type EntradaEjecucion,
+  type FasePersonal,
+  type FaseProducto,
   type FilaEjecucion,
   type LecturaTensiometro,
   type LineaLote,
   type LineaPersonal,
   type LineaProducto,
   type LoteDesinfeccion,
+  type ObjetivoControl,
 } from '@/lib/desinfeccion/tipos'
 import { EjecucionModal } from './EjecucionModal'
 
@@ -81,6 +84,8 @@ export function GridEjecucion({
   usuarioId,
   zonas,
   onSinMigracion,
+  objetivos,
+  recargarObjetivos,
   onJornalCreado,
 }: {
   temporadaId: string
@@ -93,6 +98,10 @@ export function GridEjecucion({
   usuarioId: string | null
   zonas: Set<string>
   onSinMigracion: (falta: boolean, causa?: string | null) => void
+  /** El catálogo de objetivos de control (migración 75). */
+  objetivos: ObjetivoControl[]
+  /** Vuelve a bajar el catálogo tras un alta in-situ, SIN refrescar la ruta. */
+  recargarObjetivos: () => void
   /** Un jornal creado desde el selector: hay que recargar el catálogo. */
   onJornalCreado: () => void
 }) {
@@ -115,6 +124,18 @@ export function GridEjecucion({
    * dedo todavía en el teclado; ésta es la foto del momento de abrir.
    */
   const [seccionesGuardadas, setSeccionesGuardadas] = useState<SeccionEjecucion[]>([])
+  /**
+   * Lo que contestó la base al guardar, si contestó mal.
+   *
+   * Va aparte de `error` —el de la cuadrícula— porque este tiene que
+   * salir DENTRO del formulario, encima de los botones: con el modal
+   * abierto, un aviso en la pantalla de atrás no se ve, y el usuario
+   * pulsaba Guardar sin que pasara nada aparente.
+   */
+  const [errorGuardado, setErrorGuardado] = useState<{
+    mensaje: string
+    detalle?: string | null
+  } | null>(null)
   const [lineasProducto, setLineasProducto] = useState<LineaProducto[]>([
     { ...LINEA_PRODUCTO_VACIA },
   ])
@@ -149,9 +170,9 @@ export function GridEjecucion({
         'desinfeccion_ejecucion',
         'editar',
         { duenoId: f.usuario_id, zonaId: f.zona_id },
-        ctx
+        ctx,
       ),
-    [reglas, ctx]
+    [reglas, ctx],
   )
   const puedeEliminarFila = useCallback(
     (f: FilaEjecucion) =>
@@ -160,15 +181,15 @@ export function GridEjecucion({
         'desinfeccion_ejecucion',
         'eliminar',
         { duenoId: f.usuario_id, zonaId: f.zona_id },
-        ctx
+        ctx,
       ),
-    [reglas, ctx]
+    [reglas, ctx],
   )
 
   /** Editar EN LA CELDA pide las dos cosas: permiso y fase abierta. */
   const celdaEditable = useCallback(
     (f: FilaEjecucion) => puedeEditarFila(f) && !faseCerrada(f.estado),
-    [puedeEditarFila]
+    [puedeEditarFila],
   )
 
   /**
@@ -188,7 +209,7 @@ export function GridEjecucion({
       onSinMigracion(d.falta, d.avisoModulo)
       setError(d.mensaje)
     },
-    [onSinMigracion]
+    [onSinMigracion],
   )
 
   const recargar = useCallback(async () => {
@@ -415,7 +436,10 @@ export function GridEjecucion({
         valor: (f) => f.productos_nombres,
         render: (f) =>
           f.productos > 0 ? (
-            <span className="block max-w-[200px] truncate text-xs" title={f.productos_nombres ?? ''}>
+            <span
+              className="block max-w-[200px] truncate text-xs"
+              title={f.productos_nombres ?? ''}
+            >
               <strong className="text-slate-900">{f.productos}</strong>{' '}
               <span className="text-slate-400">{f.productos_nombres}</span>
             </span>
@@ -454,7 +478,7 @@ export function GridEjecucion({
         ),
       },
     ],
-    [estaciones, celdaEditable, puedeEditarFila]
+    [estaciones, celdaEditable, puedeEditarFila],
   )
 
   /* ------------------------- Cargar un turno --------------------------- */
@@ -492,7 +516,10 @@ export function GridEjecucion({
         obsPreriego: f.obs_preriego ?? '',
         fechaLecturas: f.fecha_lecturas ?? '',
         fechaAplicacion: f.fecha_aplicacion ?? '',
+        fechaLavado: f.fecha_lavado ?? '',
         estacionRiegoId: f.estacion_riego_id ?? '',
+        equipoAplicacion: f.equipo_aplicacion ?? '',
+        equipoAplicacionOtro: f.equipo_aplicacion_otro ?? '',
         // El caudal guardado, o el de siempre si la fila es anterior a
         // la 64: un turno viejo no tiene caudal y sin él las ppm no se
         // pueden calcular ni hacia atrás.
@@ -528,7 +555,7 @@ export function GridEjecucion({
 
       // Una fase sin cuadrilla guardada abre VACÍA desde la 62: el
       // renglón de fábrica parecía un dato y había que borrarlo.
-      const porFase = (fase: '1_Preriego' | '3_Aplicacion') => {
+      const porFase = (fase: FasePersonal) => {
         const suyas = ps.filter((p) => p.fase === fase)
         return suyas.map((p) => ({
           id: p.id,
@@ -539,23 +566,29 @@ export function GridEjecucion({
           horasExtras: String(p.horas_extras),
           jornadaTipo: p.jornada_tipo,
           puesto: PUESTOS_CUADRILLA.includes(
-            (p.puesto_texto ?? '') as (typeof PUESTOS_CUADRILLA)[number]
+            (p.puesto_texto ?? '') as (typeof PUESTOS_CUADRILLA)[number],
           )
             ? (p.puesto_texto as string)
             : PUESTO_OTRO,
           puestoOtro: PUESTOS_CUADRILLA.includes(
-            (p.puesto_texto ?? '') as (typeof PUESTOS_CUADRILLA)[number]
+            (p.puesto_texto ?? '') as (typeof PUESTOS_CUADRILLA)[number],
           )
             ? ''
             : (p.puesto_texto ?? ''),
         }))
       }
-      setLineasPersonal([...porFase('1_Preriego'), ...porFase('3_Aplicacion')])
+      setLineasPersonal([
+        ...porFase('1_Preriego'),
+        ...porFase('3_Aplicacion'),
+        ...porFase('4_Lavado'),
+      ])
 
       setLineasProducto(
         qs.length > 0
           ? qs.map((q) => ({
               id: q.id,
+              // Una fila anterior a la 74 no trae fase: era aplicación.
+              fase: (q.fase ?? '3_Aplicacion') as FaseProducto,
               productoId: q.producto_id,
               totalLitros: String(q.total_litros),
               costoLitro: String(q.costo_litro),
@@ -563,16 +596,16 @@ export function GridEjecucion({
               tipoEnvase: q.tipo_envase ?? '',
               objetivosControl: q.objetivos_control ?? [],
             }))
-          : [{ ...LINEA_PRODUCTO_VACIA }]
+          : [{ ...LINEA_PRODUCTO_VACIA }],
       )
 
       // La foto del candado se toma AQUÍ, con lo que acaba de llegar de
       // la base, y no se vuelve a mirar mientras se escribe.
       setSeccionesGuardadas(
-        SECCIONES.filter((sec) => seccionLlena(sec, cargada, lotesCargados, lecturasCargadas))
+        SECCIONES.filter((sec) => seccionLlena(sec, cargada, lotesCargados, lecturasCargadas)),
       )
     },
-    []
+    [],
   )
 
   /**
@@ -599,7 +632,12 @@ export function GridEjecucion({
     setBuscando(true)
     const { fila, error: e } = await buscarEjecucion(base.temporadaId, turnoId, Number(ciclo) || 1)
     if (e) setError(e)
-    await cargarEnFormulario(fila, { ...EJECUCION_VACIA, temporadaId: base.temporadaId, turnoId, ciclo })
+    await cargarEnFormulario(fila, {
+      ...EJECUCION_VACIA,
+      temporadaId: base.temporadaId,
+      turnoId,
+      ciclo,
+    })
     setBuscando(false)
   }
 
@@ -634,7 +672,7 @@ export function GridEjecucion({
         temporadaId,
         ejecucionAbierta || null,
         'desinfeccion_ejecucion',
-        Number(cicloActual) || null
+        Number(cicloActual) || null,
       )
       if (vivo) setLotesTurno(datos)
     }
@@ -645,8 +683,13 @@ export function GridEjecucion({
   }, [temporadaId, ejecucionAbierta, cicloActual, lotes])
 
   const lotesDelTurno = useMemo(
-    () => lineasLote.map((l) => l.loteTemporadaId).filter(Boolean).sort().join(','),
-    [lineasLote]
+    () =>
+      lineasLote
+        .map((l) => l.loteTemporadaId)
+        .filter(Boolean)
+        .sort()
+        .join(','),
+    [lineasLote],
   )
 
   useEffect(() => {
@@ -702,6 +745,7 @@ export function GridEjecucion({
   /* ------------------------------ Acciones ----------------------------- */
 
   function nuevo() {
+    setErrorGuardado(null)
     setEntrada({ ...EJECUCION_VACIA, temporadaId })
     setLecturas(lecturasPorOmision())
     setLineasLote([{ ...LINEA_LOTE_VACIA }])
@@ -711,6 +755,7 @@ export function GridEjecucion({
   }
 
   async function editar(f: FilaEjecucion) {
+    setErrorGuardado(null)
     setOcupado(true)
     await cargarEnFormulario(f, { ...EJECUCION_VACIA, temporadaId })
     setOcupado(false)
@@ -728,10 +773,14 @@ export function GridEjecucion({
       lecturas,
       limpiarLotes(lineasLote),
       limpiarPersonal(lineasPersonal, salarioPorOmision),
-      limpiarProductos(lineasProducto)
+      limpiarProductos(lineasProducto),
     )
     setOcupado(false)
-    if (!r.ok) return setError(r.mensaje)
+    if (!r.ok) {
+      setErrorGuardado({ mensaje: r.mensaje, detalle: r.detalle ?? null })
+      return
+    }
+    setErrorGuardado(null)
     setEntrada(null)
     setError(null)
     setAviso(r.mensaje)
@@ -759,7 +808,7 @@ export function GridEjecucion({
   async function eliminar(ids: string[], limpiar: () => void) {
     if (
       !window.confirm(
-        `¿Eliminar ${ids.length} ejecución(es)? Se van con ellas sus lotes, sus químicos y su cuadrilla.`
+        `¿Eliminar ${ids.length} ejecución(es)? Se van con ellas sus lotes, sus químicos y su cuadrilla.`,
       )
     ) {
       return
@@ -795,7 +844,8 @@ export function GridEjecucion({
         puedeExportar={canExecuteAction(reglas, 'desinfeccion_ejecucion', 'exportar')}
         vacio={{
           titulo: 'Sin turnos ejecutados',
-          descripcion: 'Registra el primero: elige turno y ciclo, y el formulario abre el que haya.',
+          descripcion:
+            'Registra el primero: elige turno y ciclo, y el formulario abre el que haya.',
         }}
         resumen={(visibles) => (
           <span className="text-xs text-slate-500">
@@ -829,10 +879,10 @@ export function GridEjecucion({
         }
         accionesSeleccion={(marcadas, limpiar) => {
           const editables = marcadas.filter((id) =>
-            filas.some((f) => f.id === id && puedeEditarFila(f))
+            filas.some((f) => f.id === id && puedeEditarFila(f)),
           )
           const borrables = marcadas.filter((id) =>
-            filas.some((f) => f.id === id && puedeEliminarFila(f))
+            filas.some((f) => f.id === id && puedeEliminarFila(f)),
           )
           return (
             <>
@@ -875,6 +925,9 @@ export function GridEjecucion({
           fechasSiembra={fechasSiembra}
           siembraPrevista={siembraPrevista}
           seccionesGuardadas={seccionesGuardadas}
+          errorGuardado={errorGuardado}
+          objetivos={objetivos}
+          onObjetivoCreado={recargarObjetivos}
           minimo={minimo}
           guardando={ocupado}
           buscando={buscando}

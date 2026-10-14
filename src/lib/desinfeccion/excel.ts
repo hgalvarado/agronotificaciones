@@ -31,6 +31,13 @@ export const COLUMNAS_PLAN: ColumnaHoja[] = [
   { clave: 'lote', alias: ['Lote', 'Nomenclatura', 'Ubicacion Tecnica', 'Ubicación Técnica', 'UT'] },
   { clave: 'ciclo', alias: ['Ciclo'] },
   { clave: 'dias_aplicacion', alias: ['Dias Aplicacion', 'Días Aplicación', 'Dias a la aplicacion', 'Días'] },
+  // OPCIONAL desde la 75: una hoja que no la traiga se importa igual, y
+  // el preriego se queda sin planificar —que es distinto de planificarlo
+  // para el mismo día—.
+  {
+    clave: 'dias_preriego',
+    alias: ['Dias Pre-Riego', 'Días Pre-Riego', 'Dias Preriego', 'Días Preriego', 'Pre-Riego'],
+  },
   { clave: 'producto', alias: ['Producto', 'Quimico', 'Químico', 'Material'] },
   { clave: 'dosis_mz', alias: ['Dosis Mz', 'Dosis/mz', 'Dosis por manzana', 'Dosis'] },
   { clave: 'area_mz', alias: ['Area Planificada', 'Área Planificada', 'Area Mz', 'Manzanas', 'Area'] },
@@ -67,6 +74,14 @@ export type LineaPlan = {
   lote: string
   ciclo: number
   diasAplicacion: number
+  /**
+   * Días del preriego CONTRA la aplicación (migración 75).
+   *
+   * `null` quiere decir que la hoja no lo traía o lo traía vacío: el
+   * preriego se queda sin planificar. Un cero es un dato distinto —se
+   * preriega el mismo día que se aplica—.
+   */
+  diasPreriego: number | null
   producto: string
   dosisMz: number
   areaMz: number
@@ -104,6 +119,18 @@ export function interpretarFilaPlan(
   const dias = aNumero(texto('dias_aplicacion'))
   if (dias === null) return { ok: false, error: 'Faltan los días a la aplicación.' }
 
+  // Los días de preriego son OPCIONALES y también admiten negativos: se
+  // cuentan contra la aplicación y el suelo se prepara ANTES. Vacío no
+  // es cero, es «todavía no se planificó».
+  const preriegoTexto = texto('dias_preriego')
+  const preriego = preriegoTexto === '' ? null : aNumero(preriegoTexto)
+  if (preriegoTexto !== '' && preriego === null) {
+    return {
+      ok: false,
+      error: 'Los días de pre-riego no se entienden. Déjalos vacíos si todavía no se planifica.',
+    }
+  }
+
   const dosis = aNumero(texto('dosis_mz'))
   if (dosis === null) return { ok: false, error: 'Falta la dosis por manzana.' }
   if (dosis < 0) return { ok: false, error: 'La dosis por manzana no puede ser negativa.' }
@@ -137,6 +164,7 @@ export function interpretarFilaPlan(
       lote: texto('lote').split(/\s*[·|—–]\s*/)[0].trim(),
       ciclo: ciclo as 1 | 2 | 3,
       diasAplicacion: Math.trunc(dias),
+      diasPreriego: preriego === null ? null : Math.trunc(preriego),
       producto: texto('producto'),
       dosisMz: dosis,
       areaMz: area,
