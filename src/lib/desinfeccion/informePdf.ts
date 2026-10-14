@@ -24,6 +24,7 @@
 import { ANCHO, ALTO, Pagina, construirPdf, type Rgb } from '@/lib/pdf/documento'
 import { n2 } from '@/lib/trasplante/formato'
 import {
+  fasesCuadrilla,
   piezasDe,
   porcentajeDe,
   productosDe,
@@ -103,7 +104,7 @@ function dato(
   y: number,
   etiqueta: string,
   valor: string,
-  op: { negrita?: boolean; color?: Rgb; ancho?: number } = {}
+  op: { negrita?: boolean; color?: Rgb; ancho?: number } = {},
 ): void {
   p.texto(x, y, etiqueta.toUpperCase(), { tamano: 6.5, gris: 0.5 })
   p.texto(x, y + 9, valor, {
@@ -133,7 +134,10 @@ export function informeEjecutivoPdf(fila: FilaInforme, hoy: string): Blob {
   y += 26
 
   /* ------------------ 1 · Contexto del lote ---------------------- */
-  y = bloque(p, y, 76, 'Contexto del lote')
+  // El marco crece si los hitos necesitan una segunda fila: dibujarlo
+  // de alto fijo dejaría los datos por fuera del recuadro.
+  const filasHitos = fila.fecha_lavado ? 2 : 1
+  y = bloque(p, y, 76 + (filasHitos - 1) * 30, 'Contexto del lote')
   const col = UTIL / 4
   dato(p, MARGEN + 14, y, 'Zona', fila.zona_nombre ?? '—')
   dato(p, MARGEN + 14 + col, y, 'Temporada', fila.temporada_nombre ?? '—')
@@ -141,25 +145,55 @@ export function informeEjecutivoPdf(fila: FilaInforme, hoy: string): Blob {
   dato(p, MARGEN + 14 + col * 3, y, 'Manzanas regadas', `${num(fila.mz_regadas)} mz`)
   y += 30
 
+  /*
+   * Los hitos se COLOCAN SOLOS, no en posiciones escritas a mano.
+   *
+   * Con la fase 4 pasaron a ser cinco y las columnas siguen siendo
+   * cuatro: calculando el `col * n` a ojo, la siembra y «Contra el
+   * plan» acabaron encima la una de la otra —y en un PDF eso no es un
+   * aviso de consola, es un informe ilegible que alguien lleva a una
+   * reunión—. Se arma la lista de lo que HAY y se reparte en filas de
+   * cuatro, que es lo que cabe.
+   */
   const retraso = retrasoDias(fila)
-  dato(p, MARGEN + 14, y, 'Preriego', `${fecha(fila.fecha_preriego)}  (${fila.ddt_preriego ?? '—'} DDT)`)
-  dato(p, MARGEN + 14 + col, y, 'Aplicación', `${fecha(fila.fecha_aplicacion)}  (${fila.ddt_aplicacion ?? '—'} DDT)`)
-  dato(
-    p,
-    MARGEN + 14 + col * 2,
-    y,
-    fila.origen_siembra === 'real' ? 'Siembra' : 'Siembra prevista',
-    fecha(fila.fecha_siembra)
-  )
-  dato(
-    p,
-    MARGEN + 14 + col * 3,
-    y,
-    'Contra el plan',
-    retraso === null ? 'Sin plan' : `${conSigno(retraso, 0)} días`,
-    { color: retraso !== null && retraso > 7 ? ROJO : undefined }
-  )
-  y += 40
+  const hitos: { etiqueta: string; valor: string; color?: Rgb }[] = [
+    {
+      etiqueta: 'Preriego',
+      valor: `${fecha(fila.fecha_preriego)}  (${fila.ddt_preriego ?? '—'} DDT)`,
+    },
+    {
+      etiqueta: 'Aplicación',
+      valor: `${fecha(fila.fecha_aplicacion)}  (${fila.ddt_aplicacion ?? '—'} DDT)`,
+    },
+    // El lavado sólo ocupa sitio si lo hubo: en el papel, una columna
+    // más es una columna que hay que leer para descubrir que dice «—».
+    ...(fila.fecha_lavado
+      ? [
+          {
+            etiqueta: 'Lavado de cinta',
+            valor: `${fecha(fila.fecha_lavado)}  (${fila.ddt_lavado ?? '—'} DDT)`,
+          },
+        ]
+      : []),
+    {
+      etiqueta: fila.origen_siembra === 'real' ? 'Siembra' : 'Siembra prevista',
+      valor: fecha(fila.fecha_siembra),
+    },
+    {
+      etiqueta: 'Contra el plan',
+      valor: retraso === null ? 'Sin plan' : `${conSigno(retraso, 0)} días`,
+      color: retraso !== null && retraso > 7 ? ROJO : undefined,
+    },
+  ]
+
+  hitos.forEach((h, i) => {
+    const fila_ = Math.floor(i / 4)
+    const columna = i % 4
+    dato(p, MARGEN + 14 + col * columna, y + fila_ * 30, h.etiqueta, h.valor, {
+      color: h.color,
+    })
+  })
+  y += 40 + Math.floor((hitos.length - 1) / 4) * 30
 
   /* ---------------- 2 · Análisis agronómico ---------------------- */
   const productos = productosDe(fila)
@@ -178,7 +212,7 @@ export function informeEjecutivoPdf(fila: FilaInforme, hoy: string): Blob {
     fila.delta_dosis === null
       ? 'Sin plan'
       : `${conSigno(fila.delta_dosis)} L/mz  (${conSigno(fila.delta_dosis_pct, 1)}%)`,
-    { color: desviacionColor(fila.delta_dosis_pct) }
+    { color: desviacionColor(fila.delta_dosis_pct) },
   )
   dato(p, MARGEN + 14 + col * 3, y, 'Caudal', `${num(fila.caudal_agua)} m³/h`)
   y += 30
@@ -218,7 +252,13 @@ export function informeEjecutivoPdf(fila: FilaInforme, hoy: string): Blob {
   const piezas = piezasDe(fila)
   y = bloque(p, y, 150, 'Análisis financiero')
 
-  dato(p, MARGEN + 14, y, 'Costo planificado', fila.costo_plan === null ? 'Sin plan' : `L ${num(fila.costo_plan)}`)
+  dato(
+    p,
+    MARGEN + 14,
+    y,
+    'Costo planificado',
+    fila.costo_plan === null ? 'Sin plan' : `L ${num(fila.costo_plan)}`,
+  )
   dato(p, MARGEN + 14 + col, y, 'Costo real', `L ${num(fila.costo_total)}`, { negrita: true })
   dato(
     p,
@@ -228,7 +268,7 @@ export function informeEjecutivoPdf(fila: FilaInforme, hoy: string): Blob {
     fila.delta_costo === null
       ? 'Sin plan'
       : `L ${conSigno(fila.delta_costo)}  (${conSigno(fila.delta_costo_pct, 1)}%)`,
-    { color: desviacionColor(fila.delta_costo_pct) }
+    { color: desviacionColor(fila.delta_costo_pct) },
   )
   dato(p, MARGEN + 14 + col * 3, y, 'Costo por manzana', `L ${num(fila.costo_mz)}`, {
     negrita: true,
@@ -271,21 +311,24 @@ export function informeEjecutivoPdf(fila: FilaInforme, hoy: string): Blob {
     p.texto(
       ANCHO / 2 + 10,
       faseY + 28,
-      `Preriego L ${num(fila.costo_personal_preriego)}  ·  ` +
-        `Aplicación L ${num(fila.costo_personal_aplicacion)}`,
-      { tamano: 8.5, gris: 0.4 }
+      // Las fases que SÍ costaron, con el mismo reparto que la pantalla
+      // (migración 74). Una línea «Lavado L 0.00» en un turno que no se
+      // lavó no informa de nada y empuja hacia abajo lo que sí.
+      fasesCuadrilla(fila)
+        .map((f) => `${f.etiqueta} L ${num(f.valor)}`)
+        .join('  ·  '),
+      { tamano: 8.5, gris: 0.4 },
     )
   }
 
   /* ------------------------- El pie ------------------------------ */
   p.linea({ x: MARGEN, y: ALTO - 46 }, { x: ANCHO - MARGEN, y: ALTO - 46 }, 0.85, 0.5)
   p.texto(MARGEN, ALTO - 40, `${EMPRESA} · AgroNotificaciones`, { tamano: 7.5, gris: 0.5 })
-  p.texto(
-    ANCHO - MARGEN,
-    ALTO - 40,
-    `${lote} · ciclo ${fila.ciclo} · emitido el ${hoy}`,
-    { tamano: 7.5, gris: 0.5, alineacion: 'derecha' }
-  )
+  p.texto(ANCHO - MARGEN, ALTO - 40, `${lote} · ciclo ${fila.ciclo} · emitido el ${hoy}`, {
+    tamano: 7.5,
+    gris: 0.5,
+    alineacion: 'derecha',
+  })
 
   return construirPdf([p], `Informe ejecutivo · ${lote}`)
 }

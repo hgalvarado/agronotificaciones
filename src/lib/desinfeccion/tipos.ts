@@ -28,8 +28,16 @@ export type FilaPlan = {
   dias_aplicacion: number
   /** Generada en la base: congelada + días. */
   fecha_aplicacion: string
+  /** Días del preriego CONTRA la aplicación. Negativo = antes (migración 75). */
+  dias_preriego: number | null
+  /** Generada: (siembra + días de aplicación) + días de preriego. */
+  fecha_preriego: string | null
   variedad_id: string | null
   variedad_nombre: string | null
+  /** De la variedad. Nulo = no se ha configurado y la cosecha no se calcula. */
+  ddt_cosecha: number | null
+  /** Siembra + DDT de cosecha. Nulo si la variedad no lo tiene. */
+  fecha_cosecha: string | null
   producto_id: string | null
   producto_nombre: string | null
   producto_codigo: string | null
@@ -49,7 +57,7 @@ export type FilaPlan = {
   created_at: string
 }
 
-export type EstadoDesinfeccion = '1_Preriego' | '2_Lecturas' | '3_Aplicacion'
+export type EstadoDesinfeccion = '1_Preriego' | '2_Lecturas' | '3_Aplicacion' | '4_Lavado'
 
 /** Las dos monedas en que se compra el químico. */
 export const MONEDAS_PLAN = ['HNL', 'USD'] as const
@@ -80,8 +88,15 @@ export type FilaEjecucion = {
   lecturas_tensiometro: LecturaTensiometro[] | null
 
   fecha_aplicacion: string | null
+  /** El día del lavado de cinta (migración 74). Puede ser posterior. */
+  fecha_lavado: string | null
   estacion_riego_id: string | null
   estacion_riego_nombre: string | null
+  /** Con qué se aplicó (migración 75). */
+  equipo_aplicacion: string | null
+  equipo_aplicacion_otro: string | null
+  /** Lo que se ENSEÑA, resuelto en la base: el detalle si es «Otros». */
+  equipo_aplicacion_mostrado: string | null
   /**
    * La presurización, por reloj desde la 62.
    *
@@ -138,6 +153,8 @@ export type FilaEjecucion = {
    */
   costo_personal_preriego: number
   costo_personal_aplicacion: number
+  /** La cuadrilla que CERRÓ el turno (migración 74). */
+  costo_personal_lavado: number
   costo_personal: number
   envases: number
   /**
@@ -188,6 +205,10 @@ export type FilaProducto = {
   zona_id: string | null
   ciclo: number
   fecha_aplicacion: string | null
+  /** En qué fase se usó (migración 74). Nulo en filas anteriores. */
+  fase: FaseProducto | null
+  /** La fecha con la que se costea: la del lavado si es del lavado. */
+  fecha_uso: string | null
   producto_id: string
   producto_codigo: string | null
   producto_nombre: string | null
@@ -223,15 +244,39 @@ export type FilaProducto = {
   ppm_calculada: number | null
 }
 
+/**
+ * Un objetivo de control del catálogo (migración 75).
+ *
+ * Lo que se guarda en `objetivos_control` de materiales y de la
+ * ejecución es el NOMBRE, no el identificador: la columna es `text[]` y
+ * lo que se lee es lo que está escrito. Guardar ids obligaría a
+ * resolverlos en cada vista y en el PDF, y dejaría lo anotado antes de
+ * la 75 —texto suelto— sin poder enseñarse al lado.
+ */
+export type ObjetivoControl = {
+  id: string
+  codigo: string | null
+  nombre: string
+  grupo: string | null
+}
+
+/** Con qué se aplicó el químico (migración 75). */
+export const EQUIPOS_APLICACION = ['Sistema de Riego', 'Inyección', 'Otros'] as const
+export type EquipoAplicacion = (typeof EQUIPOS_APLICACION)[number]
+export const EQUIPO_OTROS = 'Otros'
+
 export type JornadaTipo = 'Diurna' | 'Nocturna'
 
 /**
  * De qué fase es una cuadrilla.
  *
- * Sólo dos: la del preriego y la de la aplicación. Las lecturas las toma
- * una persona de paso y no se costean aparte.
+ * Las lecturas las toma una persona de paso y no se costean aparte. El
+ * lavado de cinta sí: lo cierra otra gente, otro día (migración 74).
  */
-export type FasePersonal = '1_Preriego' | '3_Aplicacion'
+export type FasePersonal = '1_Preriego' | '3_Aplicacion' | '4_Lavado'
+
+/** Las fases que llevan químico. El preriego es agua y las lecturas no aplican nada. */
+export type FaseProducto = '3_Aplicacion' | '4_Lavado'
 
 /**
  * Una línea de cuadrilla, que desde la 61 pertenece a UNA fase.
@@ -385,7 +430,8 @@ export type CatalogosDesinfeccion = {
   turnos: { id: string; codigo: string; zona_id: string | null }[]
   /** Con su zona desde la 60: nula quiere decir «todavía sin asignar». */
   estaciones: { id: string; nombre: string; zona_id: string | null }[]
-  variedades: OpcionCatalogo[]
+  /** Con su DDT de cosecha desde la 75: de ahí sale la cosecha prevista. */
+  variedades: (OpcionCatalogo & { ddt_cosecha?: number | null })[]
   /** Insumos. El producto de desinfección sale de aquí, no de cultivos. */
   materiales: {
     id: string
@@ -424,7 +470,7 @@ export const CATALOGOS_VACIOS: CatalogosDesinfeccion = {
 /* ------------------------------------------------------------------ */
 
 /**
- * Las tres fases, en orden.
+ * Las cuatro fases, en orden.
  *
  * El valor lleva el número delante porque así está el enum en la base
  * (`1_Preriego`…): ordenar por el valor y ordenar por la fase son la
@@ -434,9 +480,13 @@ export const FASES: { valor: EstadoDesinfeccion; etiqueta: string; tono: Tono }[
   { valor: '1_Preriego', etiqueta: 'Preriego', tono: 'azul' },
   { valor: '2_Lecturas', etiqueta: 'Lecturas', tono: 'ambar' },
   { valor: '3_Aplicacion', etiqueta: 'Aplicación', tono: 'verde' },
+  // El lavado de cinta cierra el turno (migración 74). Va aparte de la
+  // aplicación porque lo hace otra gente, otro día y con otro químico:
+  // metido dentro, su costo quedaba escondido en el de la aplicación.
+  { valor: '4_Lavado', etiqueta: 'Lavado de cinta', tono: 'azul' },
 ]
 
-export const FASE_FINAL: EstadoDesinfeccion = '3_Aplicacion'
+export const FASE_FINAL: EstadoDesinfeccion = '4_Lavado'
 
 /**
  * Los ciclos de cultivo.
@@ -481,6 +531,14 @@ export type EntradaPlan = {
   ciclo: string
   fechaSiembraCongelada: string
   diasAplicacion: string
+  /**
+   * Días del preriego CONTRA la aplicación (migración 75).
+   *
+   * Negativo es lo normal —se prepara el suelo ANTES de aplicar—, cero
+   * quiere decir el mismo día, y vacío quiere decir que todavía no se
+   * ha planificado, que no es lo mismo que cero.
+   */
+  diasPreriego: string
   variedadId: string
   productoId: string
   dosisMz: string
@@ -507,6 +565,7 @@ export const PLAN_VACIO: EntradaPlan = {
   ciclo: '1',
   fechaSiembraCongelada: '',
   diasAplicacion: '0',
+  diasPreriego: '',
   variedadId: '',
   productoId: '',
   dosisMz: '',
@@ -535,7 +594,13 @@ export type EntradaEjecucion = {
   fechaLecturas: string
 
   fechaAplicacion: string
+  /** El día en que se lavó la cinta. Puede ser posterior (migración 74). */
+  fechaLavado: string
   estacionRiegoId: string
+  /** Con qué se aplicó (migración 75). Vacío = todavía no se anotó. */
+  equipoAplicacion: string
+  /** Obligatorio cuando el equipo es «Otros»: un «Otros» a secas no dice nada. */
+  equipoAplicacionOtro: string
   /** Metros cúbicos por hora. Es el divisor de las ppm (migración 64). */
   caudalAgua: string
   /** Las cuatro fases del riego se capturan igual: por reloj (migración 62). */
@@ -551,7 +616,6 @@ export type EntradaEjecucion = {
   calibracionEntrada: string
   calibracionSalida: string
   calibracionCampo: string
-
 }
 
 export const EJECUCION_VACIA: EntradaEjecucion = {
@@ -566,7 +630,10 @@ export const EJECUCION_VACIA: EntradaEjecucion = {
   obsPreriego: '',
   fechaLecturas: '',
   fechaAplicacion: '',
+  fechaLavado: '',
   estacionRiegoId: '',
+  equipoAplicacion: '',
+  equipoAplicacionOtro: '',
   caudalAgua: CAUDAL_POR_OMISION,
   inicioPresurizacion: '',
   finPresurizacion: '',
@@ -620,7 +687,16 @@ export type LineaPersonal = {
  * riego manejando las válvulas, y hasta ahora había que anotarlo como
  * «Otro» y escribir el nombre del puesto a mano en cada renglón.
  */
-export const PUESTOS_CUADRILLA = ['Supervisor', 'Jornal', 'Estacionero', 'Otro'] as const
+export const PUESTOS_CUADRILLA = [
+  'Supervisor',
+  'Jornal',
+  'Estacionero',
+  // Quien maneja el riego durante la inyección y el lavado (migración
+  // 74). Hasta ahora se anotaba como «Otro» y se escribía a mano en cada
+  // renglón, que es la vía más corta a tres grafías del mismo puesto.
+  'Operador de Riego',
+  'Otro',
+] as const
 
 export const PUESTO_OTRO = 'Otro'
 
@@ -657,6 +733,15 @@ export const LINEA_PERSONAL_VACIA: LineaPersonal = lineaPersonalVacia('3_Aplicac
 
 export type LineaProducto = {
   id: string
+  /**
+   * En qué fase se usó (migración 74).
+   *
+   * El lavado de cinta NO calcula ppm ni hereda objetivos: no se aplica
+   * contra una plaga, se enjuaga una tubería. La misma fila con otra
+   * fase es otro renglón —la llave única incluye la fase—, así que el
+   * mismo ácido puede ir en la inyección y en el lavado.
+   */
+  fase: FaseProducto
   productoId: string
   /** El TOTAL aplicado. La dosis por manzana se deduce de las manzanas. */
   totalLitros: string
@@ -677,8 +762,13 @@ export type LineaProducto = {
   objetivosControl: string[]
 }
 
+export function lineaProductoVacia(fase: FaseProducto = '3_Aplicacion'): LineaProducto {
+  return { ...LINEA_PRODUCTO_VACIA, fase }
+}
+
 export const LINEA_PRODUCTO_VACIA: LineaProducto = {
   id: '',
+  fase: '3_Aplicacion',
   productoId: '',
   totalLitros: '',
   costoLitro: '',

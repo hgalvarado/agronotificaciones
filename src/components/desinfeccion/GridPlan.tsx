@@ -220,6 +220,72 @@ export function GridPlan({
           </span>
         ),
       },
+      // Las tres columnas de la 75: los días del preriego, su fecha y la
+      // cosecha prevista. Van pegadas a la aplicación porque es contra
+      // ella como se leen —«dos días antes», «sesenta y cinco después»—.
+      {
+        campo: 'dias_preriego',
+        label: 'Días pre-riego',
+        tipo: 'numero',
+        numero: true,
+        valor: (f) => (f.dias_preriego === null ? null : Number(f.dias_preriego)),
+        editable: puedeEditarFila,
+        editor: 'numero',
+        valorEdicion: (f) => (f.dias_preriego === null ? '' : String(f.dias_preriego)),
+        render: (f) => (
+          <span className="text-xs tabular-nums">
+            {f.dias_preriego === null ? (
+              <span className="text-slate-300">—</span>
+            ) : (
+              f.dias_preriego
+            )}
+          </span>
+        ),
+      },
+      {
+        campo: 'fecha_preriego',
+        label: 'Pre-riego',
+        tipo: 'fecha',
+        ancho: '10rem',
+        valor: (f) => f.fecha_preriego,
+        etiqueta: (f) => (f.fecha_preriego ? formatearFecha(f.fecha_preriego) : '—'),
+        render: (f) =>
+          f.fecha_preriego ? (
+            <span
+              className="text-xs font-semibold text-brand-700"
+              title="La calcula la base: aplicación + días de pre-riego."
+            >
+              {formatearFecha(f.fecha_preriego)}
+            </span>
+          ) : (
+            // Vacío NO es la fecha de aplicación: quiere decir que el
+            // preriego todavía no se ha planificado.
+            <span className="text-xs text-slate-300" title="Sin días de pre-riego escritos.">
+              —
+            </span>
+          ),
+      },
+      {
+        campo: 'fecha_cosecha',
+        label: 'Cosecha prevista',
+        tipo: 'fecha',
+        ancho: '10rem',
+        valor: (f) => f.fecha_cosecha,
+        etiqueta: (f) => (f.fecha_cosecha ? formatearFecha(f.fecha_cosecha) : '—'),
+        render: (f) =>
+          f.fecha_cosecha ? (
+            <span className="text-xs" title={`Siembra + ${f.ddt_cosecha} días de la variedad.`}>
+              {formatearFecha(f.fecha_cosecha)}
+            </span>
+          ) : (
+            <span
+              className="text-xs text-slate-300"
+              title="Falta el DDT de cosecha de esta variedad: se configura en Catálogos → Variedades."
+            >
+              —
+            </span>
+          ),
+      },
       {
         campo: 'variedad_nombre',
         label: 'Variedad',
@@ -347,6 +413,7 @@ export function GridPlan({
       ciclo: String(f.ciclo),
       fechaSiembraCongelada: f.fecha_siembra_congelada,
       diasAplicacion: String(f.dias_aplicacion),
+      diasPreriego: f.dias_preriego === null ? '' : String(f.dias_preriego),
       variedadId: f.variedad_id ?? '',
       productoId: f.producto_id ?? '',
       dosisMz: String(f.dosis_mz),

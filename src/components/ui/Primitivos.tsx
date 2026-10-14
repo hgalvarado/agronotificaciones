@@ -41,7 +41,10 @@ export function Boton({
   ...props
 }: ComponentProps<'button'> & { variante?: Variante; tamano?: Tamano }) {
   return (
-    <button className={`${baseBoton} ${variantes[variante]} ${tamanos[tamano]} ${className}`} {...props} />
+    <button
+      className={`${baseBoton} ${variantes[variante]} ${tamanos[tamano]} ${className}`}
+      {...props}
+    />
   )
 }
 
@@ -52,7 +55,10 @@ export function BotonLink({
   ...props
 }: ComponentProps<typeof Link> & { variante?: Variante; tamano?: Tamano }) {
   return (
-    <Link className={`${baseBoton} ${variantes[variante]} ${tamanos[tamano]} ${className}`} {...props} />
+    <Link
+      className={`${baseBoton} ${variantes[variante]} ${tamanos[tamano]} ${className}`}
+      {...props}
+    />
   )
 }
 
@@ -60,13 +66,7 @@ export function BotonLink({
 /* Tarjeta                                                             */
 /* ------------------------------------------------------------------ */
 
-export function Tarjeta({
-  className = '',
-  children,
-}: {
-  className?: string
-  children: ReactNode
-}) {
+export function Tarjeta({ className = '', children }: { className?: string; children: ReactNode }) {
   return (
     <div
       className={`rounded-2xl border border-slate-200/80 bg-white shadow-[var(--shadow-card)] ${className}`}
@@ -192,6 +192,7 @@ export function Campo({
   ayuda,
   ayudaVisible = false,
   requerido,
+  error,
   className = '',
   children,
 }: {
@@ -200,6 +201,17 @@ export function Campo({
   /** Deja la ayuda escrita debajo, como antes. Para avisos, no para aclaraciones. */
   ayudaVisible?: boolean
   requerido?: boolean
+  /**
+   * Qué hay que corregir en ESTE campo.
+   *
+   * Va debajo del control y en rojo, con un ejemplo de lo que se espera.
+   * Un «revisa el formulario» al pie obliga a buscar a ojo cuál de los
+   * cuarenta campos se queja; esto lo señala.
+   *
+   * Lleva `aria-live` para que el lector de pantalla lo anuncie en
+   * cuanto aparece: quien no ve el borde rojo tiene que enterarse igual.
+   */
+  error?: string | null
   className?: string
   children: ReactNode
 }) {
@@ -216,9 +228,32 @@ export function Campo({
         {ayuda && !ayudaVisible && <Ayuda texto={ayuda} etiqueta={etiqueta} />}
       </span>
       {children}
-      {ayuda && ayudaVisible && <span className="text-xs text-slate-400">{ayuda}</span>}
+      {error ? (
+        <span
+          aria-live="polite"
+          className="flex items-start gap-1 text-xs font-medium text-red-600"
+        >
+          <span aria-hidden="true">⚠</span>
+          <span>{error}</span>
+        </span>
+      ) : (
+        ayuda && ayudaVisible && <span className="text-xs text-slate-400">{ayuda}</span>
+      )}
     </label>
   )
+}
+
+/**
+ * El borde de un campo con problema.
+ *
+ * Se devuelve como clase y no como un componente envolvente para que
+ * cualquier control —`Entrada`, `Selector`, `AreaTexto`— la pueda
+ * recibir sin cambiar de forma. El color es un SEGUNDO canal: el
+ * mensaje de `Campo` dice lo mismo con palabras, porque un borde rojo
+ * solo no se ve en una pantalla al sol ni lo oye un lector.
+ */
+export function bordeError(hay: boolean | string | null | undefined): string {
+  return hay ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''
 }
 
 /**
@@ -256,9 +291,7 @@ export function Grupo({
   children: ReactNode
 }) {
   return (
-    <fieldset
-      className={`mt-3 rounded-xl border border-slate-200/80 px-3 pb-3 pt-1 ${className}`}
-    >
+    <fieldset className={`mt-3 rounded-xl border border-slate-200/80 px-3 pb-3 pt-1 ${className}`}>
       {/* La ayuda del marco va detrás de la «i», igual que la de los
           campos (migración 71): un párrafo bajo cada leyenda son tres
           renglones más de formulario por cada grupo. */}
@@ -289,14 +322,23 @@ export function AreaTexto({ className = '', ...props }: ComponentProps<'textarea
 /* Mensajes                                                            */
 /* ------------------------------------------------------------------ */
 
-export function Alerta({ tono = 'rojo', children }: { tono?: 'rojo' | 'ambar' | 'azul'; children: ReactNode }) {
+export function Alerta({
+  tono = 'rojo',
+  children,
+}: {
+  tono?: 'rojo' | 'ambar' | 'azul'
+  children: ReactNode
+}) {
   const estilos = {
     rojo: 'bg-red-50 text-red-700 ring-red-600/10',
     ambar: 'bg-amber-50 text-amber-800 ring-amber-600/10',
     azul: 'bg-sky-50 text-sky-800 ring-sky-600/10',
   }
   return (
-    <p role="alert" className={`rounded-xl px-3.5 py-2.5 text-sm ring-1 ring-inset ${estilos[tono]}`}>
+    <p
+      role="alert"
+      className={`rounded-xl px-3.5 py-2.5 text-sm ring-1 ring-inset ${estilos[tono]}`}
+    >
       {children}
     </p>
   )
@@ -318,19 +360,9 @@ export function Esqueleto({ className = 'h-4 w-full' }: { className?: string }) 
  */
 export function Girador({ className = 'h-4 w-4' }: { className?: string }) {
   return (
-    <svg
-      className={`animate-spin ${className}`}
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden="true"
-    >
+    <svg className={`animate-spin ${className}`} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
-      <path
-        d="M21 12a9 9 0 0 0-9-9"
-        stroke="currentColor"
-        strokeWidth="3"
-        strokeLinecap="round"
-      />
+      <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
     </svg>
   )
 }

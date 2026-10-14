@@ -35,6 +35,7 @@ import { diagnosticarLectura } from '@/lib/supabase/instalacion'
 import type { CatalogosDesinfeccion } from '@/lib/desinfeccion/tipos'
 import {
   conSigno,
+  fasesCuadrilla,
   hitosDe,
   piezasDe,
   productosDe,
@@ -68,7 +69,7 @@ export function InformeEjecutivo({
 
   const avisar = useCallback(
     (falta: boolean, causa: string | null = null) => onSinMigracion(falta, causa),
-    [onSinMigracion]
+    [onSinMigracion],
   )
 
   useEffect(() => {
@@ -114,7 +115,7 @@ export function InformeEjecutivo({
   // puede ver no llega hasta aquí.
   const visibles = useMemo(
     () => filas.filter((f) => !zonaId || f.zona_id === zonaId),
-    [filas, zonaId]
+    [filas, zonaId],
   )
 
   /*
@@ -127,7 +128,7 @@ export function InformeEjecutivo({
    */
   const fila = useMemo(
     () => visibles.find((f) => f.id === elegido) ?? visibles[0] ?? null,
-    [visibles, elegido]
+    [visibles, elegido],
   )
 
   const puedeExportar = canExecuteAction(reglas, 'desinfeccion_reporte', 'exportar')
@@ -157,11 +158,7 @@ export function InformeEjecutivo({
             etiqueta="Lote y ciclo"
             ayuda="Sólo salen los lotes que tu rol puede ver: el recorte lo hace la base, no esta pantalla."
           >
-            <Selector
-              value={fila?.id ?? ''}
-              buscable
-              onChange={(e) => setElegido(e.target.value)}
-            >
+            <Selector value={fila?.id ?? ''} buscable onChange={(e) => setElegido(e.target.value)}>
               {visibles.length === 0 && <option value="">No hay lotes que mirar</option>}
               {visibles.map((f) => (
                 <option key={f.id} value={f.id}>
@@ -221,7 +218,9 @@ function Encabezado({ fila }: { fila: Fila }) {
       <div className="min-w-0">
         <h2 className="truncate text-xl font-bold tracking-tight text-slate-900">
           {fila.lote_nomenclatura}
-          {fila.lote_nombre && <span className="font-normal text-slate-400"> · {fila.lote_nombre}</span>}
+          {fila.lote_nombre && (
+            <span className="font-normal text-slate-400"> · {fila.lote_nombre}</span>
+          )}
         </h2>
         <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-400">
           <span>Ciclo {fila.ciclo}</span>
@@ -233,6 +232,16 @@ function Encabezado({ fila }: { fila: Fila }) {
             <>
               <span aria-hidden>·</span>
               <span>{fila.variedad}</span>
+            </>
+          )}
+          {/* Con qué se aplicó (migración 75). Va en la cabecera y no en
+              una tarjeta: es contexto del turno, como la zona o la
+              variedad, y es lo primero que se pregunta cuando un turno
+              sale raro. */}
+          {fila.equipo_aplicacion && (
+            <>
+              <span aria-hidden>·</span>
+              <span>{fila.equipo_aplicacion}</span>
             </>
           )}
         </p>
@@ -360,7 +369,9 @@ function TarjetaDelta({
       <div className="mt-2 flex items-end justify-between gap-3">
         <div>
           <p className="text-[11px] text-slate-400">Planificado</p>
-          <p className="text-base font-semibold tabular-nums text-slate-500">{plan ?? 'Sin plan'}</p>
+          <p className="text-base font-semibold tabular-nums text-slate-500">
+            {plan ?? 'Sin plan'}
+          </p>
         </div>
         <span aria-hidden className="pb-1 text-slate-300">
           →
@@ -411,23 +422,20 @@ function SeccionFinanciera({ fila }: { fila: Fila }) {
           <p className="mt-0.5 text-lg font-bold text-slate-900">
             {fila.fase_mas_cara ?? 'Sin cuadrilla'}
           </p>
+          {/* Las fases que SÍ costaron, con el MISMO reparto que el PDF
+              (migración 74): el papel y la pantalla salen de la misma
+              función pura. Una fase en cero no se dibuja. */}
           <dl className="mt-2 flex flex-col gap-1 text-xs">
-            <div className="flex justify-between gap-2">
-              <dt className="text-slate-500">Preriego</dt>
-              <dd className="font-semibold tabular-nums text-slate-900">
-                L {n2(fila.costo_personal_preriego)}
-              </dd>
-            </div>
-            <div className="flex justify-between gap-2">
-              <dt className="text-slate-500">Aplicación</dt>
-              <dd className="font-semibold tabular-nums text-slate-900">
-                L {n2(fila.costo_personal_aplicacion)}
-              </dd>
-            </div>
+            {fasesCuadrilla(fila).map((f) => (
+              <div key={f.etiqueta} className="flex justify-between gap-2">
+                <dt className="text-slate-500">{f.etiqueta}</dt>
+                <dd className="font-semibold tabular-nums text-slate-900">L {n2(f.valor)}</dd>
+              </div>
+            ))}
           </dl>
           <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
-            El preriego lo hace mucha gente pocas horas y la aplicación poca gente muchas: cuál
-            pesa más no es evidente.
+            El preriego lo hace mucha gente pocas horas y la aplicación poca gente muchas: cuál pesa
+            más no es evidente.
           </p>
         </div>
       </div>

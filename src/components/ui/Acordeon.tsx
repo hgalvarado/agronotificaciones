@@ -27,6 +27,16 @@ export function Acordeon({
   titulo,
   descripcion,
   resumen,
+  /**
+   * Hay algo que corregir AHÍ DENTRO.
+   *
+   * Es la cuarta decisión, y llegó con la fase 4 (migración 74): con el
+   * contenido montado pero plegado, un campo mal escrito quedaba
+   * invisible y la persona no sabía ni en qué sección mirar. El
+   * distintivo se ve con la sección cerrada, que es justo cuando hace
+   * falta.
+   */
+  aviso,
   abierto,
   onAlternar,
   children,
@@ -35,6 +45,7 @@ export function Acordeon({
   descripcion?: string
   /** Lo que la sección dice de sí misma estando cerrada. */
   resumen?: ReactNode
+  aviso?: string | null
   abierto: boolean
   onAlternar: () => void
   children: ReactNode
@@ -42,7 +53,11 @@ export function Acordeon({
   const id = useId()
 
   return (
-    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+    <section
+      className={`overflow-hidden rounded-xl border bg-white ${
+        aviso ? 'border-red-300' : 'border-slate-200'
+      }`}
+    >
       <button
         type="button"
         onClick={onAlternar}
@@ -59,6 +74,14 @@ export function Acordeon({
           <span className="block text-sm font-semibold text-slate-900">{titulo}</span>
           {descripcion && (
             <span className="mt-0.5 block text-xs text-slate-400">{descripcion}</span>
+          )}
+          {/* El aviso va DENTRO del encabezado y no al lado del resumen:
+              en el teléfono el resumen ya se queda sin sitio, y lo que
+              no cabe se recorta justo lo que había que ver. */}
+          {aviso && (
+            <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-700 ring-1 ring-inset ring-red-600/15">
+              <span aria-hidden="true">⚠️</span> Revisar datos
+            </span>
           )}
         </span>
         {resumen !== undefined && resumen !== null && (

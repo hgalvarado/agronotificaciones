@@ -116,6 +116,14 @@ export const GRUPOS: GrupoDeclarado[] = [
         descripcion: 'Las variedades que se siembran, cada una con su cultivo.',
       },
       { key: 'materiales', descripcion: 'Plástico, manguera y demás insumos con su código.' },
+      // Va PEGADO a materiales porque se mantienen juntos: al dar de
+      // alta un químico hay que elegirle sus objetivos, y tenerlo en
+      // «Otros catálogos» obligaba a buscarlo al final de la pantalla
+      // cada vez (migración 75).
+      {
+        key: 'objetivos_control',
+        descripcion: 'Contra qué se aplica cada químico: nematodos, hongos de suelo, malezas…',
+      },
       {
         key: 'planes_nutricionales',
         descripcion: 'Los planes de nutrición que se aplican en cada turno de riego.',

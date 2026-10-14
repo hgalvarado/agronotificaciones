@@ -22,9 +22,18 @@ import {
   zonasParaCrear,
   type ReglasPlanas,
 } from '@/lib/permisos/clientABAC'
-import { AVISO_SIN_MIGRACION, leerJornales, leerLotes } from '@/lib/desinfeccion/repositorioCliente'
+import {
+  AVISO_SIN_MIGRACION,
+  leerJornales,
+  leerLotes,
+  leerObjetivosControl,
+} from '@/lib/desinfeccion/repositorioCliente'
 import { recortarDejandoSinZona } from '@/lib/desinfeccion/calculo'
-import type { CatalogosDesinfeccion, LoteDesinfeccion } from '@/lib/desinfeccion/tipos'
+import type {
+  CatalogosDesinfeccion,
+  LoteDesinfeccion,
+  ObjetivoControl,
+} from '@/lib/desinfeccion/tipos'
 import { GridPlan } from './GridPlan'
 import { GridEjecucion } from './GridEjecucion'
 import { GridLogistica } from './GridLogistica'
@@ -106,6 +115,35 @@ export function DesinfeccionTabs({
 
   const recargarJornales = useCallback(async () => {
     setOperadores(await leerJornales())
+  }, [])
+
+  /*
+   * El catálogo de objetivos de control (migración 75).
+   *
+   * Vive AQUÍ y no en la página de servidor por la misma razón que los
+   * jornales: se puede dar de alta uno desde la captura, y volver a
+   * bajarlo tiene que poder hacerse sin `router.refresh()` —que vuelve
+   * a montar el formulario y se lleva por delante el turno a medio
+   * llenar—.
+   */
+  const [objetivos, setObjetivos] = useState<ObjetivoControl[]>([])
+  const recargarObjetivos = useCallback(async () => {
+    setObjetivos(await leerObjetivosControl())
+  }, [])
+
+  // El mismo patrón que la carga de lotes: la bandera `vivo` evita
+  // escribir el estado de una petición que ya no interesa, y el
+  // `setState` queda dentro de la callback y no en el cuerpo del efecto.
+  useEffect(() => {
+    let vivo = true
+    async function cargar() {
+      const datos = await leerObjetivosControl()
+      if (vivo) setObjetivos(datos)
+    }
+    void cargar()
+    return () => {
+      vivo = false
+    }
   }, [])
 
   /*
@@ -247,6 +285,8 @@ export function DesinfeccionTabs({
           usuarioId={usuarioId}
           zonas={zonasDelPerfil}
           onSinMigracion={avisarMigracion}
+          objetivos={objetivos}
+          recargarObjetivos={() => void recargarObjetivos()}
         />
       )}
 
