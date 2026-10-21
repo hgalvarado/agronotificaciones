@@ -890,16 +890,25 @@ export async function leerLogistica(temporadaId: string | null): Promise<Lectura
 
 const CAMPOS_LOGISTICA: Record<string, string> = {
   fecha: 'fecha',
+  ciclo: 'ciclo',
   zona_nombre: 'zona_id',
   equipo_nombre: 'equipo_id',
   implemento_nombre: 'implemento_id',
   operador_nombre: 'operador_id',
   horas_trabajo: 'horas_trabajo',
-  costo_hora: 'costo_hora',
+  costo_hora_equipo: 'costo_hora_equipo',
+  costo_hora_implemento: 'costo_hora_implemento',
+  salario_operador: 'salario_operador',
   comentarios: 'comentarios',
 }
 
-const NUMERICOS_LOGISTICA = new Set(['horas_trabajo', 'costo_hora'])
+const NUMERICOS_LOGISTICA = new Set([
+  'horas_trabajo',
+  'ciclo',
+  'costo_hora_equipo',
+  'costo_hora_implemento',
+  'salario_operador',
+])
 
 export function campoLogistica(columna: string): string | null {
   return CAMPOS_LOGISTICA[columna] ?? null
@@ -938,6 +947,8 @@ export async function guardarLogistica(e: EntradaLogistica): Promise<Resultado> 
   const fila = {
     temporada_id: e.temporadaId,
     zona_id: e.zonaId,
+    ciclo: aNumeroCero(e.ciclo) || 1,
+    tipo_cargo: e.tipoCargo,
     fecha: e.fecha,
     equipo_id: e.equipoId,
     implemento_id: e.implementoId || null,
@@ -945,22 +956,94 @@ export async function guardarLogistica(e: EntradaLogistica): Promise<Resultado> 
     horas_trabajo: aNumeroCero(e.horasTrabajo),
     // Vacío = que lo ponga el disparador desde `tarifas_equipo`. Mandar
     // cero sería decirle «este acarreo no costó nada», que es distinto.
-    costo_hora: aNumero(e.costoHora),
+    costo_hora_equipo: aNumeroCero(e.costoHoraEquipo),
+    costo_hora_implemento: aNumeroCero(e.costoHoraImplemento),
+    salario_operador: e.operadorId ? aNumeroCero(e.salarioOperador) : 0,
     comentarios: e.comentarios.trim() || null,
   }
 
   const cliente = createClient()
-  const { error } = e.id
-    ? await cliente.from('desinfeccion_logistica').update(fila).eq('id', e.id)
-    : await cliente.from('desinfeccion_logistica').insert(fila)
+  const guardado = e.id
+    ? await cliente.from('desinfeccion_logistica').update(fila).eq('id', e.id).select('id').single()
+    : await cliente.from('desinfeccion_logistica').insert(fila).select('id').single()
 
-  if (error)
+  if (guardado.error)
     return {
       ok: false,
-      mensaje: mensajeDeError(error, 'No se pudo guardar el acarreo.'),
-      detalle: detalleDeError(error),
+      mensaje: mensajeDeError(guardado.error, 'No se pudo guardar el acarreo.'),
+      detalle: detalleDeError(guardado.error),
     }
+
+  // Los lotes marcados se reescriben enteros: es una lista corta y
+  // conciliarla a mano abre la puerta a dejar un lote colgado cobrando.
+  const id = guardado.data?.id as string | undefined
+  if (id) {
+    const problema = await sincronizarLotesLogistica(
+      id,
+      e.tipoCargo === 'lote' ? e.lotesIds : [],
+    )
+    if (problema) return problema
+  }
+
   return { ok: true, mensaje: e.id ? 'Acarreo guardado.' : 'Acarreo registrado.' }
+}
+
+/**
+ * Deja la lista de lotes cargados exactamente como dice la entrada.
+ *
+ * Borra y vuelve a escribir. Con `tipo_cargo = 'zona'` la lista queda
+ * vacía: si al cambiar de tipo se dejaran los lotes escritos, el día que
+ * alguien lo devolviera a «lote» reaparecerían cargos que nadie pidió.
+ */
+async function sincronizarLotesLogistica(
+  logisticaId: string,
+  lotesIds: string[],
+): Promise<Resultado | null> {
+  const cliente = createClient()
+
+  const borrado = await cliente
+    .from('desinfeccion_logistica_lotes')
+    .delete()
+    .eq('logistica_id', logisticaId)
+  if (borrado.error)
+    return {
+      ok: false,
+      mensaje: mensajeDeError(borrado.error, 'No se pudieron actualizar los lotes del acarreo.'),
+      detalle: detalleDeError(borrado.error),
+    }
+
+  if (lotesIds.length === 0) return null
+
+  const escrito = await cliente.from('desinfeccion_logistica_lotes').insert(
+    lotesIds.map((loteTemporadaId) => ({
+      logistica_id: logisticaId,
+      lote_temporada_id: loteTemporadaId,
+    })),
+  )
+  if (escrito.error)
+    return {
+      ok: false,
+      mensaje: mensajeDeError(escrito.error, 'No se pudieron guardar los lotes del acarreo.'),
+      detalle: detalleDeError(escrito.error),
+    }
+
+  return null
+}
+
+/**
+ * La tarifa por hora del equipo en una fecha, para adelantarla en la
+ * pantalla. Va por `fn_tarifa_equipo_dia` —definer— porque
+ * `tarifas_equipo` está detrás del permiso `tarifas`, que el que captura
+ * acarreos no tiene por qué tener.
+ */
+export async function tarifaEquipo(equipoId: string, fecha: string): Promise<number | null> {
+  if (!equipoId || !fecha) return null
+  const { data, error } = await createClient().rpc('fn_tarifa_equipo_dia', {
+    p_equipo_id: equipoId,
+    p_fecha: fecha,
+  })
+  if (error) return null
+  return aNumero(String(data ?? ''))
 }
 
 export async function eliminarLogistica(ids: string[]): Promise<Resultado> {

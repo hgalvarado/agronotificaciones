@@ -16,8 +16,7 @@
  * otra obligaría a releer la leyenda cada vez.
  */
 
-import { n2 } from '@/lib/trasplante/formato'
-import { porcentajeDe, type Hito, type Pieza } from '@/lib/desinfeccion/informe'
+import type { Etapa } from '@/lib/desinfeccion/informe'
 
 /**
  * Los tres colores del costo.
@@ -38,200 +37,221 @@ export const COLOR = {
 /** Tinta recesiva: la rejilla y los ejes no compiten con los datos. */
 const EJE = '#cbd5e1'
 
+/** El lienzo, en unidades de `viewBox`. El SVG escala al contenedor. */
+const ANCHO = 680
+
+/*
+ * El cronograma de UNA RECTA se retiró en la 76.
+ *
+ * Apilaba los hitos sobre una sola línea y alternaba las etiquetas
+ * arriba y abajo para que no chocaran. Con seis etapas —y con un
+ * preriego y unas lecturas a dos días uno del otro— los textos se
+ * montaban justo en la parte que más se mira. Lo sustituye
+ * `CronogramaEtapas`, donde cada etapa tiene su propia banda y la
+ * colisión es imposible por construcción.
+ *
+ * La BARRA APILADA del costo se retiró por lo mismo: decía «98 %
+ * químico» y ahí se acababa, sin contestar de dónde salía cada lempira.
+ * La sustituyen los tres paneles de detalle del informe.
+ */
+
 /* ================================================================== */
-/* El cronograma                                                       */
+/* El cronograma por etapas (migración 76)                             */
 /* ================================================================== */
 
-const ANCHO = 680
-const ALTO_CRONO = 96
+/** Una banda por etapa. Nada de etiquetas sueltas sobre una recta. */
+const CANAL = 34
+const GUTTER = 150
+const MARGEN_DER = 22
+const ALTO_EJE = 26
 
 /**
- * La línea de tiempo del lote, del primer hito al último.
+ * Plan contra real, una etapa por fila.
  *
- * ── Por qué los hitos van a escala y no repartidos ──────────────────
+ * ── Por qué así y no sobre una recta ────────────────────────────────
  *
- * Porque el dato es **cuánto tiempo pasó entre uno y otro**. Repartirlos
- * a distancias iguales dibujaría igual un preriego dos días antes de la
- * aplicación que uno dos meses antes, y esa distancia es justo lo que se
- * viene a mirar: la desinfección se aplica ~70 días antes de sembrar, y
- * ver ese hueco es ver el ciclo.
+ * El cronograma anterior apilaba seis hitos sobre una sola línea y
+ * alternaba las etiquetas arriba y abajo para que no chocaran. Con un
+ * preriego y unas lecturas separados por dos días, los textos se montan
+ * y el gráfico se vuelve ilegible justo en la parte que más se mira.
  *
- * Con un solo hito no hay escala posible y se dibuja centrado: una línea
- * de tiempo de un punto no miente, simplemente no dice nada más.
+ * Con una banda por etapa **la colisión es imposible**: los nombres
+ * viven en una columna fija a la izquierda y nunca comparten espacio.
+ * Y queda sitio para dibujar la pareja plan–real de cada etapa unida por
+ * su segmento, que es lo que convierte la figura en una comparación y no
+ * en una lista de puntos.
+ *
+ * El hueco también informa: una etapa sin fechas se dibuja vacía y dice
+ * «esto todavía no se ha hecho», que es un dato.
  */
-export function Cronograma({ hitos }: { hitos: Hito[] }) {
-  if (hitos.length === 0) {
+export function CronogramaEtapas({ etapas }: { etapas: Etapa[] }) {
+  const conFecha = etapas.filter((e) => e.plan || e.real)
+
+  if (conFecha.length === 0) {
     return (
       <p className="py-6 text-center text-xs text-slate-400">
-        Todavía no hay fechas que ordenar en una línea de tiempo.
+        Todavía no hay fechas que ordenar en un cronograma.
       </p>
     )
   }
 
-  const dias = (iso: string | null) =>
-    iso ? Date.parse(`${iso}T12:00:00Z`) / 86_400_000 : 0
+  const dias = (iso: string | null) => (iso ? Date.parse(`${iso}T12:00:00Z`) / 86_400_000 : null)
 
-  const valores = hitos.map((h) => dias(h.fecha))
+  const valores = conFecha
+    .flatMap((e) => [dias(e.plan), dias(e.real)])
+    .filter((v): v is number => v !== null)
   const min = Math.min(...valores)
   const max = Math.max(...valores)
-  const margen = 70
-  const util = ANCHO - margen * 2
+  const util = ANCHO - GUTTER - MARGEN_DER
 
-  const x = (h: Hito) =>
-    max === min ? ANCHO / 2 : margen + ((dias(h.fecha) - min) / (max - min)) * util
+  const x = (iso: string | null) => {
+    const d = dias(iso)
+    if (d === null) return null
+    return max === min ? GUTTER + util / 2 : GUTTER + ((d - min) / (max - min)) * util
+  }
+
+  const alto = etapas.length * CANAL + ALTO_EJE
+
+  const corto = (iso: string | null) => (iso ? iso.slice(5) : '')
 
   return (
     <figure className="flex flex-col gap-1">
       <svg
-        viewBox={`0 0 ${ANCHO} ${ALTO_CRONO}`}
+        viewBox={`0 0 ${ANCHO} ${alto}`}
         className="w-full [-webkit-print-color-adjust:exact] [print-color-adjust:exact]"
         role="img"
-        aria-label={`Cronograma del lote: ${hitos
-          .map((h) => `${h.etiqueta} el ${h.fecha}`)
-          .join(', ')}`}
+        aria-label={`Cronograma por etapas: ${conFecha
+          .map(
+            (e) =>
+              `${e.etiqueta}, plan ${e.plan ?? 'sin plan'}, real ${e.real ?? 'sin ejecutar'}`,
+          )
+          .join('; ')}`}
       >
-        <line x1={margen} y1={46} x2={ANCHO - margen} y2={46} stroke={EJE} strokeWidth={2} />
+        {etapas.map((e, i) => {
+          const y = i * CANAL + CANAL / 2
+          const xp = x(e.plan)
+          const xr = x(e.real)
+          const hay = xp !== null || xr !== null
 
-        {hitos.map((h, i) => {
-          const cx = x(h)
-          // Las etiquetas se alternan arriba y abajo: con cuatro hitos en
-          // dos meses, dos de ellos caen casi en el mismo sitio y los
-          // textos se pisarían.
-          const arriba = i % 2 === 0
           return (
-            <g key={h.clave}>
-              {/* Lo previsto va hueco y lo ocurrido relleno: es el
-                  segundo canal que distingue un plan de un hecho sin
-                  depender del color. */}
-              <circle
-                cx={cx}
-                cy={46}
-                r={7}
-                fill={h.previsto ? '#ffffff' : COLOR.quimico}
-                stroke={COLOR.quimico}
-                strokeWidth={2}
-                strokeDasharray={h.previsto ? '3 2' : undefined}
+            <g key={e.clave}>
+              {/* La banda alterna un gris muy claro: separa las filas sin
+                  una línea más, que competiría con los datos. */}
+              {i % 2 === 1 && (
+                <rect x={0} y={i * CANAL} width={ANCHO} height={CANAL} fill="#f8fafc" />
+              )}
+
+              <text x={6} y={y + 4} fontSize="11" fontWeight="600" fill="#334155">
+                {e.etiqueta}
+              </text>
+
+              {/* El carril, siempre dibujado: da el renglón aunque la
+                  etapa no tenga fechas. */}
+              <line
+                x1={GUTTER}
+                y1={y}
+                x2={ANCHO - MARGEN_DER}
+                y2={y}
+                stroke={EJE}
+                strokeWidth={1}
+                strokeDasharray="2 3"
               />
-              <text
-                x={cx}
-                y={arriba ? 22 : 72}
-                textAnchor="middle"
-                fontSize="10"
-                fontWeight="600"
-                fill="#334155"
-              >
-                {h.etiqueta}
-              </text>
-              <text
-                x={cx}
-                y={arriba ? 34 : 84}
-                textAnchor="middle"
-                fontSize="9"
-                fill="#94a3b8"
-              >
-                {h.fecha}
-                {h.ddt !== null && h.clave !== 'siembra' ? ` · ${h.ddt} DDT` : ''}
-              </text>
+
+              {!hay && (
+                <text x={GUTTER + 4} y={y + 4} fontSize="10" fill="#cbd5e1">
+                  sin registrar
+                </text>
+              )}
+
+              {/* El segmento que une plan y real: su LARGO es el desfase,
+                  que es el dato que se viene a buscar. */}
+              {xp !== null && xr !== null && (
+                <line
+                  x1={xp}
+                  y1={y}
+                  x2={xr}
+                  y2={y}
+                  stroke={e.desfase !== null && Math.abs(e.desfase) > 7 ? '#b45309' : '#94a3b8'}
+                  strokeWidth={3}
+                  strokeLinecap="round"
+                />
+              )}
+
+              {/* Previsto: hueco y punteado. Real: relleno. El segundo
+                  canal que distingue plan de hecho sin usar el color. */}
+              {xp !== null && (
+                <>
+                  <circle
+                    cx={xp}
+                    cy={y}
+                    r={6}
+                    fill="#ffffff"
+                    stroke={COLOR.quimico}
+                    strokeWidth={2}
+                    strokeDasharray="3 2"
+                  />
+                  <text
+                    x={xp}
+                    y={y - 11}
+                    textAnchor="middle"
+                    fontSize="9"
+                    fill="#94a3b8"
+                  >
+                    {corto(e.plan)}
+                    {e.ddtPlan !== null ? ` · ${e.ddtPlan} DDT` : ''}
+                  </text>
+                </>
+              )}
+
+              {xr !== null && (
+                <>
+                  <circle cx={xr} cy={y} r={6} fill={COLOR.quimico} />
+                  <text
+                    x={xr}
+                    y={y + 18}
+                    textAnchor="middle"
+                    fontSize="9"
+                    fontWeight="600"
+                    fill="#334155"
+                  >
+                    {corto(e.real)}
+                    {e.ddtReal !== null ? ` · ${e.ddtReal} DDT` : ''}
+                  </text>
+                </>
+              )}
             </g>
           )
         })}
+
+        {/* El eje: sólo los dos extremos. Más marcas obligarían a
+            repartir texto en un ancho que ya está ocupado. */}
+        <line
+          x1={GUTTER}
+          y1={etapas.length * CANAL + 1}
+          x2={ANCHO - MARGEN_DER}
+          y2={etapas.length * CANAL + 1}
+          stroke={EJE}
+          strokeWidth={2}
+        />
+        <text x={GUTTER} y={etapas.length * CANAL + 16} fontSize="9" fill="#94a3b8">
+          {conFecha.length > 0 ? new Date(min * 86_400_000).toISOString().slice(0, 10) : ''}
+        </text>
+        <text
+          x={ANCHO - MARGEN_DER}
+          y={etapas.length * CANAL + 16}
+          textAnchor="end"
+          fontSize="9"
+          fill="#94a3b8"
+        >
+          {conFecha.length > 0 ? new Date(max * 86_400_000).toISOString().slice(0, 10) : ''}
+        </text>
       </svg>
+
       <figcaption className="px-1 text-[11px] text-slate-400">
-        A escala de días. El círculo hueco es lo previsto; el relleno, lo que ocurrió. El DDT se
-        cuenta contra la siembra: negativo quiere decir que todavía faltaba para trasplantar.
-      </figcaption>
-    </figure>
-  )
-}
-
-/* ================================================================== */
-/* La radiografía del costo                                            */
-/* ================================================================== */
-
-const ALTO_BARRA = 26
-
-/**
- * En qué se fue el dinero, en una barra apilada.
- *
- * ── Por qué una barra y no una dona ─────────────────────────────────
- *
- * Porque aquí la pregunta no es sólo «qué proporción», es «cuál pesa
- * más». Una barra apilada ordenada de mayor a menor contesta las dos de
- * un vistazo y además cabe en el ancho de una tarjeta, que es donde
- * tiene que vivir. La dona del tablero de la 67 contesta otra pregunta
- * —la composición de un periodo entero— y por eso sigue allí.
- */
-export function RadiografiaCosto({ piezas }: { piezas: Pieza[] }) {
-  const total = piezas.reduce((a, p) => a + p.valor, 0)
-
-  if (total <= 0) {
-    return (
-      <p className="py-6 text-center text-xs text-slate-400">
-        Todavía no hay costos que repartir en este lote.
-      </p>
-    )
-  }
-
-  // El arranque de cada tramo es la suma de los anteriores. Se calcula
-  // con `reduce` y no acumulando una variable suelta: una variable que se
-  // reasigna durante el dibujo sobrevive al render y la siguiente vuelta
-  // empieza donde acabó la anterior.
-  const tramos = piezas.map((p, i) => {
-    const previas = piezas.slice(0, i).reduce((a, x) => a + x.valor, 0)
-    return {
-      ...p,
-      x: (previas / total) * ANCHO,
-      ancho: (p.valor / total) * ANCHO,
-      pct: porcentajeDe(p, piezas),
-    }
-  })
-
-  return (
-    <figure className="flex flex-col gap-2">
-      <svg
-        viewBox={`0 0 ${ANCHO} ${ALTO_BARRA}`}
-        className="w-full [-webkit-print-color-adjust:exact] [print-color-adjust:exact]"
-        style={{ maxHeight: 34 }}
-        role="img"
-        aria-label={`Reparto del costo: ${tramos
-          .map((t) => `${t.etiqueta} ${t.pct.toFixed(0)} por ciento`)
-          .join(', ')}`}
-      >
-        {tramos.map((t) => (
-          <rect
-            key={t.clave}
-            x={t.x}
-            y={0}
-            // Un hueco de 2 px entre tramos: es el respiro que separa dos
-            // colores vecinos sin depender de que se distingan.
-            width={Math.max(t.ancho - 2, 1)}
-            height={ALTO_BARRA}
-            rx={4}
-            fill={COLOR[t.clave]}
-          />
-        ))}
-      </svg>
-
-      {/* La leyenda lleva el nombre Y el número: con tres colores en la
-          banda 6–8 de separación para daltonismo, el color no puede ser
-          lo único que identifica el tramo. */}
-      <figcaption className="flex flex-col gap-1">
-        {tramos.map((t) => (
-          <span key={t.clave} className="flex items-center gap-2 text-xs">
-            <span
-              aria-hidden
-              className="h-2.5 w-2.5 shrink-0 rounded-sm"
-              style={{ backgroundColor: COLOR[t.clave] }}
-            />
-            <span className="min-w-0 flex-1 truncate text-slate-600">{t.etiqueta}</span>
-            <span className="shrink-0 font-semibold tabular-nums text-slate-900">
-              L {n2(t.valor)}
-            </span>
-            <span className="w-10 shrink-0 text-right tabular-nums text-slate-400">
-              {t.pct.toFixed(0)}%
-            </span>
-          </span>
-        ))}
+        Una fila por etapa, a escala de días. El círculo hueco y punteado es lo previsto; el relleno,
+        lo que ocurrió. El trazo que los une es el desfase, y se pinta en ámbar cuando pasa de una
+        semana. El DDT va al lado de cada fecha y se cuenta contra la siembra: negativo quiere decir
+        que todavía faltaba para trasplantar.
       </figcaption>
     </figure>
   )

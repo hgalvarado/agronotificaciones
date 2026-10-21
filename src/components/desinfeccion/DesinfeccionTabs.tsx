@@ -294,6 +294,9 @@ export function DesinfeccionTabs({
         <GridLogistica
           temporadaId={temporadaId}
           catalogos={catalogos}
+          // Desde la 76 un acarreo se puede cargar a lotes concretos, así
+          // que esta pestaña también necesita el catálogo ya recortado.
+          lotes={lotesVisibles}
           reglas={reglas}
           usuarioId={usuarioId}
           zonas={zonasDelPerfil}

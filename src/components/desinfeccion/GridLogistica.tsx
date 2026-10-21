@@ -33,12 +33,14 @@ import {
   type CatalogosDesinfeccion,
   type EntradaLogistica,
   type FilaLogistica,
+  type LoteDesinfeccion,
 } from '@/lib/desinfeccion/tipos'
 import { LogisticaModal } from './LogisticaModal'
 
 export function GridLogistica({
   temporadaId,
   catalogos,
+  lotes,
   reglas,
   usuarioId,
   zonas,
@@ -46,6 +48,8 @@ export function GridLogistica({
 }: {
   temporadaId: string
   catalogos: CatalogosDesinfeccion
+  /** Ya recortados por zona: el cargo directo elige de aquí. */
+  lotes: LoteDesinfeccion[]
   reglas: Reglas
   usuarioId: string | null
   zonas: Set<string>
@@ -176,6 +180,41 @@ export function GridLogistica({
         render: (f) => <span className="text-xs">{formatearFecha(f.fecha)}</span>,
       },
       {
+        campo: 'ciclo',
+        label: 'Ciclo',
+        tipo: 'numero',
+        numero: true,
+        ancho: '5.5rem',
+        valor: (f) => Number(f.ciclo),
+        etiqueta: (f) => String(f.ciclo),
+        editable: puedeEditarFila,
+        editor: 'numero',
+        valorEdicion: (f) => String(f.ciclo),
+        render: (f) => (
+          <span className="font-mono text-xs font-bold text-slate-900">{f.ciclo}</span>
+        ),
+      },
+      {
+        // **A quién se le cobra.** No se edita en la cuadrícula: cambiar
+        // de «zona» a «lote» sin decir QUÉ lotes dejaría un cargo que no
+        // se le cobra a nadie. Eso se hace en el formulario.
+        campo: 'tipo_cargo',
+        label: 'Cargo',
+        tipo: 'seleccion',
+        ancho: '11rem',
+        valor: (f) => f.tipo_cargo,
+        etiqueta: (f) => (f.tipo_cargo === 'lote' ? `Lote: ${f.lotes_nombres ?? '—'}` : 'Zona'),
+        render: (f) =>
+          f.tipo_cargo === 'lote' ? (
+            <span className="text-xs">
+              <span className="font-semibold text-amber-700">Lote</span>{' '}
+              <span className="text-slate-400">{f.lotes_nombres ?? '—'}</span>
+            </span>
+          ) : (
+            <span className="text-xs font-semibold text-slate-500">Zona</span>
+          ),
+      },
+      {
         campo: 'zona_nombre',
         label: 'Zona',
         tipo: 'seleccion',
@@ -242,15 +281,40 @@ export function GridLogistica({
         valorEdicion: (f) => String(f.horas_trabajo),
       },
       {
-        campo: 'costo_hora',
-        label: 'Costo/hora',
+        // **Las tres patas, separadas.** El costo total es la suma y no
+        // se edita: lo recalcula el disparador. Lo que se corrige es la
+        // pata que esté mal, y ahí se ve cuál.
+        campo: 'costo_hora_equipo',
+        label: 'Equipo L/h',
         tipo: 'numero',
         numero: true,
-        valor: (f) => (f.costo_hora === null ? null : Number(f.costo_hora)),
-        etiqueta: (f) => n2(f.costo_hora),
+        valor: (f) => Number(f.costo_hora_equipo),
+        etiqueta: (f) => n2(f.costo_hora_equipo),
         editable: puedeEditarFila,
         editor: 'numero',
-        valorEdicion: (f) => String(f.costo_hora ?? ''),
+        valorEdicion: (f) => String(f.costo_hora_equipo),
+      },
+      {
+        campo: 'costo_hora_implemento',
+        label: 'Implemento L/h',
+        tipo: 'numero',
+        numero: true,
+        valor: (f) => Number(f.costo_hora_implemento),
+        etiqueta: (f) => n2(f.costo_hora_implemento),
+        editable: puedeEditarFila,
+        editor: 'numero',
+        valorEdicion: (f) => String(f.costo_hora_implemento),
+      },
+      {
+        campo: 'salario_operador',
+        label: 'Jornal operador',
+        tipo: 'numero',
+        numero: true,
+        valor: (f) => Number(f.salario_operador),
+        etiqueta: (f) => n2(f.salario_operador),
+        editable: puedeEditarFila,
+        editor: 'numero',
+        valorEdicion: (f) => String(f.salario_operador),
       },
       {
         campo: 'costo_total',
@@ -296,13 +360,18 @@ export function GridLogistica({
     setEntrada({
       id: f.id,
       temporadaId: f.temporada_id,
+      ciclo: String(f.ciclo ?? 1),
+      tipoCargo: f.tipo_cargo === 'lote' ? 'lote' : 'zona',
       zonaId: f.zona_id,
+      lotesIds: f.lotes_ids ?? [],
       fecha: f.fecha,
       equipoId: f.equipo_id,
       implementoId: f.implemento_id ?? '',
       operadorId: f.operador_id ?? '',
       horasTrabajo: String(f.horas_trabajo),
-      costoHora: String(f.costo_hora ?? ''),
+      costoHoraEquipo: String(f.costo_hora_equipo ?? ''),
+      costoHoraImplemento: String(f.costo_hora_implemento ?? ''),
+      salarioOperador: String(f.salario_operador ?? ''),
       comentarios: f.comentarios ?? '',
     })
   }
@@ -368,7 +437,7 @@ export function GridLogistica({
         titulo="Logística zonal"
         nombreArchivo="desinfeccion-logistica"
         ordenInicial={{ campo: 'fecha', direccion: 'desc' }}
-        minAncho="1500px"
+        minAncho="1900px"
         seleccionable={puedeEliminar}
         puedeEditarCelda={puedeEditar}
         onEditarCelda={editarCelda}
@@ -412,6 +481,7 @@ export function GridLogistica({
         <LogisticaModal
           entrada={entrada}
           catalogos={catalogos}
+          lotes={lotes}
           zonasPermitidas={zonasPermitidas}
           guardando={ocupado}
           onCambiar={setEntrada}
