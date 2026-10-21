@@ -869,14 +869,74 @@ export function validarEjecucion(
 
 export function validarLogistica(e: EntradaLogistica): string | null {
   if (!e.temporadaId) return 'Elige la temporada.'
-  if (!e.zonaId) return 'Elige la zona: la bolsa de acarreo se reparte por zona.'
+
+  // El ciclo es la llave que la 76 añadió para que un acarreo de un
+  // ciclo no se le cuelgue al siguiente. Sin él no hay reparto posible.
+  const ciclo = aNumero(e.ciclo)
+  if (ciclo === null || ciclo < 1) return 'El ciclo tiene que ser 1 o más.'
+
+  if (e.tipoCargo === 'lote') {
+    if (e.lotesIds.length === 0)
+      return 'Cargo al lote: elige al menos un lote, o cámbialo a cargo a la zona.'
+  } else if (!e.zonaId) {
+    return 'Elige la zona: la bolsa de acarreo se reparte por zona.'
+  }
+
   if (!e.fecha) return 'Falta la fecha.'
   if (!e.equipoId) return 'Elige el equipo.'
+
   const horas = aNumero(e.horasTrabajo)
   if (horas === null || horas < 0) return 'Las horas de trabajo no pueden ser negativas.'
-  const costo = aNumero(e.costoHora)
-  if (costo !== null && costo < 0) return 'El costo por hora no puede ser negativo.'
+
+  for (const [valor, nombre] of [
+    [e.costoHoraEquipo, 'El costo por hora del equipo'],
+    [e.costoHoraImplemento, 'El costo por hora del implemento'],
+    [e.salarioOperador, 'El salario del operador'],
+  ] as const) {
+    const n = aNumero(valor)
+    if (n !== null && n < 0) return `${nombre} no puede ser negativo.`
+  }
+
+  // Un salario escrito sin operador no se le paga a nadie: el disparador
+  // lo borra en la base, y decirlo aquí evita la sorpresa al guardar.
+  if (!e.operadorId && (aNumero(e.salarioOperador) ?? 0) > 0)
+    return 'Escribiste un salario pero no elegiste operador.'
+
   return null
+}
+
+/**
+ * El costo del acarreo, con las tres patas separadas.
+ *
+ * Es la MISMA cuenta que hace `fn_desinfeccion_costo_logistica` en la
+ * base: la pantalla sólo la adelanta para que el usuario vea el total
+ * antes de guardar. Si las dos se separan, manda la de la base.
+ */
+export function costoLogistica(e: EntradaLogistica): {
+  equipo: number
+  implemento: number
+  operador: number
+  total: number
+} {
+  const horas = aNumero(e.horasTrabajo) ?? 0
+  const equipo = redondear2(horas * (aNumero(e.costoHoraEquipo) ?? 0))
+  const implemento = redondear2(horas * (aNumero(e.costoHoraImplemento) ?? 0))
+  const operador = e.operadorId ? redondear2(aNumero(e.salarioOperador) ?? 0) : 0
+  return { equipo, implemento, operador, total: redondear2(equipo + implemento + operador) }
+}
+
+/**
+ * El implemento que viene marcado de entrada.
+ *
+ * El acarreo se hace casi siempre con el trocón, y obligar a buscarlo en
+ * una lista larga cada vez es trabajo que la pantalla puede ahorrar. Si
+ * no hay ninguno que se llame así, no se marca nada: inventar otro sería
+ * peor que dejarlo vacío.
+ */
+export function implementoPorDefecto(
+  implementos: { id: string; nombre: string }[],
+): string {
+  return implementos.find((x) => x.nombre.toLowerCase().includes('troco'))?.id ?? ''
 }
 
 /* ------------------------------------------------------------------ */

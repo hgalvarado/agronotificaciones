@@ -316,6 +316,10 @@ export type FilaLogistica = {
   temporada_nombre: string | null
   zona_id: string
   zona_nombre: string | null
+  /** Desde la 76: el acarreo pertenece a un ciclo y no se cruza a otro. */
+  ciclo: number
+  /** `'zona'` = bolsa zonal prorrateada; `'lote'` = cargo directo. */
+  tipo_cargo: TipoCargoLogistica
   fecha: string
   equipo_id: string
   equipo_codigo: string | null
@@ -325,7 +329,14 @@ export type FilaLogistica = {
   operador_id: string | null
   operador_nombre: string | null
   horas_trabajo: number
+  /** Legado: la 76 lo mantiene sincronizado con `costo_hora_equipo`. */
   costo_hora: number | null
+  costo_hora_equipo: number
+  costo_hora_implemento: number
+  salario_operador: number
+  /** Sólo con `tipo_cargo = 'lote'`. */
+  lotes_ids: string[]
+  lotes_nombres: string | null
   costo_total: number
   comentarios: string | null
   usuario_id: string
@@ -785,29 +796,51 @@ export const LINEA_PRODUCTO_VACIA: LineaProducto = {
  */
 export const TIPOS_ENVASE = ['Canaca', 'Barril', 'Galón', 'Litro'] as const
 
+/**
+ * A quién se le cobra el acarreo.
+ *
+ * `zona` es la bolsa de siempre: se reparte entre las manzanas regadas
+ * de esa zona EN ESE CICLO. `lote` es el cargo directo, que no toca a
+ * nadie más que a los lotes marcados — es lo que faltaba para el acarreo
+ * que se hace para un lote concreto y que antes se diluía entre todos.
+ */
+export type TipoCargoLogistica = 'zona' | 'lote'
+
 export type EntradaLogistica = {
   id: string
   temporadaId: string
+  ciclo: string
+  tipoCargo: TipoCargoLogistica
   zonaId: string
+  /** Sólo con `tipoCargo = 'lote'`. La zona se deriva de ellos. */
+  lotesIds: string[]
   fecha: string
   equipoId: string
   implementoId: string
   operadorId: string
   horasTrabajo: string
   /** Vacío = la toma de `tarifas_equipo`, que es lo normal. */
-  costoHora: string
+  costoHoraEquipo: string
+  costoHoraImplemento: string
+  /** Vacío = la toma de `fn_salario_minimo_dia`. */
+  salarioOperador: string
   comentarios: string
 }
 
 export const LOGISTICA_VACIA: EntradaLogistica = {
   id: '',
   temporadaId: '',
+  ciclo: '1',
+  tipoCargo: 'zona',
   zonaId: '',
+  lotesIds: [],
   fecha: '',
   equipoId: '',
   implementoId: '',
   operadorId: '',
   horasTrabajo: '',
-  costoHora: '',
+  costoHoraEquipo: '',
+  costoHoraImplemento: '',
+  salarioOperador: '',
   comentarios: '',
 }

@@ -35,9 +35,13 @@ import { diagnosticarLectura } from '@/lib/supabase/instalacion'
 import type { CatalogosDesinfeccion } from '@/lib/desinfeccion/tipos'
 import {
   conSigno,
-  fasesCuadrilla,
-  hitosDe,
-  piezasDe,
+  cuadrillaDe,
+  dossierDe,
+  ejecucionesDe,
+  etapasDe,
+  logisticaDe,
+  nombreFase,
+  planContraReal,
   productosDe,
   retrasoDias,
   tonoDelta,
@@ -45,7 +49,7 @@ import {
   type Tono,
 } from '@/lib/desinfeccion/informe'
 import { informeEjecutivoPdf, nombreInforme } from '@/lib/desinfeccion/informePdf'
-import { Cronograma, RadiografiaCosto } from './GraficosInforme'
+import { CronogramaEtapas } from './GraficosInforme'
 
 type Fila = FilaInforme & { id: string }
 
@@ -202,6 +206,7 @@ export function InformeEjecutivo({
           <SeccionCumplimiento fila={fila} />
           <SeccionFinanciera fila={fila} />
           <SeccionAgronomia fila={fila} />
+          <SeccionDossier fila={fila} />
         </>
       )}
     </div>
@@ -284,13 +289,15 @@ function Cifra({
 /* ================================================================== */
 
 function SeccionCronograma({ fila }: { fila: Fila }) {
-  const hitos = useMemo(() => hitosDe(fila), [fila])
+  const etapas = useMemo(() => etapasDe(fila), [fila])
   const retraso = retrasoDias(fila)
 
   return (
     <Tarjeta className="p-4">
       <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-sm font-semibold text-slate-900">Cronograma operativo</h3>
+        <h3 className="text-sm font-semibold text-slate-900">
+          Cronograma operativo · Plan vs. Real
+        </h3>
         {retraso !== null && (
           <span
             className={`text-xs font-semibold ${
@@ -303,7 +310,7 @@ function SeccionCronograma({ fila }: { fila: Fila }) {
           </span>
         )}
       </div>
-      <Cronograma hitos={hitos} />
+      <CronogramaEtapas etapas={etapas} />
     </Tarjeta>
   )
 }
@@ -330,18 +337,28 @@ function SeccionCumplimiento({ fila }: { fila: Fila }) {
         pct={fila.delta_dosis_pct}
       />
       <TarjetaDelta
-        titulo="Costo del lote"
+        titulo="Químico de aplicación"
         plan={fila.costo_plan === null ? null : `L ${n2(fila.costo_plan)}`}
-        real={`L ${n2(fila.costo_total)}`}
+        real={`L ${n2(fila.costo_quimico_aplicacion)}`}
         delta={fila.delta_costo === null ? null : `L ${conSigno(fila.delta_costo)}`}
         pct={fila.delta_costo_pct}
+        pie="El plan sólo presupuesta químico de aplicación: se compara contra eso, no contra el costo total."
       />
     </div>
   )
 }
 
 /**
- * Lo planificado contra lo real, con su desviación.
+ * Lo planificado contra lo real, con su desviación. **Compacta.**
+ *
+ * ── Por qué cabe en una fila ────────────────────────────────────────
+ *
+ * Antes esta tarjeta gastaba cuatro renglones —rótulo, plan, flecha,
+ * real— y una banda más para la desviación. Dos de ellas empujaban la
+ * radiografía y el expediente fuera de la primera pantalla del móvil,
+ * que es donde se lee el informe. Plan y real caben en un renglón
+ * separados por una flecha, y la desviación entra en la misma línea del
+ * rótulo: lo que se lee primero es el número grande y su color.
  *
  * **Sin plan no se enseña un cero.** Un cero diría «se planificó cero»,
  * que es una afirmación distinta de «no se planificó», y la segunda es
@@ -353,44 +370,42 @@ function TarjetaDelta({
   real,
   delta,
   pct,
+  pie,
 }: {
   titulo: string
   plan: string | null
   real: string
   delta: string | null
   pct: number | null
+  pie?: string
 }) {
   const tono = tonoDelta(pct)
 
   return (
-    <Tarjeta className="p-4">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{titulo}</p>
-
-      <div className="mt-2 flex items-end justify-between gap-3">
-        <div>
-          <p className="text-[11px] text-slate-400">Planificado</p>
-          <p className="text-base font-semibold tabular-nums text-slate-500">
-            {plan ?? 'Sin plan'}
-          </p>
-        </div>
-        <span aria-hidden className="pb-1 text-slate-300">
-          →
+    <Tarjeta className="p-3.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="truncate text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+          {titulo}
+        </p>
+        {/* La desviación lleva el signo Y el color: el color solo no se
+            ve en una impresión en blanco y negro, y el signo solo no
+            salta a la vista en una pantalla llena de números. */}
+        <span
+          className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-semibold tabular-nums ring-1 ring-inset ${CLASES[tono]}`}
+        >
+          {pct === null ? 'Sin plan' : `${conSigno(pct, 1)}%`}
         </span>
-        <div className="text-right">
-          <p className="text-[11px] text-slate-400">Real</p>
-          <p className="text-xl font-bold tabular-nums text-slate-900">{real}</p>
-        </div>
       </div>
 
-      {/* La desviación lleva el signo Y el color: el color solo no se ve
-          en una impresión en blanco y negro, y el signo solo no salta a
-          la vista en una pantalla llena de números. */}
-      <div
-        className={`mt-3 flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-semibold ring-1 ring-inset ${CLASES[tono]}`}
-      >
-        <span>{delta ?? 'Nada con que comparar'}</span>
-        <span className="tabular-nums">{pct === null ? '' : `${conSigno(pct, 1)}%`}</span>
-      </div>
+      <p className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+        <span className="text-xl font-bold tabular-nums text-slate-900">{real}</span>
+        <span className="text-[11px] text-slate-400">
+          plan {plan ?? '—'}
+          {delta ? ` · ${delta}` : ''}
+        </span>
+      </p>
+
+      {pie && <p className="mt-1 text-[11px] leading-snug text-slate-400">{pie}</p>}
     </Tarjeta>
   )
 }
@@ -399,49 +414,221 @@ function TarjetaDelta({
 /* 3 · Radiografía financiera                                          */
 /* ================================================================== */
 
+/**
+ * ── Por qué ya no hay barra apilada ─────────────────────────────────
+ *
+ * La barra decía «98 % químico, 2 % acarreo» y ahí se acababa. Con tres
+ * conceptos de los que uno se lleva casi todo, la proporción no es la
+ * pregunta: ya se sabe que el químico manda. Lo que nadie podía contestar
+ * mirando esa barra era **de dónde salió cada lempira** —qué producto,
+ * qué cuadrilla, qué acarreo—, que es justo lo que se discute cuando el
+ * número no cuadra.
+ *
+ * Así que en su lugar van tres paneles con el detalle, cada uno con su
+ * total al pie. La proporción se sigue leyendo —los tres totales están
+ * uno al lado del otro— y además se puede auditar.
+ */
 function SeccionFinanciera({ fila }: { fila: Fila }) {
-  const piezas = useMemo(() => piezasDe(fila), [fila])
+  const productos = useMemo(() => productosDe(fila), [fila])
+  const cuadrilla = useMemo(() => cuadrillaDe(fila), [fila])
+  const acarreos = useMemo(() => logisticaDe(fila), [fila])
 
   return (
     <Tarjeta className="p-4">
       <h3 className="text-sm font-semibold text-slate-900">Radiografía financiera</h3>
       <p className="mb-3 text-xs text-slate-400">
-        Dónde se fue el dinero de este lote. El químico y la mano de obra se reparten entre los
-        lotes de su turno; el acarreo, entre las manzanas de su zona en la temporada.
+        Dónde se fue el dinero de este lote, línea por línea. El químico y la mano de obra del turno
+        se reparten entre sus lotes por manzanas cubiertas; el acarreo, según se haya cargado a la
+        zona o directo al lote.
       </p>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_14rem]">
-        <RadiografiaCosto piezas={piezas} />
+      <div className="flex flex-col gap-3">
+        {/* ---------------- 1 · Químicos, prorrateados al lote --------- */}
+        <Panel titulo="Detalle de químicos" pie="Prorrateado al lote" total={Number(fila.costo_quimico ?? 0)}>
+          <Tabla
+            cabeceras={['Producto', 'Fase', 'Litros lote', 'Dosis/mz', 'Costo/L', 'Costo lote']}
+            vacio="No hay químicos anotados en este lote."
+            filas={productos.map((q) => [
+              `${q.codigo ?? ''} ${q.nombre ?? ''}`.trim() || '—',
+              q.fase ? nombreFase(q.fase) : '—',
+              `${n2(q.litros_lote ?? q.litros)}${
+                q.litros_turno !== null && q.litros_turno !== undefined
+                  ? ` de ${n2(q.litros_turno)}`
+                  : ''
+              }`,
+              n2(q.dosis_mz),
+              n2(q.costo_litro),
+              `L ${n2(q.costo_lote ?? q.costo)}`,
+            ])}
+          />
+        </Panel>
 
-        {/* La fase más cara, dicha con palabras. La barra no la contesta:
-            el acarreo y el químico no son fases, son conceptos. */}
-        <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-inset ring-slate-200">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-            Fase más cara de la cuadrilla
-          </p>
-          <p className="mt-0.5 text-lg font-bold text-slate-900">
-            {fila.fase_mas_cara ?? 'Sin cuadrilla'}
-          </p>
-          {/* Las fases que SÍ costaron, con el MISMO reparto que el PDF
-              (migración 74): el papel y la pantalla salen de la misma
-              función pura. Una fase en cero no se dibuja. */}
-          <dl className="mt-2 flex flex-col gap-1 text-xs">
-            {fasesCuadrilla(fila).map((f) => (
-              <div key={f.etiqueta} className="flex justify-between gap-2">
-                <dt className="text-slate-500">{f.etiqueta}</dt>
-                <dd className="font-semibold tabular-nums text-slate-900">L {n2(f.valor)}</dd>
-              </div>
+        {/* ---------------- 2 · Mano de obra, por fase ----------------- */}
+        <Panel
+          titulo="Detalle de mano de obra por fase"
+          pie="Prorrateado al lote"
+          total={Number(fila.costo_personal ?? 0)}
+          insignia={fila.fase_mas_cara ? `Fase más cara: ${fila.fase_mas_cara}` : null}
+        >
+          {/* El resumen por fase va antes que los puestos: la pregunta
+              que más se repite en gerencia es cuál fase pesó más, y el
+              preriego —mucha gente pocas horas— no es evidente. */}
+          <dl className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
+            {[
+              ['Preriego', fila.costo_personal_preriego],
+              ['Aplicación', fila.costo_personal_aplicacion],
+              ['Lavado de cinta', fila.costo_personal_lavado],
+            ].map(([etiqueta, valor]) => (
+              <span key={String(etiqueta)} className="flex gap-1.5">
+                <dt className="text-slate-400">{etiqueta}</dt>
+                <dd className="font-semibold tabular-nums text-slate-900">
+                  L {n2(Number(valor ?? 0))}
+                </dd>
+              </span>
             ))}
           </dl>
-          <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
-            El preriego lo hace mucha gente pocas horas y la aplicación poca gente muchas: cuál pesa
-            más no es evidente.
-          </p>
-        </div>
+
+          <Tabla
+            cabeceras={['Puesto', 'Fase', 'Personas', 'H. extras', 'Jornada', 'Costo lote']}
+            vacio="No se anotó cuadrilla en este lote."
+            filas={cuadrilla.map((c) => [
+              c.puesto_texto ?? c.operador_nombre ?? 'Sin puesto',
+              nombreFase(c.fase),
+              n2(c.cantidad_personas),
+              n2(c.horas_extras),
+              c.jornada_tipo ?? '—',
+              `L ${n2(c.costo_lote)}`,
+            ])}
+          />
+        </Panel>
+
+        {/* ---------------- 3 · Logística y acarreo -------------------- */}
+        <Panel
+          titulo="Detalle de logística y acarreo"
+          pie="Lo que este lote absorbió en este ciclo"
+          total={Number(fila.costo_logistica ?? 0)}
+        >
+          <Tabla
+            cabeceras={['Fecha', 'Cargo', 'Equipo', 'Implemento', 'Operador', 'Horas', 'Costo lote']}
+            vacio="No hay acarreos que le toquen a este lote."
+            filas={acarreos.map((a) => [
+              a.fecha ?? '—',
+              a.tipo_cargo === 'lote' ? 'Cargo directo al lote' : 'Prorrateo zonal',
+              a.equipo_nombre ?? '—',
+              a.implemento_nombre ?? '—',
+              a.operador_nombre ?? '—',
+              n2(a.horas_trabajo),
+              `L ${n2(a.costo_lote)}`,
+            ])}
+          />
+        </Panel>
       </div>
     </Tarjeta>
   )
 }
+
+/**
+ * Una tabla del expediente.
+ *
+ * Con desplazamiento horizontal propio: a 390 px, seis columnas no caben
+ * y estrujarlas hace ilegible la que importa. Un carril que se arrastra
+ * deja las cifras a su tamaño y no rompe el ancho de la página, que es
+ * lo que de verdad no se puede permitir en un teléfono.
+ */
+function Tabla({
+  cabeceras,
+  filas,
+  vacio,
+}: {
+  cabeceras: string[]
+  filas: string[][]
+  vacio: string
+}) {
+  if (filas.length === 0) {
+    return <p className="py-3 text-center text-[11px] italic text-slate-400">{vacio}</p>
+  }
+
+  return (
+    <div className="-mx-1 overflow-x-auto px-1">
+      <table className="w-full min-w-[34rem] border-collapse text-[11px]">
+        <thead>
+          <tr>
+            {cabeceras.map((c, i) => (
+              <th
+                key={c}
+                scope="col"
+                className={`border-b border-slate-200 pb-1 font-semibold uppercase tracking-wide text-slate-400 ${
+                  i === 0 ? 'text-left' : 'text-right'
+                }`}
+              >
+                {c}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {filas.map((f, i) => (
+            <tr key={i} className="border-b border-slate-100 last:border-0">
+              {f.map((celda, j) => (
+                <td
+                  key={j}
+                  className={`py-1 ${
+                    j === 0
+                      ? 'pr-2 text-left font-semibold text-slate-900'
+                      : j === f.length - 1
+                        ? 'pl-2 text-right font-bold tabular-nums text-slate-900'
+                        : 'pl-2 text-right tabular-nums text-slate-500'
+                  }`}
+                >
+                  {celda}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+/** Un panel del desglose, con su total al pie. */
+function Panel({
+  titulo,
+  pie,
+  total,
+  insignia,
+  children,
+}: {
+  titulo: string
+  pie: string
+  total: number
+  insignia?: string | null
+  children: React.ReactNode
+}) {
+  return (
+    <section className="rounded-xl bg-slate-50 p-3 ring-1 ring-inset ring-slate-200">
+      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <div className="min-w-0">
+          <h4 className="text-xs font-semibold text-slate-900">{titulo}</h4>
+          <p className="text-[10px] uppercase tracking-wide text-slate-400">{pie}</p>
+        </div>
+        {insignia && (
+          <span className="shrink-0 rounded-md bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-600 ring-1 ring-inset ring-slate-200">
+            {insignia}
+          </span>
+        )}
+      </div>
+
+      {children}
+
+      <p className="mt-2 flex items-baseline justify-between border-t border-slate-200 pt-2">
+        <span className="text-[11px] font-semibold text-slate-500">Total</span>
+        <span className="text-base font-bold tabular-nums text-slate-900">L {n2(total)}</span>
+      </p>
+    </section>
+  )
+}
+
 
 /* ================================================================== */
 /* 4 · Agronomía                                                       */
@@ -517,5 +704,241 @@ function SeccionAgronomia({ fila }: { fila: Fila }) {
         </ul>
       )}
     </Tarjeta>
+  )
+}
+
+/* ================================================================== */
+/* 5 · Detalle operativo del lote por fase (Plan vs. Real)             */
+/* ================================================================== */
+
+/**
+ * El expediente del lote, fase por fase.
+ *
+ * ── Qué contesta que no conteste nada de lo de arriba ───────────────
+ *
+ * Lo anterior son totales: cuánto costó, cuánta dosis, cuándo se hizo.
+ * Cuando uno de esos números no cuadra, la discusión baja siempre al
+ * mismo sitio —«¿pero qué se echó en el preriego?», «¿cuántos estuvieron
+ * en el lavado?»— y hasta ahora eso obligaba a salirse del informe y
+ * abrir la captura turno por turno.
+ *
+ * Aquí están las CUATRO fases, siempre las cuatro. Una fase que no se
+ * hizo se dice que no se hizo: el hueco es un dato, y esconderlo deja al
+ * lector preguntándose si falta la fase o falta el renglón.
+ *
+ * El plan se enseña al lado porque es contra lo que se mide, y porque el
+ * plan sólo existe para la aplicación: verlo vacío en las otras tres
+ * explica por qué la desviación no se calcula para ellas.
+ */
+function SeccionDossier({ fila }: { fila: Fila }) {
+  const fases = useMemo(() => dossierDe(fila), [fila])
+  const etapas = useMemo(() => etapasDe(fila), [fila])
+  const pares = useMemo(() => planContraReal(fila), [fila])
+
+  /** El DDT de la etapa que corresponde a cada fase, para el encabezado. */
+  const ddtDe: Record<string, 'preriego' | 'lecturas' | 'aplicacion' | 'lavado'> = {
+    '1_Preriego': 'preriego',
+    '2_Lecturas': 'lecturas',
+    '3_Aplicacion': 'aplicacion',
+    '4_Lavado': 'lavado',
+  }
+
+  return (
+    <Tarjeta className="p-4">
+      <h3 className="text-sm font-semibold text-slate-900">
+        Detalle operativo del lote por fase (Plan vs. Real)
+      </h3>
+      <p className="mb-3 text-xs text-slate-400">
+        Las cuatro fases del ciclo con lo que de verdad se hizo: el reloj, el agua, la conductividad
+        y la calibración de cada turno, los químicos ya prorrateados a este lote y la cuadrilla que
+        estuvo.
+      </p>
+
+      <div className="flex flex-col gap-3">
+        {fases.map((f) => {
+          const etapa = etapas.find((e) => e.clave === ddtDe[f.clave])
+          return (
+            <section
+              key={f.clave}
+              className="rounded-xl bg-slate-50 p-3 ring-1 ring-inset ring-slate-200"
+            >
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                <h4 className="text-xs font-semibold text-slate-900">{f.etiqueta}</h4>
+                {f.vacia ? (
+                  <span className="text-[11px] italic text-slate-400">
+                    No se registró esta fase
+                  </span>
+                ) : (
+                  <span className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] tabular-nums text-slate-500">
+                    {etapa && (etapa.ddtPlan !== null || etapa.ddtReal !== null) && (
+                      <span>
+                        DDT plan {etapa.ddtPlan ?? '—'} · real{' '}
+                        <strong className="text-slate-900">{etapa.ddtReal ?? '—'}</strong>
+                      </span>
+                    )}
+                    {etapa?.desfase !== null && etapa?.desfase !== undefined && (
+                      <span
+                        className={
+                          Math.abs(etapa.desfase) > 7 ? 'text-amber-700' : 'text-slate-500'
+                        }
+                      >
+                        {conSigno(etapa.desfase, 0)} d
+                      </span>
+                    )}
+                    <span>
+                      Químico <strong className="text-slate-900">L {n2(f.costoQuimico)}</strong>
+                    </span>
+                    <span>
+                      Cuadrilla <strong className="text-slate-900">L {n2(f.costoCuadrilla)}</strong>
+                    </span>
+                  </span>
+                )}
+              </div>
+
+              {!f.vacia && (
+                <>
+                  {/* Lo operativo: el reloj, el agua, la CE, la
+                      calibración. Es lo que se discute cuando un turno
+                      sale raro, y hasta ahora obligaba a salirse del
+                      informe y abrir la captura. */}
+                  {f.datos.length > 0 && (
+                    <dl className="mt-2 grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2">
+                      {f.datos.map((d) => (
+                        <div
+                          key={d.etiqueta}
+                          className="flex items-baseline justify-between gap-2 border-b border-slate-200/70 pb-0.5 text-[11px]"
+                        >
+                          <dt className="min-w-0 truncate text-slate-400">{d.etiqueta}</dt>
+                          <dd className="shrink-0 font-semibold tabular-nums text-slate-900">
+                            {d.valor}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  )}
+
+                  {/* **La comparativa del plan sólo en la fase 3**: es la
+                      única que el plan presupuesta. Repetirla en las
+                      otras tres dejaría tres tablas vacías. */}
+                  {f.clave === '3_Aplicacion' && (
+                    <div className="mt-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                        Químicos · plan contra real
+                      </p>
+                      <Tabla
+                        cabeceras={[
+                          'Producto',
+                          'Dosis plan',
+                          'Dosis real',
+                          'Litros plan',
+                          'Litros real',
+                          'Costo plan',
+                          'Costo real',
+                        ]}
+                        vacio="Este lote se desinfectó sin plan: no hay contra qué medirlo."
+                        filas={pares.map((x) => [
+                          `${x.codigo}${x.nombre ? ` · ${x.nombre}` : ''}`,
+                          x.dosisPlan === null ? '—' : n2(x.dosisPlan),
+                          x.dosisReal === null ? '—' : n2(x.dosisReal),
+                          x.litrosPlan === null ? '—' : n2(x.litrosPlan),
+                          x.litrosReal === null ? '—' : n2(x.litrosReal),
+                          x.costoPlan === null ? '—' : `L ${n2(x.costoPlan)}`,
+                          x.costoReal === null ? '—' : `L ${n2(x.costoReal)}`,
+                        ])}
+                      />
+                    </div>
+                  )}
+
+                  {f.clave !== '3_Aplicacion' && f.productos.length > 0 && (
+                    <div className="mt-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                        Químicos
+                      </p>
+                      <Tabla
+                        cabeceras={['Producto', 'Litros lote', 'Litros turno', 'Costo lote']}
+                        vacio="Sin químicos en esta fase."
+                        filas={f.productos.map((q) => [
+                          `${q.codigo ?? ''} ${q.nombre ?? ''}`.trim() || '—',
+                          n2(q.litros_lote ?? q.litros),
+                          q.litros_turno === null || q.litros_turno === undefined
+                            ? '—'
+                            : n2(q.litros_turno),
+                          `L ${n2(q.costo_lote ?? q.costo)}`,
+                        ])}
+                      />
+                    </div>
+                  )}
+
+                  {f.cuadrilla.length > 0 && (
+                    <div className="mt-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                        Cuadrilla
+                      </p>
+                      <Tabla
+                        cabeceras={['Puesto', 'Personas', 'H. extras', 'Jornada', 'Costo lote']}
+                        vacio="Sin cuadrilla en esta fase."
+                        filas={f.cuadrilla.map((c) => [
+                          c.puesto_texto ?? c.operador_nombre ?? 'Sin puesto',
+                          n2(c.cantidad_personas),
+                          n2(c.horas_extras),
+                          c.jornada_tipo ?? '—',
+                          `L ${n2(c.costo_lote)}`,
+                        ])}
+                      />
+                    </div>
+                  )}
+                </>
+              )}
+            </section>
+          )
+        })}
+      </div>
+
+      <TurnosDelLote fila={fila} />
+    </Tarjeta>
+  )
+}
+
+/**
+ * Los turnos que regaron este lote, con el factor del reparto.
+ *
+ * Es la pieza que permite AUDITAR todo lo anterior: si alguien discute
+ * una dosis, aquí están las manzanas del lote, las del turno completo y
+ * la fracción que salió de dividirlas. Sin esto, el prorrateo es un
+ * número que hay que creerse.
+ */
+function TurnosDelLote({ fila }: { fila: Fila }) {
+  const turnos = useMemo(() => ejecucionesDe(fila), [fila])
+  if (turnos.length === 0) return null
+
+  return (
+    <div className="mt-3 border-t border-slate-200 pt-3">
+      <h4 className="text-xs font-semibold text-slate-900">Turnos que regaron este lote</h4>
+      <p className="text-[11px] text-slate-400">
+        El factor es las manzanas del lote entre las del turno: es con lo que se reparten litros y
+        costos.
+      </p>
+      <ul className="mt-1.5 flex flex-col gap-1">
+        {turnos.map((t, i) => (
+          <li
+            key={`${t.turno_codigo ?? '—'}-${i}`}
+            className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 rounded-lg bg-slate-50 px-2.5 py-1.5 text-[11px] ring-1 ring-inset ring-slate-200"
+          >
+            <span className="font-semibold text-slate-900">
+              {t.turno_codigo ?? ''} {t.turno_nombre ?? ''}
+            </span>
+            <span className="tabular-nums text-slate-500">
+              {n2(t.mz_cubiertas)} de {n2(t.mz_total_turno)} mz · factor{' '}
+              {Number(t.factor_lote ?? 0).toFixed(4)}
+            </span>
+            <span className="tabular-nums text-slate-400">
+              {t.fecha_aplicacion ?? '—'}
+              {t.estacion_nombre ? ` · ${t.estacion_nombre}` : ''}
+              {t.agua_total_m3 ? ` · ${n2(t.agua_total_m3)} m³` : ''}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }

@@ -235,6 +235,200 @@ dice.
 
 ## 3. Registro de cambios
 
+### 2026-10-15 — El turno repartido, el acarreo por ciclo y el informe que se puede auditar (migración 76)
+
+#### 1. El fallo: un turno sobre dos lotes decía el DOBLE de dosis
+
+Esto no se dedujo leyendo la vista: se **midió** contra PostgreSQL 16
+antes de escribir una línea de arreglo. Un turno de 2.000 L sobre dos
+lotes de 10 mz cada uno:
+
+```
+lote |mz      |dosis_real              |costo_quimico
+N-01 |10.0000 |200.0000000000000000    |10000.0000000000000000
+S-01 |10.0000 |200.0000000000000000    |10000.0000000000000000
+```
+
+2.000 L sobre 20 mz son **100 L/mz**. La vista decía **200**: exactamente
+el doble, que es el número de lotes del turno.
+
+La causa: `interno.v_desinfeccion_informe_crudo` cruzaba los químicos por
+`ejecucion_id`, así que **cada lote se llevaba los litros enteros del
+turno** y los dividía entre SUS manzanas. Con tres lotes habría dicho el
+triple.
+
+Lo peor no es el número: es que **el informe se contradecía a sí mismo**.
+El costo del químico SÍ se prorrateaba bien (10.000 de 20.000 a cada
+uno), así que el mismo papel decía «100 L/mz de costo» y «200 L/mz de
+dosis». Quien lo llevara a una reunión no tenía cómo defender ninguno de
+los dos.
+
+El arreglo es un factor de participación, calculado una vez y aplicado a
+todo lo que sale del turno:
+
+```sql
+dl.mz_cubiertas / nullif(sum(dl.mz_cubiertas) over (partition by dl.ejecucion_id), 0)
+    as factor
+```
+
+Y el expediente lleva ahora **las dos cifras** —`litros_turno` y
+`litros_lote`— junto con el factor y las manzanas que lo producen. Sin
+ellas el prorrateo es un número que hay que creerse.
+
+#### 2. El acarreo cruzaba los ciclos y cobraba una pata de tres
+
+`desinfeccion_logistica` no tenía ciclo. Un acarreo de enero se repartía
+entre las manzanas regadas de agosto, porque la bolsa de la zona era de
+la TEMPORADA. Ahora `ciclo smallint not null` es la primera llave del
+reparto, y un acarreo de un ciclo sin riego no se le cuelga a nadie.
+
+El costo era `horas × costo_hora` y nada más. El implemento no sumaba
+—«todavía no tiene tabla de tarifas»— y el operador tampoco, lo que en la
+práctica quería decir que **el acarreo salía más barato de lo que era**
+en todos los informes. Son tres patas:
+
+```sql
+new.costo_total := round(
+    (horas * costo_hora_equipo) + (horas * costo_hora_implemento)
+    + (case when operador_id is not null then salario_operador else 0 end), 2);
+```
+
+Sin operador el salario se borra: un jornal escrito sin operador no se le
+paga a nadie.
+
+**`costo_hora` se mantiene sincronizado**, y además se RECOGE: si llega
+escrito y `costo_hora_equipo` viene en cero, se adopta. Sin eso, un
+cliente viejo o una importación habrían guardado el acarreo en cero sin
+que nadie lo notara — lo encontró `t71`, que seguía insertando por la
+columna de antes.
+
+#### 3. Cargo al lote: el acarreo que no es de toda la zona
+
+`tipo_cargo` vale `'zona'` o `'lote'`. El primero es la bolsa de siempre.
+El segundo reparte **sólo entre los lotes marcados** (tabla nueva
+`desinfeccion_logistica_lotes`, con su RLS de tabla hija), en proporción
+a `fn_area_lote_ciclo`, y a partes iguales si nadie capturó área: un
+cargo que desaparece porque falta un dato es peor que un reparto
+aproximado y visible.
+
+En el formulario la zona **ya no se pregunta** cuando el cargo es al
+lote: se deriva de los lotes marcados. Preguntarla aparte invitaba a
+dejarla distinta de la de los lotes, y entonces el acarreo lo ve quien no
+debe.
+
+#### 4. `delta_costo` comparaba cosas que no se pueden comparar
+
+Medía el costo TOTAL del lote —químico + cuadrilla + acarreo— contra
+`costo_plan`, que sólo presupuesta **químico de aplicación**. La
+desviación salía siempre en rojo y por eso nadie la miraba. Ahora:
+
+```sql
+case when costo_plan is null then null
+     else costo_quimico_aplicacion - costo_plan end as delta_costo
+```
+
+La vista expone `costo_quimico_aplicacion` y `costo_quimico_lavado` por
+separado. El costo total sigue dicho, aparte, donde corresponde.
+
+#### 5. El informe: lo que se retiró y por qué
+
+**La recta del cronograma.** Apilaba los hitos sobre una línea y
+alternaba las etiquetas arriba y abajo para que no chocaran. Con cuatro
+colaba; con seis —y con un preriego y unas lecturas a un día uno del
+otro— los textos se montan justo en la parte que más se mira. Lo
+sustituye una **etapa por fila**: la colisión es imposible por
+construcción, y de paso cabe el plan Y lo real de cada etapa en la misma
+banda, que es la comparación que se viene a hacer. Una etapa sin fechas
+ya no desaparece: dice «sin registrar», y el hueco es un dato.
+
+**La barra apilada del costo.** Decía «98 % químico, 2 % acarreo» y ahí
+se acababa. Con tres conceptos de los que uno se lleva casi todo, la
+proporción no es la pregunta. La sustituyen tres paneles de detalle
+—químicos, mano de obra por fase, logística y acarreo— con su total al
+pie: la proporción se sigue leyendo y además se puede auditar.
+
+Se cierra con **el detalle operativo por fase**, las cuatro siempre, y
+con los turnos que regaron el lote y el factor con el que se repartió.
+
+El PDF hace lo mismo y en una segunda página: sale de las MISMAS
+funciones puras que la pantalla, así que no pueden discrepar.
+
+Lo retirado se borró de `informe.ts` en vez de dejarlo «por si acaso»:
+dos maneras de calcular el reparto de un costo es exactamente como se
+llega a un papel que no coincide con el tablero.
+
+#### 6. Lo que las pruebas encontraron
+
+- `max(jsonb)` no existe: el plan se agrega con `(array_agg(...))[1]`.
+- Los guardianes del final comparaban con `!~` contra `pg_get_viewdef`,
+  que **normaliza las palabras clave a mayúsculas**. Pasaban por
+  casualidad hasta que uno no pasó. Ahora son `!~*`.
+- `pg_get_viewdef` también quita el alias de la tabla, así que el
+  guardián de `delta_costo` tuvo que aceptar `(x\.)?`.
+- `t71` seguía escribiendo el acarreo por `costo_hora` a secas: fue lo
+  que destapó el punto 2.
+- `productos` dejó de ser un arreglo de arreglos y pasó a ser la lista
+  plana del lote. El navegador ya hacía `.flat()`, así que lee bien las
+  dos formas.
+
+#### 7. El expediente completo: lo que faltaba del pliego
+
+Una segunda pasada contra el pliego encontró cuatro huecos, y arreglarlos
+destapó dos defectos de verdad:
+
+**El DDT de cada etapa.** El cronograma enseñaba plan y real pero no
+contra qué día del cultivo. Se calcula en `etapasDe` —una resta de dos
+fechas que la fila ya trae— en vez de pedirle a la vista seis columnas
+más para no decir nada nuevo. Va pegado a SU fecha, no en otra columna:
+separarlos obligaría a cruzar la vista para saber a cuál pertenece.
+
+**Los tres paneles, en tablas.** Eran renglones de texto corrido. Ahora
+cada uno tiene sus columnas —Producto / Fase / Litros lote / Dosis-mz /
+Costo-L / Costo lote— y el de cuadrilla lleva el resumen por fase y la
+insignia de la fase más cara antes de los puestos. A 390 px cada tabla
+se arrastra en su propio carril: estrujar seis columnas hace ilegible la
+que importa, y ensanchar la página no es una opción.
+
+**El expediente por fase.** Era productos + cuadrilla. Ahora cada fase
+lleva lo operativo del turno: el reloj del preriego con sus
+observaciones, los tensiómetros, y en la aplicación la estación, el
+equipo, el caudal, el agua con producto, los tres tiempos de reloj, la
+conductividad y la calibración. En la fase 3 —la única que el plan
+presupuesta— va la comparativa **plan contra real producto a producto**,
+cruzada por código: lo que aparece en un solo lado aparece igual, porque
+un químico planificado que no se aplicó es justo lo que se viene a
+buscar.
+
+**Dos defectos que salieron de ahí:**
+
+1. **`undefined` no es `null`.** La vista devuelve `null` para lo no
+   capturado, pero a un `jsonb` al que le falta la clave llega
+   `undefined`. El filtro comparaba sólo contra `null`, así que colaban
+   renglones «Fecha:» sin valor y una fase sin tocar se daba por hecha.
+2. **Tres autorrellenos, una carrera.** Equipo, implemento y operador se
+   resolvían en tres efectos, y cada uno construía su cambio sobre el
+   `entrada` que tenía en la mano al empezar: el último en resolverse
+   pisaba a los otros. Medido en el banco —la tarifa del equipo
+   desaparecía en cuanto el implemento traía la suya—. Ahora se resuelven
+   los tres y se aplica UN cambio.
+
+Y uno de presentación que sólo se ve en el papel: la raya larga `–` no
+está en Latin-1 y el motor de PDF la escribía como `?`. Guion simple.
+
+#### 8. La trampa de la 68, otra vez, en otro disfraz
+
+`tparidad` daba 84 diferencias de 192 en el costo del personal. No era
+una regresión: el CSV `paridad_personal.csv` estaba generado antes de que
+la 74 hiciera `cantidad_personas` decimal, y se comparaba contra él. Es
+el mismo fallo que el bundle rancio de la 68 —una prueba en verde (o en
+rojo) contra una foto vieja— y conviene recordarlo: **los volcados de
+paridad también caducan**. Regenerado contra la 76: 192 de 192.
+
+Suites: `t76.sql` (33 verdes), `tlogistica.mjs` nuevo (35, a 390 px),
+`tcalc` 184, `tinforme` 77, `tinformepdf` 60, `tinformeui` 54,
+`tdesinf` 136, `tparidad` 192 + 1.152 sin una diferencia, y la cadena SQL
+entera de la 42 a la 76 en verde.
+
 ### 2026-10-14 — El informe que reventaba, el catálogo de objetivos y las dos fechas del plan (migración 75)
 
 #### 1. `cannot accumulate null arrays`: el informe no daba menos datos, no daba ninguno
