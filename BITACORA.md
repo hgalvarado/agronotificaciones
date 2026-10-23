@@ -235,6 +235,63 @@ dice.
 
 ## 3. Registro de cambios
 
+### 2026-10-23 — Corrección de la 78: el botón de fila es «Labores», no «Editar»
+
+- La columna Ticket vuelve a enlazar a `/tickets/[id]`.
+- El botón de fila es **Labores (n)** y abre en modal el MISMO panel
+  «Labores de este equipo» de la página del horómetro. Ese panel se
+  extrajo a `components/registro/PanelLaboresHorometro.tsx` y ahora lo usan
+  las dos: la página le pasa las filas del servidor (`inicial`); el modal
+  las pide en el navegador (mismo RLS). Permisos con `puedeEnTicket`
+  sobre `labores` con el proceso/estado del ticket de la fila.
+- `TablaRegistros` gana `onCambio` (tras duplicar/eliminar), porque
+  `router.refresh()` no repinta filas leídas en el navegador.
+- Al cerrar el modal: `recargar(true)` silencioso; `cantidad_labores` se
+  actualiza sin desmontar la cuadrícula. «Agregar» y el lápiz de cada
+  labor siguen navegando a sus páginas del ticket, como en el ticket.
+- `EditarHorometrosModal` vuelve a su versión anterior (sólo masivo). HI/HF
+  se siguen editando en la celda.
+
+### 2026-10-23 — Horómetros: labores por lectura, edición en sitio, tarjetas que filtran y un solo libro SAP (migración 78)
+
+**Base (`78_horometros_labores_count.sql`).** `interno.v_horometros_control_crudo`
+gana `cantidad_labores` = `count(*)` de `registros` por `horometro_id`. Se
+ENVUELVE con su propia `pg_get_viewdef` (patrón 57), no se reescribe: la
+ventana del comparativo y el contador quedan intactos. La cruda es
+`definer`, así que el conteo es el real (0 es 0, no «0 de las tuyas»). La
+expuesta se rearma con la reja de la 66 (`horometros` · sin zona · dueño).
+Guardianes: columna en la expuesta, columnas previas presentes, reja,
+cruda inalcanzable y `definer`. Corrida dos veces contra PG 16.
+
+**Pantalla (`ControlHorometros`).**
+
+- La columna Ticket ya no enlaza a `/tickets/[id]`. «Editar» por fila abre
+  `EditarHorometrosModal` en modo de UNA fila (nuevo `fila`): HI, HF,
+  turno, horas hombre (misma `validarHorasHombre`), equipo, operador y
+  comentario; sólo manda lo que cambió. Al guardar, `recargar(true)`
+  silencioso: la cuadrícula no se desmonta y conserva filtros, orden y
+  búsqueda. El modo masivo (`ids`) sigue igual.
+- Columna **Labores** (`cantidad_labores`), insignia roja en 0 con horas.
+- Tarjetas «Con desfase» y «Horas sin notificar» son toggles que filtran
+  la cuadrícula. **Cambio de lectura:** «Horas sin notificar» suma ahora
+  las horas de máquina de jornadas con 0 labores; los huecos del
+  comparativo pasan a la tarjeta «Con desfase» («+n h de hueco»). Sin la
+  78 la tarjeta vuelve al cálculo viejo y no filtra.
+- **Exportar para SAP = un libro** (`construirXlsxHojas`, nuevo en
+  `lib/hojas.ts`) con hojas «Horometros» y «Labores». Sale de lo que la
+  cuadrícula ENSEÑA (`visibles`: rango, filtros globales, tarjeta,
+  cabeceras, búsqueda); las labores se piden a `v_labores_control` por
+  `horometro_id` de esas filas, en tandas de 150.
+- Engranaje junto al botón: activar/apagar/reordenar columnas por hoja,
+  guardado en `localStorage` (`agn.sap.columnas.<clave>`), conciliado por
+  NOMBRE de columna (`lib/sap/columnas.ts`, puro). `BotonExportarSap`
+  conserva la forma `hoja`/`filas`: Labores sigue igual y también gana el
+  engranaje.
+
+**Verificación:** `tsc --noEmit` de lo tocado en verde, `eslint` sin avisos,
+`columnas.ts` probado en Node. `buildLibs.mjs` no está en el repositorio
+(vive en `/tmp/pgverif`): no se pudo correr aquí.
+
 ### 2026-10-23 — Telecom: estado físico, moneda del plan y la tabla a pantalla completa (migración 77)
 
 **Base (`77_telecom_estados_y_moneda.sql`).**

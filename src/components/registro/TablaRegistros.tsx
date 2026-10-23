@@ -18,12 +18,19 @@ export function TablaRegistros({
   ticketAbierto,
   puedeEliminar,
   mostrarEquipo = false,
+  onCambio,
 }: {
   registros: FilaRegistro[]
   ticketId: string
   ticketAbierto: boolean
   puedeEliminar: boolean
   mostrarEquipo?: boolean
+  /**
+   * Tras duplicar o eliminar. `router.refresh()` sólo repinta lo que vino
+   * del servidor; quien leyó las filas en el navegador (el modal de
+   * Labores del control de horómetros) las vuelve a pedir con esto.
+   */
+  onCambio?: () => void
 }) {
   const [busqueda, setBusqueda] = useState('')
 
@@ -77,6 +84,7 @@ export function TablaRegistros({
                 ticketAbierto={ticketAbierto}
                 puedeEliminar={puedeEliminar}
                 mostrarEquipo={mostrarEquipo}
+                onCambio={onCambio}
               />
             ))}
           </div>
@@ -105,6 +113,7 @@ export function TablaRegistros({
                       ticketAbierto={ticketAbierto}
                       puedeEliminar={puedeEliminar}
                       mostrarEquipo={mostrarEquipo}
+                      onCambio={onCambio}
                     />
                   ))}
                 </tbody>
@@ -129,7 +138,7 @@ function totalMz(r: FilaRegistro) {
   return r.detalle.reduce((acc, d) => acc + (d.avance_mz ?? 0), 0)
 }
 
-function useAcciones(registro: FilaRegistro, ticketId: string) {
+function useAcciones(registro: FilaRegistro, ticketId: string, onCambio?: () => void) {
   const supabase = createClient()
   const router = useRouter()
   const [ocupado, setOcupado] = useState(false)
@@ -153,6 +162,7 @@ function useAcciones(registro: FilaRegistro, ticketId: string) {
     setOcupado(false)
     if (error) return alert(error.message)
     router.refresh()
+    onCambio?.()
   }
 
   async function eliminar(e: React.MouseEvent) {
@@ -164,6 +174,7 @@ function useAcciones(registro: FilaRegistro, ticketId: string) {
     setOcupado(false)
     if (error) return alert(error.message)
     router.refresh()
+    onCambio?.()
   }
 
   return { editar, duplicar, eliminar, ocupado }
@@ -174,13 +185,15 @@ function Acciones({
   ticketId,
   ticketAbierto,
   puedeEliminar,
+  onCambio,
 }: {
   registro: FilaRegistro
   ticketId: string
   ticketAbierto: boolean
   puedeEliminar: boolean
+  onCambio?: () => void
 }) {
-  const { editar, duplicar, eliminar, ocupado } = useAcciones(registro, ticketId)
+  const { editar, duplicar, eliminar, ocupado } = useAcciones(registro, ticketId, onCambio)
 
   const boton =
     'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 transition-colors disabled:opacity-50'
@@ -231,12 +244,14 @@ function FilaCompacta({
   ticketAbierto,
   puedeEliminar,
   mostrarEquipo,
+  onCambio,
 }: {
   registro: FilaRegistro
   ticketId: string
   ticketAbierto: boolean
   puedeEliminar: boolean
   mostrarEquipo: boolean
+  onCambio?: () => void
 }) {
   const mz = totalMz(r)
 
@@ -282,6 +297,7 @@ function FilaCompacta({
         ticketId={ticketId}
         ticketAbierto={ticketAbierto}
         puedeEliminar={puedeEliminar}
+        onCambio={onCambio}
       />
     </div>
   )
@@ -293,12 +309,14 @@ function FilaTabla({
   ticketAbierto,
   puedeEliminar,
   mostrarEquipo,
+  onCambio,
 }: {
   registro: FilaRegistro
   ticketId: string
   ticketAbierto: boolean
   puedeEliminar: boolean
   mostrarEquipo: boolean
+  onCambio?: () => void
 }) {
   const mz = totalMz(r)
 
@@ -342,6 +360,7 @@ function FilaTabla({
             ticketId={ticketId}
             ticketAbierto={ticketAbierto}
             puedeEliminar={puedeEliminar}
+            onCambio={onCambio}
           />
         </div>
       </td>
