@@ -453,6 +453,14 @@ export function construirXlsx(nombreHoja: string, filas: CeldaHoja[][]): Blob {
   return construirLibro([{ nombre: nombreHoja, filas }])
 }
 
+/**
+ * Un .xlsx con VARIAS hojas, en el orden dado. Para entregar en un solo
+ * archivo lo que va junto —la exportación SAP lleva Horómetros y Labores—.
+ */
+export function construirXlsxHojas(hojas: { nombre: string; filas: CeldaHoja[][] }[]): Blob {
+  return construirLibro(hojas.map((h) => ({ nombre: h.nombre, filas: h.filas })))
+}
+
 /** Dispara la descarga de un Blob con el nombre dado. */
 export function descargar(blob: Blob, nombreArchivo: string) {
   const url = URL.createObjectURL(blob)

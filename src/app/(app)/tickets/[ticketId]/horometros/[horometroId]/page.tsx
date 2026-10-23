@@ -3,17 +3,10 @@ import { puedeEnTicket } from '@/lib/permisos/captura'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getReglas } from '@/lib/auth'
-import { TablaRegistros } from '@/components/registro/TablaRegistros'
-import {
-  BotonLink,
-  EstadoVacio,
-  Insignia,
-  Tarjeta,
-  TarjetaEncabezado,
-} from '@/components/ui/Primitivos'
+import { PanelLaboresHorometro } from '@/components/registro/PanelLaboresHorometro'
+import { BotonLink, Insignia, Tarjeta } from '@/components/ui/Primitivos'
 import {
   IconChevronLeft,
-  IconGauge,
   IconMoon,
   IconPencil,
   IconPlus,
@@ -153,55 +146,20 @@ export default async function HorometroDetailPage({
         )}
       </Tarjeta>
 
-      {/* Labores de este horómetro */}
+      {/* Labores de este horómetro. El mismo panel abre el modal
+          «Labores» del control de horómetros (78). */}
       <Tarjeta>
-        <TarjetaEncabezado
-          titulo="Labores de este equipo"
-          contador={registros.length}
-          accion={
-            puedeAgregarLabores ? (
-              <BotonLink
-                href={`/tickets/${ticketId}/horometros/${horometroId}/registros/nuevo`}
-                variante="suave"
-                tamano="sm"
-              >
-                <IconPlus className="h-4 w-4" />
-                Agregar
-              </BotonLink>
-            ) : undefined
-          }
+        <PanelLaboresHorometro
+          ticketId={ticketId}
+          horometroId={horometroId}
+          puedeAgregar={puedeAgregarLabores}
+          puedeEditar={puedeEditarLabores}
+          puedeEliminar={puedeBorrarLabores}
+          inicial={registros.map((r) => ({
+            ...r,
+            detalle: detalles.filter((d) => d.registro_id === r.id),
+          }))}
         />
-
-        <div className="p-3">
-          {registros.length === 0 ? (
-            <EstadoVacio
-              icono={<IconGauge />}
-              titulo="Sin labores registradas"
-              descripcion="Desglosa qué hizo este equipo durante las horas trabajadas."
-              accion={
-                puedeAgregarLabores ? (
-                  <BotonLink
-                    href={`/tickets/${ticketId}/horometros/${horometroId}/registros/nuevo`}
-                    tamano="sm"
-                  >
-                    <IconPlus className="h-4 w-4" />
-                    Agregar labor
-                  </BotonLink>
-                ) : undefined
-              }
-            />
-          ) : (
-            <TablaRegistros
-              ticketId={ticketId}
-              ticketAbierto={puedeEditarLabores}
-              puedeEliminar={puedeBorrarLabores}
-              registros={registros.map((r) => ({
-                ...r,
-                detalle: detalles.filter((d) => d.registro_id === r.id),
-              }))}
-            />
-          )}
-        </div>
       </Tarjeta>
     </div>
   )

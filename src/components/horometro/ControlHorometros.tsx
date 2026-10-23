@@ -14,6 +14,15 @@
  *
  * Aquí sólo se declaran las columnas y las acciones; la mecánica de la
  * tabla es la estándar (`DataGrid`).
+ *
+ * 78 · «Labores» por fila abre, en un modal, el MISMO panel «Labores de
+ * este equipo» de la página del horómetro (`PanelLaboresHorometro`). Al
+ * cerrarlo se vuelve a consultar SIN desmontar la cuadrícula —filtros,
+ * orden y búsqueda se quedan— y `cantidad_labores` sale al día. El ticket
+ * sigue enlazado en su columna. Las tarjetas
+ * «Con desfase» y «Horas sin notificar» son filtros rápidos. La
+ * exportación SAP sale en UN libro con Horómetros y Labores, de lo que
+ * la cuadrícula enseña en ese momento.
  */
 
 import Link from 'next/link'
@@ -23,14 +32,24 @@ import { leerTodo } from '@/lib/supabase/paginar'
 import { armarReglas, canExecuteAction, type ReglasPlanas } from '@/lib/permisos/clientABAC'
 import { Alerta, Boton, Insignia, Tarjeta } from '@/components/ui/Primitivos'
 import { DataGrid } from '@/components/ui/DataGrid'
+import { BotonFila } from '@/components/ui/BotonFila'
 import { PanelFiltros } from '@/components/ui/PanelFiltros'
 import { SelectorMultiple } from '@/components/ui/SelectorMultiple'
 import type { ColumnaGrid } from '@/lib/grid/tipos'
 import { mesEnCurso } from '@/lib/fechas'
 import { mensajeDeError } from '@/lib/errores'
-import { filasHorometrosSap } from '@/lib/sap/exportacion'
+import {
+  COLUMNAS_HOROMETROS_SAP,
+  COLUMNAS_LABORES_SAP,
+  filasHorometrosSap,
+  filasLaboresSap,
+  type LineaLaborSap,
+} from '@/lib/sap/exportacion'
 import { BotonExportarSap } from '@/components/ui/BotonExportarSap'
 import { validarHorasHombre } from '@/lib/horometro/validacion'
+import { Modal } from '@/components/ui/Modal'
+import { PanelLaboresHorometro } from '@/components/registro/PanelLaboresHorometro'
+import { puedeEnTicket } from '@/lib/permisos/captura'
 import { PROCESOS, procesoInfo } from '@/lib/estados'
 import type { Equipo, Operador, ProcesoTicket, TurnoTipo } from '@/lib/types'
 
@@ -65,7 +84,23 @@ export type FilaControl = {
   /** La fila estrena tablero: no hay contra qué compararla, y es distinto
    *  de ser la primera jornada del equipo. */
   inicio_contador?: boolean | null
+  /** Llega con la migración 78: labores registradas sobre la lectura. */
+  cantidad_labores?: number | null
 }
+
+/** Filtro rápido de las tarjetas. */
+type Rapido = 'desfase' | 'sinLabores' | null
+
+const conDesfase = (f: FilaControl) => f.comparativo != null && Number(f.comparativo) !== 0
+/** Horas de máquina y ninguna labor colgada: jornada sin notificar (78). */
+const sinLabores = (f: FilaControl) =>
+  f.cantidad_labores !== null &&
+  f.cantidad_labores !== undefined &&
+  Number(f.cantidad_labores) === 0 &&
+  Number(f.horas_maquina ?? 0) > 0
+
+/** Cuántos ids por consulta `in (...)`: la URL de PostgREST tiene tope. */
+const IDS_POR_CONSULTA = 150
 
 const VACIOS = {
   equipos: [] as string[],
@@ -158,10 +193,13 @@ export function ControlHorometros({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [consulta.desde, consulta.hasta])
 
-  const recargar = useCallback(async () => {
-    setCargando(true)
+  // `silencioso`: sin encender el «cargando», para refrescar tras editar
+  // sin atenuar la tabla. La cuadrícula NO se desmonta en ningún caso:
+  // sus filtros, orden y búsqueda viven en ella y se conservan.
+  const recargar = useCallback(async (silencioso = false) => {
+    if (!silencioso) setCargando(true)
     const { datos, error: e } = await leer()
-    setCargando(false)
+    if (!silencioso) setCargando(false)
     if (e) {
       setError(e)
       setFilas([])
@@ -240,18 +278,61 @@ export function ControlHorometros({
 
   const activos = Object.values(externos).filter((v) => v.length > 0).length
 
+  const [rapido, setRapido] = useState<Rapido>(null)
+  const [viendoLabores, setViendoLabores] = useState<FilaControl | null>(null)
+
+  // La 78 trae `cantidad_labores`; sin ella la tarjeta vuelve a la lectura
+  // vieja (huecos del comparativo) y no se ofrece como filtro.
+  const hayConteo = useMemo(
+    () => cargadas.some((f) => f.cantidad_labores !== undefined && f.cantidad_labores !== null),
+    [cargadas]
+  )
+
   const resumen = useMemo(() => {
-    const conDesfase = lista.filter((f) => f.comparativo != null && Number(f.comparativo) !== 0)
+    const desfasadas = lista.filter(conDesfase)
+    const huecos =
+      Math.round(desfasadas.reduce((a, f) => a + Math.max(Number(f.comparativo ?? 0), 0), 0) * 100) / 100
+    const sin = lista.filter(sinLabores)
     return {
       total: lista.length,
       horas: Math.round(lista.reduce((a, f) => a + Number(f.horas_maquina ?? 0), 0) * 100) / 100,
-      conDesfase: conDesfase.length,
-      horasNoNotificadas:
-        Math.round(
-          conDesfase.reduce((a, f) => a + Math.max(Number(f.comparativo ?? 0), 0), 0) * 100
-        ) / 100,
+      conDesfase: desfasadas.length,
+      huecos,
+      jornadasSinLabores: sin.length,
+      horasNoNotificadas: hayConteo
+        ? Math.round(sin.reduce((a, f) => a + Number(f.horas_maquina ?? 0), 0) * 100) / 100
+        : huecos,
     }
-  }, [lista])
+  }, [lista, hayConteo])
+
+  // Lo que recibe la cuadrícula: los filtros globales y, encima, la
+  // tarjeta pulsada. Las tarjetas cuentan sobre `lista` para que su
+  // número no se vuelva cero al pulsarlas.
+  const enGrid = useMemo(() => {
+    if (rapido === 'desfase') return lista.filter(conDesfase)
+    if (rapido === 'sinLabores') return lista.filter(sinLabores)
+    return lista
+  }, [lista, rapido])
+
+  /** Las labores de los horómetros a la vista, para la hoja «Labores». */
+  async function laboresDe(ids: string[]): Promise<LineaLaborSap[]> {
+    const todas: LineaLaborSap[] = []
+    for (let i = 0; i < ids.length; i += IDS_POR_CONSULTA) {
+      const tanda = ids.slice(i, i + IDS_POR_CONSULTA)
+      const { datos, error: e } = await leerTodo<LineaLaborSap>((desde, hasta) =>
+        supabase
+          .from('v_labores_control')
+          .select('*')
+          .in('horometro_id', tanda)
+          .order('fecha', { ascending: true })
+          .order('detalle_id', { ascending: true })
+          .range(desde, hasta)
+      )
+      if (e) throw new Error(`No se pudieron leer las labores: ${e}`)
+      todas.push(...datos)
+    }
+    return todas
+  }
 
   // La columna de contador sólo tiene sentido si hay contadores que
   // enseñar. Se deduce de lo que llegó, no de una bandera de migración:
@@ -365,6 +446,31 @@ export function ControlHorometros({
         valor: (f) => Number(f.horas_maquina),
         render: (f) => <span className="font-bold text-brand-700">{n2(f.horas_maquina)}</span>,
       },
+      ...(hayConteo
+        ? [
+            {
+              campo: 'cantidad_labores',
+              label: 'Labores',
+              tipo: 'numero' as const,
+              numero: true,
+              valor: (f: FilaControl) =>
+                f.cantidad_labores === null || f.cantidad_labores === undefined
+                  ? null
+                  : Number(f.cantidad_labores),
+              render: (f: FilaControl) =>
+                sinLabores(f) ? (
+                  <span
+                    title="Horas de máquina sin ninguna labor registrada"
+                    className="inline-flex items-center rounded-md bg-red-100 px-1.5 py-0.5 text-xs font-bold text-red-800 ring-1 ring-inset ring-red-400 tabular-nums"
+                  >
+                    0
+                  </span>
+                ) : (
+                  <span className="tabular-nums text-slate-600">{f.cantidad_labores ?? '—'}</span>
+                ),
+            },
+          ]
+        : []),
       {
         campo: 'horas_hombre',
         label: 'H. hombre',
@@ -425,7 +531,7 @@ export function ControlHorometros({
         ),
       },
     ],
-    [equipos, operadores, hayContadores, puedeEditarFila]
+    [equipos, operadores, hayContadores, hayConteo, puedeEditarFila]
   )
 
   /* ------------------------------ Escritura ---------------------------- */
@@ -510,33 +616,44 @@ export function ControlHorometros({
           <p className="text-xl font-bold tracking-tight text-brand-700">{resumen.horas}</p>
           <p className="text-[11px] font-medium text-slate-400">Horas máquina</p>
         </Tarjeta>
-        <Tarjeta className="px-3.5 py-3">
-          <p
-            className={`text-xl font-bold tracking-tight ${
-              resumen.conDesfase > 0 ? 'text-amber-600' : 'text-slate-900'
-            }`}
-          >
-            {resumen.conDesfase}
-          </p>
-          <p className="text-[11px] font-medium text-slate-400">Con desfase</p>
-        </Tarjeta>
-        <Tarjeta className="px-3.5 py-3">
-          <p
-            className={`text-xl font-bold tracking-tight ${
-              resumen.horasNoNotificadas > 0 ? 'text-red-600' : 'text-slate-900'
-            }`}
-          >
-            {resumen.horasNoNotificadas}
-          </p>
-          <p className="text-[11px] font-medium text-slate-400">Horas sin notificar</p>
-        </Tarjeta>
+        <TarjetaFiltro
+          activa={rapido === 'desfase'}
+          onClick={() => setRapido((r) => (r === 'desfase' ? null : 'desfase'))}
+          valor={resumen.conDesfase}
+          tono={resumen.conDesfase > 0 ? 'text-amber-600' : 'text-slate-900'}
+          etiqueta="Con desfase"
+          detalle={resumen.huecos > 0 ? `+${resumen.huecos} h de hueco` : undefined}
+        />
+        <TarjetaFiltro
+          activa={rapido === 'sinLabores'}
+          onClick={() => setRapido((r) => (r === 'sinLabores' ? null : 'sinLabores'))}
+          deshabilitada={!hayConteo}
+          valor={resumen.horasNoNotificadas}
+          tono={resumen.horasNoNotificadas > 0 ? 'text-red-600' : 'text-slate-900'}
+          etiqueta="Horas sin notificar"
+          detalle={
+            hayConteo
+              ? `${resumen.jornadasSinLabores} ${resumen.jornadasSinLabores === 1 ? 'jornada' : 'jornadas'} sin labores`
+              : 'Corre la migración 78 para filtrar'
+          }
+        />
       </div>
 
       {error && <Alerta>{error}</Alerta>}
       {aviso && <Alerta tono="azul">{aviso}</Alerta>}
+      {rapido && (
+        <button
+          type="button"
+          onClick={() => setRapido(null)}
+          className="self-start px-1 text-xs font-semibold text-brand-700 hover:underline"
+        >
+          Filtro rápido: {rapido === 'desfase' ? 'con desfase' : 'horas sin labores'} · {enGrid.length}{' '}
+          de {lista.length} · Quitar
+        </button>
+      )}
 
       <DataGrid<FilaControl>
-          filas={lista}
+          filas={enGrid}
           cargando={cargando}
           columnas={columnas}
           titulo="Horometros"
@@ -554,10 +671,20 @@ export function ControlHorometros({
             descripcion: 'Ajusta el rango de fechas y vuelve a consultar.',
           }}
           exportacionesExtra={(visibles) => (
+            // `visibles` = lo que la cuadrícula enseña: rango, filtros
+            // globales, tarjeta, filtros de cabecera y búsqueda. Las labores
+            // son las de ESOS horómetros, no las del rango entero.
             <BotonExportarSap
-              nombreArchivo={`horometros-sap-${consulta.desde}-a-${consulta.hasta}`}
-              hoja="Horometros"
-              filas={() => filasHorometrosSap(visibles)}
+              nombreArchivo={`sap-${consulta.desde}-a-${consulta.hasta}`}
+              clave="horometros"
+              columnas={{
+                Horometros: COLUMNAS_HOROMETROS_SAP,
+                Labores: COLUMNAS_LABORES_SAP,
+              }}
+              hojas={async () => [
+                { nombre: 'Horometros', filas: filasHorometrosSap(visibles) },
+                { nombre: 'Labores', filas: filasLaboresSap(await laboresDe(visibles.map((f) => f.id))) },
+              ]}
               deshabilitado={visibles.length === 0}
             />
           )}
@@ -565,6 +692,11 @@ export function ControlHorometros({
           // es una hora de máquina sin explicar, y antes era un tinte tan
           // suave que había que buscarlo. Fondo ámbar sólido y una barra
           // en el borde izquierdo, que es lo que se ve al hojear.
+          accionFila={(f) => (
+            <BotonFila onClick={() => setViendoLabores(f)}>
+              Labores{f.cantidad_labores != null ? ` (${f.cantidad_labores})` : ''}
+            </BotonFila>
+          )}
           resaltar={(f) =>
             f.comparativo != null && Number(f.comparativo) !== 0
               ? 'bg-amber-100/80 shadow-[inset_4px_0_0_0_var(--color-amber-500)] hover:bg-amber-100'
@@ -685,6 +817,36 @@ export function ControlHorometros({
           }}
       />
 
+      {/* Las labores del horómetro, sin salir del control. Al cerrar se
+          refresca en silencio: la cuadrícula conserva filtros y orden. */}
+      <Modal
+        abierto={viendoLabores !== null}
+        onCerrar={() => {
+          setViendoLabores(null)
+          void recargar(true)
+        }}
+        titulo={
+          viendoLabores
+            ? `${viendoLabores.equipo_codigo} · ${viendoLabores.fecha} · ${viendoLabores.ticket_codigo}`
+            : 'Labores'
+        }
+        ancho="ancho"
+      >
+        {viendoLabores && (
+          <div className="-mx-1 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+            <PanelLaboresHorometro
+              key={viendoLabores.id}
+              ticketId={viendoLabores.ticket_id}
+              horometroId={viendoLabores.id}
+              puedeAgregar={puedeEnTicket(reglas, 'labores', 'crear', viendoLabores.ticket_proceso, viendoLabores.ticket_estado)}
+              puedeEditar={puedeEnTicket(reglas, 'labores', 'editar', viendoLabores.ticket_proceso, viendoLabores.ticket_estado)}
+              puedeEliminar={puedeEnTicket(reglas, 'labores', 'eliminar', viendoLabores.ticket_proceso, viendoLabores.ticket_estado)}
+              onCambio={() => void recargar(true)}
+            />
+          </div>
+        )}
+      </Modal>
+
       <div className="flex flex-wrap items-center gap-3 px-1 text-xs text-slate-400">
         <span className="flex items-center gap-1.5">
           <span className="h-3 w-3 rounded-sm bg-amber-100 shadow-[inset_3px_0_0_0_var(--color-amber-500)] ring-1 ring-amber-400" />
@@ -707,6 +869,46 @@ export function ControlHorometros({
         <span>La fecha se corrige en el ticket, no aquí.</span>
       </div>
     </div>
+  )
+}
+
+/** Tarjeta de estadística que además filtra la cuadrícula. */
+function TarjetaFiltro({
+  activa,
+  onClick,
+  deshabilitada = false,
+  valor,
+  tono,
+  etiqueta,
+  detalle,
+}: {
+  activa: boolean
+  onClick: () => void
+  deshabilitada?: boolean
+  valor: number
+  tono: string
+  etiqueta: string
+  detalle?: string
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={activa}
+      disabled={deshabilitada}
+      onClick={onClick}
+      className={`flex min-h-16 flex-col items-start rounded-2xl border bg-white px-3.5 py-3 text-left shadow-[var(--shadow-card)] transition-all disabled:cursor-default ${
+        activa
+          ? 'border-brand-500 ring-2 ring-brand-500/40'
+          : 'border-slate-200 enabled:hover:border-brand-300'
+      }`}
+    >
+      <span className={`text-xl font-bold tracking-tight ${tono}`}>{valor}</span>
+      <span className="text-[11px] font-medium text-slate-400">
+        {etiqueta}
+        {activa && <span className="ml-1 font-bold text-brand-700">· filtrando</span>}
+      </span>
+      {detalle && <span className="text-[10px] text-slate-400">{detalle}</span>}
+    </button>
   )
 }
 
