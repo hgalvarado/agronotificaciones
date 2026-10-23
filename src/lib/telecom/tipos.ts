@@ -43,10 +43,52 @@ export type PlanTelecom = {
   id: string
   nombre: string
   proveedor: string | null
+  /** SIEMPRE lempiras. Si el plan está en dólares lo calcula la base (77). */
   costo_mensual: number | null
   es_retencion: boolean
   activo: boolean
+  /** Llegan con la 77: lo escrito y su moneda. */
+  moneda?: Moneda | null
+  costo_origen?: number | null
 }
+
+export type Moneda = 'HNL' | 'USD'
+
+/**
+ * Un costo en la moneda que se pide ver.
+ *
+ * En USD se usa lo escrito cuando el plan está en dólares —sin ida y
+ * vuelta por la tasa—; si no, se divide el lempira por la tasa vigente.
+ * Sin tasa no hay conversión que inventar: null.
+ */
+export function costoEn(
+  ver: Moneda,
+  lempiras: number | null | undefined,
+  origen: { moneda?: string | null; costo_origen?: number | null } | null,
+  tasa: number | null
+): number | null {
+  if (ver === 'HNL') return lempiras === null || lempiras === undefined ? null : Number(lempiras)
+  if (origen?.moneda === 'USD' && origen.costo_origen !== null && origen.costo_origen !== undefined) {
+    return Number(origen.costo_origen)
+  }
+  if (lempiras === null || lempiras === undefined || !tasa) return null
+  return Number(lempiras) / tasa
+}
+
+export function textoMoneda(ver: Moneda, monto: number | null): string {
+  if (monto === null) return '—'
+  return `${ver === 'USD' ? '$' : 'L'} ${monto.toFixed(2)}`
+}
+
+/** Estado FÍSICO del equipo (77). Dónde está lo dice `estado`. */
+export const ESTADOS_FISICOS = [
+  { valor: 'Activo', etiqueta: 'Activo', tono: 'verde' },
+  { valor: 'Dañado', etiqueta: 'Dañado', tono: 'rojo' },
+  { valor: 'Reparación', etiqueta: 'Reparación', tono: 'ambar' },
+  { valor: 'Devuelto', etiqueta: 'Devuelto', tono: 'gris' },
+] as const
+
+export type EstadoFisico = (typeof ESTADOS_FISICOS)[number]['valor']
 
 /**
  * Cómo se lee un centro de costo en toda la aplicación: «1020 - Agrícola».
@@ -102,6 +144,9 @@ export type FilaLinea = {
   /** Llegan con la migración 49: cuántas solicitudes lleva pedidas. */
   solicitudes?: number | null
   ultima_solicitud?: string | null
+  /** Llegan con la 77. */
+  plan_moneda?: Moneda | null
+  plan_costo_origen?: number | null
 }
 
 export type FilaEquipo = {
@@ -120,6 +165,10 @@ export type FilaEquipo = {
   asignado_a: string | null
   codigo_empleado: string | null
   fecha_entrega: string | null
+  /** Llegan con la 77. */
+  estado_fisico?: EstadoFisico | null
+  fecha_devolucion?: string | null
+  notas_estado?: string | null
 }
 
 export type FilaAsignacion = {

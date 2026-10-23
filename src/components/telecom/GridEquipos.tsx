@@ -10,11 +10,16 @@
  *
  * Las filas cuya renovación ya venció salen en rojo: es la misma alerta
  * del tablero, aquí dentro de la lista donde se decide qué comprar.
+ *
+ * 77 · La celda no edita: se corrige con «Editar», que abre el mismo
+ * formulario del alta con el estado FÍSICO (Activo, Dañado, Reparación,
+ * Devuelto), la fecha de devolución y su nota.
  */
 
 import { useMemo, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Alerta, Boton, Campo, Entrada, Insignia, Selector } from '@/components/ui/Primitivos'
+import { BotonFila } from '@/components/ui/BotonFila'
 import { DataGrid } from '@/components/ui/DataGrid'
 import { Modal } from '@/components/ui/Modal'
 import type { ColumnaGrid } from '@/lib/grid/tipos'
@@ -25,21 +30,12 @@ import {
   guardarEquipo,
   type CamposEquipo,
 } from '@/lib/telecom/repositorioCliente'
-import { ESTADOS_EQUIPO, textoPlazo, type FilaEquipo } from '@/lib/telecom/tipos'
+import { ESTADOS_EQUIPO, ESTADOS_FISICOS, textoPlazo, type FilaEquipo } from '@/lib/telecom/tipos'
 import { ImportarEquipos } from './Importadores'
 import type { Consulta } from './HistorialModal'
 import { armarReglas, canExecuteAction, type ReglasPlanas } from '@/lib/permisos/clientABAC'
 
 type Fila = FilaEquipo & { id: string }
-
-const CAMPOS: Record<string, keyof CamposEquipo> = {
-  marca_modelo: 'marca_modelo',
-  ram: 'ram',
-  almacenamiento: 'almacenamiento',
-  fecha_compra: 'fecha_compra',
-  estado: 'estado',
-  observaciones: 'observaciones',
-}
 
 export function GridEquipos({
   filas,
@@ -95,6 +91,7 @@ export function GridEquipos({
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
   const [creando, setCreando] = useState(false)
+  const [editando, setEditando] = useState<Fila | null>(null)
   const [importando, setImportando] = useState(false)
   const [ocupado, setOcupado] = useState(false)
 
@@ -125,32 +122,24 @@ export function GridEquipos({
         tipo: 'seleccion',
         ancho: '12rem',
         valor: (f) => f.marca_modelo,
-        editable: (f: Fila) => puedeEditarFila(f),
-        editor: 'texto',
       },
       {
         campo: 'ram',
         label: 'RAM',
         tipo: 'seleccion',
         valor: (f) => f.ram,
-        editable: (f: Fila) => puedeEditarFila(f),
-        editor: 'texto',
       },
       {
         campo: 'almacenamiento',
         label: 'Almacenamiento',
         tipo: 'seleccion',
         valor: (f) => f.almacenamiento,
-        editable: (f: Fila) => puedeEditarFila(f),
-        editor: 'texto',
       },
       {
         campo: 'fecha_compra',
         label: 'Compra',
         tipo: 'fecha',
         valor: (f) => f.fecha_compra,
-        editable: (f: Fila) => puedeEditarFila(f),
-        editor: 'fecha',
       },
       // Calculada por la base: compra + 18 meses. Sin editor a propósito.
       {
@@ -186,17 +175,33 @@ export function GridEquipos({
         tipo: 'seleccion',
         valor: (f) => f.estado,
         etiqueta: (f) => ESTADOS_EQUIPO.find((e) => e.valor === f.estado)?.etiqueta ?? f.estado,
-        // «Dañado» sí es una decisión humana; «Asignado» lo pone la base.
-        editable: (f: Fila) => puedeEditarFila(f) && f.estado !== 'ASIGNADO',
-        editor: 'seleccion',
-        opciones: [
-          { value: 'EN_BODEGA', label: 'En bodega' },
-          { value: 'DANADO', label: 'Dañado' },
-        ],
         render: (f) => {
           const e = ESTADOS_EQUIPO.find((x) => x.valor === f.estado)
           return <Insignia tono={e?.tono ?? 'gris'}>{e?.etiqueta ?? f.estado}</Insignia>
         },
+      },
+      {
+        campo: 'estado_fisico',
+        label: 'Estado físico',
+        tipo: 'seleccion',
+        valor: (f) => f.estado_fisico ?? 'Activo',
+        render: (f) => {
+          const e = ESTADOS_FISICOS.find((x) => x.valor === (f.estado_fisico ?? 'Activo'))
+          return (
+            <span className="flex flex-col gap-0.5" title={f.notas_estado ?? undefined}>
+              <Insignia tono={e?.tono ?? 'gris'}>{e?.etiqueta ?? f.estado_fisico}</Insignia>
+              {f.notas_estado && (
+                <span className="max-w-[11rem] truncate text-[11px] text-slate-400">{f.notas_estado}</span>
+              )}
+            </span>
+          )
+        },
+      },
+      {
+        campo: 'fecha_devolucion',
+        label: 'Devolución',
+        tipo: 'fecha',
+        valor: (f) => f.fecha_devolucion ?? null,
       },
       {
         campo: 'asignado_a',
@@ -217,23 +222,10 @@ export function GridEquipos({
         tipo: 'texto',
         ancho: '14rem',
         valor: (f) => f.observaciones,
-        editable: (f: Fila) => puedeEditarFila(f),
-        editor: 'texto',
       },
     ],
-    [onHistorial, puedeEditarFila]
+    [onHistorial]
   )
-
-  async function editarCelda(fila: Fila, campo: string, valor: unknown) {
-    const cual = CAMPOS[campo]
-    if (!cual) return
-    setError(null)
-    const { error: e } = await guardarEquipo(fila.imei, {
-      [cual]: valor === '' ? null : valor,
-    } as CamposEquipo)
-    if (e) return setError(mensajeDeError(e, 'No se pudo guardar el cambio.'))
-    router.refresh()
-  }
 
   async function eliminar(imeis: string[], limpiar: () => void) {
     if (imeis.length === 0) return
@@ -270,9 +262,7 @@ export function GridEquipos({
         titulo="Equipos"
         nombreArchivo="telecom-equipos"
         ordenInicial={{ campo: 'fecha_renovacion', direccion: 'asc' }}
-        minAncho="1400px"
-        puedeEditarCelda={puedeEditar}
-        onEditarCelda={editarCelda}
+        minAncho="1600px"
         vacio={{
           titulo: 'Sin equipos',
           descripcion: 'Agrega los teléfonos comprados para poder asignarlos y renovarlos a tiempo.',
@@ -324,13 +314,22 @@ export function GridEquipos({
             </Boton>
           ) : null
         }}
+        accionFila={(f) =>
+          puedeEditarFila(f) ? <BotonFila onClick={() => setEditando(f)}>Editar</BotonFila> : null
+        }
       />
 
-      <ModalNuevoEquipo
-        abierto={creando}
-        onCerrar={() => setCreando(false)}
-        onGuardado={() => router.refresh()}
-      />
+      {(creando || editando) && (
+        <ModalEquipo
+          key={editando?.imei ?? 'nuevo'}
+          edicion={editando}
+          onCerrar={() => {
+            setCreando(false)
+            setEditando(null)
+          }}
+          onGuardado={() => router.refresh()}
+        />
+      )}
 
       <ImportarEquipos
         abierto={importando}
@@ -347,22 +346,28 @@ export function GridEquipos({
   )
 }
 
-function ModalNuevoEquipo({
-  abierto,
+function ModalEquipo({
+  edicion,
   onCerrar,
   onGuardado,
 }: {
-  abierto: boolean
+  /** Nulo: alta. Con fila: corrección del equipo. */
+  edicion: Fila | null
   onCerrar: () => void
   onGuardado: () => void
 }) {
+  const e0 = edicion
   const [form, setForm] = useState({
-    imei: '',
-    marca_modelo: '',
-    ram: '',
-    almacenamiento: '',
-    fecha_compra: '',
-    observaciones: '',
+    imei: e0?.imei ?? '',
+    marca_modelo: e0?.marca_modelo ?? '',
+    ram: e0?.ram ?? '',
+    almacenamiento: e0?.almacenamiento ?? '',
+    fecha_compra: e0?.fecha_compra ?? '',
+    observaciones: e0?.observaciones ?? '',
+    estado: (e0?.estado ?? 'EN_BODEGA') as string,
+    estado_fisico: (e0?.estado_fisico ?? 'Activo') as string,
+    fecha_devolucion: e0?.fecha_devolucion ?? '',
+    notas_estado: e0?.notas_estado ?? '',
   })
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -373,39 +378,56 @@ function ModalNuevoEquipo({
   async function guardar() {
     if (!form.imei.trim()) return setError('El IMEI es obligatorio: es la llave del equipo.')
     if (!form.marca_modelo.trim()) return setError('Falta la marca y el modelo.')
+    if (form.fecha_devolucion && form.fecha_compra && form.fecha_devolucion < form.fecha_compra) {
+      return setError('La devolución no puede ser anterior a la compra.')
+    }
+    if (form.estado_fisico === 'Devuelto' && !form.fecha_devolucion) {
+      return setError('Un equipo devuelto lleva su fecha de devolución.')
+    }
     setError(null)
     setGuardando(true)
-    const { error: e } = await crearEquipo({
-      imei: form.imei.trim(),
+    const comunes = {
       marca_modelo: form.marca_modelo.trim(),
       ram: form.ram.trim() || null,
       almacenamiento: form.almacenamiento.trim() || null,
       fecha_compra: form.fecha_compra || null,
       observaciones: form.observaciones.trim() || null,
-    })
+      estado_fisico: form.estado_fisico,
+      fecha_devolucion: form.fecha_devolucion || null,
+      notas_estado: form.notas_estado.trim() || null,
+    }
+    const { error: e } = e0
+      ? await guardarEquipo(e0.imei, {
+          ...comunes,
+          // «Asignado» lo pone la base: no se toca desde aquí.
+          ...(e0.estado !== 'ASIGNADO' ? { estado: form.estado } : {}),
+        } as CamposEquipo)
+      : await crearEquipo({ imei: form.imei.trim(), ...comunes })
     setGuardando(false)
     if (e) {
       return setError(
-        mensajeDeError(e, 'No se pudo crear. Si dice que ya existe, ese IMEI ya está registrado.')
+        mensajeDeError(
+          e,
+          e0 ? 'No se pudo guardar el equipo.' : 'No se pudo crear. Si dice que ya existe, ese IMEI ya está registrado.'
+        )
       )
     }
-    setForm({ imei: '', marca_modelo: '', ram: '', almacenamiento: '', fecha_compra: '', observaciones: '' })
     onGuardado()
     onCerrar()
   }
 
   return (
     <Modal
-      abierto={abierto}
+      abierto
       onCerrar={onCerrar}
-      titulo="Nuevo equipo"
+      titulo={e0 ? `Editar equipo · ${e0.marca_modelo}` : 'Nuevo equipo'}
       pie={
         <div className="flex gap-2">
           <Boton variante="secundario" className="flex-1" onClick={onCerrar} disabled={guardando}>
             Cancelar
           </Boton>
           <Boton className="flex-1" onClick={guardar} disabled={guardando}>
-            {guardando ? 'Guardando…' : 'Crear'}
+            {guardando ? 'Guardando…' : e0 ? 'Guardar cambios' : 'Crear'}
           </Boton>
         </div>
       }
@@ -413,13 +435,18 @@ function ModalNuevoEquipo({
       <div className="flex flex-col gap-4">
         {error && <Alerta>{error}</Alerta>}
 
-        <Campo etiqueta="IMEI" requerido ayuda="Es la llave del equipo: identifica ese aparato y ningún otro.">
+        <Campo
+          etiqueta="IMEI"
+          requerido
+          ayuda={e0 ? 'Es la llave del equipo y no se cambia.' : 'Es la llave del equipo: identifica ese aparato y ningún otro.'}
+        >
           <Entrada
             value={form.imei}
             onChange={cambiar('imei')}
             placeholder="350000000000001"
             inputMode="numeric"
-            autoFocus
+            disabled={Boolean(e0)}
+            autoFocus={!e0}
           />
         </Campo>
 
@@ -431,7 +458,7 @@ function ModalNuevoEquipo({
           <Campo etiqueta="RAM">
             <Selector value={form.ram} onChange={cambiar('ram')}>
               <option value="">Sin dato</option>
-              {['2 GB', '3 GB', '4 GB', '6 GB', '8 GB', '12 GB'].map((v) => (
+              {conActual(['2 GB', '3 GB', '4 GB', '6 GB', '8 GB', '12 GB'], form.ram).map((v) => (
                 <option key={v} value={v}>
                   {v}
                 </option>
@@ -441,7 +468,7 @@ function ModalNuevoEquipo({
           <Campo etiqueta="Almacenamiento">
             <Selector value={form.almacenamiento} onChange={cambiar('almacenamiento')}>
               <option value="">Sin dato</option>
-              {['32 GB', '64 GB', '128 GB', '256 GB', '512 GB'].map((v) => (
+              {conActual(['32 GB', '64 GB', '128 GB', '256 GB', '512 GB'], form.almacenamiento).map((v) => (
                 <option key={v} value={v}>
                   {v}
                 </option>
@@ -457,6 +484,42 @@ function ModalNuevoEquipo({
           <Entrada type="date" value={form.fecha_compra} onChange={cambiar('fecha_compra')} />
         </Campo>
 
+        {/* ------------------------ Estado (77) ------------------------ */}
+        <div className="grid grid-cols-2 gap-3">
+          <Campo etiqueta="Estado físico" ayuda="Cómo está el aparato.">
+            <Selector value={form.estado_fisico} onChange={cambiar('estado_fisico')}>
+              {ESTADOS_FISICOS.map((x) => (
+                <option key={x.valor} value={x.valor}>
+                  {x.etiqueta}
+                </option>
+              ))}
+            </Selector>
+          </Campo>
+          <Campo etiqueta="Fecha de devolución">
+            <Entrada type="date" value={form.fecha_devolucion} onChange={cambiar('fecha_devolucion')} />
+          </Campo>
+        </div>
+
+        {e0 && e0.estado !== 'ASIGNADO' && (
+          <Campo etiqueta="Ubicación" ayuda="«Asignado» lo pone la base al entregarlo.">
+            <Selector value={form.estado} onChange={cambiar('estado')}>
+              {ESTADOS_EQUIPO.filter((x) => x.valor !== 'ASIGNADO').map((x) => (
+                <option key={x.valor} value={x.valor}>
+                  {x.etiqueta}
+                </option>
+              ))}
+            </Selector>
+          </Campo>
+        )}
+
+        <Campo etiqueta="Notas del estado">
+          <Entrada
+            value={form.notas_estado}
+            onChange={cambiar('notas_estado')}
+            placeholder="Pantalla rota, en taller desde…"
+          />
+        </Campo>
+
         <Campo etiqueta="Observaciones">
           <Entrada
             value={form.observaciones}
@@ -467,4 +530,9 @@ function ModalNuevoEquipo({
       </div>
     </Modal>
   )
+}
+
+/** La lista fija más el valor que ya traiga el equipo, para no perderlo al editar. */
+function conActual(lista: string[], actual: string): string[] {
+  return actual && !lista.includes(actual) ? [...lista, actual] : lista
 }

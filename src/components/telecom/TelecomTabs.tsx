@@ -22,12 +22,15 @@ import { AsignacionModal } from './AsignacionModal'
 import { HistorialModal, type Consulta } from './HistorialModal'
 import { useRouter } from 'next/navigation'
 import { CatalogoTable } from '@/components/catalogos/CatalogoTable'
+import { PanelPlanes } from './PanelPlanes'
+import { useTasaHoy } from './Moneda'
 import type {
   Alerta,
   CentroCosto,
   FilaAsignacion,
   FilaEquipo,
   FilaLinea,
+  Moneda,
   Persona,
   PlanTelecom,
 } from '@/lib/telecom/tipos'
@@ -73,6 +76,12 @@ export function TelecomTabs({
   const [pestana, setPestana] = useState<Pestana>('asignaciones')
   const [historial, setHistorial] = useState<Consulta | null>(null)
   const [entregando, setEntregando] = useState(false)
+  // La entrega que se está corrigiendo. Mismo modal que «Entregar», en
+  // modo edición: la celda ya no edita (77), edita el formulario completo.
+  const [editando, setEditando] = useState<FilaAsignacion | null>(null)
+  // Una sola moneda para todo el módulo: Líneas y Planes leen igual.
+  const [moneda, setMoneda] = useState<Moneda>('HNL')
+  const tasa = useTasaHoy()
 
   return (
     <div className="flex flex-col gap-4">
@@ -127,6 +136,7 @@ export function TelecomTabs({
           usuarioId={usuarioId}
           zonas={zonas}
           onNueva={() => setEntregando(true)}
+          onEditar={setEditando}
         />
       )}
 
@@ -138,6 +148,9 @@ export function TelecomTabs({
           usuarioId={usuarioId}
           zonas={zonas}
           onHistorial={setHistorial}
+          moneda={moneda}
+          onMoneda={setMoneda}
+          tasa={tasa}
         />
       )}
 
@@ -151,32 +164,17 @@ export function TelecomTabs({
         />
       )}
 
-      {/* Los dos catálogos del módulo, con la cuadrícula estándar de
-          catálogos: edición en la celda, importación, exportación y
-          borrado en masa salen de ahí sin escribir nada. */}
+      {/* Planes con su interruptor de moneda y centros de costo, con la
+          cuadrícula estándar de catálogos. */}
       {pestana === 'catalogos' && (
         <div className="flex flex-col gap-6">
-          <section className="flex flex-col gap-2">
-            <h2 className="text-sm font-bold text-slate-900">Planes</h2>
-            <p className="text-xs text-slate-400">
-              Lo que cuesta cada línea al mes. Es lo que ofrece el selector al dar de alta o
-              corregir una línea.
-            </p>
-          </section>
-          <CatalogoTable
-            tabla="telecom_planes"
-            titulo="Planes"
-            clave="nombre"
-            soloLectura={!puedeEditar}
-            permisos={{ editar: puedeEditar, eliminar: puedeEliminar }}
-            campos={[
-              { key: 'nombre', label: 'Plan', tipo: 'text', requerido: true },
-              { key: 'costo_mensual', label: 'Costo mensual', tipo: 'number' },
-              { key: 'proveedor', label: 'Proveedor', tipo: 'text' },
-              { key: 'es_retencion', label: 'Es Plan $1', tipo: 'checkbox' },
-              { key: 'activo', label: 'Activo', tipo: 'checkbox' },
-            ]}
-            filas={planes as unknown as Record<string, string | number | boolean | null>[]}
+          <PanelPlanes
+            planes={planes}
+            moneda={moneda}
+            onMoneda={setMoneda}
+            tasa={tasa}
+            puedeEditar={puedeEditar}
+            puedeEliminar={puedeEliminar}
           />
 
           <section className="flex flex-col gap-2">
@@ -209,14 +207,19 @@ export function TelecomTabs({
       )}
 
       <AsignacionModal
-        abierto={entregando}
-        onCerrar={() => setEntregando(false)}
+        abierto={entregando || editando !== null}
+        edicion={editando}
+        onCerrar={() => {
+          setEntregando(false)
+          setEditando(null)
+        }}
         onGuardado={() => router.refresh()}
         personal={personal}
         lineas={lineas}
         equipos={equipos}
         centrosCosto={centrosCosto}
         departamentos={departamentos}
+        puestos={puestos}
       />
 
       <HistorialModal consulta={historial} onCerrar={() => setHistorial(null)} />

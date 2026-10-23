@@ -68,6 +68,10 @@ export type CamposEquipo = {
   estado?: string
   observaciones?: string | null
   activo?: boolean
+  /** 77 */
+  estado_fisico?: string
+  fecha_devolucion?: string | null
+  notas_estado?: string | null
 }
 
 export async function guardarEquipo(imei: string, campos: CamposEquipo): Promise<Resultado> {
@@ -82,6 +86,9 @@ export async function crearEquipo(fila: {
   almacenamiento: string | null
   fecha_compra: string | null
   observaciones: string | null
+  estado_fisico?: string
+  fecha_devolucion?: string | null
+  notas_estado?: string | null
 }): Promise<Resultado> {
   const { error } = await createClient().from('telecom_equipos').insert(fila)
   return err(error)
@@ -128,6 +135,10 @@ export async function crearAsignacion(fila: AsignacionNueva): Promise<Resultado>
 }
 
 export type CamposAsignacion = {
+  /** Sólo mientras la entrega está abierta: cambiar la línea o el equipo de una finalizada reescribe el historial. */
+  linea_numero?: string | null
+  equipo_imei?: string | null
+  fecha_entrega?: string
   /**
    * Entre Vigente y Revisar. FINALIZADA no se pone por aquí: cierra la
    * entrega y libera la línea, y eso lo hace `finalizarAsignacion` para
@@ -164,6 +175,17 @@ export async function borrarAsignaciones(ids: string[]): Promise<Resultado> {
   if (ids.length === 0) return { error: null }
   const { error } = await createClient().from('telecom_asignaciones').delete().in('id', ids)
   return err(error)
+}
+
+/**
+ * La tasa HNL/USD vigente hoy (Honduras). La misma función que convierte
+ * el plan en la base: el toggle no puede usar otra.
+ */
+export async function leerTasaHoy(hoy: string): Promise<number | null> {
+  const { data, error } = await createClient().rpc('fn_tasa_de_temporada', { p_fecha: hoy })
+  if (error || data === null || data === undefined) return null
+  const n = Number(data)
+  return Number.isFinite(n) && n > 0 ? n : null
 }
 
 /* --------------------------- Altas en línea -------------------------- */
@@ -208,16 +230,19 @@ export async function crearPersona(
 
 export async function crearPlan(
   nombre: string,
-  costo: string
+  costo: string,
+  moneda: 'HNL' | 'USD' = 'HNL'
 ): Promise<{ plan: PlanTelecom | null; error: string | null }> {
   const { data, error } = await createClient()
     .from('telecom_planes')
     .insert({
       nombre: nombre.trim(),
-      costo_mensual: costo.trim() ? Number(costo.replace(',', '.')) : null,
+      // Se escribe el par (costo_origen, moneda); el lempira lo pone la base.
+      costo_origen: costo.trim() ? Number(costo.replace(',', '.')) : null,
+      moneda,
       activo: true,
     })
-    .select('id, nombre, proveedor, costo_mensual, es_retencion, activo')
+    .select('id, nombre, proveedor, costo_mensual, es_retencion, activo, moneda, costo_origen')
     .single()
 
   if (error || !data) return { plan: null, error: error?.message ?? 'No se pudo crear.' }

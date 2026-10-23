@@ -18,7 +18,8 @@ import { Alerta, Boton, Insignia } from '@/components/ui/Primitivos'
 import { DataGrid } from '@/components/ui/DataGrid'
 import { BotonFila } from '@/components/ui/BotonFila'
 import { Modal } from '@/components/ui/Modal'
-import { Campo, Entrada } from '@/components/ui/Primitivos'
+import { Campo, Entrada, Selector } from '@/components/ui/Primitivos'
+import { ToggleMoneda } from './Moneda'
 import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
 import { ImportarLineas } from './Importadores'
 import type { ColumnaGrid } from '@/lib/grid/tipos'
@@ -33,8 +34,11 @@ import {
 } from '@/lib/telecom/repositorioCliente'
 import {
   compararLineas,
+  costoEn,
   ESTADOS_LINEA,
+  textoMoneda,
   type FilaLinea,
+  type Moneda,
   type PlanTelecom,
 } from '@/lib/telecom/tipos'
 import type { Consulta } from './HistorialModal'
@@ -45,14 +49,6 @@ import { armarReglas, canExecuteAction, type ReglasPlanas } from '@/lib/permisos
 
 type Fila = FilaLinea & { id: string }
 
-const CAMPOS: Record<string, keyof CamposLinea> = {
-  proveedor: 'proveedor',
-  plan_nombre: 'plan_id',
-  estado: 'estado',
-  observaciones: 'observaciones',
-  activo: 'activo',
-}
-
 export function GridLineas({
   filas,
   planes,
@@ -60,6 +56,9 @@ export function GridLineas({
   reglas: reglasPlanas,
   usuarioId,
   zonas,
+  moneda = 'HNL',
+  onMoneda,
+  tasa = null,
 }: {
   filas: FilaLinea[]
   planes: PlanTelecom[]
@@ -77,6 +76,10 @@ export function GridLineas({
   /** Sus zonas asignadas. Vacío quiere decir «sin recorte zonal». */
   zonas?: string[]
   onHistorial: (c: Consulta) => void
+  /** 77 · cómo se LEE el costo. Lo guardado sigue en lempiras. */
+  moneda?: Moneda
+  onMoneda?: (m: Moneda) => void
+  tasa?: number | null
 }) {
   const reglas = useMemo(() => armarReglas(reglasPlanas), [reglasPlanas])
   const zonasDelPerfil = useMemo(() => new Set(zonas ?? []), [zonas])
@@ -129,6 +132,10 @@ export function GridLineas({
   const suspendidas = useMemo(() => lista.filter((f) => f.estado === 'SUSPENDIDA'), [lista])
 
   const planRetencion = planes.find((p) => p.es_retencion)
+  const [editando, setEditando] = useState<Fila | null>(null)
+
+  const costoDe = (f: Fila) =>
+    costoEn(moneda, f.plan_costo, { moneda: f.plan_moneda, costo_origen: f.plan_costo_origen }, tasa)
 
   const columnas = useMemo<ColumnaGrid<Fila>[]>(
     () => [
@@ -154,8 +161,6 @@ export function GridLineas({
         label: 'Proveedor',
         tipo: 'seleccion',
         valor: (f) => f.proveedor,
-        editable: (f: Fila) => puedeEditarFila(f),
-        editor: 'texto',
       },
       {
         campo: 'plan_nombre',
@@ -163,24 +168,14 @@ export function GridLineas({
         tipo: 'seleccion',
         ancho: '12rem',
         valor: (f) => f.plan_nombre,
-        editable: (f: Fila) => puedeEditarFila(f),
-        editor: 'seleccion',
-        valorEdicion: (f) => f.plan_id ?? '',
-        opciones: [
-          { value: '', label: 'Sin plan' },
-          ...planes.map((p) => ({
-            value: p.id,
-            label: p.es_retencion ? `${p.nombre} · retención` : p.nombre,
-          })),
-        ],
       },
       {
         campo: 'plan_costo',
-        label: 'Costo',
+        label: `Costo ${moneda}`,
         tipo: 'numero',
         numero: true,
-        valor: (f) => (f.plan_costo === null ? null : Number(f.plan_costo)),
-        etiqueta: (f) => (f.plan_costo === null ? '' : `L ${Number(f.plan_costo).toFixed(2)}`),
+        valor: (f) => costoDe(f),
+        etiqueta: (f) => (costoDe(f) === null ? '' : textoMoneda(moneda, costoDe(f))),
       },
       {
         campo: 'estado',
@@ -188,16 +183,6 @@ export function GridLineas({
         tipo: 'seleccion',
         valor: (f) => f.estado,
         etiqueta: (f) => ESTADOS_LINEA.find((e) => e.valor === f.estado)?.etiqueta ?? f.estado,
-        // Se pone y se quita «Suspendida» —revivir una suspendida es
-        // justo lo que hay que poder hacer desde aquí—. «Asignada» no
-        // está en la lista: la deduce la base de las entregas abiertas, y
-        // dejarla escribir sería poder mentir sobre quién tiene qué.
-        editable: (f: Fila) => puedeEditarFila(f) && f.estado !== 'ASIGNADA',
-        editor: 'seleccion',
-        opciones: ESTADOS_LINEA.filter((e) => e.valor !== 'ASIGNADA').map((e) => ({
-          value: e.valor,
-          label: e.etiqueta,
-        })),
         render: (f) => {
           const e = ESTADOS_LINEA.find((x) => x.valor === f.estado)
           return <Insignia tono={e?.tono ?? 'gris'}>{e?.etiqueta ?? f.estado}</Insignia>
@@ -228,8 +213,6 @@ export function GridLineas({
         tipo: 'texto',
         ancho: '14rem',
         valor: (f) => f.observaciones,
-        editable: (f: Fila) => puedeEditarFila(f),
-        editor: 'texto',
       },
       {
         campo: 'solicitudes',
@@ -258,19 +241,8 @@ export function GridLineas({
         valor: (f) => (f.activo ? 'Sí' : 'No'),
       },
     ],
-    [planes, onHistorial, puedeEditarFila]
+    [onHistorial, moneda, tasa] // eslint-disable-line react-hooks/exhaustive-deps
   )
-
-  async function editarCelda(fila: Fila, campo: string, valor: unknown) {
-    const cual = CAMPOS[campo]
-    if (!cual) return
-    setError(null)
-    const { error: e } = await guardarLinea(fila.numero, {
-      [cual]: valor === '' ? null : valor,
-    } as CamposLinea)
-    if (e) return setError(mensajeDeError(e, 'No se pudo guardar el cambio.'))
-    router.refresh()
-  }
 
   async function retencion(numeros: string[], limpiar?: () => void) {
     if (numeros.length === 0) return
@@ -349,25 +321,25 @@ export function GridLineas({
         // sigue reordenando.
         ordenInicial={undefined}
         minAncho="1200px"
-        puedeEditarCelda={puedeEditar}
-        onEditarCelda={editarCelda}
         vacio={{
           titulo: 'Sin líneas',
           descripcion: 'Agrega los números que paga la empresa para poder asignarlos.',
         }}
         resumen={(visibles) => {
           const libres = visibles.filter((f) => f.estado === 'DISPONIBLE').length
-          const costo = visibles.reduce((a, f) => a + Number(f.plan_costo ?? 0), 0)
+          const costo = visibles.reduce((a, f) => a + (costoDe(f) ?? 0), 0)
           return (
             <>
               <strong className="text-slate-900">{visibles.length}</strong>{' '}
               {visibles.length === 1 ? 'línea' : 'líneas'} · {libres} libre{libres === 1 ? '' : 's'}{' '}
-              · L {costo.toFixed(2)} al mes
+              · {textoMoneda(moneda, costo)} al mes
             </>
           )
         }}
         acciones={
-          puedeEditar && (
+          <>
+            {onMoneda && <ToggleMoneda valor={moneda} onCambiar={onMoneda} tasa={tasa} />}
+            {puedeEditar && (
             <>
               <Boton variante="secundario" tamano="sm" onClick={() => setImportando(true)}>
                 Importar
@@ -376,7 +348,8 @@ export function GridLineas({
                 Nueva línea
               </Boton>
             </>
-          )
+            )}
+          </>
         }
         accionesSeleccion={(marcadas, limpiar) => {
           // Lo que esta persona no puede tocar se cae de la selección
@@ -415,6 +388,7 @@ export function GridLineas({
         }}
         accionFila={(f) => (
           <span className="flex justify-end gap-1">
+            {puedeEditarFila(f) && <BotonFila onClick={() => setEditando(f)}>Editar</BotonFila>}
             <BotonFila onClick={() => setViendoBitacora(f.numero)}>Historial</BotonFila>
             {puedeEditar && (
               <BotonFila onClick={() => setSolicitando(f.numero)}>Solicitud</BotonFila>
@@ -431,7 +405,7 @@ export function GridLineas({
 
       <Seccion
         titulo="Líneas suspendidas"
-        descripcion="Sin servicio. Se reviven cambiándoles el estado en la celda."
+        descripcion="Sin servicio. Se reviven con «Editar», cambiándoles el estado."
         cuantos={suspendidas.length}
         abiertoInicial={false}
         tono="apagado"
@@ -442,8 +416,6 @@ export function GridLineas({
           titulo="Líneas suspendidas"
           nombreArchivo="telecom-lineas-suspendidas"
           minAncho="1200px"
-          puedeEditarCelda={puedeEditar}
-          onEditarCelda={editarCelda}
           vacio={{ titulo: 'Ninguna suspendida', descripcion: 'Todas las líneas tienen servicio.' }}
           accionesSeleccion={(marcadas, limpiar) => {
             const borrables = marcadas.filter((id) =>
@@ -462,6 +434,7 @@ export function GridLineas({
           }}
           accionFila={(f) => (
             <span className="flex justify-end gap-1">
+              {puedeEditarFila(f) && <BotonFila onClick={() => setEditando(f)}>Editar</BotonFila>}
               <BotonFila onClick={() => setViendoBitacora(f.numero)}>Historial</BotonFila>
               {puedeEditar && (
                 <BotonFila onClick={() => setSolicitando(f.numero)}>Solicitud</BotonFila>
@@ -485,6 +458,16 @@ export function GridLineas({
         onCerrar={() => setCreando(false)}
         onGuardado={() => router.refresh()}
       />
+
+      {editando && (
+        <ModalEditarLinea
+          key={editando.numero}
+          linea={editando}
+          planes={planes}
+          onCerrar={() => setEditando(null)}
+          onGuardado={() => router.refresh()}
+        />
+      )}
 
       <ImportarLineas
         abierto={importando}
@@ -627,6 +610,124 @@ function ModalNuevaLinea({
             placeholder="Contrato, fecha de portabilidad…"
           />
         </Campo>
+      </div>
+    </Modal>
+  )
+}
+
+/**
+ * Corrige una línea (77): la celda ya no edita. «Asignada» no se ofrece
+ * —la deduce la base de las entregas abiertas— y en una asignada el
+ * estado ni se toca.
+ */
+function ModalEditarLinea({
+  linea,
+  planes,
+  onCerrar,
+  onGuardado,
+}: {
+  linea: FilaLinea
+  planes: PlanTelecom[]
+  onCerrar: () => void
+  onGuardado: () => void
+}) {
+  const [proveedor, setProveedor] = useState(linea.proveedor ?? '')
+  const [planId, setPlanId] = useState(linea.plan_id ?? '')
+  const [estado, setEstado] = useState<string>(linea.estado)
+  const [observaciones, setObservaciones] = useState(linea.observaciones ?? '')
+  const [activo, setActivo] = useState(linea.activo)
+  const [guardando, setGuardando] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const asignada = linea.estado === 'ASIGNADA'
+
+  async function guardar() {
+    setError(null)
+    setGuardando(true)
+    const campos: CamposLinea = {
+      proveedor: proveedor.trim() || null,
+      plan_id: planId || null,
+      observaciones: observaciones.trim() || null,
+      activo,
+      ...(asignada ? {} : { estado }),
+    }
+    const { error: e } = await guardarLinea(linea.numero, campos)
+    setGuardando(false)
+    if (e) return setError(mensajeDeError(e, 'No se pudo guardar la línea.'))
+    onGuardado()
+    onCerrar()
+  }
+
+  return (
+    <Modal
+      abierto
+      onCerrar={onCerrar}
+      titulo={`Editar línea ${linea.numero}`}
+      pie={
+        <div className="flex gap-2">
+          <Boton variante="secundario" className="flex-1" onClick={onCerrar} disabled={guardando}>
+            Cancelar
+          </Boton>
+          <Boton className="flex-1" onClick={guardar} disabled={guardando}>
+            {guardando ? 'Guardando…' : 'Guardar cambios'}
+          </Boton>
+        </div>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        {error && <Alerta>{error}</Alerta>}
+        <Campo etiqueta="Proveedor">
+          <Entrada value={proveedor} onChange={(e) => setProveedor(e.target.value)} placeholder="Tigo" />
+        </Campo>
+        <Campo etiqueta="Plan">
+          <SelectorBuscable
+            valor={planId}
+            opciones={planes.map((p) => ({
+              id: p.id,
+              titulo: p.nombre,
+              subtitulo: [
+                p.costo_mensual === null ? null : `L ${Number(p.costo_mensual).toFixed(2)}`,
+                p.moneda === 'USD' && p.costo_origen !== null && p.costo_origen !== undefined
+                  ? `$ ${Number(p.costo_origen).toFixed(2)}`
+                  : null,
+                p.es_retencion ? 'retención' : null,
+              ]
+                .filter(Boolean)
+                .join(' · '),
+            }))}
+            onCambiar={setPlanId}
+            placeholder="Sin plan"
+            etiquetaBusqueda="Buscar plan…"
+            textoVacio="Sin plan"
+          />
+        </Campo>
+        <Campo
+          etiqueta="Estado"
+          ayuda={asignada ? 'Asignada: lo pone la base mientras haya una entrega abierta.' : undefined}
+        >
+          <Selector value={estado} onChange={(e) => setEstado(e.target.value)} disabled={asignada}>
+            {ESTADOS_LINEA.filter((x) => asignada || x.valor !== 'ASIGNADA').map((x) => (
+              <option key={x.valor} value={x.valor}>
+                {x.etiqueta}
+              </option>
+            ))}
+          </Selector>
+        </Campo>
+        <Campo etiqueta="Observaciones">
+          <Entrada
+            value={observaciones}
+            onChange={(e) => setObservaciones(e.target.value)}
+            placeholder="Contrato, fecha de portabilidad…"
+          />
+        </Campo>
+        <label className="flex min-h-11 items-center gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={activo}
+            onChange={(e) => setActivo(e.target.checked)}
+            className="h-5 w-5 rounded border-slate-300"
+          />
+          Línea activa
+        </label>
       </div>
     </Modal>
   )

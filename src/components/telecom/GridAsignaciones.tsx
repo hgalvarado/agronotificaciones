@@ -5,9 +5,14 @@
  *
  * Es la tabla que sostiene el módulo: el estado de las líneas y de los
  * equipos sale de aquí. Por eso una entrega no se «corrige» al pasarla a
- * otra persona: se FINALIZA y se abre otra. Lo que se corrige en la
- * celda son los datos administrativos —centro de costo, puesto, correo—,
- * que sí son del papel y no del hecho.
+ * otra persona: se FINALIZA y se abre otra. Lo administrativo —centro de
+ * costo, puesto, correo, accesorios— se corrige con «Editar», que abre el
+ * formulario de entrega en modo edición. La celda NO edita (77): con
+ * once columnas editables en 2100 px un toque al desplazar en el
+ * teléfono cambiaba un dato sin querer.
+ *
+ * El resumen por departamento y centro de costo vive tras «Resumen»: en
+ * línea aplastaba la tabla, que es lo que se viene a usar.
  *
  * Cada asignación vigente lleva su acta en PDF. El acta se arma con lo
  * que la fila trae, sin volver a consultar: la de una entrega finalizada
@@ -17,18 +22,14 @@
 
 import { useMemo, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Alerta, Boton, Insignia } from '@/components/ui/Primitivos'
+import { Alerta, Boton, Insignia, Selector } from '@/components/ui/Primitivos'
+import { Modal } from '@/components/ui/Modal'
 import { DataGrid } from '@/components/ui/DataGrid'
 import { BotonFila } from '@/components/ui/BotonFila'
 import type { ColumnaGrid } from '@/lib/grid/tipos'
 import { hoyIso } from '@/lib/fechas'
 import { mensajeDeError } from '@/lib/errores'
-import {
-  borrarAsignaciones,
-  finalizarAsignacion,
-  guardarAsignacion,
-  type CamposAsignacion,
-} from '@/lib/telecom/repositorioCliente'
+import { borrarAsignaciones, finalizarAsignacion } from '@/lib/telecom/repositorioCliente'
 import {
   accesorios,
   estaAbierta,
@@ -47,16 +48,6 @@ import { ResumenAsignaciones } from './Resumenes'
 import { Seccion } from './Seccion'
 import { armarReglas, canExecuteAction, type ReglasPlanas } from '@/lib/permisos/clientABAC'
 
-const CAMPOS: Record<string, keyof CamposAsignacion> = {
-  fecha_devolucion_programada: 'fecha_devolucion_programada',
-  centro_costo_etiqueta: 'centro_costo',
-  departamento: 'departamento',
-  puesto: 'puesto',
-  correo_asignado: 'correo_asignado',
-  observaciones: 'observaciones',
-  estado: 'estado',
-}
-
 export function GridAsignaciones({
   filas,
   personal,
@@ -64,8 +55,8 @@ export function GridAsignaciones({
   equipos,
   centrosCosto,
   departamentos,
-  puestos,
   onNueva,
+  onEditar,
   reglas: reglasPlanas,
   usuarioId,
   zonas,
@@ -76,7 +67,8 @@ export function GridAsignaciones({
   equipos: FilaEquipo[]
   centrosCosto: CentroCosto[]
   departamentos: string[]
-  puestos: string[]
+  /** Ya no lo usa la cuadrícula (la celda no edita); lo usa el formulario. */
+  puestos?: string[]
   /**
    * Las reglas del usuario con sus tres ejes.
    *
@@ -91,6 +83,8 @@ export function GridAsignaciones({
   /** Sus zonas asignadas. Vacío quiere decir «sin recorte zonal». */
   zonas?: string[]
   onNueva: () => void
+  /** Abre el formulario de entrega con la fila cargada. */
+  onEditar: (f: FilaAsignacion) => void
 }) {
   const reglas = useMemo(() => armarReglas(reglasPlanas), [reglasPlanas])
   const zonasDelPerfil = useMemo(() => new Set(zonas ?? []), [zonas])
@@ -128,16 +122,49 @@ export function GridAsignaciones({
   // Abiertas arriba —vigentes y en revisión, que son las que tienen algo
   // fuera— y finalizadas detrás de su título: con años de historial son
   // la mayor parte de las filas y casi nunca son lo que se viene a ver.
-  const abiertas = useMemo(() => filas.filter(estaAbierta), [filas])
-  const finalizadas = useMemo(() => filas.filter((f) => !estaAbierta(f)), [filas])
+  const [viendoResumen, setViendoResumen] = useState(false)
 
-  // Las opciones de los campos de catálogo. Se añaden los valores que ya
-  // están escritos en las filas aunque no estén en el catálogo: si no, al
-  // abrir la celda de una entrega vieja el valor desaparecería.
-  const conLosUsados = (delCatalogo: string[], enFilas: (string | null)[]) =>
-    [...new Set([...delCatalogo, ...enFilas.filter((x): x is string => Boolean(x && x.trim()))])]
-      .sort((a, b) => a.localeCompare(b, 'es', { numeric: true }))
-      .map((v) => ({ value: v, label: v }))
+  // Filtros rápidos de arriba: los tres cortes que más se piden. Recortan
+  // ANTES de partir en abiertas/finalizadas, así valen para las dos
+  // tablas. Los de cabecera de cada columna siguen funcionando encima.
+  const [fColaborador, setFColaborador] = useState('')
+  const [fDepto, setFDepto] = useState('')
+  const [fCentro, setFCentro] = useState('')
+  const centroDe = (f: FilaAsignacion) =>
+    f.centro_costo_etiqueta ?? etiquetaCentro(f.centro_costo, f.centro_costo_nombre)
+  const opcionesDe = (de: (f: FilaAsignacion) => string | null | undefined) =>
+    [...new Set(filas.map((f) => (de(f) ?? '').trim()).filter(Boolean))].sort((a, b) =>
+      a.localeCompare(b, 'es', { numeric: true })
+    )
+  const colaboradores = useMemo(() => opcionesDe((f) => f.empleado), [filas]) // eslint-disable-line react-hooks/exhaustive-deps
+  const deptosUsados = useMemo(
+    () => [...new Set([...departamentos, ...opcionesDe((f) => f.departamento)])].sort((a, b) => a.localeCompare(b, 'es')),
+    [filas, departamentos] // eslint-disable-line react-hooks/exhaustive-deps
+  )
+  const centrosUsados = useMemo(
+    () =>
+      [
+        ...new Set([
+          ...centrosCosto.map((c) => etiquetaCentro(c.codigo, c.nombre)),
+          ...opcionesDe(centroDe),
+        ]),
+      ].sort((a, b) => a.localeCompare(b, 'es', { numeric: true })),
+    [filas, centrosCosto] // eslint-disable-line react-hooks/exhaustive-deps
+  )
+  const filtradas = useMemo(
+    () =>
+      filas.filter(
+        (f) =>
+          (!fColaborador || f.empleado === fColaborador) &&
+          (!fDepto || (f.departamento ?? '').trim() === fDepto) &&
+          (!fCentro || centroDe(f) === fCentro)
+      ),
+    [filas, fColaborador, fDepto, fCentro]
+  )
+  const hayFiltro = Boolean(fColaborador || fDepto || fCentro)
+
+  const abiertas = useMemo(() => filtradas.filter(estaAbierta), [filtradas])
+  const finalizadas = useMemo(() => filtradas.filter((f) => !estaAbierta(f)), [filtradas])
 
   const columnas = useMemo<ColumnaGrid<FilaAsignacion>[]>(
     () => [
@@ -201,8 +228,6 @@ export function GridAsignaciones({
         label: 'Devolución pactada',
         tipo: 'fecha',
         valor: (f) => f.fecha_devolucion_programada,
-        editable: (f: FilaAsignacion) => puedeEditarFila(f) && f.estado === 'VIGENTE',
-        editor: 'fecha',
         render: (f) =>
           f.fecha_devolucion_programada ? (
             <span className="flex flex-col">
@@ -240,12 +265,6 @@ export function GridAsignaciones({
         tipo: 'seleccion',
         ancho: '11rem',
         valor: (f) => f.departamento,
-        editable: (f: FilaAsignacion) => puedeEditarFila(f),
-        editor: 'seleccion',
-        opciones: [
-          { value: '', label: 'Sin departamento' },
-          ...conLosUsados(departamentos, filas.map((f) => f.departamento)),
-        ],
       },
       {
         campo: 'puesto',
@@ -253,12 +272,6 @@ export function GridAsignaciones({
         tipo: 'seleccion',
         ancho: '11rem',
         valor: (f) => f.puesto,
-        editable: (f: FilaAsignacion) => puedeEditarFila(f),
-        editor: 'seleccion',
-        opciones: [
-          { value: '', label: 'Sin puesto' },
-          ...conLosUsados(puestos, filas.map((f) => f.puesto)),
-        ],
       },
       {
         // Se enseña «1020 - Agrícola» y se guarda el código: la etiqueta
@@ -269,16 +282,6 @@ export function GridAsignaciones({
         tipo: 'seleccion',
         ancho: '12rem',
         valor: (f) => f.centro_costo_etiqueta ?? etiquetaCentro(f.centro_costo, f.centro_costo_nombre),
-        editable: (f: FilaAsignacion) => puedeEditarFila(f),
-        editor: 'seleccion',
-        valorEdicion: (f) => f.centro_costo ?? '',
-        opciones: [
-          { value: '', label: 'Sin centro de costo' },
-          ...centrosCosto.map((c) => ({
-            value: c.codigo,
-            label: etiquetaCentro(c.codigo, c.nombre),
-          })),
-        ],
       },
       {
         campo: 'correo_asignado',
@@ -286,8 +289,6 @@ export function GridAsignaciones({
         tipo: 'texto',
         ancho: '14rem',
         valor: (f) => f.correo_asignado,
-        editable: (f: FilaAsignacion) => puedeEditarFila(f),
-        editor: 'texto',
       },
       {
         campo: 'accesorios_entregados',
@@ -321,12 +322,6 @@ export function GridAsignaciones({
         // Se puede mover entre Vigente y Revisar en la celda. Finalizar
         // NO: cierra la entrega y libera la línea, y eso lo hace su
         // función para que la fecha real de devolución no quede vacía.
-        editable: (f: FilaAsignacion) => puedeEditarFila(f) && f.estado !== 'FINALIZADA',
-        editor: 'seleccion',
-        opciones: ESTADOS_ASIGNACION.filter((e) => e.valor !== 'FINALIZADA').map((e) => ({
-          value: e.valor,
-          label: e.etiqueta,
-        })),
         render: (f) => {
           const e = ESTADOS_ASIGNACION.find((x) => x.valor === f.estado)
           return <Insignia tono={e?.tono ?? 'gris'}>{e?.etiqueta ?? f.estado}</Insignia>
@@ -338,24 +333,11 @@ export function GridAsignaciones({
         tipo: 'texto',
         ancho: '14rem',
         valor: (f) => f.observaciones,
-        editable: (f: FilaAsignacion) => puedeEditarFila(f),
-        editor: 'texto',
       },
       { campo: 'capturo', label: 'Registró', tipo: 'seleccion', valor: (f) => f.capturo },
     ],
-    [centrosCosto, departamentos, puestos, filas, puedeEditarFila]
+    []
   )
-
-  async function editarCelda(fila: FilaAsignacion, campo: string, valor: unknown) {
-    const cual = CAMPOS[campo]
-    if (!cual) return
-    setError(null)
-    const { error: e } = await guardarAsignacion(fila.id, {
-      [cual]: valor === '' ? null : valor,
-    } as CamposAsignacion)
-    if (e) return setError(mensajeDeError(e, 'No se pudo guardar el cambio.'))
-    router.refresh()
-  }
 
   async function finalizar(ids: string[], limpiar?: () => void) {
     // Cualquiera que siga abierta: una en revisión también se finaliza
@@ -417,7 +399,46 @@ export function GridAsignaciones({
       {error && <Alerta>{error}</Alerta>}
       {aviso && <Alerta tono="azul">{aviso}</Alerta>}
 
-      <ResumenAsignaciones filas={filas} />
+      {/* Filtros rápidos. En el teléfono, uno por renglón y a lo ancho. */}
+      <div className="grid gap-2 sm:grid-cols-3">
+        <Selector aria-label="Colaborador" value={fColaborador} onChange={(e) => setFColaborador(e.target.value)}>
+          <option value="">Todos los colaboradores</option>
+          {colaboradores.map((v) => (
+            <option key={v} value={v}>
+              {v}
+            </option>
+          ))}
+        </Selector>
+        <Selector aria-label="Departamento" value={fDepto} onChange={(e) => setFDepto(e.target.value)}>
+          <option value="">Todos los departamentos</option>
+          {deptosUsados.map((v) => (
+            <option key={v} value={v}>
+              {v}
+            </option>
+          ))}
+        </Selector>
+        <Selector aria-label="Centro de costo" value={fCentro} onChange={(e) => setFCentro(e.target.value)}>
+          <option value="">Todos los centros de costo</option>
+          {centrosUsados.map((v) => (
+            <option key={v} value={v}>
+              {v}
+            </option>
+          ))}
+        </Selector>
+      </div>
+      {hayFiltro && (
+        <button
+          type="button"
+          onClick={() => {
+            setFColaborador('')
+            setFDepto('')
+            setFCentro('')
+          }}
+          className="self-start px-1 text-xs font-semibold text-brand-700 hover:underline"
+        >
+          Quitar filtros rápidos · {filtradas.length} de {filas.length}
+        </button>
+      )}
 
       <Seccion
         titulo="Asignaciones vigentes y en revisión"
@@ -431,8 +452,6 @@ export function GridAsignaciones({
         nombreArchivo="telecom-asignaciones"
         ordenInicial={{ campo: 'fecha_entrega', direccion: 'desc' }}
         minAncho="2100px"
-        puedeEditarCelda={puedeEditar}
-        onEditarCelda={editarCelda}
         vacio={{
           titulo: 'Sin entregas registradas',
           descripcion: 'Registra una entrega para saber quién tiene cada línea y cada equipo.',
@@ -473,16 +492,21 @@ export function GridAsignaciones({
           )
         }}
         acciones={
-          puedeEditar && (
-            <>
-              <Boton variante="secundario" tamano="sm" onClick={() => setImportando(true)}>
-                Importar
-              </Boton>
-              <Boton variante="secundario" tamano="sm" onClick={onNueva}>
-                Entregar
-              </Boton>
-            </>
-          )
+          <>
+            <Boton variante="secundario" tamano="sm" onClick={() => setViendoResumen(true)}>
+              Ver resumen
+            </Boton>
+            {puedeEditar && (
+              <>
+                <Boton variante="secundario" tamano="sm" onClick={() => setImportando(true)}>
+                  Importar
+                </Boton>
+                <Boton variante="secundario" tamano="sm" onClick={onNueva}>
+                  Entregar
+                </Boton>
+              </>
+            )}
+          </>
         }
         accionesSeleccion={(marcadas, limpiar) => {
           // Dos recortes encadenados: lo que la persona puede tocar, y
@@ -523,6 +547,7 @@ export function GridAsignaciones({
         }}
         accionFila={(f) => (
           <span className="flex justify-end gap-1">
+            {puedeEditarFila(f) && <BotonFila onClick={() => onEditar(f)}>Editar</BotonFila>}
             <BotonFila onClick={() => setActa(f)}>Acta</BotonFila>
             {puedeEditar && estaAbierta(f) && (
               <BotonFila onClick={() => finalizar([f.id])}>Finalizar</BotonFila>
@@ -547,8 +572,6 @@ export function GridAsignaciones({
           nombreArchivo="telecom-asignaciones-finalizadas"
           ordenInicial={{ campo: 'fecha_devolucion_real', direccion: 'desc' }}
           minAncho="2100px"
-          puedeEditarCelda={puedeEditar}
-          onEditarCelda={editarCelda}
           vacio={{
             titulo: 'Ninguna finalizada',
             descripcion: 'Todo lo entregado sigue fuera.',
@@ -568,11 +591,29 @@ export function GridAsignaciones({
               </Boton>
             ) : null
           }}
-          accionFila={(f) => <BotonFila onClick={() => setActa(f)}>Acta</BotonFila>}
+          accionFila={(f) => (
+            <span className="flex justify-end gap-1">
+              {puedeEditarFila(f) && <BotonFila onClick={() => onEditar(f)}>Editar</BotonFila>}
+              <BotonFila onClick={() => setActa(f)}>Acta</BotonFila>
+            </span>
+          )}
         />
       </Seccion>
 
       <ActaPreview asignacion={acta} onCerrar={() => setActa(null)} />
+
+      <Modal
+        abierto={viendoResumen}
+        onCerrar={() => setViendoResumen(false)}
+        titulo="Resumen de entregas abiertas"
+        ancho="ancho"
+      >
+        {/* Sobre lo filtrado: el resumen contesta la pregunta del filtro puesto. */}
+        <ResumenAsignaciones filas={filtradas} />
+        {abiertas.length === 0 && (
+          <p className="text-sm text-slate-400">No hay entregas abiertas con estos filtros.</p>
+        )}
+      </Modal>
 
       <ImportarAsignaciones
         abierto={importando}
@@ -584,6 +625,7 @@ export function GridAsignaciones({
       />
 
       <p className="px-1 text-xs text-slate-400">
+        <strong>Editar</strong> corrige lo administrativo y los accesorios de la entrega.{' '}
         <strong>Finalizar</strong> cierra la entrega con la fecha de hoy y devuelve la línea y el
         equipo a disponibles; el registro se queda en el historial. Para pasarle algo a otra persona
         se finaliza y se entrega de nuevo: así queda por cuántas manos pasó. El estado{' '}
