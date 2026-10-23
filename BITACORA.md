@@ -235,6 +235,58 @@ dice.
 
 ## 3. Registro de cambios
 
+### 2026-10-23 — Telecom: estado físico, moneda del plan y la tabla a pantalla completa (migración 77)
+
+**Base (`77_telecom_estados_y_moneda.sql`).**
+
+- `telecom_equipos` + `estado_fisico varchar(40) default 'Activo'` con
+  `check` cerrado (Activo · Dañado · Reparación · Devuelto),
+  `fecha_devolucion date` (≥ compra) y `notas_estado`. No sustituye a
+  `estado` (EN_BODEGA/ASIGNADO/DANADO): ése es DÓNDE y lo pone la base;
+  éste es CÓMO.
+- `telecom_planes` + `moneda` (HNL/USD) y `costo_origen numeric(12,4)`.
+  Patrón de la 67: `costo_mensual` sigue SIEMPRE en lempiras y lo calcula
+  `trg_telecom_planes_moneda` con `fn_tasa_de_temporada(hoy)`. Sin tasa no
+  se inventa: conserva el lempira anterior y avisa. Si alguien corrige la
+  celda de lempiras a mano, el plan pasa a HNL con ese valor.
+- `interno.v_telecom_equipos_crudo` y `v_telecom_lineas_crudo` rehechas
+  con las columnas nuevas AL FINAL (`plan_moneda`, `plan_costo_origen`);
+  sus envoltorios de `public` se tiran antes y se rearman con la reja de
+  la 66 (`nada`, sin dueño).
+- UPDATE con `with check` explícito en las siete tablas de telecom.
+  **`telecom_asignaciones` pasa a `fn_verificar_permiso('telecom', acc,
+  usuario_id)` en las cuatro**: la vista recortaba por propietario desde
+  la 57 y la tabla no, así que por PostgREST un alcance «propietario»
+  editaba la entrega de otro.
+- Guardianes: columnas en las expuestas, `interno` cerrado, crudas
+  `definer`, expuestas con reja, ningún UPDATE de telecom sin `with
+  check`, dueño en las cuatro de asignaciones, disparador presente.
+  Corrida dos veces (idempotente) contra PG 16 con fixture 47/49/57/66.
+
+**Pantalla.**
+
+- La página de telecom pierde el tope `max-w-6xl`: la cuadrícula ocupa el
+  ancho. El resumen «Por departamento / Por centro de costo» sale del
+  flujo y queda tras **Ver resumen** (modal, sobre lo filtrado).
+- **La celda ya no edita en todo el módulo** (asignaciones, líneas,
+  equipos). Cada fila lleva **Editar**:
+  asignaciones → `AsignacionModal` en modo edición (colaborador, línea y
+  equipo fijos; fechas, CC, departamento, puesto, correo, accesorios,
+  observaciones y Vigente/Revisar); líneas → `ModalEditarLinea`;
+  equipos → `ModalEquipo` (alta y edición con estado físico, devolución y
+  notas).
+- Filtros rápidos Colaborador / Departamento / Centro de costo encima de
+  las dos tablas de asignaciones; los de cabecera siguen funcionando.
+- El selector de centro de costo de la entrega enseña `codigo - nombre`
+  y guarda el código. El puesto pasa a catálogo con alta en línea.
+- Interruptor **HNL/USD** (`Moneda.tsx`) compartido por Líneas y Planes;
+  `PanelPlanes.tsx` enseña cada plan en la moneda elegida y el catálogo
+  se escribe en su moneda. `crearPlan` escribe `costo_origen`.
+
+**Verificación:** `tsc --noEmit` del módulo en verde, `eslint` del
+módulo sin avisos. `buildLibs.mjs` no está en el repositorio (vive en
+`/tmp/pgverif` de las sesiones de pruebas): no se pudo correr aquí.
+
 ### 2026-10-15 — El turno repartido, el acarreo por ciclo y el informe que se puede auditar (migración 76)
 
 #### 1. El fallo: un turno sobre dos lotes decía el DOBLE de dosis

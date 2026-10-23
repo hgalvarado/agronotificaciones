@@ -33,7 +33,9 @@ export default async function TelecomPage() {
   const faltaMigracion = Boolean(lineas.error || equipos.error || asignaciones.error)
 
   return (
-    <div className="anim-aparecer mx-auto flex max-w-6xl flex-col gap-4 p-4 lg:p-6">
+    // 77 · ancho completo: la cuadrícula es la pantalla. El tope de 6xl
+    // dejaba la tabla de 2100 px en una ventana de 1152.
+    <div className="anim-aparecer flex w-full min-w-0 flex-col gap-4 p-3 sm:p-4 lg:p-6">
       <div>
         <h1 className="text-xl font-bold tracking-tight text-slate-900">Telecomunicaciones</h1>
         <p className="text-sm text-slate-400">
@@ -43,7 +45,7 @@ export default async function TelecomPage() {
 
       {faltaMigracion ? (
         <Alerta tono="ambar">
-          El módulo de telecomunicaciones todavía no está instalado. Corre la migración 47 en el
+          El módulo de telecomunicaciones todavía no está instalado. Corre las migraciones 47 a 77 en el
           SQL Editor de Supabase.
         </Alerta>
       ) : (

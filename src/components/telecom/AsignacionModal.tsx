@@ -19,10 +19,17 @@
  * El alta se resuelve DENTRO del selector (`creacionRapida`), así que el
  * formulario de arriba no se desmonta y no pierde un solo campo; al
  * guardar, el registro nuevo queda elegido.
+ *
+ * MODO EDICIÓN (77). Con `edicion` el mismo formulario corrige una
+ * entrega existente: la cuadrícula ya no edita en la celda. El
+ * colaborador, la línea y el equipo quedan fijos —pasarle algo a otra
+ * persona es finalizar y entregar de nuevo, que es lo que deja el
+ * historial—; lo administrativo, los accesorios y el estado
+ * Vigente/Revisar sí se corrigen.
  */
 
 import { useState } from 'react'
-import { Alerta, AreaTexto, Boton, Campo, Entrada } from '@/components/ui/Primitivos'
+import { Alerta, AreaTexto, Boton, Campo, Entrada, Selector } from '@/components/ui/Primitivos'
 import { Modal } from '@/components/ui/Modal'
 import { SelectorBuscable, type OpcionBuscable } from '@/components/ui/SelectorBuscable'
 import { IconCheck, IconPlus } from '@/components/ui/Icons'
@@ -35,10 +42,17 @@ import {
   crearEquipo,
   crearLinea,
   crearPersona,
+  crearPuesto,
+  guardarAsignacion,
 } from '@/lib/telecom/repositorioCliente'
 import {
   ACCESORIOS_COMUNES,
+  accesorios,
+  estaAbierta,
+  etiquetaCentro,
+  ESTADOS_ASIGNACION,
   type CentroCosto,
+  type FilaAsignacion,
   type FilaEquipo,
   type FilaLinea,
   type Persona,
@@ -46,6 +60,7 @@ import {
 
 export function AsignacionModal({
   abierto,
+  edicion = null,
   onCerrar,
   onGuardado,
   personal,
@@ -53,8 +68,11 @@ export function AsignacionModal({
   equipos,
   centrosCosto,
   departamentos,
+  puestos = [],
 }: {
   abierto: boolean
+  /** La entrega a corregir. Nulo: alta nueva. */
+  edicion?: FilaAsignacion | null
   onCerrar: () => void
   onGuardado: () => void
   personal: Persona[]
@@ -62,10 +80,16 @@ export function AsignacionModal({
   equipos: FilaEquipo[]
   centrosCosto: CentroCosto[]
   departamentos: { id: string; nombre: string }[]
+  puestos?: string[]
 }) {
   if (!abierto) return null
   return (
     <Formulario
+      // Otra fila, otro formulario: sin la llave, React reutilizaría el
+      // estado de la entrega anterior.
+      key={edicion?.id ?? 'nueva'}
+      edicion={edicion}
+      puestos={puestos}
       onCerrar={onCerrar}
       onGuardado={onGuardado}
       personal={personal}
@@ -78,6 +102,8 @@ export function AsignacionModal({
 }
 
 function Formulario({
+  edicion,
+  puestos,
   onCerrar,
   onGuardado,
   personal,
@@ -93,20 +119,30 @@ function Formulario({
   equipos: FilaEquipo[]
   centrosCosto: CentroCosto[]
   departamentos: { id: string; nombre: string }[]
+  edicion: FilaAsignacion | null
+  puestos: string[]
 }) {
-  const [empleadoId, setEmpleadoId] = useState('')
-  const [numero, setNumero] = useState('')
-  const [imei, setImei] = useState('')
-  const [fecha, setFecha] = useState(hoyIso())
-  const [devolucion, setDevolucion] = useState('')
-  const [centroCosto, setCentroCosto] = useState('')
-  const [departamento, setDepartamento] = useState('')
-  const [puesto, setPuesto] = useState('')
-  const [correo, setCorreo] = useState('')
-  const [marcados, setMarcados] = useState<Set<string>>(new Set())
-  const [otros, setOtros] = useState<string[]>([])
+  const e0 = edicion
+  const acc0 = accesorios(e0?.accesorios_entregados)
+  const comunes = new Set<string>(ACCESORIOS_COMUNES)
+  const [empleadoId, setEmpleadoId] = useState(e0?.empleado_id ?? '')
+  const [numero, setNumero] = useState(e0?.linea_numero ?? '')
+  const [imei, setImei] = useState(e0?.equipo_imei ?? '')
+  const [fecha, setFecha] = useState(e0?.fecha_entrega ?? hoyIso())
+  const [devolucion, setDevolucion] = useState(e0?.fecha_devolucion_programada ?? '')
+  const [centroCosto, setCentroCosto] = useState(e0?.centro_costo ?? '')
+  const [departamento, setDepartamento] = useState(e0?.departamento ?? '')
+  const [puesto, setPuesto] = useState(e0?.puesto ?? '')
+  const [correo, setCorreo] = useState(e0?.correo_asignado ?? '')
+  const [estado, setEstado] = useState<string>(e0?.estado ?? 'VIGENTE')
+  const [marcados, setMarcados] = useState<Set<string>>(
+    () => new Set(acc0.filter((a) => comunes.has(a)))
+  )
+  const [otros, setOtros] = useState<string[]>(() => acc0.filter((a) => !comunes.has(a)))
   const [nuevoAccesorio, setNuevoAccesorio] = useState('')
-  const [observaciones, setObservaciones] = useState('')
+  const [observaciones, setObservaciones] = useState(e0?.observaciones ?? '')
+  const editando = e0 !== null
+  const abierta = !e0 || estaAbierta(e0)
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -116,8 +152,9 @@ function Formulario({
   const [extraPersonas, setExtraPersonas] = useState<Persona[]>([])
   const [extraLineas, setExtraLineas] = useState<FilaLinea[]>([])
   const [extraEquipos, setExtraEquipos] = useState<FilaEquipo[]>([])
-  const [extraCentros, setExtraCentros] = useState<string[]>([])
+  const [extraCentros, setExtraCentros] = useState<CentroCosto[]>([])
   const [extraDeptos, setExtraDeptos] = useState<string[]>([])
+  const [extraPuestos, setExtraPuestos] = useState<string[]>([])
 
   // Sólo lo entregable. Una línea suspendida tampoco se entrega: está
   // sin servicio y darla sería entregar un número que no timbra.
@@ -130,8 +167,14 @@ function Formulario({
     ...extraEquipos,
   ]
   const gente = [...personal, ...extraPersonas]
-  const centros = [...centrosCosto.map((c) => c.codigo), ...extraCentros]
-  const deptos = [...departamentos.map((d) => d.nombre), ...extraDeptos]
+  // Se enseña «1020 - Agrícola» y se guarda el código. El valor que ya
+  // traiga una entrega vieja se conserva aunque no esté en el catálogo.
+  const centros: CentroCosto[] = [...centrosCosto, ...extraCentros]
+  if (centroCosto && !centros.some((c) => c.codigo === centroCosto)) {
+    centros.push({ id: centroCosto, codigo: centroCosto, nombre: e0?.centro_costo_nombre ?? null, activo: true })
+  }
+  const deptos = conValor([...departamentos.map((d) => d.nombre), ...extraDeptos], departamento)
+  const cargos = conValor([...puestos, ...extraPuestos], puesto)
 
   const lista = [...marcados, ...otros]
 
@@ -152,6 +195,7 @@ function Formulario({
   }
 
   async function guardar() {
+    if (editando) return guardarEdicion()
     if (!empleadoId) return setError('Elige a quién se le entrega.')
     if (!numero && !imei) return setError('Elige al menos una línea o un equipo.')
     if (devolucion && devolucion < fecha) {
@@ -187,18 +231,43 @@ function Formulario({
     onCerrar()
   }
 
+  async function guardarEdicion() {
+    if (!e0) return
+    if (devolucion && devolucion < fecha) {
+      return setError('La devolución no puede ser anterior a la entrega.')
+    }
+    setError(null)
+    setGuardando(true)
+    const { error: e } = await guardarAsignacion(e0.id, {
+      fecha_entrega: fecha,
+      fecha_devolucion_programada: devolucion || null,
+      centro_costo: centroCosto || null,
+      departamento: departamento || null,
+      puesto: puesto.trim() || null,
+      correo_asignado: correo.trim() || null,
+      accesorios_entregados: lista,
+      observaciones: observaciones.trim() || null,
+      // FINALIZADA no se pone aquí: la cierra su función con fecha real.
+      ...(abierta ? { estado } : {}),
+    })
+    setGuardando(false)
+    if (e) return setError(mensajeDeError(e, 'No se pudo guardar la entrega.'))
+    onGuardado()
+    onCerrar()
+  }
+
   return (
     <Modal
       abierto
       onCerrar={onCerrar}
-      titulo="Entregar línea o equipo"
+      titulo={editando ? 'Editar entrega' : 'Entregar línea o equipo'}
       pie={
         <div className="flex gap-2">
           <Boton variante="secundario" className="flex-1" onClick={onCerrar} disabled={guardando}>
             Cancelar
           </Boton>
           <Boton className="flex-1" onClick={guardar} disabled={guardando}>
-            {guardando ? 'Guardando…' : 'Registrar entrega'}
+            {guardando ? 'Guardando…' : editando ? 'Guardar cambios' : 'Registrar entrega'}
           </Boton>
         </div>
       }
@@ -206,6 +275,25 @@ function Formulario({
       <div className="flex flex-col gap-4">
         {error && <Alerta>{error}</Alerta>}
 
+        {editando && e0 ? (
+          <div className="flex flex-col gap-1 rounded-xl bg-slate-50 px-3 py-2.5 ring-1 ring-inset ring-slate-200">
+            <span className="text-sm font-semibold text-slate-800">
+              {e0.empleado}
+              {e0.codigo_empleado && (
+                <span className="ml-1.5 text-xs font-normal text-slate-400">{e0.codigo_empleado}</span>
+              )}
+            </span>
+            <span className="text-xs text-slate-500">
+              {[e0.linea_numero && `Línea ${e0.linea_numero}`, e0.marca_modelo && `${e0.marca_modelo} · IMEI ${e0.equipo_imei}`]
+                .filter(Boolean)
+                .join(' · ')}
+            </span>
+            <span className="text-[11px] text-slate-400">
+              Para pasarlo a otra persona: finaliza esta entrega y registra una nueva.
+            </span>
+          </div>
+        ) : (
+        <>
         <Campo etiqueta="Colaborador" requerido>
           <SelectorBuscable
             valor={empleadoId}
@@ -315,6 +403,20 @@ function Formulario({
             />
           </Campo>
         </div>
+        </>
+        )}
+
+        {editando && abierta && (
+          <Campo etiqueta="Estado" ayuda="Finalizar se hace con su botón: cierra con fecha real y libera lo entregado.">
+            <Selector value={estado} onChange={(e) => setEstado(e.target.value)}>
+              {ESTADOS_ASIGNACION.filter((x) => x.valor !== 'FINALIZADA').map((x) => (
+                <option key={x.valor} value={x.valor}>
+                  {x.etiqueta}
+                </option>
+              ))}
+            </Selector>
+          </Campo>
+        )}
 
         <div className="grid gap-3 sm:grid-cols-2">
           <Campo etiqueta="Fecha de entrega" requerido>
@@ -358,7 +460,10 @@ function Formulario({
           <Campo etiqueta="Centro de costo">
             <SelectorBuscable
               valor={centroCosto}
-              opciones={centros.map(porTexto)}
+              opciones={centros.map((c) => ({
+                id: c.codigo,
+                titulo: etiquetaCentro(c.codigo, c.nombre),
+              }))}
               onCambiar={setCentroCosto}
               placeholder="Sin centro de costo"
               etiquetaBusqueda="Buscar centro…"
@@ -371,20 +476,35 @@ function Formulario({
                 ],
                 onCrear: async (v) => {
                   const codigo = v.codigo.trim()
-                  const { error: e } = await crearCentroCosto(codigo, v.nombre ?? '')
+                  const nombre = (v.nombre ?? '').trim() || null
+                  const { error: e } = await crearCentroCosto(codigo, nombre ?? '')
                   if (e) throw new Error(e)
-                  setExtraCentros((a) => [...a, codigo])
-                  return porTexto(codigo)
+                  setExtraCentros((a) => [...a, { id: codigo, codigo, nombre, activo: true }])
+                  return { id: codigo, titulo: etiquetaCentro(codigo, nombre) }
                 },
               }}
             />
           </Campo>
 
           <Campo etiqueta="Puesto">
-            <Entrada
-              value={puesto}
-              onChange={(e) => setPuesto(e.target.value)}
-              placeholder="Contadora general"
+            <SelectorBuscable
+              valor={puesto}
+              opciones={cargos.map(porTexto)}
+              onCambiar={setPuesto}
+              placeholder="Sin puesto"
+              etiquetaBusqueda="Buscar puesto…"
+              textoVacio="Sin puesto"
+              creacionRapida={{
+                etiqueta: 'Nuevo puesto',
+                campos: [{ key: 'nombre', label: 'Puesto', requerido: true }],
+                onCrear: async (v) => {
+                  const nombre = v.nombre.trim()
+                  const { error: e } = await crearPuesto(nombre)
+                  if (e) throw new Error(e)
+                  setExtraPuestos((a) => [...a, nombre])
+                  return porTexto(nombre)
+                },
+              }}
             />
           </Campo>
           <Campo etiqueta="Correo asignado">
@@ -482,6 +602,12 @@ function Formulario({
 
 /** Un catálogo de textos sueltos —centros, departamentos— como opción. */
 const porTexto = (t: string): OpcionBuscable => ({ id: t, titulo: t })
+
+/** El catálogo más el valor que ya trae la fila, sin duplicar. */
+function conValor(lista: string[], actual: string): string[] {
+  const t = actual.trim()
+  return t && !lista.includes(t) ? [...lista, t] : lista
+}
 
 /** Lo mínimo para que la línea recién creada se pueda elegir ya. */
 function nuevaLinea(numero: string, proveedor: string | null): FilaLinea {
