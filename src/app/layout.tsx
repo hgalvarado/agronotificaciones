@@ -26,7 +26,7 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
-  themeColor: '#15803d',
+  themeColor: '#165C27', // Verde Agrícola (guía de identidad)
 }
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {

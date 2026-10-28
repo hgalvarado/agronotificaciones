@@ -10,6 +10,7 @@
  */
 
 import { useMemo, useState } from 'react'
+import { ayudaLoteVariedad, EditorProductos, opcionesLoteVariedad } from './CamposSiembra'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
@@ -30,10 +31,15 @@ import {
   semanaIso,
   validarSiembra,
 } from '@/lib/trasplante/validacion'
-import { CICLOS_SIEMBRA, type LoteOpcion, type Material, type Variedad } from '@/lib/trasplante/tipos'
+import {
+  CICLOS_SIEMBRA,
+  type FilaRecepcion,
+  type LoteOpcion,
+  type Material,
+  type ProductoAplicado,
+  type Variedad,
+} from '@/lib/trasplante/tipos'
 import { n2 } from '@/lib/trasplante/formato'
-
-type Producto = { material_id: string; cantidad: string; unidad: string }
 
 export function SiembraForm({
   temporadaId,
@@ -41,12 +47,15 @@ export function SiembraForm({
   variedades,
   materiales,
   lotes,
+  recepciones = [],
 }: {
   temporadaId: string
   usuarioId: string
   variedades: Variedad[]
   materiales: Material[]
   lotes: LoteOpcion[]
+  /** De dónde sale el lote de variedad (79). */
+  recepciones?: FilaRecepcion[]
 }) {
   const supabase = createClient()
   const router = useRouter()
@@ -59,7 +68,7 @@ export function SiembraForm({
   const [avanceMz, setAvanceMz] = useState('')
   const [plantas, setPlantas] = useState('')
   const [observaciones, setObservaciones] = useState('')
-  const [productos, setProductos] = useState<Producto[]>([])
+  const [productos, setProductos] = useState<ProductoAplicado[]>([])
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
@@ -73,9 +82,10 @@ export function SiembraForm({
   const semana = useMemo(() => semanaIso(fecha), [fecha])
   const densidad = useMemo(() => plantasPorMz(plantas, avanceMz), [plantas, avanceMz])
 
-  function cambiarProducto(i: number, campo: keyof Producto, valor: string) {
-    setProductos((p) => p.map((x, j) => (j === i ? { ...x, [campo]: valor } : x)))
-  }
+  const opcionesLote = useMemo(
+    () => opcionesLoteVariedad(recepciones, variedadId, fecha, loteVariedad),
+    [recepciones, variedadId, fecha, loteVariedad]
+  )
 
   async function guardar(otra: boolean) {
     const problema = validarSiembra({
@@ -243,11 +253,16 @@ export function SiembraForm({
           </Campo>
         </div>
 
-        <Campo
-          etiqueta="Lote de variedad"
-          ayuda="El código del lote de plántulas, para la trazabilidad hacia el vivero."
-        >
-          <Entrada value={loteVariedad} onChange={(e) => setLoteVariedad(e.target.value)} />
+        <Campo etiqueta="Lote de variedad" ayuda={ayudaLoteVariedad(variedadId, opcionesLote)}>
+          <SelectorBuscable
+            valor={loteVariedad}
+            onCambiar={setLoteVariedad}
+            opciones={opcionesLote}
+            placeholder="Elegir de las recepciones…"
+            etiquetaBusqueda="Buscar lote…"
+            textoVacio="Sin lote de variedad"
+            disabled={!variedadId}
+          />
         </Campo>
 
         <Campo etiqueta="Observaciones">
@@ -261,64 +276,14 @@ export function SiembraForm({
 
       {/* --------------------- Productos aplicados --------------------- */}
       <Tarjeta className="flex flex-col gap-3 p-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-semibold text-slate-900">Productos aplicados</h2>
-            <p className="text-xs text-slate-400">
-              Los insumos que se pusieron en esta siembra. Se pueden agregar los que hagan falta.
-            </p>
-          </div>
-          <Boton
-            type="button"
-            variante="secundario"
-            tamano="sm"
-            onClick={() => setProductos((p) => [...p, { material_id: '', cantidad: '', unidad: '' }])}
-          >
-            Agregar
-          </Boton>
+        <div>
+          <h2 className="text-sm font-semibold text-slate-900">Productos aplicados</h2>
+          <p className="text-xs text-slate-400">
+            Los insumos que se pusieron en esta siembra. Escribe el código o la descripción para
+            buscarlo en el catálogo.
+          </p>
         </div>
-
-        {productos.length === 0 ? (
-          <p className="text-sm text-slate-400">Sin productos. No es obligatorio.</p>
-        ) : (
-          productos.map((p, i) => (
-            <div key={i} className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_110px_110px_auto]">
-              <Selector
-                value={p.material_id}
-                onChange={(e) => cambiarProducto(i, 'material_id', e.target.value)}
-              >
-                <option value="">Elige el material…</option>
-                {materiales.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.codigo} · {m.descripcion ?? ''}
-                  </option>
-                ))}
-              </Selector>
-              <Entrada
-                type="number"
-                inputMode="decimal"
-                step="0.001"
-                min="0"
-                placeholder="Cantidad"
-                value={p.cantidad}
-                onChange={(e) => cambiarProducto(i, 'cantidad', e.target.value)}
-              />
-              <Entrada
-                placeholder="Unidad"
-                value={p.unidad}
-                onChange={(e) => cambiarProducto(i, 'unidad', e.target.value)}
-              />
-              <Boton
-                type="button"
-                variante="peligro"
-                tamano="sm"
-                onClick={() => setProductos((lista) => lista.filter((_, j) => j !== i))}
-              >
-                Eliminar
-              </Boton>
-            </div>
-          ))
-        )}
+        <EditorProductos productos={productos} onCambiar={setProductos} materiales={materiales} />
       </Tarjeta>
 
       <div className="flex flex-wrap justify-end gap-2">

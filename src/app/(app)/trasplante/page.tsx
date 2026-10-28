@@ -105,14 +105,8 @@ export default async function TrasplantePage({
           >
             Reporte para gerencia
           </Link>
-          {puede(permisos, 'trasplante_diario', 'crear') && (
-            <Link
-              href={`/trasplante/nueva?temporada=${temporada.id}`}
-              className="inline-flex items-center rounded-lg bg-brand-700 px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-800"
-            >
-              Nueva siembra
-            </Link>
-          )}
+          {/* 79 · «Nueva siembra» vive en la barra de la tabla de Siembra
+              diaria: aquí arriba obligaba a subir desde el final. */}
         </div>
       </div>
 

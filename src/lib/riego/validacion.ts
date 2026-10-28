@@ -38,9 +38,41 @@ export function validarCabecera(e: EntradaTurno): string | null {
  * mismo lote en el mismo formulario se suman entre sí, que es el caso que
  * ninguna validación fila a fila atrapa.
  */
-export function validarLineas(
+/**
+ * Los lotes cuya área supera el tope libre del ciclo (81).
+ *
+ * Ya no bloquean por sí solos: en campo se riega antes de capturar el plan
+ * o la siembra. Se devuelven para que la pantalla pida confirmación y el
+ * guardado vaya con `forzar_exceso`, que la base audita.
+ */
+export function lotesExcedidos(
   lineas: LineaTurno[],
   saldos: LoteRegable[]
+): { ut: string; area: number; disponible: number; tope: number }[] {
+  const out: { ut: string; area: number; disponible: number; tope: number }[] = []
+  for (const l of lineas) {
+    if (!l.loteTemporadaId) continue
+    const area = aNumero(l.areaTurno)
+    if (area === null) continue
+    const saldo = saldos.find((s) => s.lote_temporada_id === l.loteTemporadaId)
+    if (!saldo || !(Number(saldo.area_total) > 0)) continue
+    if (area > Number(saldo.area_disponible) + 0.005) {
+      out.push({
+        ut: saldo.ut,
+        area,
+        disponible: Number(saldo.area_disponible),
+        tope: Number(saldo.area_total),
+      })
+    }
+  }
+  return out
+}
+
+export function validarLineas(
+  lineas: LineaTurno[],
+  saldos: LoteRegable[],
+  /** Con exceso confirmado (81) el tope no bloquea: lo audita la base. */
+  permitirExceso = false
 ): string | null {
   const conDato = lineas.filter((l) => l.loteTemporadaId || l.areaTurno.trim())
   if (conDato.length === 0) return 'Agrega al menos un lote.'
@@ -65,6 +97,8 @@ export function validarLineas(
     porLote.set(l.loteTemporadaId, area)
   }
 
+  if (permitirExceso) return null
+
   for (const [loteId, area] of porLote) {
     const saldo = saldos.find((s) => s.lote_temporada_id === loteId)
     if (!saldo) continue
@@ -73,7 +107,7 @@ export function validarLineas(
     if (area > saldo.area_disponible + 0.005) {
       return (
         `El lote ${saldo.ut} sólo tiene ${saldo.area_disponible.toFixed(2)} mz libres ` +
-        `(de ${saldo.area_total.toFixed(2)} sembradas o planificadas) y le estás poniendo ` +
+        `en este ciclo (tope ${saldo.area_total.toFixed(2)}: el mayor de lo sembrado y lo planificado) y le estás poniendo ` +
         `${area.toFixed(2)}.`
       )
     }
@@ -83,12 +117,17 @@ export function validarLineas(
 }
 
 /** Las líneas listas para la base: sin renglones en blanco y con números. */
-export function lineasParaGuardar(lineas: LineaTurno[]) {
+/**
+ * `forzarExceso` viaja en TODAS las líneas: la base sólo lo conserva en
+ * las que de verdad exceden el tope y lo apaga en las demás (81).
+ */
+export function lineasParaGuardar(lineas: LineaTurno[], forzarExceso = false) {
   return lineas
     .filter((l) => l.loteTemporadaId && aNumero(l.areaTurno) !== null)
     .map((l) => ({
       lote_temporada_id: l.loteTemporadaId,
       area_turno: aNumero(l.areaTurno),
       variedad_id: l.variedadId || null,
+      forzar_exceso: forzarExceso,
     }))
 }

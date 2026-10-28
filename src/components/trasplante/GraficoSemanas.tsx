@@ -10,16 +10,20 @@
  * mismo en las dos y la brecha se vería del revés.
  */
 
-import { AZUL, n2 } from '@/lib/trasplante/formato'
+import { CORP, n2 } from '@/lib/trasplante/formato'
+
+/** Lo real, en Verde Vibrante corporativo (80). */
+const AZUL = CORP.lima
 import type { PuntoSemana } from '@/lib/trasplante/servicio'
 
 const ANCHO = 720
 const ALTO = 260
 const MARGEN = { arriba: 26, derecha: 16, abajo: 52, izquierda: 46 }
 
-const GRIS = '#94a3b8'
-const ROJO = '#b91c1c'
-const VERDE = '#047857'
+/** El plan, segunda serie de la guía: Naranja Atardecer (82). */
+const GRIS = CORP.naranja
+const ROJO = CORP.naranja
+const VERDE = CORP.verde
 
 export function GraficoSemanas({ puntos }: { puntos: PuntoSemana[] }) {
   if (puntos.length === 0) return null
@@ -113,7 +117,7 @@ export function GraficoSemanas({ puntos }: { puntos: PuntoSemana[] }) {
                   textAnchor="middle"
                   fontSize="8.5"
                   fontWeight="bold"
-                  fill={AZUL}
+                  fill={CORP.verde}
                 >
                   {n2(p.area)}
                 </text>

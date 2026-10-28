@@ -401,9 +401,9 @@ export function PanelOpciones({
               : `Ningún resultado para «${busqueda}».`}
           </p>
         ) : (
-          visibles.map((o) => (
+          visibles.map((o, i) => (
             <button
-              key={o.valor}
+              key={`${String(o.valor ?? '')}-${i}`}
               type="button"
               role="option"
               aria-selected={o.valor === actual}

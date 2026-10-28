@@ -18,7 +18,7 @@ import { Alerta, Boton, Campo, Entrada, Selector } from '@/components/ui/Primiti
 import { IconInfo, IconPlus, IconTrash } from '@/components/ui/Icons'
 import { CAMPOS_PLAN_NUTRICIONAL, FormularioCatalogo } from '@/components/catalogos/FormularioCatalogo'
 import { leerLotesRegables } from '@/lib/riego/repositorioCliente'
-import { aNumero, validarCabecera, validarLineas } from '@/lib/riego/validacion'
+import { aNumero, lotesExcedidos, validarCabecera, validarLineas } from '@/lib/riego/validacion'
 import {
   ESTADOS_TURNO,
   FUENTES_AGUA,
@@ -47,11 +47,14 @@ export function TurnoRiegoModal({
   guardando: boolean
   onCambiarEntrada: (e: EntradaTurno) => void
   onCambiarLineas: (l: LineaTurno[]) => void
-  onGuardar: () => void
+  /** `forzarExceso`: el usuario confirmó regar por encima del tope (81). */
+  onGuardar: (forzarExceso: boolean) => void
   onCerrar: () => void
 }) {
   const [saldos, setSaldos] = useState<LoteRegable[]>([])
   const [cargandoSaldos, setCargandoSaldos] = useState(false)
+  /** El error de `fn_lotes_regables`. Antes se tragaba y el selector salía vacío sin decir por qué. */
+  const [errorSaldos, setErrorSaldos] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   /** El lote cuyo globo de información está abierto. */
   const [info, setInfo] = useState<string | null>(null)
@@ -85,7 +88,7 @@ export function TurnoRiegoModal({
       // El CICLO entra desde la 68: sin él la base sumaba todos los
       // ciclos del lote y el segundo salía con el área del primero
       // encima.
-      const { datos } = await leerLotesRegables(
+      const { datos, error: e } = await leerLotesRegables(
         entrada.temporadaId,
         entrada.zonaId || null,
         entrada.turnoId,
@@ -93,6 +96,7 @@ export function TurnoRiegoModal({
       )
       if (!vivo) return
       setSaldos(datos)
+      setErrorSaldos(e)
       setCargandoSaldos(false)
     }
     void cargar()
@@ -196,11 +200,27 @@ export function TurnoRiegoModal({
 
   const loteInfo = info ? saldos.find((x) => x.lote_temporada_id === info) : null
 
+  /* --------------------- Exceso de área (81) --------------------------- */
+  // El tope ya no bloquea: avisa. Para guardar por encima hay que
+  // confirmarlo, y la confirmación vale para ESOS excesos: si después se
+  // cambia un área o un lote, se vuelve a pedir.
+  const excesos = useMemo(() => lotesExcedidos(lineas, saldos), [lineas, saldos])
+  const firmaExcesos = excesos.map((x) => `${x.ut}:${x.area}`).join('|')
+  const [excesoConfirmado, setExcesoConfirmado] = useState<string | null>(null)
+  const hayExceso = excesos.length > 0
+  const confirmado = hayExceso && excesoConfirmado === firmaExcesos
+
   function guardar() {
-    const problema = validarCabecera(entrada) ?? validarLineas(lineas, saldos)
+    const problema =
+      validarCabecera(entrada) ?? validarLineas(lineas, saldos, /* permitirExceso */ true)
     if (problema) return setError(problema)
+    if (hayExceso && !confirmado) {
+      return setError(
+        'Hay lotes por encima del tope del ciclo. Marca «Confirmo el exceso» para guardarlo así; quedará registrado quién lo forzó.'
+      )
+    }
     setError(null)
-    onGuardar()
+    onGuardar(hayExceso)
   }
 
   const esNuevo = !entrada.turnoId
@@ -215,14 +235,49 @@ export function TurnoRiegoModal({
           <Boton variante="secundario" className="flex-1" onClick={onCerrar} disabled={guardando}>
             Cancelar
           </Boton>
-          <Boton className="flex-1" onClick={guardar} disabled={guardando}>
-            {guardando ? 'Guardando…' : 'Guardar'}
+          <Boton
+            className="flex-1"
+            variante={hayExceso ? 'alerta' : 'primario'}
+            onClick={guardar}
+            disabled={guardando || (hayExceso && !confirmado)}
+          >
+            {guardando ? 'Guardando…' : hayExceso ? 'Guardar con exceso' : 'Guardar'}
           </Boton>
         </div>
       }
     >
       <div className="flex flex-col gap-4">
         {error && <Alerta>{error}</Alerta>}
+
+        {hayExceso && (
+          <div className="flex flex-col gap-2 rounded-xl bg-red-50 p-3 ring-1 ring-inset ring-red-300">
+            <p className="text-sm font-semibold text-red-800">
+              {excesos.length === 1 ? 'Un lote supera' : `${excesos.length} lotes superan`} el tope
+              del ciclo (mayor entre lo sembrado y lo planificado):
+            </p>
+            <ul className="text-xs text-red-800">
+              {excesos.map((x) => (
+                <li key={x.ut}>
+                  <strong>{x.ut}</strong>: {x.area.toFixed(2)} mz contra {x.disponible.toFixed(2)} libres
+                  (tope {x.tope.toFixed(2)}) · exceso {(x.area - x.disponible).toFixed(2)} mz
+                </li>
+              ))}
+            </ul>
+            <label className="flex min-h-11 items-center gap-2.5 text-sm font-semibold text-red-900">
+              <input
+                type="checkbox"
+                checked={confirmado}
+                onChange={(e) => setExcesoConfirmado(e.target.checked ? firmaExcesos : null)}
+                className="h-5 w-5 shrink-0 rounded border-red-400"
+              />
+              Confirmo el exceso: en campo se regó esta área aunque el plan o la siembra todavía no
+              la registren.
+            </label>
+            <p className="text-[11px] text-red-700">
+              Se guarda con la marca «exceso forzado», con tu usuario y la hora.
+            </p>
+          </div>
+        )}
 
         {/* ------------------------ Cabecera ------------------------- */}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -412,8 +467,18 @@ export function TurnoRiegoModal({
               <p className="text-xs text-slate-400">
                 {cargandoSaldos
                   ? 'Consultando cuánta área queda libre en cada lote…'
-                  : 'El área libre sale del plan de siembra, o de lo sembrado si el lote ya se terminó.'}
+                  : 'Todos los lotes de la zona, con o sin plan. El tope del ciclo es el mayor entre lo sembrado y lo planificado; sin ninguno de los dos, el área neta.'}
               </p>
+              {errorSaldos && (
+                <p className="mt-1 text-xs font-semibold text-red-700">
+                  No se pudieron leer los lotes: {errorSaldos}
+                </p>
+              )}
+              {!cargandoSaldos && !errorSaldos && saldos.length === 0 && entrada.zonaId && (
+                <p className="mt-1 text-xs font-semibold text-amber-700">
+                  Esta zona no tiene lotes agrícolas activos en la temporada, o tu permiso no la alcanza.
+                </p>
+              )}
             </div>
             <span className="shrink-0 text-sm font-bold tabular-nums text-brand-700">
               {totalMz.toFixed(2)} mz
@@ -587,8 +652,8 @@ export function TurnoRiegoModal({
 
 /** De dónde salió el área, dicho en castellano. */
 const ORIGEN_AREA: Record<LoteRegable['origen_area'], string> = {
-  real: 'Lo sembrado de verdad',
-  plan: 'Todavía es lo previsto en el plan de siembra',
+  real: 'Lo sembrado de verdad (igual o mayor que el plan)',
+  plan: 'El plan de siembra (mayor que lo sembrado hasta hoy)',
   neta: 'Ni plan ni siembra: es el área neta del lote',
 }
 

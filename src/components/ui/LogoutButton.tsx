@@ -2,12 +2,14 @@
 
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { marcarSalidaVoluntaria } from '@/components/auth/GuardiaSesion'
 
 export function LogoutButton() {
   const router = useRouter()
   const supabase = createClient()
 
   async function handleLogout() {
+    marcarSalidaVoluntaria()
     await supabase.auth.signOut()
     router.push('/login')
     router.refresh()

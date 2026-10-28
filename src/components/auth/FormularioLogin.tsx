@@ -3,45 +3,60 @@
 /**
  * El formulario de entrada. Sólo eso.
  *
- * La página que lo envuelve es de servidor y es la que lee la dirección
- * —para saber si se llegó aquí porque la sesión expiró—; este componente
- * recibe ese dato ya resuelto. Leerlo desde el navegador obligaría a
- * pintar primero sin el aviso y después con él, que es como se rompe la
- * hidratación.
+ * Hotfix de emergencia (2026-10-27): entrar es `signInWithPassword` y,
+ * si sale bien, `window.location.href = '/'`. Una carga COMPLETA del
+ * navegador: la primera petición HTTP ya lleva las cookies que Supabase
+ * acaba de escribir. Nada de `router.push`/`replace`/`refresh` —su fetch
+ * `?_rsc=` es el que llegaba al middleware y rebotaba—, ni esperas, ni
+ * limpiezas previas: si algo falla, el botón se libera y se dice por qué.
+ *
+ * La página que lo envuelve es de servidor y le pasa si se llegó por
+ * sesión expirada, sólo para el aviso.
  */
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Alerta, Boton, Campo, Entrada } from '@/components/ui/Primitivos'
 
 export function FormularioLogin({ sesionExpirada = false }: { sesionExpirada?: boolean }) {
-  const router = useRouter()
-  const supabase = createClient()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [cargando, setCargando] = useState(false)
-  // El aviso de sesión expirada se va en cuanto el usuario escribe: ya lo
-  // leyó, y dejarlo mientras teclea parece que el error es de ahora.
+  // El aviso de sesión expirada se va en cuanto el usuario escribe.
   const [avisoVisible, setAvisoVisible] = useState(sesionExpirada)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (cargando) return
     setError(null)
     setCargando(true)
 
-    const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
-
-    setCargando(false)
-    if (authError) {
-      setError('Usuario o contraseña incorrectos.')
-      return
+    try {
+      const { error: authError } = await createClient().auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      })
+      if (authError) {
+        setCargando(false)
+        setError(
+          authError.code === 'invalid_credentials' || authError.status === 400
+            ? 'Usuario o contraseña incorrectos.'
+            : `No se pudo entrar: ${authError.message}`
+        )
+        return
+      }
+      // Carga completa a propósito (ver cabecera): el fetch `?_rsc=` de la
+      // navegación de Next es justo lo que fallaba. `cargando` se queda en
+      // true: la página se va.
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+      window.location.href = '/'
+    } catch (err) {
+      setCargando(false)
+      setError(
+        `No se pudo entrar: ${err instanceof Error ? err.message : 'error de red'}. Revisa la conexión.`
+      )
     }
-    // A la portada: no todo el mundo tiene permiso en tickets, y entrar
-    // por una puerta que no es la suya es recibir una lista vacía.
-    router.push('/')
-    router.refresh()
   }
 
   return (

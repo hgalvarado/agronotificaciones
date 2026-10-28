@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { createPortal } from 'react-dom'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { marcarSalidaVoluntaria } from '@/components/auth/GuardiaSesion'
 import {
   IconChart,
   IconChevronDown,
@@ -241,6 +242,7 @@ export function AppShell({
   }
 
   async function salir() {
+    marcarSalidaVoluntaria()
     await supabase.auth.signOut()
     router.push('/login')
     router.refresh()

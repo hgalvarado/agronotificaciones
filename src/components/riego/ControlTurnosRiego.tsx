@@ -491,11 +491,11 @@ export function ControlTurnosRiego({
     )
   }
 
-  async function guardar() {
+  async function guardar(forzarExceso = false) {
     if (!entrada) return
     setOcupado(true)
     setError(null)
-    const r = await guardarTurno(entrada, lineas)
+    const r = await guardarTurno(entrada, lineas, forzarExceso)
     setOcupado(false)
     if (!r.ok) return setError(r.mensaje)
     setEntrada(null)
@@ -735,7 +735,7 @@ export function ControlTurnosRiego({
           guardando={ocupado}
           onCambiarEntrada={setEntrada}
           onCambiarLineas={setLineas}
-          onGuardar={() => void guardar()}
+          onGuardar={(forzar) => void guardar(forzar)}
           onCerrar={() => {
             setEntrada(null)
             setError(null)

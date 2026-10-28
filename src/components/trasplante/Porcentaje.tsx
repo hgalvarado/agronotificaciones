@@ -8,15 +8,20 @@
  * los interruptores para dibujar un número de dos dígitos.
  */
 
+import { semaforo } from '@/lib/trasplante/formato'
+
 export function Porcentaje({ valor }: { valor: number | null }) {
   if (valor === null || valor === undefined) return <span className="text-slate-300">—</span>
   const v = Number(valor)
+  // Semáforo de la guía corporativa (82): ≥100 % verde vibrante, 80–99 %
+  // amarillo sol, <80 % naranja atardecer.
+  const s = semaforo(v)
   const tono =
-    v >= 99
-      ? 'bg-emerald-100 text-emerald-800'
-      : v >= 50
-        ? 'bg-brand-50 text-brand-800'
-        : 'bg-amber-100 text-amber-800'
+    s === 'excelente'
+      ? 'bg-lima-100 text-lima-800'
+      : s === 'progreso'
+        ? 'bg-sol-100 text-sol-800'
+        : 'bg-naranja-100 text-naranja-800'
   return (
     <span className={`rounded px-1.5 py-0.5 text-xs font-bold tabular-nums ${tono}`}>
       {v.toFixed(0)}%
