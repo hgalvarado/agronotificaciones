@@ -84,6 +84,13 @@ export function esSesionMuerta(error: unknown, habiaCookies = false): boolean {
   if (e.code && CODIGOS_SESION_MUERTA.has(e.code)) return true
   if (e.name === SIN_SESION) return false
 
+  // Respaldo: hay versiones de `@supabase/auth-js` y caminos (el refresco
+  // lanzado desde `getSession`) que entregan el error SIN `code`. El texto
+  // de GoTrue para el token de refresco es estable desde hace años.
+  if (typeof e.message === 'string' && /invalid refresh token|refresh token not found|already used/i.test(e.message)) {
+    return true
+  }
+
   // Sin código: sólo si el navegador traía una sesión que ya no sirve.
   if (habiaCookies && e.__isAuthError && (e.status === 400 || e.status === 401)) return true
 

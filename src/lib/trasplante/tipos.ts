@@ -110,6 +110,47 @@ export type FilaSiembra = {
   plan_lote: number | null
   /** Llega con la migración 46. Sin ella la columna sale vacía. */
   productos?: ProductoDeSiembra[] | null
+  /**
+   * Llegan con la migración 79 (avance diario plan contra real):
+   * variedades planificadas para ese lote/ciclo en esa fecha (o del
+   * lote/ciclo si el plan no fecha nada ese día), manzanas del plan para
+   * ESA fecha (null = el plan no pone nada ese día) y manzanas del plan de
+   * la misma variedad sembrada.
+   */
+  plan_variedad?: string | null
+  plan_mz?: number | null
+  plan_mz_variedad?: number | null
+  /**
+   * Migración 80: nomenclatura de los lotes que el plan programó para esa
+   * misma fecha y ciclo, separadas por coma. (No es `plan_lote`, que es
+   * numérico: las mz del plan del lote.)
+   */
+  plan_lotes?: string | null
+}
+
+/**
+ * Una fila del cruce maestro plan ⟷ real del avance diario (migración 82):
+ * una por fecha, ciclo, lote y variedad. `mz_real` nulo = lo planificado
+ * no se sembró; `mz_plan` nulo = se sembró sin plan para ese día.
+ */
+export type FilaAvanceDiario = {
+  id: string
+  temporada_id: string
+  fecha: string
+  semana: string
+  ciclo: number
+  lote_temporada_id: string
+  ut: string
+  lote_nombre: string | null
+  zona_id: string | null
+  zona: string | null
+  variedad_id: string
+  variedad: string
+  mz_real: number | null
+  mz_plan: number | null
+  diferencia: number
+  plantas: number | null
+  origen: 'ambos' | 'real' | 'plan'
 }
 
 export type FilaAvanceUt = {

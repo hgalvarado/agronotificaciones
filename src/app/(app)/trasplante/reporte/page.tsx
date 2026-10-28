@@ -6,12 +6,13 @@ import { Alerta } from '@/components/ui/Primitivos'
 import { IconChevronLeft } from '@/components/ui/Icons'
 import { BotonImprimir } from '@/components/plan/BotonImprimir'
 import { ReporteTrasplante } from '@/components/trasplante/ReporteTrasplante'
+import { BotonOutlook } from '@/components/trasplante/BotonOutlook'
 import {
+  leerAvanceDiario,
   leerEstadisticas,
   leerPorSemana,
   leerPorVariedad,
   leerPorZona,
-  leerSiembras,
 } from '@/lib/trasplante/repositorio'
 import { esFecha, hoyIso } from '@/lib/trasplante/validacion'
 
@@ -26,7 +27,7 @@ export const dynamic = 'force-dynamic'
  */
 const IMPRESION = `
 @media print {
-  @page { size: letter landscape; margin: 8mm; }
+  @page { size: letter landscape; margin: 15mm; }
   html, body { background: #fff; zoom: 1; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   .no-imprimir, .print\\:hidden { display: none !important; }
   .hoja-reporte { font-size: 9pt; line-height: 1.25; gap: 0.5rem; }
@@ -79,16 +80,17 @@ export default async function ReporteTrasplantePage({
 
   // El acumulado va hasta la fecha de corte; el detalle diario, sólo del
   // rango. Comparar un plan recortado con lo ejecutado no diría nada.
-  const [estadisticas, variedades, zonas, semanas, siembras] = await Promise.all([
+  const [estadisticas, variedades, zonas, semanas, diario] = await Promise.all([
     leerEstadisticas(temporada.id, hasta),
     leerPorVariedad(temporada.id, hasta),
     leerPorZona(temporada.id, hasta),
     leerPorSemana(temporada.id, hasta),
-    leerSiembras(temporada.id, { desde, hasta }),
+    // 82 · el cruce maestro plan ⟷ real, no sólo lo sembrado.
+    leerAvanceDiario(temporada.id, { desde, hasta }),
   ])
 
   const error =
-    estadisticas.error ?? variedades.error ?? zonas.error ?? semanas.error ?? siembras.error
+    estadisticas.error ?? variedades.error ?? zonas.error ?? semanas.error ?? diario.error
 
   return (
     <div className="mx-auto max-w-[1400px] p-4 lg:p-6 print:max-w-none print:p-0">
@@ -103,19 +105,30 @@ export default async function ReporteTrasplantePage({
             <IconChevronLeft className="h-4 w-4" />
             Volver a trasplante
           </Link>
-          <BotonImprimir />
+          <div className="flex flex-wrap gap-2">
+            <BotonOutlook
+              temporada={temporada.nombre}
+              desde={desde}
+              hasta={hasta}
+              estadisticas={estadisticas.datos}
+              diario={diario.datos}
+            />
+            <BotonImprimir />
+          </div>
         </div>
 
+        {/* 79 · sin `max`: se pueden pedir fechas futuras para simular el
+            corte del plan (el real simplemente no llega a esas fechas). */}
         <form
           className="flex flex-wrap items-end gap-2 rounded-2xl border border-slate-200/80 bg-white p-3 shadow-[var(--shadow-card)]"
           action="/trasplante/reporte"
         >
           <input type="hidden" name="temporada" value={temporada.id} />
           <Etiqueta texto="Del">
-            <input type="date" name="desde" defaultValue={desde} max={hoy} className={CLASE} />
+            <input type="date" name="desde" defaultValue={desde} className={CLASE} />
           </Etiqueta>
           <Etiqueta texto="Al">
-            <input type="date" name="hasta" defaultValue={hasta} max={hoy} className={CLASE} />
+            <input type="date" name="hasta" defaultValue={hasta} className={CLASE} />
           </Etiqueta>
           <button
             type="submit"
@@ -128,9 +141,9 @@ export default async function ReporteTrasplantePage({
 
       {error && (
         <div className="no-imprimir mb-3">
-          <Alerta tono="ambar">
-            Falta correr las migraciones 25 y 26 en el SQL Editor de Supabase.
-          </Alerta>
+          {/* El mensaje real: «faltan migraciones» se decía para cualquier
+              error y escondía la causa. */}
+          <Alerta tono="ambar">No se pudo leer parte del reporte: {error}</Alerta>
         </div>
       )}
 
@@ -142,7 +155,7 @@ export default async function ReporteTrasplantePage({
         variedades={variedades.datos}
         zonas={zonas.datos}
         semanas={semanas.datos}
-        siembras={siembras.datos}
+        diario={diario.datos}
       />
     </div>
   )

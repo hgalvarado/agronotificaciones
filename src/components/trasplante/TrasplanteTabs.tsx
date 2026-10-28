@@ -99,6 +99,7 @@ export function TrasplanteTabs({
   // El avance por UT y la recepción son lectura/edición de lo que la
   // siembra diaria captura: su permiso es el de ella.
   const puedeEditar = canExecuteAction(reglasAbac, 'trasplante_diario', 'editar')
+  const puedeCrear = canExecuteAction(reglasAbac, 'trasplante_diario', 'crear')
 
   /** Sólo las pestañas que esta persona puede ver. Las demás no se dibujan. */
   const visibles = useMemo(
@@ -172,6 +173,8 @@ export function TrasplanteTabs({
           lotes={lotes}
           variedades={variedades}
           materiales={materiales}
+          recepciones={recepciones}
+          puedeCrear={puedeCrear}
           reglas={reglas}
           usuarioId={usuarioId}
           zonas={zonas}

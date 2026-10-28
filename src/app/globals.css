@@ -1,21 +1,135 @@
 @import "tailwindcss";
 
 @theme {
-  /* Marca — verde campo, más profundo y menos "fluorescente" que el emerald default */
-  --color-brand-50: #f0fdf4;
-  --color-brand-100: #dcfce7;
-  --color-brand-200: #bbf7d0;
-  --color-brand-300: #86efac;
-  --color-brand-400: #4ade80;
-  --color-brand-500: #22c55e;
-  --color-brand-600: #16a34a;
-  --color-brand-700: #15803d;
-  --color-brand-800: #166534;
-  --color-brand-900: #14532d;
+  /* ---------------- Identidad corporativa Agrolíbano (80) ----------------
+     Cuatro colores oficiales, cada uno con su rampa para que las clases
+     de siempre (`bg-brand-700`, `text-amber-700`…) los tomen sin tocar
+     las pantallas:
+       · Verde Agrícola   #165C27 → `brand` (700). Primario, botones, cabeceras.
+       · Verde Vibrante   #8CC63F → `lima` (500). Secundario, gráficos.
+       · Naranja Atardecer #F37021 → `naranja` (500) y la rampa `amber`,
+         que es la que usan todas las advertencias y desfases.
+       · Azul Marino      #1A2530 → `marino` (800) y `slate-900`: texto y
+         fondos de alto contraste. */
+  --color-brand-50: #eef7f0;
+  --color-brand-100: #d5ecdb;
+  --color-brand-200: #abd8b7;
+  --color-brand-300: #78bd8b;
+  --color-brand-400: #449b5c;
+  --color-brand-500: #267a3d;
+  --color-brand-600: #1c6b31;
+  --color-brand-700: #165c27;
+  --color-brand-800: #124b20;
+  --color-brand-900: #0e3a19;
+
+  --color-lima-50: #f4faea;
+  --color-lima-100: #e6f3d0;
+  --color-lima-200: #cde7a2;
+  --color-lima-300: #b2d972;
+  --color-lima-400: #9dcf55;
+  --color-lima-500: #8cc63f;
+  --color-lima-600: #72a52f;
+  --color-lima-700: #588024;
+  --color-lima-800: #44621c;
+  --color-lima-900: #324816;
+
+  --color-naranja-50: #fef3ec;
+  --color-naranja-100: #fde3d2;
+  --color-naranja-200: #fbc5a3;
+  --color-naranja-300: #f8a06c;
+  --color-naranja-400: #f58542;
+  --color-naranja-500: #f37021;
+  --color-naranja-600: #d75a10;
+  --color-naranja-700: #b0480d;
+  --color-naranja-800: #8a390c;
+  --color-naranja-900: #6b2d0b;
+
+  /* Las advertencias de toda la aplicación usan `amber`: pasa a ser el
+     Naranja Atardecer corporativo. */
+  --color-amber-50: #fef3ec;
+  --color-amber-100: #fde3d2;
+  --color-amber-200: #fbc5a3;
+  --color-amber-300: #f8a06c;
+  --color-amber-400: #f58542;
+  --color-amber-500: #f37021;
+  --color-amber-600: #d75a10;
+  --color-amber-700: #b0480d;
+  --color-amber-800: #8a390c;
+  --color-amber-900: #6b2d0b;
+
+  --color-marino-50: #eef1f4;
+  --color-marino-100: #d6dde4;
+  --color-marino-200: #aebbc8;
+  --color-marino-300: #8396a8;
+  --color-marino-400: #5a7086;
+  --color-marino-500: #3c5065;
+  --color-marino-600: #2b3b4b;
+  --color-marino-700: #22303d;
+  --color-marino-800: #1a2530;
+  --color-marino-900: #121a22;
+
+  /* El texto principal y los fondos de alto contraste (`bg-slate-900`). */
+  --color-slate-900: #1a2530;
+
+  /* ---------------- Acentos de la guía (82) ----------------
+     Azul Turquesa #00A99D: agua, clima, datos secundarios. Sustituye a
+     TODO azul genérico: las rampas `sky` y `blue` de Tailwind se remapean
+     a él, así que ningún `bg-sky-*`/`text-blue-*` queda fuera de marca.
+     Amarillo Sol #FFD100: highlights y «en progreso» del semáforo. */
+  --color-turquesa-50: #e6f7f6;
+  --color-turquesa-100: #c2ecea;
+  --color-turquesa-200: #8ddcd7;
+  --color-turquesa-300: #4fc9c1;
+  --color-turquesa-400: #1fb8ae;
+  --color-turquesa-500: #00a99d;
+  --color-turquesa-600: #008f85;
+  --color-turquesa-700: #00746c;
+  --color-turquesa-800: #005c56;
+  --color-turquesa-900: #004541;
+
+  --color-sky-50: #e6f7f6;
+  --color-sky-100: #c2ecea;
+  --color-sky-200: #8ddcd7;
+  --color-sky-300: #4fc9c1;
+  --color-sky-400: #1fb8ae;
+  --color-sky-500: #00a99d;
+  --color-sky-600: #008f85;
+  --color-sky-700: #00746c;
+  --color-sky-800: #005c56;
+  --color-sky-900: #004541;
+
+  --color-blue-50: #e6f7f6;
+  --color-blue-100: #c2ecea;
+  --color-blue-200: #8ddcd7;
+  --color-blue-300: #4fc9c1;
+  --color-blue-400: #1fb8ae;
+  --color-blue-500: #00a99d;
+  --color-blue-600: #008f85;
+  --color-blue-700: #00746c;
+  --color-blue-800: #005c56;
+  --color-blue-900: #004541;
+
+  --color-sol-50: #fffbe6;
+  --color-sol-100: #fff4b8;
+  --color-sol-200: #ffea80;
+  --color-sol-300: #ffdf47;
+  --color-sol-400: #ffd61f;
+  --color-sol-500: #ffd100;
+  --color-sol-600: #d6af00;
+  --color-sol-700: #a68800;
+  --color-sol-800: #7a6400;
+  --color-sol-900: #574700;
+
+  /* Bordes y divisiones de la guía. */
+  --color-slate-200: #e2e8f0;
 
   /* Tipografía del sistema: nítida en Windows 11 (Segoe UI Variable),
      macOS/iOS (SF Pro) y Android (Roboto), sin descargar nada. */
-  --font-sans: "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", -apple-system,
+  /* Montserrat (guía corporativa) si está instalada en el equipo; si no,
+     la pila del sistema. NO se descarga de Google Fonts: el `build` falla
+     en redes que bloquean fonts.googleapis.com (ver app/layout.tsx). */
+  --font-display: Merriweather, "Playfair Display", Georgia, "Times New Roman", serif;
+  --font-sans: Montserrat, "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", -apple-system,
     BlinkMacSystemFont, "SF Pro Text", Roboto, ui-sans-serif, system-ui, "Helvetica Neue", Arial,
     sans-serif;
 
@@ -34,8 +148,8 @@ html {
 }
 
 body {
-  background-color: #f6f7f9;
-  color: #0f172a;
+  background-color: #f4f6f8; /* Fondo principal de la guía */
+  color: #1a2530; /* Azul Marino Corporativo */
   font-family: var(--font-sans);
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
 }
@@ -250,13 +364,17 @@ html[data-tema='oscuro'] {
   --color-brand-50: #0f2a1b;
   --color-brand-100: #133a25;
   --color-brand-200: #1a4b30;
-  --color-brand-600: #1c9a4b;
-  --color-brand-700: #15803d;
-  --color-brand-800: #11692f;
+  --color-brand-600: #1f7a37;
+  --color-brand-700: #1c6b31;
+  --color-brand-800: #165c27;
 
   /* --- Pasteles de estado: el mismo papel, en oscuro --- */
-  --color-amber-50: #2e2409;
-  --color-amber-100: #3d300c;
+  --color-amber-50: #2e1a0c;
+  --color-amber-100: #3d220f;
+  --color-naranja-50: #2e1a0c;
+  --color-naranja-100: #3d220f;
+  --color-lima-50: #1d2a10;
+  --color-lima-100: #263814;
   --color-red-50: #2e1416;
   --color-red-100: #3d181c;
   --color-emerald-50: #0f2a20;
@@ -303,7 +421,11 @@ html[data-tema='oscuro'] .text-white { color: #f8fafc; }
 html[data-tema='oscuro'] .text-brand-700,
 html[data-tema='oscuro'] .text-brand-800 { color: #5ee08c; }
 html[data-tema='oscuro'] .text-amber-700,
-html[data-tema='oscuro'] .text-amber-800 { color: #f0bb55; }
+html[data-tema='oscuro'] .text-amber-800,
+html[data-tema='oscuro'] .text-naranja-700,
+html[data-tema='oscuro'] .text-naranja-800 { color: #f8a06c; }
+html[data-tema='oscuro'] .text-lima-700,
+html[data-tema='oscuro'] .text-lima-800 { color: #b2d972; }
 html[data-tema='oscuro'] .text-red-600,
 html[data-tema='oscuro'] .text-red-700,
 html[data-tema='oscuro'] .text-red-800 { color: #fb8b8b; }
@@ -316,8 +438,8 @@ html[data-tema='oscuro'] .text-violet-800 { color: #b79bf5; }
 /* `bg-slate-900 text-white` es el «seleccionado» de los grupos de
  * botones. En oscuro el 900 se confunde con el fondo, así que ese estado
  * pasa a la marca, que es lo que de verdad quiere decir. */
-html[data-tema='oscuro'] .bg-slate-900 { background-color: #2f8f52; }
-html[data-tema='oscuro'] .border-slate-900 { border-color: #2f8f52; }
+html[data-tema='oscuro'] .bg-slate-900 { background-color: #1f7a37; }
+html[data-tema='oscuro'] .border-slate-900 { border-color: #1f7a37; }
 
 /* Las tablas rayadas y los hover, que en claro son casi imperceptibles y
  * en oscuro desaparecían del todo. */

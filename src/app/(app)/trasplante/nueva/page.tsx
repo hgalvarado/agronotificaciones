@@ -5,7 +5,7 @@ import { getPermisos, getUsuarioActual, puede } from '@/lib/auth'
 import { Alerta } from '@/components/ui/Primitivos'
 import { IconChevronLeft } from '@/components/ui/Icons'
 import { SiembraForm } from '@/components/trasplante/SiembraForm'
-import { leerCatalogos } from '@/lib/trasplante/repositorio'
+import { leerCatalogos, leerRecepciones } from '@/lib/trasplante/repositorio'
 
 type Temporada = { id: string; nombre: string; activa: boolean }
 
@@ -37,7 +37,10 @@ export default async function NuevaSiembraPage({
     )
   }
 
-  const catalogos = await leerCatalogos(temporada.id)
+  const [catalogos, recepciones] = await Promise.all([
+    leerCatalogos(temporada.id),
+    leerRecepciones(temporada.id),
+  ])
 
   return (
     <div className="anim-aparecer mx-auto flex max-w-3xl flex-col gap-4 p-4 lg:p-6">
@@ -67,6 +70,7 @@ export default async function NuevaSiembraPage({
           variedades={catalogos.variedades}
           materiales={catalogos.materiales}
           lotes={catalogos.lotes}
+          recepciones={recepciones.datos}
         />
       )}
     </div>

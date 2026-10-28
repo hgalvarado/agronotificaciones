@@ -8,6 +8,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { leerTodo } from '@/lib/supabase/paginar'
 import type {
+  FilaAvanceDiario,
   FilaAvanceUt,
   FilaEstadistica,
   FilaLiquidacion,
@@ -170,6 +171,32 @@ export async function leerSiembras(
     if (rango) q = q.gte('fecha_siembra', rango.desde).lte('fecha_siembra', rango.hasta)
     return q
   })
+  return { datos, error }
+}
+
+/**
+ * El cruce maestro plan ⟷ real del avance diario (migración 82), del
+ * rango. Ordenado por día (reciente primero) y lote.
+ */
+export async function leerAvanceDiario(
+  temporadaId: string,
+  rango: { desde: string; hasta: string }
+): Promise<Respuesta<FilaAvanceDiario[]>> {
+  const supabase = await createClient()
+  const { datos, error } = await leerTodo<FilaAvanceDiario>((desde, hasta) =>
+    supabase
+      .from('v_trasplante_avance_diario')
+      .select(
+        'id, temporada_id, fecha, semana, ciclo, lote_temporada_id, ut, lote_nombre, zona_id, zona, variedad_id, variedad, mz_real, mz_plan, diferencia, plantas, origen'
+      )
+      .eq('temporada_id', temporadaId)
+      .gte('fecha', rango.desde)
+      .lte('fecha', rango.hasta)
+      .order('fecha', { ascending: false })
+      .order('ut', { ascending: true })
+      .order('id', { ascending: true })
+      .range(desde, hasta)
+  )
   return { datos, error }
 }
 

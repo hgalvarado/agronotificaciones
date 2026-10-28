@@ -45,8 +45,22 @@ const RELOJ = new Intl.DateTimeFormat('en-GB', {
   hourCycle: 'h23',
 })
 
+/**
+ * ¿Es una fecha ISO de CALENDARIO?
+ *
+ * La forma sola no basta: «2026-11-31» pasa la expresión regular y
+ * JavaScript la convierte en silencio en el 1 de diciembre, mientras
+ * Postgres la rechaza con `date/time field value out of range` — la misma
+ * fecha significaba dos cosas distintas según quién la leyera. Ahora se
+ * exige que el día exista (ida y vuelta por `Date`) y un año de cuatro
+ * cifras razonable para la operación.
+ */
 export function esFechaIso(v: string | null | undefined): boolean {
-  return typeof v === 'string' && ES_FECHA.test(v)
+  if (typeof v !== 'string' || !ES_FECHA.test(v)) return false
+  const anio = Number(v.slice(0, 4))
+  if (anio < 1900 || anio > 2200) return false
+  const t = Date.parse(`${v}T12:00:00Z`)
+  return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === v
 }
 
 /** Qué día del calendario hondureño es un instante dado. */

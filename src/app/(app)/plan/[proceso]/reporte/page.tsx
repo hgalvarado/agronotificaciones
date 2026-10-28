@@ -4,6 +4,23 @@ import { getPermisos, puede } from '@/lib/auth'
 import { Alerta } from '@/components/ui/Primitivos'
 import { IconChevronLeft } from '@/components/ui/Icons'
 import { BotonImprimir } from '@/components/plan/BotonImprimir'
+import { Porcentaje } from '@/components/trasplante/Porcentaje'
+import {
+  Barra,
+  Bloque,
+  CLASE_FILA,
+  CLASE_SUBTOTAL,
+  CORP,
+  Dato,
+  ESTILO_FILA,
+  ESTILO_SUBTOTAL,
+  Encabezado,
+  IMPRESION_REPORTE,
+  Kpi,
+  Membrete,
+  PieOndas,
+  TotalGeneral,
+} from '@/components/reporte/Corporativo'
 import type { AvanceRow, LaborDelProceso, Proceso, ZonaRow } from '@/components/plan/tipos'
 import { hoyIso as hoyEnHonduras, instanteDeFecha, ZONA } from '@/lib/fechas'
 
@@ -67,12 +84,12 @@ const PANTALLA: Record<string, string> = {
   APS: 'plan_aps',
 }
 
-/**
- * Azul del encabezado de sus tablas de Excel. Se escribe a mano y no con
- * un color de Tailwind porque el reporte se imprime y se envía por
- * correo a gerencia: tiene que salir igual al que ellos ya reconocen.
+/*
+ * Identidad visual: gemelo del reporte de Trasplante (guía Agrolíbano).
+ * Las piezas —membrete, tarjetas, encabezado verde, pie con ondas— vienen
+ * de `components/reporte/Corporativo`; el azul #1f3864 del Excel viejo
+ * quedó retirado.
  */
-const AZUL = '#1f3864'
 
 export default async function ReportePage({
   params: rutaParams,
@@ -246,10 +263,19 @@ export default async function ReportePage({
 
   const totalDiario = lineas.reduce((a, l) => a + Number(l.avance_mz ?? 0), 0)
 
+  const etapas = [...porEtapa.entries()].sort((a, b) => a[0] - b[0])
+  const zonasOrdenadas = [...zonasAgrupadas.entries()].sort((a, b) =>
+    a[0].localeCompare(b[0], 'es', { numeric: true }),
+  )
+  const pctNum = (v: number | string | null | undefined) =>
+    v === null || v === undefined ? null : Number(v)
+
   return (
-    <div className="mx-auto max-w-4xl p-4 lg:p-6 print:max-w-none print:p-0">
+    <div className="mx-auto max-w-[1400px] p-4 lg:p-6 print:max-w-none print:p-0">
+      <style dangerouslySetInnerHTML={{ __html: IMPRESION_REPORTE }} />
+
       {/* Nada de esto sale impreso */}
-      <div className="mb-4 flex flex-col gap-3 print:hidden">
+      <div className="no-imprimir mb-4 flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Link
             href={`/plan/${codigo}`}
@@ -265,38 +291,25 @@ export default async function ReportePage({
             de servidor: la dirección lleva las fechas, así que se puede
             guardar o mandar por chat y el otro ve el mismo reporte. */}
         <form
-          className="flex flex-wrap items-end gap-2 rounded-2xl border border-slate-200/80 bg-white p-3 shadow-[var(--shadow-card)]"
+          className="flex flex-wrap items-end gap-2 rounded-2xl border bg-white p-3 shadow-[var(--shadow-card)]"
+          style={{ borderColor: CORP.borde }}
           action={`/plan/${codigo}/reporte`}
         >
           <input type="hidden" name="temporada" value={temporada.id} />
 
           <label className="flex flex-col gap-1">
-            <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
-              Del
-            </span>
-            <input
-              type="date"
-              name="desde"
-              defaultValue={desde}
-              max={hoyIso}
-              className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm focus:border-brand-600 focus:outline-none focus:ring-4 focus:ring-brand-600/10"
-            />
+            <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Del</span>
+            <input type="date" name="desde" defaultValue={desde} max={hoyIso} className={CLASE_FECHA} />
           </label>
 
           <label className="flex flex-col gap-1">
             <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Al</span>
-            <input
-              type="date"
-              name="hasta"
-              defaultValue={hasta}
-              max={hoyIso}
-              className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm focus:border-brand-600 focus:outline-none focus:ring-4 focus:ring-brand-600/10"
-            />
+            <input type="date" name="hasta" defaultValue={hasta} max={hoyIso} className={CLASE_FECHA} />
           </label>
 
           <button
             type="submit"
-            className="rounded-lg bg-slate-900 px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
+            className="rounded-lg bg-brand-700 px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-800"
           >
             Ver
           </button>
@@ -304,110 +317,119 @@ export default async function ReportePage({
           {(hasta !== hoyIso || esRango) && (
             <Link
               href={`/plan/${codigo}/reporte?temporada=${temporada.id}&desde=${hoyIso}&hasta=${hoyIso}`}
-              className="rounded-lg px-2.5 py-2 text-sm font-semibold text-brand-700 transition-colors hover:bg-brand-50"
+              className="rounded-lg border border-brand-700 bg-white px-2.5 py-2 text-sm font-semibold text-brand-700 transition-colors hover:bg-brand-50"
             >
               Volver a hoy
             </Link>
           )}
         </form>
+
+        {/* En celular las tablas se deslizan dentro de su caja. */}
+        <p className="text-[11px] text-slate-400 sm:hidden">
+          Las tablas se deslizan de lado con el dedo para ver el resto de las columnas.
+        </p>
       </div>
 
-      {/* En celular las tablas se deslizan dentro de su caja. Se avisa una
-          vez, arriba, en vez de repetirlo en cada tabla. */}
-      <p className="mb-2 text-[11px] text-slate-400 sm:hidden print:hidden">
-        Las tablas se deslizan de lado con el dedo para ver el resto de las columnas.
-      </p>
+      <article className="hoja-reporte flex flex-col gap-5">
+        <Membrete
+          titulo="Reporte de avance diario de emplasticado"
+          subtitulo={`Del ${fechaLarga(desde)} al ${fechaLarga(hasta)}`}
+          lineas={[`Torre Control Finca Santa Rosa · ${temporada.nombre}`]}
+          marca={
+            hasta !== hoyIso ? (
+              <span className="mt-1 inline-block rounded bg-naranja-100 px-1.5 py-0.5 text-[11px] font-bold text-naranja-800 print:hidden">
+                reporte retroactivo
+              </span>
+            ) : undefined
+          }
+        />
 
-      <article className="flex flex-col gap-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-[var(--shadow-card)] sm:p-6 print:rounded-none print:border-0 print:p-0 print:shadow-none">
-        {/* ---------------------------- Portada --------------------------- */}
-        {/* Las cuatro líneas van tal cual él las dicta: es el encabezado
-            que gerencia ya reconoce del correo diario. */}
-        <header className="border-b-2 pb-3 text-center" style={{ borderColor: AZUL }}>
-          <h1
-            className="text-lg font-bold uppercase tracking-tight sm:text-xl"
-            style={{ color: AZUL }}
-          >
-            Agropecuaria Montelíbano S.A.
-          </h1>
-          <p
-            className="mt-0.5 text-sm font-bold uppercase tracking-tight sm:text-base"
-            style={{ color: AZUL }}
-          >
-            Reporte avance diario: Emplasticado del {fechaLarga(desde)} al {fechaLarga(hasta)}
-          </p>
-          <p className="mt-0.5 text-xs font-semibold uppercase tracking-widest text-slate-600">
-            Torre Control Finca Santa Rosa
-          </p>
-          <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">
-            {temporada.nombre}
-          </p>
-          {hasta !== hoyIso && (
-            <span className="mt-1 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-bold text-amber-800 print:hidden">
-              reporte retroactivo
-            </span>
-          )}
-        </header>
-
-        {/* ------------------------- Lo que importa ----------------------- */}
-        <section>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {/* ==================== 1 · ESTADÍSTICAS GLOBALES =================== */}
+        <Bloque numero={1} titulo={`Estadísticas globales · al ${fechaLarga(hasta)}`}>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Kpi etiqueta="Área planificada" valor={`${num.format(plan)} mz`} />
-            <Kpi etiqueta="Área ejecutada" valor={`${num.format(hecho)} mz`} />
-            <Kpi etiqueta="Pendiente" valor={`${num.format(pendiente)} mz`} />
-            <Kpi etiqueta="% Avance" valor={`${pct.toFixed(1)}%`} grande />
-          </div>
-
-          <div className="mt-3 h-3 w-full overflow-hidden rounded-full bg-slate-100 print:border print:border-slate-300">
-            <div
-              className="h-full rounded-full"
-              style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: AZUL }}
+            <Kpi etiqueta="Área ejecutada" valor={`${num.format(hecho)} mz`} fuerte />
+            <Kpi
+              etiqueta="Pendiente"
+              valor={`${num.format(pendiente)} mz`}
+              tono={pendiente > 0.009 ? 'alerta' : 'ok'}
             />
+            <Kpi etiqueta="% Avance" valor={`${pct.toFixed(1)}%`} barra={plan > 0 ? pct : null} fuerte />
           </div>
 
-          <p className="mt-1.5 text-[11px] text-slate-400">
+          {etapas.length > 0 && (
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {etapas.map(([etapa, g]) => {
+                const p = g.plan > 0 ? (g.hecho / g.plan) * 100 : null
+                const falta = Math.max(g.plan - g.hecho, 0)
+                return (
+                  <div
+                    key={etapa}
+                    className="rounded-xl border bg-white p-3 [-webkit-print-color-adjust:exact] [print-color-adjust:exact]"
+                    style={{ borderColor: CORP.borde, borderLeft: `4px solid ${CORP.lima}` }}
+                  >
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-sm font-bold" style={{ color: CORP.marino }}>
+                        Etapa {etapa}
+                      </span>
+                      <Porcentaje valor={p} />
+                    </div>
+                    <Barra valor={p} />
+                    <dl className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
+                      <Dato etiqueta="Plan" valor={num.format(g.plan)} />
+                      <Dato etiqueta="Ejecutado" valor={num.format(g.hecho)} fuerte />
+                      <Dato etiqueta="Pendiente" valor={num.format(falta)} alerta={falta > 0.009} />
+                    </dl>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          <p className="mt-2 text-[11px] text-slate-500">
             Acumulado desde el inicio de la temporada
             {temporada.fecha_inicio ? ` (${fechaLarga(temporada.fecha_inicio)})` : ''} hasta el{' '}
             {fechaLarga(hasta)}.
           </p>
-        </section>
+        </Bloque>
 
-        {/* ========================= 1 · AVANCE DIARIO ===================== */}
-        <section>
-          <Titulo numero={1}>
-            Avance diario{esRango ? ` · del ${fechaCorta(desde)} al ${fechaCorta(hasta)}` : ''}
-          </Titulo>
-
+        {/* ========================= 2 · AVANCE DIARIO ===================== */}
+        <Bloque
+          numero={2}
+          titulo={`Avance diario${esRango ? ` · del ${fechaCorta(desde)} al ${fechaCorta(hasta)}` : ''}`}
+          extra={
+            dias.length > 0 ? (
+              <span className="text-xs" style={{ color: CORP.marino }}>
+                Ejecutado en el rango <strong>{num.format(totalDiario)} mz</strong>
+              </span>
+            ) : undefined
+          }
+        >
           {dias.length === 0 ? (
             <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-500">
-              No hay avance registrado{' '}
-              {esRango ? 'en el rango seleccionado' : `el ${fechaLarga(hasta)}`}.
+              No hay avance registrado {esRango ? 'en el rango seleccionado' : `el ${fechaLarga(hasta)}`}.
             </p>
           ) : (
-            <div className="scroll-suave overflow-x-auto">
+            <div className="scroll-suave -mx-1 overflow-x-auto">
               <table className="w-full min-w-[680px] border-collapse text-sm">
                 <Encabezado>
-                  <th className="px-2 py-1.5 text-left">Fecha</th>
-                  <th className="px-2 py-1.5 text-left">UT</th>
-                  <th className="px-2 py-1.5 text-left">Nomenclatura</th>
-                  <th className="px-2 py-1.5 text-left">Zona</th>
-                  <th className="px-2 py-1.5 text-left">Proveedores</th>
-                  <th className="px-2 py-1.5 text-right">Avance</th>
+                  <th className="px-2 py-1.5">Fecha</th>
+                  <th className="px-2 py-1.5">UT</th>
+                  <th className="px-2 py-1.5">Nomenclatura</th>
+                  <th className="px-2 py-1.5">Zona</th>
+                  <th className="px-2 py-1.5">Proveedores</th>
+                  <th className="px-2 py-1.5 text-right">Avance (mz)</th>
                 </Encabezado>
                 <tbody>
                   {dias.map(([fecha, filas]) => {
                     const total = filas.reduce((a, l) => a + Number(l.avance_mz), 0)
                     const cuerpo = filas.map((l, i) => (
-                      <tr
-                        key={`${fecha}-${l.lote_temporada_id}`}
-                        className="border-b border-slate-100"
-                      >
+                      <tr key={`${fecha}-${l.lote_temporada_id}`} className={CLASE_FILA} style={ESTILO_FILA}>
                         <td className="whitespace-nowrap px-2 py-1 text-slate-500">
                           {i === 0 ? fechaCorta(fecha) : ''}
                         </td>
-                        <td className="whitespace-nowrap px-2 py-1 font-semibold text-slate-700">
-                          {l.ut}
-                        </td>
-                        <td className="px-2 py-1 text-slate-600">{l.nomenclatura ?? '—'}</td>
+                        <td className="whitespace-nowrap px-2 py-1 font-semibold">{l.ut}</td>
+                        <td className="px-2 py-1">{l.nomenclatura ?? '—'}</td>
                         <td className="px-2 py-1 text-slate-500">{l.zona ?? '—'}</td>
                         <td className="px-2 py-1 text-slate-500">{l.proveedores ?? '—'}</td>
                         <td className="px-2 py-1 text-right font-semibold tabular-nums">
@@ -420,179 +442,121 @@ export default async function ReportePage({
                     //  el subtotal repetiría el total general.
                     return esRango
                       ? cuerpo.concat(
-                          <tr
-                            key={`${fecha}-sub`}
-                            className="border-b border-slate-300 bg-slate-50 font-bold print:bg-white"
-                          >
+                          <tr key={`${fecha}-sub`} className={CLASE_SUBTOTAL} style={ESTILO_SUBTOTAL}>
                             <td className="px-2 py-1" colSpan={5}>
                               Subtotal {fechaLarga(fecha)}
                             </td>
-                            <td className="px-2 py-1 text-right tabular-nums">
-                              {num.format(total)}
-                            </td>
+                            <td className="px-2 py-1 text-right tabular-nums">{num.format(total)}</td>
                           </tr>,
                         )
                       : cuerpo
                   })}
                   <TotalGeneral colSpan={5}>
-                    <td className="px-2 py-1.5 text-right tabular-nums">
-                      {num.format(totalDiario)}
-                    </td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{num.format(totalDiario)}</td>
                   </TotalGeneral>
                 </tbody>
               </table>
             </div>
           )}
-        </section>
+        </Bloque>
 
-        {/* ===================== 2 · POR ZONA Y ENCARGADO ================== */}
-        {zonasAgrupadas.size > 0 && (
-          <section>
-            <Titulo numero={2}>Avance por zona y encargado</Titulo>
-            <div className="scroll-suave overflow-x-auto">
-              <table className="w-full min-w-[520px] border-collapse text-sm">
+        {/* ===================== 3 · POR ZONA Y ENCARGADO ================== */}
+        {zonasOrdenadas.length > 0 && (
+          <Bloque numero={3} titulo="Avance por zona y encargado">
+            <div className="scroll-suave -mx-1 overflow-x-auto">
+              <table className="w-full min-w-[560px] border-collapse text-sm">
                 <Encabezado>
-                  <th className="px-2 py-1.5 text-left">Encargado</th>
-                  <th className="px-2 py-1.5 text-left">Zona</th>
-                  <th className="px-2 py-1.5 text-left">Etapa</th>
-                  <th className="px-2 py-1.5 text-right">Plan</th>
-                  <th className="px-2 py-1.5 text-right">Avance</th>
+                  <th className="px-2 py-1.5">Encargado</th>
+                  <th className="px-2 py-1.5">Zona</th>
+                  <th className="px-2 py-1.5">Etapa</th>
+                  <th className="px-2 py-1.5 text-right">Plan (mz)</th>
+                  <th className="px-2 py-1.5 text-right">Avance (mz)</th>
                   <th className="px-2 py-1.5 text-right">%</th>
                 </Encabezado>
                 <tbody>
-                  {[...zonasAgrupadas.entries()]
-                    .sort((a, b) => a[0].localeCompare(b[0], 'es', { numeric: true }))
-                    .map(([zona, filas]) => {
-                      const sPlan = filas.reduce((a, r) => a + Number(r.area_plan), 0)
-                      const sHecho = filas.reduce((a, r) => a + Number(r.mz_avance), 0)
-                      const sPct = sPlan > 0 ? (sHecho / sPlan) * 100 : 0
-                      return filas
-                        .map((r, i) => (
-                          <tr key={`${zona}-${r.etapa}`} className="border-b border-slate-100">
-                            <td className="px-2 py-1 text-slate-600">
-                              {i === 0 ? (r.encargado ?? '—') : ''}
-                            </td>
-                            <td className="px-2 py-1 font-semibold text-slate-700">
-                              {i === 0 ? zona : ''}
-                            </td>
-                            <td className="px-2 py-1 text-slate-500">Etapa {r.etapa}</td>
-                            <td className="px-2 py-1 text-right tabular-nums">
-                              {num.format(Number(r.area_plan))}
-                            </td>
-                            <td className="px-2 py-1 text-right tabular-nums">
-                              {num.format(Number(r.mz_avance))}
-                            </td>
-                            <td className="px-2 py-1 text-right font-semibold tabular-nums">
-                              {r.pct_avance !== null ? `${Number(r.pct_avance).toFixed(0)}%` : '—'}
-                            </td>
-                          </tr>
-                        ))
-                        .concat(
-                          <tr
-                            key={`${zona}-total`}
-                            className="border-b-2 border-slate-300 bg-slate-50 font-bold print:bg-white"
-                          >
-                            <td className="px-2 py-1" />
-                            <td className="px-2 py-1">Total {zona}</td>
-                            <td className="px-2 py-1" />
-                            <td className="px-2 py-1 text-right tabular-nums">
-                              {num.format(sPlan)}
-                            </td>
-                            <td className="px-2 py-1 text-right tabular-nums">
-                              {num.format(sHecho)}
-                            </td>
-                            <td className="px-2 py-1 text-right tabular-nums">
-                              {sPct.toFixed(0)}%
-                            </td>
-                          </tr>,
-                        )
-                    })}
+                  {zonasOrdenadas.map(([zona, filas]) => {
+                    const sPlan = filas.reduce((a, r) => a + Number(r.area_plan), 0)
+                    const sHecho = filas.reduce((a, r) => a + Number(r.mz_avance), 0)
+                    const sPct = sPlan > 0 ? (sHecho / sPlan) * 100 : null
+                    return filas
+                      .map((r, i) => (
+                        <tr key={`${zona}-${r.etapa}`} className={CLASE_FILA} style={ESTILO_FILA}>
+                          <td className="px-2 py-1">{i === 0 ? (r.encargado ?? '—') : ''}</td>
+                          <td className="px-2 py-1 font-semibold">{i === 0 ? zona : ''}</td>
+                          <td className="px-2 py-1 text-slate-500">Etapa {r.etapa}</td>
+                          <td className="px-2 py-1 text-right tabular-nums text-slate-500">
+                            {num.format(Number(r.area_plan))}
+                          </td>
+                          <td className="px-2 py-1 text-right font-semibold tabular-nums">
+                            {num.format(Number(r.mz_avance))}
+                          </td>
+                          <td className="px-2 py-1 text-right">
+                            <Porcentaje valor={pctNum(r.pct_avance)} />
+                          </td>
+                        </tr>
+                      ))
+                      .concat(
+                        <tr key={`${zona}-total`} className={CLASE_SUBTOTAL} style={ESTILO_SUBTOTAL}>
+                          <td className="px-2 py-1" />
+                          <td className="px-2 py-1">Total {zona}</td>
+                          <td className="px-2 py-1" />
+                          <td className="px-2 py-1 text-right tabular-nums">{num.format(sPlan)}</td>
+                          <td className="px-2 py-1 text-right tabular-nums">{num.format(sHecho)}</td>
+                          <td className="px-2 py-1 text-right">
+                            <Porcentaje valor={sPct} />
+                          </td>
+                        </tr>,
+                      )
+                  })}
                   <TotalGeneral colSpan={3}>
                     <td className="px-2 py-1.5 text-right tabular-nums">{num.format(plan)}</td>
                     <td className="px-2 py-1.5 text-right tabular-nums">{num.format(hecho)}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{pct.toFixed(1)}%</td>
+                    <td className="px-2 py-1.5 text-right">
+                      <Porcentaje valor={plan > 0 ? pct : null} />
+                    </td>
                   </TotalGeneral>
                 </tbody>
               </table>
             </div>
-          </section>
-        )}
-
-        {/* ========================= 3 · POR ETAPA ========================= */}
-        {porEtapa.size > 0 && (
-          <section>
-            <Titulo numero={3}>Avance por etapa</Titulo>
-            <div className="flex flex-col gap-2">
-              {[...porEtapa.entries()]
-                .sort((a, b) => a[0] - b[0])
-                .map(([etapa, g]) => {
-                  const p = g.plan > 0 ? (g.hecho / g.plan) * 100 : 0
-                  return (
-                    <div key={etapa} className="flex items-center gap-3">
-                      <span className="w-16 shrink-0 text-sm font-semibold text-slate-700">
-                        Etapa {etapa}
-                      </span>
-                      <div className="h-4 flex-1 overflow-hidden rounded bg-slate-100 print:border print:border-slate-300">
-                        <div
-                          className={`h-full ${
-                            p >= 99 ? 'bg-emerald-600' : p >= 50 ? '' : 'bg-amber-500'
-                          }`}
-                          style={{
-                            width: `${Math.min(p, 100)}%`,
-                            ...(p < 99 && p >= 50 ? { backgroundColor: AZUL } : {}),
-                          }}
-                        />
-                      </div>
-                      <span className="w-40 shrink-0 text-right text-xs tabular-nums text-slate-500">
-                        {num.format(g.hecho)} / {num.format(g.plan)} mz
-                        <strong className="ml-1.5 text-slate-900">{p.toFixed(0)}%</strong>
-                      </span>
-                    </div>
-                  )
-                })}
-            </div>
-          </section>
+          </Bloque>
         )}
 
         {/* ====================== 4 · LOTES EJECUTADOS ===================== */}
-        <section>
-          <Titulo numero={4}>
-            Lotes ejecutados ({ejecutados.length} {ejecutados.length === 1 ? 'lote' : 'lotes'})
-          </Titulo>
-
+        <Bloque
+          numero={4}
+          titulo={`Lotes ejecutados (${ejecutados.length} ${ejecutados.length === 1 ? 'lote' : 'lotes'})`}
+        >
           {ejecutados.length === 0 ? (
             <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-500">
               Al {fechaLarga(hasta)} no hay ningún lote con avance registrado.
             </p>
           ) : (
-            <div className="scroll-suave overflow-x-auto">
-              <table className="w-full min-w-[720px] border-collapse text-sm">
+            <div className="scroll-suave -mx-1 overflow-x-auto">
+              <table className="w-full min-w-[760px] border-collapse text-sm">
                 <Encabezado>
-                  <th className="px-2 py-1.5 text-left">UT</th>
-                  <th className="px-2 py-1.5 text-left">Nomenclatura</th>
-                  <th className="px-2 py-1.5 text-left">Zona</th>
-                  <th className="px-2 py-1.5 text-right">Plan</th>
-                  <th className="px-2 py-1.5 text-right">Ejecutado</th>
+                  <th className="px-2 py-1.5">UT</th>
+                  <th className="px-2 py-1.5">Nomenclatura</th>
+                  <th className="px-2 py-1.5">Zona</th>
+                  <th className="px-2 py-1.5 text-right">Plan (mz)</th>
+                  <th className="px-2 py-1.5 text-right">Ejecutado (mz)</th>
                   <th className="px-2 py-1.5 text-right">%</th>
-                  <th className="px-2 py-1.5 text-left">Fecha inicio</th>
-                  <th className="px-2 py-1.5 text-left">Última fecha</th>
+                  <th className="px-2 py-1.5">Fecha inicio</th>
+                  <th className="px-2 py-1.5">Última fecha</th>
                 </Encabezado>
                 <tbody>
                   {ejecutados.map((r) => (
-                    <tr key={r.lote_temporada_id} className="border-b border-slate-100">
-                      <td className="whitespace-nowrap px-2 py-1 font-semibold text-slate-700">
-                        {r.ut}
-                      </td>
-                      <td className="px-2 py-1 text-slate-600">{r.nomenclatura ?? '—'}</td>
+                    <tr key={r.lote_temporada_id} className={CLASE_FILA} style={ESTILO_FILA}>
+                      <td className="whitespace-nowrap px-2 py-1 font-semibold">{r.ut}</td>
+                      <td className="px-2 py-1">{r.nomenclatura ?? '—'}</td>
                       <td className="px-2 py-1 text-slate-500">{r.zona ?? '—'}</td>
-                      <td className="px-2 py-1 text-right tabular-nums">
+                      <td className="px-2 py-1 text-right tabular-nums text-slate-500">
                         {num.format(Number(r.area_plan ?? 0))}
                       </td>
                       <td className="px-2 py-1 text-right font-semibold tabular-nums">
                         {num.format(Number(r.mz_avance ?? 0))}
                       </td>
-                      <td className="px-2 py-1 text-right font-semibold tabular-nums">
-                        {r.pct_avance !== null ? `${Number(r.pct_avance).toFixed(0)}%` : '—'}
+                      <td className="px-2 py-1 text-right">
+                        <Porcentaje valor={pctNum(r.pct_avance)} />
                       </td>
                       <td className="whitespace-nowrap px-2 py-1 text-slate-500">
                         {r.fecha_inicio ? fechaCorta(r.fecha_inicio) : '—'}
@@ -609,7 +573,9 @@ export default async function ReportePage({
                     <td className="px-2 py-1.5 text-right tabular-nums">
                       {num.format(ejecutados.reduce((a, r) => a + Number(r.mz_avance ?? 0), 0))}
                     </td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{pct.toFixed(1)}%</td>
+                    <td className="px-2 py-1.5 text-right">
+                      <Porcentaje valor={plan > 0 ? pct : null} />
+                    </td>
                     <td className="px-2 py-1.5" colSpan={2} />
                   </TotalGeneral>
                 </tbody>
@@ -618,24 +584,28 @@ export default async function ReportePage({
           )}
 
           {sinTocar > 0 && (
-            <p className="mt-1.5 text-[11px] text-slate-400">
+            <p className="mt-1.5 text-[11px]" style={{ color: CORP.naranja }}>
               {sinTocar === 1 ? 'Queda 1 lote' : `Quedan ${sinTocar} lotes`} del plan sin registrar
               avance. No se listan aquí a propósito: este cuadro es lo ejecutado.
             </p>
           )}
-        </section>
+        </Bloque>
 
-        <footer className="border-t border-slate-200 pt-3 text-[11px] text-slate-400">
-          Generado por AgroNotificaciones · acumulado al {fechaLarga(hasta)}
-          {hasta !== hoyIso ? ` (impreso el ${fechaLarga(hoyIso)})` : ''}. El área planificada sale
-          del plan de mecanización y el avance de las labores capturadas en campo; ambos se
-          actualizan solos. El seguimiento de plan y etapas corresponde
-          {labor ? ` a ${labor.labor_nombre}` : ' al emplasticado'}.
-        </footer>
+        <PieOndas>
+          <p className="mt-1 text-center text-[10px] text-slate-500">
+            Generado por AgroNotificaciones · acumulado al {fechaLarga(hasta)}
+            {hasta !== hoyIso ? ` (impreso el ${fechaLarga(hoyIso)})` : ''}. El área planificada sale
+            del plan de mecanización y el avance de las labores capturadas en campo. El seguimiento de
+            plan y etapas corresponde{labor ? ` a ${labor.labor_nombre}` : ' al emplasticado'}.
+          </p>
+        </PieOndas>
       </article>
     </div>
   )
 }
+
+const CLASE_FECHA =
+  'rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm focus:border-brand-600 focus:outline-none focus:ring-4 focus:ring-brand-600/10'
 
 /* ------------------------------------------------------------------ */
 
@@ -691,68 +661,4 @@ function agrupar(crudas: LineaCruda[]): FilaDiaria[] {
     .sort(
       (a, b) => b.fecha.localeCompare(a.fecha) || a.ut.localeCompare(b.ut, 'es', { numeric: true }),
     )
-}
-
-/** Encabezado azul, como en las tablas de Excel que él ya manda. */
-function Encabezado({ children }: { children: React.ReactNode }) {
-  return (
-    <thead>
-      <tr
-        className="text-[11px] font-bold uppercase tracking-wide text-white [-webkit-print-color-adjust:exact] [print-color-adjust:exact]"
-        style={{ backgroundColor: AZUL }}
-      >
-        {children}
-      </tr>
-    </thead>
-  )
-}
-
-/** La fila de «Total general», en negrita y con línea gruesa arriba. */
-function TotalGeneral({ colSpan, children }: { colSpan: number; children: React.ReactNode }) {
-  return (
-    <tr className="border-t-2 text-sm font-bold" style={{ borderColor: AZUL }}>
-      <td className="px-2 py-1.5" colSpan={colSpan}>
-        Total general
-      </td>
-      {children}
-    </tr>
-  )
-}
-
-function Titulo({ numero, children }: { numero: number; children: React.ReactNode }) {
-  return (
-    <h2 className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-500">
-      <span
-        className="flex h-5 w-5 items-center justify-center rounded text-[11px] font-bold text-white [-webkit-print-color-adjust:exact] [print-color-adjust:exact]"
-        style={{ backgroundColor: AZUL }}
-      >
-        {numero}
-      </span>
-      {children}
-    </h2>
-  )
-}
-
-function Kpi({
-  etiqueta,
-  valor,
-  grande = false,
-}: {
-  etiqueta: string
-  valor: string
-  grande?: boolean
-}) {
-  return (
-    <div className="rounded-xl border border-slate-200 px-3 py-2.5">
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{etiqueta}</p>
-      <p
-        className={`mt-0.5 font-bold tracking-tight tabular-nums ${
-          grande ? 'text-3xl' : 'text-xl text-slate-900'
-        }`}
-        style={grande ? { color: AZUL } : undefined}
-      >
-        {valor}
-      </p>
-    </div>
-  )
 }

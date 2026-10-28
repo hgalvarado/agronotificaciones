@@ -7,26 +7,43 @@
  * los campos que se dejan en blanco NO se tocan. Esa es la diferencia
  * entera, y tenerla en un solo sitio evita que una de las dos versiones
  * se quede atrás.
+ *
+ * 79 · Es también el editor de UNA fila desde el lápiz de la cuadrícula
+ * (la celda ya no edita: los desplegables se cortaban dentro del
+ * `overflow` de la tabla). En una sola fila suma observaciones, el lote
+ * de variedad elegido de las recepciones y los productos aplicados.
  */
 
-import { useState } from 'react'
-import { Alerta, Boton, Campo, Entrada, Selector } from '@/components/ui/Primitivos'
+import { useMemo, useState } from 'react'
+import { Alerta, AreaTexto, Boton, Campo, Entrada, Selector } from '@/components/ui/Primitivos'
 import { Modal } from '@/components/ui/Modal'
 import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
 import { mensajeDeError } from '@/lib/errores'
 import {
+  guardarProductosSiembra,
   guardarSiembra,
   guardarSiembrasEnMasa,
   type CamposSiembra,
 } from '@/lib/trasplante/repositorioCliente'
 import { esFecha } from '@/lib/trasplante/validacion'
-import { CICLOS_SIEMBRA, type FilaSiembra, type LoteOpcion, type Variedad } from '@/lib/trasplante/tipos'
+import {
+  CICLOS_SIEMBRA,
+  type FilaRecepcion,
+  type FilaSiembra,
+  type LoteOpcion,
+  type Material,
+  type ProductoAplicado,
+  type Variedad,
+} from '@/lib/trasplante/tipos'
+import { ayudaLoteVariedad, EditorProductos, opcionesLoteVariedad } from './CamposSiembra'
 
 export function EditarSiembraModal({
   fila,
   enMasa,
   lotes,
   variedades,
+  recepciones = [],
+  materiales = [],
   onCerrar,
   onGuardado,
 }: {
@@ -35,6 +52,10 @@ export function EditarSiembraModal({
   enMasa: string[] | null
   lotes: LoteOpcion[]
   variedades: Variedad[]
+  /** De dónde sale el lote de variedad (79). */
+  recepciones?: FilaRecepcion[]
+  /** El catálogo de materiales para los productos (79). */
+  materiales?: Material[]
   onCerrar: () => void
   onGuardado: () => void
 }) {
@@ -47,6 +68,8 @@ export function EditarSiembraModal({
       enMasa={enMasa}
       lotes={lotes}
       variedades={variedades}
+      recepciones={recepciones}
+      materiales={materiales}
       onCerrar={onCerrar}
       onGuardado={onGuardado}
     />
@@ -58,6 +81,8 @@ function Formulario({
   enMasa,
   lotes,
   variedades,
+  recepciones,
+  materiales,
   onCerrar,
   onGuardado,
 }: {
@@ -65,6 +90,8 @@ function Formulario({
   enMasa: string[] | null
   lotes: LoteOpcion[]
   variedades: Variedad[]
+  recepciones: FilaRecepcion[]
+  materiales: Material[]
   onCerrar: () => void
   onGuardado: () => void
 }) {
@@ -81,8 +108,21 @@ function Formulario({
       ? ''
       : String(fila.plantas_reportadas)
   )
+  const [observaciones, setObservaciones] = useState(fila?.observaciones ?? '')
+  const [productos, setProductos] = useState<ProductoAplicado[]>(() =>
+    (fila?.productos ?? []).map((p) => ({
+      material_id: p.material_id,
+      cantidad: p.cantidad === null || p.cantidad === undefined ? '' : String(p.cantidad),
+      unidad: p.unidad ?? '',
+    }))
+  )
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const opcionesLote = useMemo(
+    () => opcionesLoteVariedad(recepciones, variedadId, fecha, loteVariedad),
+    [recepciones, variedadId, fecha, loteVariedad]
+  )
 
   async function guardar() {
     const campos: CamposSiembra = {}
@@ -106,8 +146,10 @@ function Formulario({
     }
     // En una sola fila, vaciar el campo SÍ significa borrarlo; en masa,
     // significa «no lo toques».
-    if (!masivo) campos.lote_variedad = loteVariedad || null
-    else if (loteVariedad.trim()) campos.lote_variedad = loteVariedad
+    if (!masivo) {
+      campos.lote_variedad = loteVariedad || null
+      campos.observaciones = observaciones.trim() || null
+    } else if (loteVariedad.trim()) campos.lote_variedad = loteVariedad
 
     if (Object.keys(campos).length === 0) {
       return setError('No hay ningún cambio que guardar.')
@@ -118,8 +160,20 @@ function Formulario({
     const { error: e } = masivo
       ? await guardarSiembrasEnMasa(enMasa ?? [], campos)
       : await guardarSiembra(fila!.id, campos)
+    if (e) {
+      setGuardando(false)
+      return setError(mensajeDeError(e, 'No se pudo guardar.'))
+    }
+    // Los productos van en su propia llamada: dejan la lista EXACTAMENTE
+    // como queda en el formulario (`fn_guardar_productos_siembra`).
+    if (!masivo) {
+      const { error: e2 } = await guardarProductosSiembra(fila!.id, productos)
+      if (e2) {
+        setGuardando(false)
+        return setError(mensajeDeError(e2, 'La siembra se guardó, pero no los productos.'))
+      }
+    }
     setGuardando(false)
-    if (e) return setError(mensajeDeError(e, 'No se pudo guardar.'))
     onGuardado()
     onCerrar()
   }
@@ -129,6 +183,7 @@ function Formulario({
       abierto
       onCerrar={onCerrar}
       titulo={masivo ? `Editar ${enMasa?.length} registros` : `Editar ${fila?.ut}`}
+      ancho={masivo ? 'normal' : 'ancho'}
       pie={
         <div className="flex justify-end gap-2">
           <Boton variante="secundario" onClick={onCerrar} disabled={guardando}>
@@ -219,9 +274,44 @@ function Formulario({
           </Campo>
         </div>
 
-        <Campo etiqueta="Lote de variedad">
-          <Entrada value={loteVariedad} onChange={(e) => setLoteVariedad(e.target.value)} />
-        </Campo>
+        {masivo ? (
+          <Campo etiqueta="Lote de variedad">
+            <Entrada value={loteVariedad} onChange={(e) => setLoteVariedad(e.target.value)} />
+          </Campo>
+        ) : (
+          <>
+            <Campo etiqueta="Lote de variedad" ayuda={ayudaLoteVariedad(variedadId, opcionesLote)}>
+              <SelectorBuscable
+                valor={loteVariedad}
+                onCambiar={setLoteVariedad}
+                opciones={opcionesLote}
+                placeholder="Elegir de las recepciones…"
+                etiquetaBusqueda="Buscar lote…"
+                textoVacio="Sin lote de variedad"
+                disabled={!variedadId}
+              />
+            </Campo>
+
+            <Campo etiqueta="Observaciones">
+              <AreaTexto
+                rows={2}
+                value={observaciones}
+                onChange={(e) => setObservaciones(e.target.value)}
+              />
+            </Campo>
+
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Productos aplicados
+              </span>
+              <EditorProductos
+                productos={productos}
+                onCambiar={setProductos}
+                materiales={materiales}
+              />
+            </div>
+          </>
+        )}
       </div>
     </Modal>
   )

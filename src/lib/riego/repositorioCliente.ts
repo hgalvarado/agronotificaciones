@@ -107,7 +107,12 @@ export async function leerLotesRegables(
   return { datos: (data as LoteRegable[]) ?? [], error: null }
 }
 
-export async function guardarTurno(e: EntradaTurno, lineas: LineaTurno[]): Promise<Resultado> {
+export async function guardarTurno(
+  e: EntradaTurno,
+  lineas: LineaTurno[],
+  /** El usuario confirmó regar por encima del tope (81). Queda auditado. */
+  forzarExceso = false
+): Promise<Resultado> {
   const { error } = await createClient().rpc('fn_guardar_turno_riego', {
     p_turno_id: e.turnoId,
     p_temporada_id: e.temporadaId,
@@ -122,7 +127,7 @@ export async function guardarTurno(e: EntradaTurno, lineas: LineaTurno[]): Promi
     p_estado: e.estado,
     p_responsable: e.responsable.trim() || null,
     p_comentarios: e.comentarios.trim() || null,
-    p_lotes: lineasParaGuardar(lineas),
+    p_lotes: lineasParaGuardar(lineas, forzarExceso),
     p_turno_catalogo_id: e.turnoCatalogoId || null,
     p_estacion_riego_id: e.estacionRiegoId || null,
   })

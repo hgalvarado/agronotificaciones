@@ -28,6 +28,7 @@ export function SelectorCelda({
   className = '',
   textoVacio = '—',
   onCrear,
+  onCerrar,
 }: {
   valor: string
   opciones: OpcionCelda[]
@@ -40,6 +41,8 @@ export function SelectorCelda({
    * elegido. Devuelve el identificador de lo recién creado.
    */
   onCrear?: (texto: string) => Promise<string>
+  /** El panel se cerró sin elegir (Escape, clic fuera). */
+  onCerrar?: () => void
 }) {
   const [caja, setCaja] = useState<CajaPanel | null>(null)
   const buscador = useRef<HTMLInputElement>(null)
@@ -63,8 +66,8 @@ export function SelectorCelda({
         className={`${className} bg-transparent`}
       >
         <option value="">{textoVacio}</option>
-        {opciones.map((o) => (
-          <option key={o.value} value={o.value}>
+        {opciones.map((o, i) => (
+          <option key={`${o.value ?? ''}-${i}`} value={o.value}>
             {o.label}
           </option>
         ))}
@@ -78,7 +81,11 @@ export function SelectorCelda({
   // fila de una tabla corta queda al pie de la pantalla, y su panel se
   // abría por debajo del borde de la ventana.
   function abrir(e: React.MouseEvent<HTMLButtonElement>) {
-    if (caja) return setCaja(null)
+    if (caja) {
+      setCaja(null)
+      onCerrar?.()
+      return
+    }
     setCaja(
       anclarA(e.currentTarget, {
         ancho: Math.max(e.currentTarget.getBoundingClientRect().width, ANCHO_MINIMO),
@@ -112,7 +119,10 @@ export function SelectorCelda({
             setCaja(null)
             onElegir(v)
           }}
-          onCerrar={() => setCaja(null)}
+          onCerrar={() => {
+            setCaja(null)
+            onCerrar?.()
+          }}
           refBuscador={buscador}
           onCrear={
             onCrear

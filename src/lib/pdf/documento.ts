@@ -44,6 +44,41 @@ export type OpcionesTexto = {
 /** Un color, en 0..1 por canal. */
 export type Rgb = { r: number; g: number; b: number }
 
+/** `#RRGGBB` → Rgb en 0..1. */
+export function rgb(hex: string): Rgb {
+  const h = hex.replace('#', '')
+  return {
+    r: parseInt(h.slice(0, 2), 16) / 255,
+    g: parseInt(h.slice(2, 4), 16) / 255,
+    b: parseInt(h.slice(4, 6), 16) / 255,
+  }
+}
+
+/**
+ * Paleta oficial de Grupo Agrolíbano / Agropecuaria Montelíbano (guía de
+ * identidad, migración 82). Todos los PDF nativos la toman de aquí: los
+ * HEX exactos de la guía, sin aproximaciones.
+ */
+export const PALETA = {
+  /** Cabeceras, bandas, títulos. */
+  verde: rgb('#165C27'),
+  /** Éxito, rendimiento positivo, ondas del pie. */
+  lima: rgb('#8CC63F'),
+  /** Texto principal, nombre de empresa, líneas de separación. */
+  marino: rgb('#1A2530'),
+  /** Alertas, atrasos, desviaciones. */
+  naranja: rgb('#F37021'),
+  /** Datos secundarios, ondas del pie. */
+  turquesa: rgb('#00A99D'),
+  /** Highlights, «en progreso». */
+  sol: rgb('#FFD100'),
+  /** Fondo de franjas y cabeceras suaves. */
+  fondo: rgb('#F4F6F8'),
+  /** Bordes de tabla y bloques. */
+  borde: rgb('#E2E8F0'),
+  blanco: { r: 1, g: 1, b: 1 },
+} as const
+
 /** El operador de relleno de un color o de un gris. */
 function tinta(color: Rgb | undefined, gris: number, trazo = false): string {
   const op = trazo ? 'RG' : 'rg'

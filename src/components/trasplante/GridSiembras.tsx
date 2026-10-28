@@ -7,40 +7,32 @@
  * hace ordenando y filtrando por lote, variedad o cumplimiento, y una
  * agrupación fija impide justamente eso.
  *
- * Se escribe SOBRE la tabla. El modal de «Editar» abría un formulario de
- * nueve campos para corregir una manzana mal tecleada; ahora se corrige
- * en su sitio y se guarda con Enter, como en una hoja de cálculo. El
- * modal sigue existiendo sólo para el cambio EN MASA, que es otra cosa:
- * ahí lo que se deja en blanco no se toca.
- *
- * Los productos aplicados también se editan aquí (`ProductosCelda`): son
- * una lista dentro de la fila y tienen su propio panel anclado a la
- * celda, porque un select y dos números por renglón no caben en una
- * celda de tabla.
+ * 79 · La celda YA NO edita. Los desplegables de lote, variedad y
+ * productos se cortaban dentro del `overflow` de la tabla, y en el
+ * teléfono un toque al desplazar cambiaba un dato. Cada fila lleva un
+ * lápiz AL INICIO que abre `EditarSiembraModal` con la fila entera; el
+ * mismo modal sigue haciendo el cambio EN MASA (lo que se deja en blanco
+ * no se toca). «Nueva siembra» vive en la barra de la tabla.
  *
  * Toda la mecánica de la tabla es la estándar (`DataGrid`). Aquí sólo se
  * declara qué columnas tiene una siembra y qué se puede hacer con ella.
  */
 
 import { useMemo, useState, useCallback } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Alerta, Boton } from '@/components/ui/Primitivos'
 import { DataGrid } from '@/components/ui/DataGrid'
 import { BotonFila } from '@/components/ui/BotonFila'
 import type { ColumnaGrid } from '@/lib/grid/tipos'
 import { mensajeDeError } from '@/lib/errores'
-import {
-  borrarSiembras,
-  guardarProductosSiembra,
-  guardarSiembra,
-  type CamposSiembra,
-  type ProductoParaGuardar,
-} from '@/lib/trasplante/repositorioCliente'
+import { borrarSiembras } from '@/lib/trasplante/repositorioCliente'
+import { IconPencil, IconPlus } from '@/components/ui/Icons'
 import { cumplimiento } from '@/lib/trasplante/tabla'
 import { n0, n2, pct } from '@/lib/trasplante/formato'
 import {
-  CICLOS_SIEMBRA,
   textoProductos,
+  type FilaRecepcion,
   type FilaSiembra,
   type LoteOpcion,
   type Material,
@@ -51,27 +43,14 @@ import { ImportarSiembras } from './ImportarSiembras'
 import { ProductosCelda } from './ProductosCelda'
 import { armarReglas, canExecuteAction, type ReglasPlanas } from '@/lib/permisos/clientABAC'
 
-/** Qué columna de la tabla escribe qué campo de `siembras`. */
-const CAMPOS: Record<string, keyof CamposSiembra> = {
-  fecha_siembra: 'fecha_siembra',
-  ut: 'lote_temporada_id',
-  ciclo: 'ciclo',
-  variedad: 'variedad_id',
-  lote_variedad: 'lote_variedad',
-  avance_mz: 'avance_mz',
-  plantas_reportadas: 'plantas_reportadas',
-  observaciones: 'observaciones',
-}
-
-/** Los campos que la base guarda como número. */
-const NUMEROS = new Set<keyof CamposSiembra>(['ciclo', 'avance_mz', 'plantas_reportadas'])
-
 export function GridSiembras({
   temporadaId,
   filas,
   lotes,
   variedades,
   materiales,
+  recepciones = [],
+  puedeCrear = false,
   reglas: reglasPlanas,
   usuarioId,
   zonas,
@@ -81,6 +60,10 @@ export function GridSiembras({
   lotes: LoteOpcion[]
   variedades: Variedad[]
   materiales: Material[]
+  /** De aquí sale el lote de variedad del editor (79). */
+  recepciones?: FilaRecepcion[]
+  /** Dibuja «Nueva siembra» en la barra de la tabla. */
+  puedeCrear?: boolean
   /**
    * Las reglas del usuario con sus tres ejes.
    *
@@ -120,19 +103,40 @@ export function GridSiembras({
 
   const router = useRouter()
   const [enMasa, setEnMasa] = useState<string[] | null>(null)
+  const [editando, setEditando] = useState<FilaSiembra | null>(null)
   const [importar, setImportar] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [ocupado, setOcupado] = useState(false)
 
   const columnas = useMemo<ColumnaGrid<FilaSiembra>[]>(
     () => [
+      // 79 · el lápiz va PRIMERO: en el teléfono la última columna queda
+      // a dos pantallas de desplazamiento.
+      {
+        campo: 'editar',
+        label: '',
+        tipo: 'ninguno',
+        ancho: '3rem',
+        sinExportar: true,
+        valor: () => null,
+        render: (f) =>
+          puedeEditarFila(f) ? (
+            <button
+              type="button"
+              onClick={() => setEditando(f)}
+              aria-label={`Editar siembra ${f.ut} ${f.fecha_siembra}`}
+              title="Editar"
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition-colors hover:border-brand-300 hover:text-brand-700"
+            >
+              <IconPencil className="h-4 w-4" />
+            </button>
+          ) : null,
+      },
       {
         campo: 'fecha_siembra',
         label: 'Fecha',
         tipo: 'fecha',
         valor: (f) => f.fecha_siembra,
-        editable: (f: FilaSiembra) => puedeEditarFila(f),
-        editor: 'fecha',
       },
       { campo: 'semana', label: 'Semana', tipo: 'seleccion', valor: (f) => f.semana },
       {
@@ -143,10 +147,6 @@ export function GridSiembras({
         // cortada a «1001…» no sirve para nada.
         ancho: '11rem',
         valor: (f) => f.ut,
-        editable: (f: FilaSiembra) => puedeEditarFila(f),
-        editor: 'seleccion',
-        valorEdicion: (f) => f.lote_temporada_id,
-        opciones: lotes.map((l) => ({ value: l.lote_temporada_id, label: l.nomenclatura })),
         render: (f) => <span className="font-semibold text-slate-800">{f.ut}</span>,
       },
       // El nombre del lote faltaba: en campo nadie dice «1001-010», dicen
@@ -159,10 +159,6 @@ export function GridSiembras({
         tipo: 'seleccion',
         numero: true,
         valor: (f) => f.ciclo,
-        editable: (f: FilaSiembra) => puedeEditarFila(f),
-        editor: 'seleccion',
-        valorEdicion: (f) => String(f.ciclo),
-        opciones: CICLOS_SIEMBRA.map((c) => ({ value: String(c), label: String(c) })),
       },
       {
         campo: 'variedad',
@@ -170,10 +166,6 @@ export function GridSiembras({
         tipo: 'seleccion',
         ancho: '10rem',
         valor: (f) => f.variedad,
-        editable: (f: FilaSiembra) => puedeEditarFila(f),
-        editor: 'seleccion',
-        valorEdicion: (f) => f.variedad_id,
-        opciones: variedades.map((v) => ({ value: v.id, label: v.nombre })),
       },
       { campo: 'cultivo', label: 'Cultivo', tipo: 'seleccion', valor: (f) => f.cultivo },
       {
@@ -181,8 +173,6 @@ export function GridSiembras({
         label: 'Lote variedad',
         tipo: 'texto',
         valor: (f) => f.lote_variedad,
-        editable: (f: FilaSiembra) => puedeEditarFila(f),
-        editor: 'texto',
       },
       {
         campo: 'avance_mz',
@@ -191,8 +181,6 @@ export function GridSiembras({
         numero: true,
         valor: (f) => Number(f.avance_mz),
         etiqueta: (f) => n2(f.avance_mz),
-        editable: (f: FilaSiembra) => puedeEditarFila(f),
-        editor: 'numero',
         render: (f) => <span className="font-bold text-slate-900">{n2(f.avance_mz)}</span>,
       },
       {
@@ -227,8 +215,6 @@ export function GridSiembras({
         numero: true,
         valor: (f) => (f.plantas_reportadas === null ? null : Number(f.plantas_reportadas)),
         etiqueta: (f) => n0(f.plantas_reportadas),
-        editable: (f: FilaSiembra) => puedeEditarFila(f),
-        editor: 'numero',
       },
       {
         campo: 'plantas_mz',
@@ -253,8 +239,8 @@ export function GridSiembras({
           <ProductosCelda
             productos={f.productos}
             materiales={materiales}
-            editable={puedeEditar}
-            onGuardar={(lista) => guardarProductos(f.id, lista)}
+            editable={false}
+            onGuardar={async () => {}}
           />
         ),
       },
@@ -264,8 +250,6 @@ export function GridSiembras({
         tipo: 'texto',
         ancho: '14rem',
         valor: (f) => f.observaciones,
-        editable: (f: FilaSiembra) => puedeEditarFila(f),
-        editor: 'texto',
         render: (f) => (
           <span
             className="block max-w-[220px] truncate text-xs"
@@ -287,50 +271,10 @@ export function GridSiembras({
         ),
       },
     ],
-    // `guardarProductos` es estable dentro del render de este componente
-    // y no cambia lo que dibuja la columna.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [lotes, variedades, materiales, puedeEditar]
+    [materiales, puedeEditarFila]
   )
 
   /* ------------------------------ Escritura ---------------------------- */
-
-  async function editarCelda(fila: FilaSiembra, campo: string, valor: unknown) {
-    const cual = CAMPOS[campo]
-    if (!cual) return
-
-    setError(null)
-    const limpio =
-      valor === null || valor === ''
-        ? null
-        : NUMEROS.has(cual)
-          ? Number(valor)
-          : valor
-
-    // El área y el ciclo son obligatorios en la base: vaciarlos haría
-    // fallar el `update` con un mensaje de Postgres. Se avisa antes.
-    if (limpio === null && (cual === 'avance_mz' || cual === 'ciclo' || cual === 'fecha_siembra')) {
-      return setError('El área, el ciclo y la fecha no se pueden dejar en blanco.')
-    }
-
-    const { error: e } = await guardarSiembra(fila.id, { [cual]: limpio } as CamposSiembra)
-    if (e) return setError(mensajeDeError(e, 'No se pudo guardar el cambio.'))
-    router.refresh()
-  }
-
-  async function guardarProductos(siembraId: string, lista: ProductoParaGuardar[]) {
-    setError(null)
-    const { error: e } = await guardarProductosSiembra(siembraId, lista)
-    if (e) {
-      return setError(
-        mensajeDeError(
-          e,
-          'No se pudieron guardar los productos. Si dice que no existe «fn_guardar_productos_siembra», falta correr la migración 46.'
-        )
-      )
-    }
-    router.refresh()
-  }
 
   async function eliminar(ids: string[], limpiar: () => void) {
     if (ids.length === 0) return
@@ -362,8 +306,6 @@ export function GridSiembras({
         nombreArchivo={`siembra-diaria-${temporadaId.slice(0, 8)}`}
         ordenInicial={{ campo: 'fecha_siembra', direccion: 'desc' }}
         minAncho="1900px"
-        puedeEditarCelda={puedeEditar}
-        onEditarCelda={editarCelda}
         vacio={{
           titulo: 'No hay siembras capturadas',
           descripcion: 'Elige otra temporada o registra una siembra nueva.',
@@ -373,11 +315,22 @@ export function GridSiembras({
         // que hace que alguien reporte mal las manzanas de un lote.
         resumen={(visibles) => <ResumenPorVariedad visibles={visibles} />}
         acciones={
-          puedeEditar && (
-            <Boton variante="secundario" tamano="sm" onClick={() => setImportar(true)}>
-              Importar
-            </Boton>
-          )
+          <>
+            {puedeCrear && (
+              <Link
+                href={`/trasplante/nueva?temporada=${temporadaId}`}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand-700 px-3 text-sm font-semibold text-white transition-colors hover:bg-brand-800"
+              >
+                <IconPlus className="h-4 w-4" />
+                Nueva siembra
+              </Link>
+            )}
+            {puedeEditar && (
+              <Boton variante="secundario" tamano="sm" onClick={() => setImportar(true)}>
+                Importar
+              </Boton>
+            )}
+          </>
         }
         accionesSeleccion={(marcadas, limpiar) => {
           // Lo que esta persona no puede tocar se cae de la selección
@@ -431,11 +384,16 @@ export function GridSiembras({
       />
 
       <EditarSiembraModal
-        fila={null}
-        enMasa={enMasa}
+        fila={editando}
+        enMasa={editando ? null : enMasa}
         lotes={lotes}
         variedades={variedades}
-        onCerrar={() => setEnMasa(null)}
+        recepciones={recepciones}
+        materiales={materiales}
+        onCerrar={() => {
+          setEnMasa(null)
+          setEditando(null)
+        }}
         onGuardado={() => router.refresh()}
       />
 
@@ -448,9 +406,9 @@ export function GridSiembras({
       />
 
       <p className="px-1 text-xs text-slate-400">
-        Escribe sobre cualquier celda para corregirla; se guarda con Enter o al salir. Los
-        productos aplicados se editan en su propia celda. La semana, el acumulado y las plantas por
-        manzana los calcula la base y por eso no se tocan.
+        El lápiz de cada fila abre la siembra completa —lote de variedad, productos y
+        observaciones incluidos—. La semana, el acumulado y las plantas por manzana los calcula la
+        base y por eso no se tocan.
       </p>
     </div>
   )

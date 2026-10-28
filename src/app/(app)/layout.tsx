@@ -4,6 +4,7 @@ import { getNavegacion, getPerfilActual, getPermisos, getUsuarioActual } from '@
 import { AppShell } from '@/components/ui/AppShell'
 import { LogoutButton } from '@/components/ui/LogoutButton'
 import { Vigilante } from '@/components/ui/Vigilante'
+import { GuardiaSesion } from '@/components/auth/GuardiaSesion'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   // Ambas llamadas están memorizadas con cache(): getUsuarioActual() se
@@ -48,6 +49,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
           El `Suspense` es obligatorio: `useSearchParams` sin él obliga a
           Next a renderizar toda la ruta en el cliente. */}
+      <GuardiaSesion />
       <Suspense fallback={children}>
         <Vigilante>{children}</Vigilante>
       </Suspense>

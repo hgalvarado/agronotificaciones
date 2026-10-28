@@ -21,7 +21,7 @@
  * dice el tablero es peor que no tener papel.
  */
 
-import { ANCHO, ALTO, Pagina, construirPdf, type Rgb } from '@/lib/pdf/documento'
+import { ANCHO, ALTO, PALETA, Pagina, construirPdf, type Rgb } from '@/lib/pdf/documento'
 import { n2 } from '@/lib/trasplante/formato'
 import {
   cuadrillaDe,
@@ -42,9 +42,12 @@ import {
  * 76). El desglose es ahora tres listas con su total, y una lista de
  * números no necesita color para leerse: lo identifica su título.
  */
-const MARCA: Rgb = { r: 0.01, g: 0.31, b: 0.22 }
-const ROJO: Rgb = { r: 0.72, g: 0.11, b: 0.11 }
-const VERDE: Rgb = { r: 0.09, g: 0.5, b: 0.24 }
+// Guía de identidad (82): HEX exactos. Desviación desfavorable en Naranja
+// Atardecer; favorable en Verde Agrícola (el Verde Vibrante como TEXTO
+// sobre blanco no llega al contraste legible en fotocopia).
+const MARCA: Rgb = PALETA.verde
+const ROJO: Rgb = PALETA.naranja
+const VERDE: Rgb = PALETA.verde
 
 const MARGEN = 46
 const UTIL = ANCHO - MARGEN * 2
@@ -62,13 +65,15 @@ const fecha = (v: string | null | undefined) => v || '—'
 /** El encabezado corporativo. Devuelve la Y en la que queda el cursor. */
 function encabezado(p: Pagina, titulo: string, subtitulo: string): number {
   p.rectangulo(0, 0, ANCHO, 64, { color: MARCA })
-  p.texto(MARGEN, 18, EMPRESA, { tamano: 15, negrita: true, color: { r: 1, g: 1, b: 1 } })
+  // Línea de marca Azul Marino bajo la banda verde (guía, §5).
+  p.rectangulo(0, 64, ANCHO, 2.5, { color: PALETA.marino })
+  p.texto(MARGEN, 18, EMPRESA, { tamano: 15, negrita: true, color: PALETA.blanco })
   p.texto(MARGEN, 38, LEMA, { tamano: 8.5, color: { r: 0.8, g: 0.88, b: 0.85 } })
   p.texto(ANCHO - MARGEN, 18, titulo, {
     tamano: 11,
     negrita: true,
     alineacion: 'derecha',
-    color: { r: 1, g: 1, b: 1 },
+    color: PALETA.blanco,
   })
   p.texto(ANCHO - MARGEN, 36, subtitulo, {
     tamano: 8.5,
@@ -87,7 +92,7 @@ function encabezado(p: Pagina, titulo: string, subtitulo: string): number {
  * sola de quince renglones.
  */
 function bloque(p: Pagina, y: number, alto: number, titulo: string): number {
-  p.rectangulo(MARGEN, y, UTIL, alto, { gris: 0.78, grosor: 0.8 })
+  p.rectangulo(MARGEN, y, UTIL, alto, { colorBorde: PALETA.borde, grosor: 0.8 })
   // Se tapa el trozo de línea donde va el título, para que el texto no
   // quede atravesado por el marco.
   p.rectangulo(MARGEN + 10, y - 5, titulo.length * 5.2 + 10, 10, { relleno: 1 })
@@ -165,13 +170,20 @@ function panelPdf(
 
 /** El pie, igual en todas las páginas. */
 function pie(p: Pagina, lote: string, ciclo: number, hoy: string): void {
-  p.linea({ x: MARGEN, y: ALTO - 46 }, { x: ANCHO - MARGEN, y: ALTO - 46 }, 0.85, 0.5)
-  p.texto(MARGEN, ALTO - 40, `${EMPRESA} · AgroNotificaciones`, { tamano: 7.5, gris: 0.5 })
+  p.linea({ x: MARGEN, y: ALTO - 46 }, { x: ANCHO - MARGEN, y: ALTO - 46 }, 0.85, 0.5, PALETA.marino)
+  p.texto(MARGEN, ALTO - 40, `${EMPRESA} · AgroNotificaciones`, { tamano: 7.5, color: PALETA.marino })
   p.texto(ANCHO - MARGEN, ALTO - 40, `${lote} · ciclo ${ciclo} · emitido el ${hoy}`, {
     tamano: 7.5,
-    gris: 0.5,
+    color: PALETA.marino,
     alineacion: 'derecha',
   })
+  // Ancla de marca al pie (guía, §5): las tres franjas de las ondas del
+  // logo de Agrolíbano —verde vibrante, turquesa, naranja—. Rectas y no
+  // curvas: el generador nativo no traza Bézier, y en fotocopia se leen
+  // igual como tres bandas de gris distinto.
+  p.rectangulo(0, ALTO - 14, ANCHO, 4.5, { color: PALETA.lima })
+  p.rectangulo(0, ALTO - 9.5, ANCHO, 4.5, { color: PALETA.turquesa })
+  p.rectangulo(0, ALTO - 5, ANCHO, 5, { color: PALETA.naranja })
 }
 
 /* ------------------------------------------------------------------ */

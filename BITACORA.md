@@ -235,6 +235,298 @@ dice.
 
 ## 3. Registro de cambios
 
+### 2026-10-28 — Reporte de Emplasticado gemelo del de Trasplante (identidad Agrolíbano, sin migración)
+
+- **`/plan/[proceso]/reporte`** rediseñado sin tocar cálculos, RPC ni SQL: membrete institucional (banda Verde Agrícola, empresa en Azul Marino serif, línea marino), secciones como tarjetas numeradas. Se retiró el azul #1f3864 del Excel viejo.
+  1. **Estadísticas globales** en tarjetas: KPI Plan / Ejecutado / Pendiente (naranja si falta) / % Avance con barra semáforo; la antigua sección «Avance por etapa» pasa a tarjetas por etapa (Plan, Ejecutado, Pendiente, % con píldora semáforo).
+  2. Avance diario · 3. Zona y encargado · 4. Lotes ejecutados: `thead` Verde Agrícola, cebra #FAFAFA, bordes #E2E8F0, subtotales #F4F6F8, total con línea verde, % con semáforo (≥100 lima, 80–99 sol, <80 naranja).
+  - Botón «Ver» primario verde; «Volver a hoy» secundario contorneado; «reporte retroactivo» en naranja.
+- **PDF** (Imprimir → Guardar como PDF, el mismo camino que Trasplante; este reporte no tiene generador nativo): misma hoja de impresión (carta horizontal, márgenes 15 mm, títulos de columna repetidos, filas sin partir, colores exactos) y pie con ondas lima / turquesa #00A99D / naranja.
+- **Nuevo `src/components/reporte/Corporativo.tsx`**: Membrete, Bloque, Titulo, Kpi, Dato, Barra, Encabezado, TotalGeneral, PieOndas, clases de fila/subtotal e `IMPRESION_REPORTE`. Son las formas del reporte de Trasplante, para que cualquier reporte futuro salga gemelo.
+
+### 2026-10-27 — Cuadrícula estilo Excel: seleccionar ≠ editar, y key vacía del selector (sin migración)
+
+- **`DataGrid` / `Celda`:** un clic sólo SELECCIONA la celda (foco, rango, copiar/pegar); ya no abre inputs ni el panel de `SelectorCelda`. Se edita con **doble clic, Enter o F2**, o escribiendo encima (en texto/número el carácter reemplaza el valor). Enter guarda y vuelve a la selección; Escape cancela; salir del campo guarda (el `<select>` nativo sale al perder el foco; el panel con buscador sale al elegir o al cerrarse vía `onCerrar`). Supr/Retroceso vacía la celda. Flechas mueven entre celdas editables. Ctrl+V de un valor suelto sobre una celda seleccionada la reemplaza; dentro de un campo en edición, pegado nativo. Arrastrar y Mayús+clic ya no roban el foco.
+- **`Selector.tsx` (`PanelOpciones`):** `key={`${valor}-${i}`}` — la opción vacía del catálogo duplicaba `key=""` y React rompía («two children with the same key»). Mismo blindaje en las `<option>` de `SelectorCelda`, que además expone `onCerrar`.
+
+### 2026-10-27 — Portapapeles SAP/Excel en la cuadrícula y envío por Outlook (sin migración)
+
+**Cuadrícula (`DataGrid`), genérico para toda tabla de captura.** Lógica pura en `src/lib/grid/portapapeles.ts` (`parsearTsv` con comillas de Excel y CRLF, `aTsv`, `numeroPegado` «1.234,56»/«1,234.56»/«150,00-», `fechaPegada` «27.10.2026»/«27/10/2026», `valorPegado` por editor —número, fecha, selección por valor/etiqueta/código—, `planearPegado`).
+- Clic = celda activa; Mayús+clic o arrastrar = rango (resaltado verde). El rango se reinicia al cambiar filtros/orden/búsqueda.
+- **Ctrl+V** de varias celdas (TSV) reparte desde la celda activa hacia la derecha y abajo y guarda celda a celda, en orden, por `onEditarCelda` (mismas validaciones y RLS que a mano). Las columnas de sólo lectura no desplazan lo pegado; valores no admitidos se saltan. Aviso con pegadas / rechazadas / sólo lectura / no válidas. Un valor suelto se pega normal dentro del campo (edición in situ y selectores intactos); sobre un rango marcado lo rellena.
+- **Ctrl+C** con rango (o con filas marcadas y sin texto elegido) copia TSV; números crudos, catálogos con su etiqueta. Con texto seleccionado dentro de un campo, copiado nativo.
+- Barra de selección: botón «Copiar (SAP/Excel)» (`navigator.clipboard.writeText`, con encabezados).
+
+**Reporte de trasplante → Outlook.** `src/lib/trasplante/correo.ts` arma HTML compatible con Outlook (tablas, estilos en línea, `bgcolor`, hex del UI Kit): membrete, Estadísticas globales (KPI + semáforo por ciclo) y Avance diario (Dif con ▲/▼, «Sin siembra»/«Fuera de plan», subtotales, total del rango; tope 400 filas con aviso). `BotonOutlook` (secundario, junto a «Imprimir o guardar PDF») copia `text/html` + `text/plain` con `ClipboardItem` (respaldo por selección + `execCommand`), abre `mailto:?subject=Reporte Gerencial Trasplante - <fecha>` y muestra «Plantilla copiada. Presiona Ctrl+V en tu correo para pegar el reporte.»
+
+### 2026-10-27 — Cruce maestro del avance diario e identidad visual Agrolíbano (migración 82)
+
+**Base (`82_trasplante_cruce_diario.sql`).** `interno.v_trasplante_avance_diario_crudo`
+= siembras agrupadas FULL OUTER JOIN plan agrupado por (temporada, fecha,
+ciclo, lote, variedad). Sembrado sin plan → `mz_plan` nulo (origen `real`);
+plan sin siembra → `mz_real` nulo (origen `plan`); ambos → `ambos`.
+`diferencia` = real − plan (nulos como 0). El plan sin fecha no entra. Expuesta
+`v_trasplante_avance_diario` con reja de `trasplante_diario`: global todo,
+zonal por lote estricto, propietario por `usuarios` (uuid[] de quienes
+capturaron; las filas sólo-plan no tienen dueño). Índices
+`siembras(temporada_id, fecha_siembra)` y `planes_siembra(temporada_id,
+fecha_siembra)`. Guardianes; corrida dos veces contra PG 16 (real+plan,
+sólo plan y sólo real salen en filas propias).
+
+**Reporte, sección 2.** Lee el cruce (`leerAvanceDiario`), no `v_siembras`.
+Una fila por lote/variedad del día; columnas Mz real, Mz plan y **Dif real
+vs plan** con flecha ▼ (naranja, por debajo) / ▲ (verde vibrante, por
+encima); marcas «Sin siembra» y «Fuera de plan»; subtotales por día; cebra
+`#FAFAFA`. Ya no hay «Lote plan» en la misma celda.
+
+**Identidad visual (guía de Grupo Agrolíbano / Montelíbano).**
+
+- `globals.css`: rampas `turquesa` (#00A99D) y `sol` (#FFD100); **`sky` y
+  `blue` remapeadas a turquesa** (no queda azul genérico en la app); fondo
+  #F4F6F8; bordes `slate-200` = #E2E8F0; `--font-display` (Merriweather /
+  Playfair) y Montserrat al frente de `--font-sans` — SIN descargar de Google
+  Fonts (el `build` falla en redes que lo bloquean; se usan si el equipo las
+  tiene instaladas).
+- `Primitivos`: botón secundario = blanco, borde y texto Verde Agrícola;
+  variante nueva **`alerta`** (Naranja Atardecer, texto blanco), que usa
+  «Guardar con exceso» de riego.
+- Semáforo de la guía (`semaforo`/`COLOR_SEMAFORO` en `formato.ts`): ≥100 %
+  verde vibrante, 80–99 % amarillo sol, <80 % naranja. Lo usan `Porcentaje` y
+  las barras del reporte. `SERIES_GRAFICO` con el orden de la guía; el
+  gráfico semanal: real en verde vibrante, plan en naranja.
+- Reporte (pantalla y papel): membrete con banda Verde Agrícola, empresa en
+  Azul Marino con serif de titulares, línea marino de separación, `thead` en
+  Verde Agrícola, tarjetas con radio 12 px y borde #E2E8F0, pie con las tres
+  ondas (verde vibrante, turquesa, naranja). Márgenes de impresión 15 mm.
+- PDF nativo (`lib/pdf/documento.ts`): `PALETA` con los HEX exactos y `rgb()`.
+  `informePdf` (desinfección): banda verde + línea marino, bordes #E2E8F0,
+  desviaciones en naranja/verde, pie con línea marino y las tres franjas de
+  marca. `themeColor` del navegador = #165C27.
+- Logos: no hay archivos de logo de Agrolíbano/Montelíbano en el repositorio;
+  el membrete los deja fuera hasta que se agreguen a `public/marca/`.
+
+### 2026-10-27 — Hotfix riego: el exceso de área se confirma, no se prohíbe (migración 81)
+
+**Por qué.** El tope de la 80 (mayor de sembrado y plan del ciclo) era duro, y
+en campo se riegan lotes antes de capturar su plan o su siembra: el modal no
+dejaba guardar trabajo real.
+
+**Base (`81_riego_exceso_forzado.sql`).** `turnos_riego_detalle` gana
+`forzar_exceso`, `exceso_mz`, `forzado_por` y `forzado_en`. El disparador
+`fn_validar_area_turno` sigue en la base con el mismo tope por ciclo: si la
+línea excede y llega con `forzar_exceso = true`, la acepta y escribe cuánto
+excedió, quién (la sesión) y cuándo; si excede sin la bandera, rechaza como
+antes; si NO excede, apaga la bandera y limpia la auditoría (un «forzado» que
+no forzó nada no se registra). `fn_guardar_turno_riego` lee `forzar_exceso` de
+cada lote del JSON. Probado contra PG 16: sin bandera rechaza, con bandera
+acepta con `exceso_mz` y la línea que no excede queda sin marca.
+
+**Pantalla.** `TurnoRiegoModal`: con lotes por encima del tope aparece el
+banner rojo con el detalle (área, libre, tope, exceso) y la casilla
+«Confirmo el exceso»; el botón pasa a **«Guardar con exceso»** (variante de
+peligro) y sólo se habilita confirmado. La confirmación vale para ESOS
+excesos: cambiar un área o un lote la vuelve a pedir. `validarLineas` acepta
+`permitirExceso`, `lotesExcedidos` nuevo, `lineasParaGuardar` y
+`guardarTurno` llevan la bandera.
+
+**Límites.** El editor en celda (`fn_editar_turno_riego`) no envía la
+bandera: desde la celda el tope sigue duro, salvo en una línea ya forzada. El
+importador de turnos tampoco la envía.
+
+### 2026-10-27 — Lote planificado contra real, paleta corporativa y tope de riego por ciclo (migración 80)
+
+**Base (`80_lote_plan_en_reporte_y_tope_de_riego.sql`).**
+
+- `v_siembras` gana **`plan_lotes`**: nomenclatura de los lotes que el plan
+  programó para esa misma fecha y ciclo (string_agg sobre texto). No se
+  llamó `plan_lote` porque ese nombre ya existe desde la 26 y es NUMÉRICO
+  (mz del plan del lote; lo leen la cuadrícula y el % de cumplimiento).
+  Envoltura por `pg_get_viewdef` y reja de la 66, como en la 79.
+- **Bug de riego**: `fn_validar_area_turno` (40) comparaba contra el área de
+  TODOS los ciclos del lote y sumaba lo asignado en turnos de TODOS los
+  ciclos, mientras el modal mostraba el saldo del ciclo (68). Un turno de
+  ciclo 2 sobre un lote regado en el ciclo 1 se rechazaba con cualquier
+  área. Ahora todo es del ciclo del turno.
+- **Tope de riego** = el MAYOR de lo sembrado y lo planificado en el ciclo; el
+  área neta si los dos son cero (`fn_tope_riego_lote_ciclo`). Plan 0 y 3 mz
+  sembradas → tope 3 (antes, según el caso, 0 o el área de otro ciclo).
+  `fn_area_lote_ciclo` NO se tocó: la desinfección reparte la dosis con ella.
+- `fn_lotes_regables`: usa el tope nuevo, trae todos los lotes AGRÍCOLAS
+  activos de la zona con o sin plan, y el recorte por zona sólo aplica con
+  alcance ZONAL (con «propietario» el selector salía vacío).
+- Guardianes; corrida dos veces contra PG 16 (incluye el rechazo correcto en
+  el mismo ciclo y la aceptación en otro).
+
+**Riego (pantalla).** El modal muestra el error de `fn_lotes_regables` en vez
+de un selector vacío mudo, avisa cuando la zona no tiene lotes y explica la
+regla del tope.
+
+**Identidad visual Agrolíbano.** `globals.css`: `brand` = Verde Agrícola
+#165C27 (700), nuevas rampas `lima` (#8CC63F), `naranja` (#F37021) y
+`marino` (#1A2530); `amber` pasa a ser el naranja corporativo (todas las
+advertencias y desfases) y `slate-900`/texto base, el azul marino. Botones,
+layout y barras toman la paleta sin tocar pantallas. Modo oscuro ajustado.
+
+**Reporte de trasplante.** `CORP` en `formato.ts` (y `AZUL` = verde
+agrícola). Cabeceras verdes, nombre de empresa en marino, tarjetas con
+acento (KPI con borde superior, ciclos en lima, zonas en verde), barras
+verde/lima/naranja, gráfico semanal con lo real en verde vibrante y atrasos
+en naranja. Avance diario: **Lote real** (UT + nombre) contra **Lote plan**
+(`plan_lotes`), resaltado en naranja si el lote sembrado no estaba en el
+plan de ese día; se quitó «Variedad plan».
+
+### 2026-10-27 — Hotfix de EMERGENCIA: rollback del login al estándar
+
+**Síntoma.** «Ingresando…» colgado; la red mostraba un fetch `?_rsc=` que
+tardaba ~10 s y devolvía 307 a `/login?sesion=expirada`.
+
+**Causa.** La navegación suave de Next (`router.replace` + `refresh`) manda
+un fetch RSC que pasa por el middleware. Si `getUser` tardaba o fallaba por
+red, la regla «cookie que no da usuario = cookie inútil» (69) borraba la
+cookie RECIÉN escrita y redirigía a `/login?sesion=expirada`. El sondeo de
+cookies del hotfix 3 sólo alargaba la espera.
+
+**Rollback.**
+
+- `FormularioLogin`: `signInWithPassword` y, si sale bien,
+  `window.location.href = '/'` (carga completa). Sin `router.*`, sin sondeo,
+  sin limpieza previa. Todo error libera el botón y se muestra.
+- `middleware.ts`: patrón estándar de `@supabase/ssr`. `getUser()` con
+  usuario → avanza (en `/login` → `/`); sin usuario → `/login` sin
+  parámetros. Fuera: refresco anticipado, cortafuegos por `?sesion=expirada`
+  y borrado de cookies «inútiles». Única excepción: un código EXPLÍCITO de
+  sesión muerta de Supabase borra la cookie al redirigir. Un corte de red no
+  toca cookies.
+
+### 2026-10-27 — Hotfix 3: login a prueba de carreras
+
+- `FormularioLogin`: vuelve a la navegación de Next (`router.replace('/')` +
+  `router.refresh()`), pero sólo después de comprobar que la sesión está
+  ASENTADA: `getSession()` la devuelve y existe la cookie
+  `sb-…-auth-token(.n)` (hasta ~2 s, pasos de 100 ms). Si no aparece, lo
+  dice («el navegador no guardó la sesión: revisa las cookies») en vez de
+  quedarse quieto. Credenciales malas, errores de Supabase y de red tienen
+  cada uno su mensaje: el login ya no puede fallar en silencio. Doble
+  clic bloqueado. Al llegar por `?sesion=expirada` se limpia la sesión local
+  y se quita el parámetro de la dirección (`history.replaceState`), para
+  que ninguna recarga posterior vuelva a pasar por el cortafuegos.
+- `GuardiaSesion`: además de exigir que la página haya tenido sesión, ante
+  un `SIGNED_OUT` espera 800 ms y vuelve a preguntar (`getSession`, fuera del
+  callback de Supabase, que se bloquea si se le llama dentro). Sólo expulsa
+  si de verdad no hay sesión: un evento fantasma ya no saca a nadie.
+- Reporte de trasplante: las sub-tarjetas por ciclo de «1. Estadísticas
+  globales» ya no muestran Plantas ni Plantas/mz (quedan Plan, Sembrado,
+  Pendiente y Lotes). La sección 1 queda sin conteo de plantas.
+
+### 2026-10-27 — Hotfix 2: el login que no entraba
+
+**Causa.** El hotfix anterior añadió al middleware un refresco ANTICIPADO:
+`refreshSession()` si al token le quedaban menos de 10 minutos. Justo
+después de entrar, el navegador dispara varias peticiones a la vez
+(`router.push('/')`, `router.refresh()` y los prefetch de la barra). Cada
+una pasaba por el middleware y, con el token dentro de esa ventana —**siempre**
+si el proyecto de Supabase tiene la caducidad del JWT en 10 minutos o
+menos—, cada una refrescaba con el MISMO token de refresco. Supabase
+aceptaba una, contestaba `refresh_token_already_used` a las demás y revocaba
+la sesión entera; el middleware lo leía como sesión muerta, borraba las
+cookies y devolvía al login. Desde fuera: «Ingresar» no hace nada.
+
+Agravante cuando se llegaba por `/login?sesion=expirada`: `router.refresh()`
+re-pedía ESA dirección y el cortafuegos borraba las cookies recién creadas.
+
+**Corrección.**
+
+- Middleware: fuera el refresco anticipado; vuelve al patrón de
+  `@supabase/ssr` (sólo `getUser`, que refresca una vez cuando hace falta).
+  El cortafuegos de `/login?sesion=expirada` sólo actúa en la carga del
+  documento (no en RSC `rsc`, `next-router-prefetch` ni `next-action`).
+- `FormularioLogin`: espera la limpieza local antes de `signInWithPassword`,
+  exige `data.session` y entra con `window.location.replace('/')` (carga
+  completa) en vez de `router.push` + `router.refresh`.
+- `GuardiaSesion`: sólo saca al login si ESA página llegó a tener sesión.
+- `server.ts`: se quita la opción `auth` redundante (`@supabase/ssr` ya la
+  fija).
+- Se conservan: validación de fechas de calendario, `esSesionMuerta` por
+  mensaje, salida voluntaria.
+
+**Reporte de trasplante:** fuera «Plantas» y «Plantas / mz» de las tarjetas
+superiores de Estadísticas globales.
+
+### 2026-10-27 — Hotfix: fechas del reporte de trasplante y la sesión zombi
+
+**Fechas.** Las cinco funciones del reporte (`fn_trasplante_*`) y
+`v_siembras` (79) aceptan un `hasta` futuro sin problema: devuelven vacío o
+ceros, no hay división ni calendario que reviente. El fallo de fechas real
+estaba en la validación: `esFechaIso` sólo miraba la FORMA (`\d{4}-\d{2}-\d{2}`),
+así que «2026-11-31» pasaba, JavaScript lo leía como 1-dic y Postgres lo
+rechazaba (`date/time field value out of range`) en las cinco consultas a la
+vez. Ahora exige un día que exista (ida y vuelta por `Date`) y año 1900–2200.
+`fechaLarga`/`fechaCorta` devuelven el texto si la fecha no se puede leer, y el
+reporte enseña el error real en vez de «faltan migraciones».
+
+**Sesión zombi** (`refresh_token_not_found` + bucle en el login):
+
+1. **El refresco ocurría en un Server Component.** El middleware sólo
+   refrescaba si el token ya estaba por caducar (~90 s). Un render largo —el
+   reporte hace cinco RPC y lee siembras por tramos— cruzaba esa ventana y
+   el cliente de servidor refrescaba: Supabase rotaba el token de refresco
+   pero el Server Component no puede escribir cookies, y el navegador se
+   quedaba con el viejo, ya quemado. Ahora el middleware refresca con **10
+   min de margen** (`MARGEN_REFRESCO_MS`) y el cliente de servidor lleva
+   `autoRefreshToken: false`.
+2. **El bucle.** En `/login?sesion=expirada` el middleware ya no pregunta
+   nada: borra todas las `sb-*` y pinta el formulario (antes un token de
+   acceso aún vivo rebotaba a «/», y «/» devolvía al login).
+3. **La resurrección.** Tras una navegación de cliente, el cliente del
+   NAVEGADOR seguía con la sesión muerta en memoria y la volvía a escribir
+   en la cookie. El login hace `signOut({ scope: 'local' })` al llegar por
+   expiración, y `GuardiaSesion` (en el layout) manda con carga COMPLETA a
+   `/login?sesion=expirada` cuando Supabase cierra la sesión en el navegador.
+   «Salir» marca la salida como voluntaria para no decir «expiró».
+4. `esSesionMuerta` reconoce también el MENSAJE «Invalid Refresh Token…»
+   cuando el error llega sin `code`.
+
+### 2026-10-27 — Trasplante: edición por modal, lote de variedad trazable y reporte plan contra real (migración 79)
+
+**Base (`79_trasplante_reporte_plan_vs_real.sql`).** `interno.v_siembras_crudo`
+se ENVUELVE con su propia `pg_get_viewdef` (patrón 57/78) y gana
+`plan_variedad` (variedades del plan para ese lote/ciclo en esa fecha; si el
+plan no fecha nada ese día, las del lote/ciclo), `plan_mz` (mz planificadas
+para ese lote/ciclo ESE día; NULL = el plan no dice, no es 0) y
+`plan_mz_variedad` (plan del lote/ciclo para la variedad sembrada).
+`string_agg` sobre texto, nunca `array_agg` de `text[]`. Índice
+`planes_siembra (lote_temporada_id, ciclo, fecha_siembra)`. Expuesta con la
+reja de la 66 (`trasplante_diario` · lote estricto · dueño). Guardianes;
+corrida dos veces contra PG 16.
+
+**Siembra diaria.**
+
+- «Nueva siembra» sale de la cabecera y va a la barra del DataGrid, junto a
+  Importar y Excel.
+- **Sin edición en celda.** Columna de lápiz al INICIO de la fila que abre
+  `EditarSiembraModal` en modo de una fila (fecha, ciclo, lote, variedad,
+  mz, plantas, lote de variedad, observaciones y productos; los productos
+  se guardan con `fn_guardar_productos_siembra`). `ProductosCelda` queda de
+  sólo lectura en la tabla. El cambio en masa sigue igual.
+- **Lote de variedad** = `SelectorBuscable` alimentado por Recepción de
+  plántulas (`lote_semilla`), filtrado por la variedad elegida y recibido
+  hasta la fecha de siembra; un valor viejo que no cuadra se conserva
+  marcado. Alta (`SiembraForm`, la página `nueva` ahora lee recepciones) y
+  edición comparten `CamposSiembra.tsx`.
+- **Productos aplicados**: `SelectorBuscable` con búsqueda por código,
+  descripción o grupo, en el alta y en el modal.
+
+**Reporte gerencial.** Sin `max` en Del/Al (simulaciones a futuro).
+Rediseño en tarjetas: KPI globales y por ciclo con barra, zonas como
+tarjetas con barra por ciclo, cada sección en su tarjeta. Avance diario
+con Variedad real / Variedad plan y Mz real / Mz plan; la variedad fuera
+del plan se marca en ámbar; subtotales y total del plan cuentan el plan de
+cada lote/ciclo/día una sola vez.
+
+**Verificación:** `tsc --noEmit` del módulo en verde, `eslint` sin avisos.
+`buildLibs.mjs` no está en el repositorio (vive en `/tmp/pgverif`): no se
+pudo correr aquí.
+
 ### 2026-10-23 — Corrección de la 78: el botón de fila es «Labores», no «Editar»
 
 - La columna Ticket vuelve a enlazar a `/tickets/[id]`.

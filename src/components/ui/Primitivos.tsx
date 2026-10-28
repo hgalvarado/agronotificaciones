@@ -10,16 +10,19 @@ import { Ayuda } from './Ayuda'
 /* Botón                                                               */
 /* ------------------------------------------------------------------ */
 
-type Variante = 'primario' | 'secundario' | 'suave' | 'peligro' | 'fantasma'
+type Variante = 'primario' | 'secundario' | 'suave' | 'peligro' | 'alerta' | 'fantasma'
 type Tamano = 'sm' | 'md' | 'lg'
 
 const variantes: Record<Variante, string> = {
   primario:
     'bg-brand-700 text-white shadow-[var(--shadow-raised)] hover:bg-brand-800 active:bg-brand-900',
+  // Guía corporativa (82): secundario = blanco con borde y texto Verde Agrícola.
   secundario:
-    'bg-white text-slate-700 border border-slate-200 shadow-[var(--shadow-card)] hover:bg-slate-50 hover:border-slate-300',
+    'bg-white text-brand-700 border border-brand-700 shadow-[var(--shadow-card)] hover:bg-brand-50',
   suave: 'bg-brand-50 text-brand-800 hover:bg-brand-100',
   peligro: 'bg-white text-red-600 border border-red-200 hover:bg-red-50',
+  // Acción de alerta / urgente: Naranja Atardecer, texto blanco.
+  alerta: 'bg-naranja-500 text-white shadow-[var(--shadow-raised)] hover:bg-naranja-600',
   fantasma: 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
 }
 
