@@ -32,7 +32,7 @@ import {
   implementoPorDefecto,
   validarLogistica,
 } from '@/lib/desinfeccion/calculo'
-import { n2 } from '@/lib/trasplante/formato'
+import { n2 } from '@/lib/formato/reporte'
 import { salarioMinimo, tarifaEquipo } from '@/lib/desinfeccion/repositorioCliente'
 import type {
   CatalogosDesinfeccion,

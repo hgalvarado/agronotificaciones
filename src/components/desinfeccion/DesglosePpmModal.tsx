@@ -17,7 +17,7 @@
 
 import { Modal } from '@/components/ui/Modal'
 import { Boton } from '@/components/ui/Primitivos'
-import { n2 } from '@/lib/trasplante/formato'
+import { n2 } from '@/lib/formato/reporte'
 import type { DesglosePpm } from '@/lib/desinfeccion/calculo'
 
 /** Una fila del desglose: qué es, cuánto vale y en qué unidad. */

@@ -11,7 +11,7 @@
  */
 
 import { AnilloAvance, BarrasPlanReal, type Barra } from './Graficos'
-import { AZUL, fechaCorta, fechaLarga, n0, n2, pct } from '@/lib/trasplante/formato'
+import { AZUL, fechaCorta, fechaLarga, n0, n2, pct } from '@/lib/formato/reporte'
 import { etiquetaTipoSiembra, etiquetaUmb } from '@/lib/rotacion/tipos'
 import type {
   Estadisticas,

@@ -11,7 +11,7 @@
  */
 
 import type { ReactNode } from 'react'
-import { COLOR_SEMAFORO, CORP, semaforo } from '@/lib/trasplante/formato'
+import { COLOR_SEMAFORO, CORP, semaforo } from '@/lib/formato/reporte'
 
 export { CORP }
 

@@ -20,7 +20,7 @@
  *     que volver a las barras.
  */
 
-import { n2 } from '@/lib/trasplante/formato'
+import { n2 } from '@/lib/formato/reporte'
 
 /**
  * Los tres colores del costo.

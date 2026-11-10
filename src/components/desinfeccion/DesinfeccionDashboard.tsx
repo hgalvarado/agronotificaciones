@@ -34,7 +34,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Alerta, Campo, Selector, Entrada, Tarjeta } from '@/components/ui/Primitivos'
 import { DataGrid } from '@/components/ui/DataGrid'
 import type { ColumnaGrid } from '@/lib/grid/tipos'
-import { n2 } from '@/lib/trasplante/formato'
+import { n2 } from '@/lib/formato/reporte'
 import { canExecuteAction, type Reglas } from '@/lib/permisos/clientABAC'
 import {
   AVISO_SIN_MIGRACION,

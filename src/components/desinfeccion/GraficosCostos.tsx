@@ -18,7 +18,7 @@
  *     40 % se vería igual de lleno que uno al 100 %.
  */
 
-import { n2 } from '@/lib/trasplante/formato'
+import { n2 } from '@/lib/formato/reporte'
 
 const QUIMICO = '#0369a1'
 const PERSONAL = '#047857'

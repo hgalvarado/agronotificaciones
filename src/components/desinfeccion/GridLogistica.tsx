@@ -18,7 +18,7 @@ import { DataGrid } from '@/components/ui/DataGrid'
 import { IconPlus } from '@/components/ui/Icons'
 import type { ColumnaGrid } from '@/lib/grid/tipos'
 import { formatearFecha } from '@/lib/estados'
-import { n2 } from '@/lib/trasplante/formato'
+import { n2 } from '@/lib/formato/reporte'
 import { canExecuteAction, zonasParaCrear, type Reglas } from '@/lib/permisos/clientABAC'
 import {
   AVISO_SIN_MIGRACION,

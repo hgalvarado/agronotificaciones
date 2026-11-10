@@ -4,7 +4,7 @@ import { getPermisos, puede } from '@/lib/auth'
 import { Alerta } from '@/components/ui/Primitivos'
 import { IconChevronLeft } from '@/components/ui/Icons'
 import { BotonImprimir } from '@/components/plan/BotonImprimir'
-import { Porcentaje } from '@/components/trasplante/Porcentaje'
+import { Porcentaje } from '@/components/ui/Porcentaje'
 import {
   Barra,
   Bloque,

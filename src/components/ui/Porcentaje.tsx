@@ -8,7 +8,7 @@
  * los interruptores para dibujar un número de dos dígitos.
  */
 
-import { semaforo } from '@/lib/trasplante/formato'
+import { semaforo } from '@/lib/formato/reporte'
 
 export function Porcentaje({ valor }: { valor: number | null }) {
   if (valor === null || valor === undefined) return <span className="text-slate-300">—</span>
