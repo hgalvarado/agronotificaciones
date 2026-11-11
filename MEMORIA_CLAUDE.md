@@ -30,21 +30,19 @@
 - Mobile-first (capturadores en el teléfono). Funciones homogéneas en todos los módulos. Operable con teclado.
 - Respuestas al usuario en español, claras, sin jerga innecesaria.
 
-## 3. Estado actual (2026-11-10, noche)
+## 3. Estado actual (2026-11-11)
 
-- `main` en producción: commit `40dacd3` (sin Telecom, Trasplante ni Turnos de riego en la UI).
-- `desarrollo` adelante de `main` (sin push): Fase 1 (`7ff21ec`), tickets en el celular (`9c94457`),
-  continuidad al capturar (`e4ea6a4`), revisión por lotes (`ebd9f39`).
-- SQL: `sql/84` corrida en desarrollo (falta producción). `sql/85` (última lectura) **sin correr en ninguna
-  base** — el código funciona sin ella (respaldo con RLS), pero el capturador solo verá sus propias lecturas.
+- **Producción al día**: `main` = `4580222` (todo lo de `desarrollo` hasta la memoria). `sql/83`–`88` corridas
+  en desarrollo y producción. El usuario dio «Mover proceso» a Torre de Control en producción.
 - Supabase: Telecom retirado en ambas bases (`sql/83`, respaldo en esquema `respaldo`).
 - **Dato del usuario**: los capturadores registran la jornada de AYER o días anteriores (cuando el trabajo ya
   se hizo). Nunca asumir «hoy»; la continuidad se calcula contra la lectura anterior a la fecha del ticket.
 
 ## 4. Pendientes (borrar al completar)
 
-- [ ] **Pasar a producción** cuando el usuario diga «pasa a producción»: push `desarrollo`, merge a `main`
-      (worktree aparte, sin tocar su servidor local), esperar Vercel, y el usuario corre 84, 85, 86, 87 y 88.
+- [ ] **Publicar** (cuando diga «pasa a producción»): `desarrollo` trae AccionesTicket con «Reabrir» para el
+      capturador y «Eliminar» solo vacío. Después de Vercel, el usuario corre `sql/90` en producción.
+      (89 ya corrida en ambas; 90 en desarrollo. QA: cerrar 6/6, eliminar 7/7, Torre de Control borra con equipos.)
 - [ ] **Filtro «Horómetro malo» en /horometros** (aprobado por el usuario 2026-11-11): tarjeta/filtro rápido
       para las filas cuyo comentario trae «[Horómetro malo]» (`MARCA_HOROMETRO_MALO` en `lib/horometro/repetido.ts`).
 - [ ] Duplicados viejos: en desarrollo hay capturadores con varios tickets «Registrado» del mismo día (hasta
@@ -114,4 +112,9 @@
   «Agregar labores a ese registro» o «Reportar horómetro malo y guardar» (marca `[Horómetro malo]` en el
   comentario). Traslape = solo aviso. Por qué: capturadores volvían a registrar el equipo en vez de agregarle
   labores. QA `horometro_repetido.ps1` 11/11.
+- **2026-11-11 · Cerrar ticket** (`sql/89`): los capturadores no podían cerrar su ticket. La RLS de UPDATE de
+  `tickets` no tiene WITH CHECK, así que su USING se aplica a la fila NUEVA; la condición
+  «solo abiertos y en Registrando» falla con el ticket ya cerrado. Era un error viejo; se notó al quitar
+  «Enviar a revisión». cerrar/reabrir pasan a `security definer` y validan el permiso sobre el ticket ANTES del
+  cambio. Ojo con cualquier otra escritura «invoker» que cambie `estado`: le pasaría lo mismo.
 - Ojo QA: copiar archivos de rutas con `[ticketId]` con `Copy-Item -LiteralPath` (los corchetes son comodín).
