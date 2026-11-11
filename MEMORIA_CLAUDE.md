@@ -40,6 +40,9 @@
 
 ## 4. Pendientes (borrar al completar)
 
+- [ ] **Cerrar ticket (capturadores)**: el usuario corre `sql/89` en desarrollo → Claude corre
+      `pruebas/qa/cerrar_ticket_capturador.ps1` (antes de la 89 reproduce el error: 4/6) → `sql/89` en producción
+      (compatible con el código publicado) → publicar el botón «Reabrir» (AccionesTicket) cuando diga «pasa a producción».
 - [ ] **Filtro «Horómetro malo» en /horometros** (aprobado por el usuario 2026-11-11): tarjeta/filtro rápido
       para las filas cuyo comentario trae «[Horómetro malo]» (`MARCA_HOROMETRO_MALO` en `lib/horometro/repetido.ts`).
 - [ ] Duplicados viejos: en desarrollo hay capturadores con varios tickets «Registrado» del mismo día (hasta
@@ -109,4 +112,9 @@
   «Agregar labores a ese registro» o «Reportar horómetro malo y guardar» (marca `[Horómetro malo]` en el
   comentario). Traslape = solo aviso. Por qué: capturadores volvían a registrar el equipo en vez de agregarle
   labores. QA `horometro_repetido.ps1` 11/11.
+- **2026-11-11 · Cerrar ticket** (`sql/89`): los capturadores no podían cerrar su ticket. La RLS de UPDATE de
+  `tickets` no tiene WITH CHECK, así que su USING se aplica a la fila NUEVA; la condición
+  «solo abiertos y en Registrando» falla con el ticket ya cerrado. Era un error viejo; se notó al quitar
+  «Enviar a revisión». cerrar/reabrir pasan a `security definer` y validan el permiso sobre el ticket ANTES del
+  cambio. Ojo con cualquier otra escritura «invoker» que cambie `estado`: le pasaría lo mismo.
 - Ojo QA: copiar archivos de rutas con `[ticketId]` con `Copy-Item -LiteralPath` (los corchetes son comodín).

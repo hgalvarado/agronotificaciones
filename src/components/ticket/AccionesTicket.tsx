@@ -54,6 +54,9 @@ export function AccionesTicket({
   const fila = { proceso: ticket.proceso, estado: ticket.estado }
   const puedeEditar = canExecuteAction(reglas, 'tickets', 'editar', fila)
   const puedeBorrar = canExecuteAction(reglas, 'tickets', 'eliminar', fila)
+  // Reabrir se pregunta como lo pregunta la base (sql/89): «¿podría editarlo si estuviera abierto?». Así el
+  // capturador reabre su ticket cerrado mientras siga en «0 · Registrado».
+  const puedeReabrir = canExecuteAction(reglas, 'tickets', 'editar', { ...fila, estado: 'ABIERTO' })
 
   // «Enviar a revisión» ya no está aquí: el proceso lo mueve quien tenga «Mover proceso» (ProcesoTicketBarra)
 
@@ -107,7 +110,8 @@ export function AccionesTicket({
             {cargando === 'cerrar' ? 'Cerrando…' : 'Cerrar ticket'}
           </Boton>
         ) : (
-          puedeEditar && (
+          !abierto &&
+          puedeReabrir && (
             <Boton variante="secundario" tamano="sm" onClick={reabrirTicket} disabled={cargando === 'reabrir'}>
               <IconUnlock className="h-4 w-4" />
               {cargando === 'reabrir' ? 'Reabriendo…' : 'Reabrir'}
