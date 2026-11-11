@@ -1,12 +1,16 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useMemoria } from '@/lib/memoria/useMemoria'
+import { MiTrabajo } from './MiTrabajo'
+import { useAvisosCambios } from '@/lib/datos/useAvisosCambios'
 import { useParams } from 'next/navigation'
-import { Alerta, Boton, Campo, Insignia, Selector } from '@/components/ui/Primitivos'
+import { Alerta, Boton, Insignia } from '@/components/ui/Primitivos'
 import { Modal } from '@/components/ui/Modal'
 import { createClient } from '@/lib/supabase/client'
 import { mensajeDeError } from '@/lib/errores'
+import { hoyIso } from '@/lib/fechas'
 import { useRouter } from 'next/navigation'
 import { IconCheck, IconPlus, IconSearch, IconX } from '@/components/ui/Icons'
 import { PROCESOS, estadoInfo, formatearFecha, procesoInfo } from '@/lib/estados'
@@ -16,13 +20,25 @@ import { BotonFiltros } from './FiltrosTickets'
 import { leerCapturadores, leerResumen } from '@/lib/tickets/repositorio'
 import {
   SIN_FILTROS,
+  cuantosFiltros,
   type BloqueTickets,
   type Capturador,
   type FilaTicket as FilaTicketDato,
   type FiltrosTickets,
 } from '@/lib/tickets/tipos'
-import type { EstadoTicket, ProcesoTicket } from '@/lib/types'
+import type { EstadoTicket } from '@/lib/types'
 import { armarReglas, canExecuteAction, type ReglasPlanas } from '@/lib/permisos/clientABAC'
+import { TicketsRecientes, inicioRecientes } from './TicketsRecientes'
+import { BotonesProceso } from './BotonesProceso'
+import {
+  confirmarDestino,
+  destinosPermitidos,
+  mensajeMovidos,
+  moverTickets,
+  puedeMoverTicket,
+  siguientePaso,
+  type InfoProceso,
+} from '@/lib/tickets/proceso'
 
 export function ListaTickets({
   resumenInicial = [],
@@ -66,8 +82,10 @@ export function ListaTickets({
   const router = useRouter()
   const reglas = useMemo(() => armarReglas(reglasPlanas), [reglasPlanas])
 
+  // Mover el proceso: sólo quien tiene «Mover proceso» en la matriz (sql/86)
+  const destinos = useMemo(() => destinosPermitidos(reglas), [reglas])
   // A nivel de PANTALLA: ¿tiene sentido ofrecer el modo selección?
-  const puedeLotes = canExecuteAction(reglas, 'tickets', 'editar')
+  const puedeLotes = canExecuteAction(reglas, 'tickets', 'editar') || destinos.length > 0
 
   const atributos = useCallback(
     (t: FilaTicketDato) => ({
@@ -130,10 +148,35 @@ export function ListaTickets({
     }),
     [marcados, cargadas, puedeEliminarTicket]
   )
-  const omitidos = marcados.size - editables.length
+  const movibles = useMemo(
+    () => [...marcados].filter((id) => {
+      const t = cargadas.get(id)
+      return t ? puedeMoverTicket(reglas, t, usuarioId) : false
+    }),
+    [marcados, cargadas, reglas, usuarioId]
+  )
+  const omitidos = marcados.size - Math.max(editables.length, movibles.length)
 
   const [borrando, setBorrando] = useState(false)
+  const [moviendo, setMoviendo] = useState(false)
   const [errorLote, setErrorLote] = useState<string | null>(null)
+  const [avisoLote, setAvisoLote] = useState<string | null>(null)
+  const [verAnteriores, setVerAnteriores] = useState(false)
+
+  /** Mueve de proceso (un toque): los marcados o un ticket suelto. Luego se vuelve a consultar todo. */
+  async function mover(ids: string[], destino: InfoProceso) {
+    const aMover = ids.filter((id) => cargadas.get(id)?.proceso !== destino.valor)
+    if (aMover.length === 0) return setAvisoLote(`Ya están en «${destino.numero} · ${destino.etiqueta}».`)
+    if (!confirmarDestino(destino.valor, aMover.length)) return
+    setMoviendo(true)
+    setErrorLote(null)
+    const { hechos, error: e } = await moverTickets(aMover, destino.valor)
+    setMoviendo(false)
+    if (e) return setErrorLote(e)
+    setAvisoLote(mensajeMovidos(aMover.length, hechos, destino))
+    setMarcados(new Set())
+    setRevision((r) => r + 1)
+  }
 
   async function eliminarEnMasa() {
     if (borrables.length === 0) return
@@ -155,7 +198,8 @@ export function ListaTickets({
     router.refresh()
   }
 
-  const [filtros, setFiltros] = useState<FiltrosTickets>(SIN_FILTROS)
+  // Filtros y búsqueda se RECUERDAN por usuario (lib/memoria): al volver a Tickets siguen como se dejaron
+  const [filtros, setFiltros] = useMemoria<FiltrosTickets>('tickets:filtros', SIN_FILTROS)
   const [bloques, setBloques] = useState<BloqueTickets[]>(resumenInicial)
   const [capturadores, setCapturadores] = useState<Capturador[]>(capturadoresIniciales)
   const [cargando, setCargando] = useState(false)
@@ -163,13 +207,24 @@ export function ListaTickets({
 
   // El texto se escribe seguido, así que la consulta espera a que la
   // persona termine: sin esto serían ocho viajes para escribir «TK-1024».
-  const [texto, setTexto] = useState('')
+  const [texto, setTexto] = useMemoria('tickets:texto', '')
   useEffect(() => {
     const t = setTimeout(() => {
       setFiltros((antes) => (antes.busqueda === texto ? antes : { ...antes, busqueda: texto }))
     }, 350)
     return () => clearTimeout(t)
-  }, [texto])
+  }, [texto, setFiltros])
+
+  // Los CONTEOS se ponen al día solos (al volver a la ventana o cuando cambia un ticket), sin cerrar los meses
+  // ni los bloques que la persona tiene abiertos: solo se reemplazan los números del resumen
+  const ultimaCuenta = useRef(0)
+  const recontar = useCallback(async () => {
+    ultimaCuenta.current = Date.now()
+    const { bloques: b, error: e } = await leerResumen(filtros)
+    if (!e) setBloques(b)
+  }, [filtros])
+  const ultimaVezCuenta = useCallback(() => ultimaCuenta.current, [])
+  useAvisosCambios({ tablas: ['tickets'], alCambiar: () => void recontar(), ultima: ultimaVezCuenta })
 
   /**
    * Cuántas veces el servidor ha vuelto a contar.
@@ -236,6 +291,37 @@ export function ListaTickets({
   const total = useMemo(() => bloques.reduce((a, b) => a + Number(b.cuantos), 0), [bloques])
 
 
+  const hoyMes = hoyIso().slice(0, 7)
+
+  /** Cada ticket; quien puede mover el proceso tiene en la fila el botón del siguiente paso (un toque). */
+  const dibujarFila = (t: FilaTicketDato) => {
+    const sig = !modoSeleccion && puedeMoverTicket(reglas, t, usuarioId) ? siguientePaso(reglas, t.proceso) : null
+    return (
+      <FilaTicket
+        key={t.id}
+        ticket={t}
+        seleccionado={params?.ticketId === t.id}
+        modoSeleccion={modoSeleccion}
+        marcado={marcados.has(t.id)}
+        onMarcar={() => alternarMarcado(t.id)}
+        accionRapida={
+          sig ? (
+            <button
+              type="button"
+              disabled={moviendo}
+              data-paso-rapido={sig.valor}
+              onClick={() => void mover([t.id], sig)}
+              title={`Pasar a ${sig.numero} · ${sig.etiqueta}`}
+              className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-brand-700 ring-1 ring-inset ring-brand-200 hover:bg-brand-50 disabled:opacity-50"
+            >
+              → {sig.numero} · {sig.etiqueta}
+            </button>
+          ) : null
+        }
+      />
+    )
+  }
+
   function alternarMarcado(id: string) {
     setMarcados((prev) => {
       const copia = new Set(prev)
@@ -292,19 +378,35 @@ export function ListaTickets({
                 className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand-700 px-3 text-sm font-semibold text-white shadow-[var(--shadow-raised)] transition-all hover:bg-brand-800 active:scale-[0.98]"
               >
                 <IconPlus className="h-4 w-4" />
-                Generar
+                Nuevo
               </button>
             )}
           </div>
         </div>
 
         {modoSeleccion && (
-          <div className="mt-2 flex items-center gap-2">
+          <div className="mt-2 flex flex-wrap items-center gap-1.5" data-seleccion-rapida>
+            {/* Seleccionar por paso: «todos los que siguen en 0 · Registrado» es lo que se manda a revisión */}
+            {PROCESOS.map((p) => {
+              const ids = [...cargadas.values()].filter((t) => t.proceso === p.valor).map((t) => t.id)
+              if (ids.length === 0) return null
+              return (
+                <button
+                  key={p.valor}
+                  type="button"
+                  data-seleccionar-proceso={p.valor}
+                  onClick={() => setMarcados(new Set(ids))}
+                  className="rounded-full px-2.5 py-1 text-xs font-semibold text-brand-700 ring-1 ring-inset ring-brand-200 hover:bg-brand-50"
+                >
+                  Todos en {p.numero} · {p.etiqueta} ({ids.length})
+                </button>
+              )
+            })}
             <button
               onClick={() => setMarcados(new Set(cargadas.keys()))}
               className="rounded-md px-2 py-1 text-xs font-semibold text-brand-700 hover:bg-brand-50"
             >
-              Seleccionar los {cargadas.size} que ya abriste
+              Todos los visibles ({cargadas.size})
             </button>
             {marcados.size > 0 && (
               <button
@@ -329,29 +431,83 @@ export function ListaTickets({
       </div>
 
       <div className="scroll-suave flex-1 overflow-y-auto px-3 py-3 lg:px-3">
-        <p className="px-1 pb-2 text-xs text-slate-400">
-          {total} {total === 1 ? 'ticket' : 'tickets'} en el historial. Abre un mes y un proceso para
-          verlos; se bajan de cuarenta en cuarenta.
-        </p>
+        {/* Lo primero en el teléfono: el ticket de hoy y lo pendiente. Se oculta al buscar o filtrar, que es
+            cuando se viene a consultar el historial */}
+        {!modoSeleccion && cuantosFiltros(filtros) === 0 && (
+          <MiTrabajo usuarioId={usuarioId} onNuevo={() => setAbrirNuevo(true)} />
+        )}
 
-        <ArbolTickets
-          bloques={bloques}
-          filtros={filtros}
-          cargandoResumen={cargando && bloques.length === 0}
-          error={error}
-          revision={revision}
-          onFilasCargadas={anotarCargadas}
-          fila={(t) => (
-            <FilaTicket
-              key={t.id}
-              ticket={t}
-              seleccionado={params?.ticketId === t.id}
-              modoSeleccion={modoSeleccion}
-              marcado={marcados.has(t.id)}
-              onMarcar={() => alternarMarcado(t.id)}
+        {avisoLote && (
+          <div className="mb-3" data-aviso-lote>
+            <Alerta tono="azul">{avisoLote}</Alerta>
+          </div>
+        )}
+
+        {filtros.meses.length === 0 ? (
+          <>
+            {/* Lo reciente de una sola vez, por día: el mes en curso (y en cambio de mes, los últimos 10 días) */}
+            <h2 className="px-1 pb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Recientes · desde el {inicioRecientes().split('-').reverse().slice(0, 2).join('/')}
+            </h2>
+            <TicketsRecientes
+              filtros={filtros}
+              revision={revision}
+              fila={dibujarFila}
+              onFilasCargadas={anotarCargadas}
+              accionDia={(tickets) =>
+                modoSeleccion ? (
+                  <button
+                    type="button"
+                    data-seleccionar-dia
+                    onClick={() => setMarcados((m) => new Set([...m, ...tickets.map((t) => t.id)]))}
+                    className="rounded-md px-2 py-0.5 text-xs font-semibold text-brand-700 hover:bg-brand-50"
+                  >
+                    Seleccionar el día
+                  </button>
+                ) : null
+              }
             />
-          )}
-        />
+
+            <button
+              type="button"
+              onClick={() => setVerAnteriores((v) => !v)}
+              aria-expanded={verAnteriores}
+              data-ver-anteriores
+              className="mt-4 flex w-full items-center justify-between rounded-xl bg-white px-3 py-2.5 text-sm font-semibold text-slate-600 ring-1 ring-inset ring-slate-200/80 hover:bg-slate-50"
+            >
+              <span>Meses anteriores</span>
+              <span className="text-xs text-slate-400">{verAnteriores ? 'Ocultar' : 'Ver por mes ›'}</span>
+            </button>
+            {verAnteriores && (
+              <div className="mt-2">
+                <ArbolTickets
+                  bloques={bloques.filter((b) => b.mes < hoyMes)}
+                  filtros={filtros}
+                  cargandoResumen={cargando && bloques.length === 0}
+                  error={error}
+                  revision={revision}
+                  onFilasCargadas={anotarCargadas}
+                  fila={dibujarFila}
+                />
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <h2 className="px-1 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Historial · {total} {total === 1 ? 'ticket' : 'tickets'}
+            </h2>
+            <ArbolTickets
+              bloques={bloques}
+              filtros={filtros}
+              cargandoResumen={cargando && bloques.length === 0}
+              error={error}
+              revision={revision}
+              onFilasCargadas={anotarCargadas}
+              fila={dibujarFila}
+            />
+          </>
+        )}
       </div>
 
       {modoSeleccion && marcados.size > 0 && (
@@ -366,13 +522,31 @@ export function ListaTickets({
             </p>
           )}
 
-          <Boton
-            className="w-full"
-            disabled={editables.length === 0}
-            onClick={() => setAbrirLote(true)}
-          >
-            Cambiar estado o proceso ({editables.length})
-          </Boton>
+          {/* Un toque por destino: «Pasar a 1 · Revisando», etc. (antes: botón → ventana → lista → aplicar) */}
+          {movibles.length > 0 && (
+            <BotonesProceso
+              destinos={destinos}
+              ocupado={moviendo}
+              resaltar={(() => {
+                const pasos = new Set(movibles.map((id) => cargadas.get(id)?.proceso))
+                const unico = pasos.size === 1 ? [...pasos][0] : null
+                return unico ? (siguientePaso(reglas, unico)?.valor ?? null) : null
+              })()}
+              onElegir={(d) => void mover(movibles, d)}
+              prefijo={`${movibles.length} ${movibles.length === 1 ? 'ticket' : 'tickets'} a`}
+              grande
+            />
+          )}
+
+          {editables.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setAbrirLote(true)}
+              className="self-start text-xs font-semibold text-slate-500 hover:underline"
+            >
+              Activar o cerrar {editables.length}…
+            </button>
+          )}
 
           {borrables.length > 0 && (
             <Boton
@@ -418,12 +592,15 @@ function FilaTicket({
   modoSeleccion,
   marcado,
   onMarcar,
+  accionRapida,
 }: {
   ticket: FilaTicketDato
   seleccionado: boolean
   modoSeleccion: boolean
   marcado: boolean
   onMarcar: () => void
+  /** Botón de un toque (p. ej. «→ 1 · Revisando») para quien puede mover el proceso. */
+  accionRapida?: React.ReactNode
 }) {
   const estado = estadoInfo(ticket.estado)
   const proceso = procesoInfo(ticket.proceso)
@@ -440,12 +617,14 @@ function FilaTicket({
   const contenido = (
     <>
       <div className="flex items-start justify-between gap-2">
+        {/* Quién y qué día: el código largo va pequeño (se usa para buscar y en SAP) */}
         <p
           className={`truncate text-sm font-semibold ${
             seleccionado ? 'text-brand-900' : 'text-slate-900'
           }`}
         >
-          {ticket.codigo}
+          {ticket.usuario_nombre ?? formatearFecha(ticket.fecha)}
+          <span className="block truncate text-[11px] font-normal text-slate-400">{ticket.codigo}</span>
         </p>
         <span
           className={`mt-1 h-2 w-2 shrink-0 rounded-full ${
@@ -463,17 +642,13 @@ function FilaTicket({
             <span className="truncate">{ticket.departamento}</span>
           </>
         )}
-        {ticket.usuario_nombre && (
-          <>
-            <span className="text-slate-200">·</span>
-            <span className="truncate">{ticket.usuario_nombre}</span>
-          </>
-        )}
       </div>
 
       <div className="mt-2 flex items-center gap-1.5">
-        <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
-        <Insignia tono={proceso.tono}>{proceso.etiqueta}</Insignia>
+        <Insignia tono={proceso.tono}>
+          {proceso.numero} · {proceso.etiqueta}
+        </Insignia>
+        {ticket.estado !== 'ABIERTO' && <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>}
       </div>
     </>
   )
@@ -496,14 +671,20 @@ function FilaTicket({
   }
 
   return (
-    <Link href={`/tickets/${ticket.id}`} className={clases}>
-      {contenido}
-    </Link>
+    // El botón rápido va FUERA del enlace (un botón dentro de un <a> no es válido), encima de su esquina
+    <div className="relative">
+      <Link href={`/tickets/${ticket.id}`} className={clases}>
+        {contenido}
+      </Link>
+      {accionRapida && <div className="absolute bottom-2.5 right-3">{accionRapida}</div>}
+    </div>
   )
 }
 
 /* ------------------------------------------------------------------ */
 /* Cambio de estado y proceso en bloque                                */
+/* ------------------------------------------------------------------ */
+/* Activar o cerrar en bloque (el proceso se mueve con los botones)    */
 /* ------------------------------------------------------------------ */
 
 function AccionesLoteModal({
@@ -521,72 +702,38 @@ function AccionesLoteModal({
 }) {
   const supabase = createClient()
   const router = useRouter()
-  const [estado, setEstado] = useState('')
-  const [proceso, setProceso] = useState('')
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  async function aplicar() {
-    if (!estado && !proceso) return setError('Elige al menos un cambio.')
-
+  async function aplicar(estado: EstadoTicket) {
     setError(null)
     setGuardando(true)
-    const { data, error: e } = await supabase.rpc('actualizar_tickets_masivo', {
+    const { error: e } = await supabase.rpc('actualizar_tickets_masivo', {
       p_ticket_ids: ticketIds,
-      p_estado: estado ? (estado as EstadoTicket) : null,
-      p_proceso: proceso ? (proceso as ProcesoTicket) : null,
+      p_estado: estado,
+      p_proceso: null,
     })
     setGuardando(false)
     if (e) return setError(e.message)
-
-    alert(`Se actualizaron ${data ?? 0} tickets.`)
-    setEstado('')
-    setProceso('')
     onCerrar()
     onListo()
     router.refresh()
   }
 
   return (
-    <Modal
-      abierto={abierto}
-      onCerrar={onCerrar}
-      titulo={`Actualizar ${cantidad} tickets`}
-      pie={
-        <div className="flex gap-2">
-          <Boton variante="secundario" className="flex-1" onClick={onCerrar} disabled={guardando}>
-            Cancelar
-          </Boton>
-          <Boton className="flex-1" onClick={aplicar} disabled={guardando}>
-            {guardando ? 'Aplicando…' : 'Aplicar'}
-          </Boton>
-        </div>
-      }
-    >
+    <Modal abierto={abierto} onCerrar={onCerrar} titulo={`Activar o cerrar ${cantidad} tickets`}>
       <div className="flex flex-col gap-4">
         <p className="text-sm text-slate-500">
-          Los campos que dejes en «Sin cambio» se quedan como están en cada ticket.
+          El estado marca si el ticket se sigue capturando. El proceso se cambia con los botones de la barra.
         </p>
-
-        <Campo etiqueta="Estado">
-          <Selector value={estado} onChange={(e) => setEstado(e.target.value)}>
-            <option value="">Sin cambio</option>
-            <option value="ABIERTO">Activo</option>
-            <option value="CERRADO">Cerrado</option>
-          </Selector>
-        </Campo>
-
-        <Campo etiqueta="Proceso">
-          <Selector value={proceso} onChange={(e) => setProceso(e.target.value)}>
-            <option value="">Sin cambio</option>
-            {PROCESOS.map((p) => (
-              <option key={p.valor} value={p.valor}>
-                {p.numero} · {p.etiqueta}
-              </option>
-            ))}
-          </Selector>
-        </Campo>
-
+        <div className="grid grid-cols-2 gap-2">
+          <Boton variante="secundario" disabled={guardando} onClick={() => void aplicar('ABIERTO')}>
+            Activar
+          </Boton>
+          <Boton variante="secundario" disabled={guardando} onClick={() => void aplicar('CERRADO')}>
+            Cerrar
+          </Boton>
+        </div>
         {error && <Alerta>{error}</Alerta>}
       </div>
     </Modal>

@@ -26,7 +26,7 @@
  */
 
 import Link from 'next/link'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { leerTodo } from '@/lib/supabase/paginar'
 import { armarReglas, canExecuteAction, type ReglasPlanas } from '@/lib/permisos/clientABAC'
@@ -38,6 +38,8 @@ import { SelectorMultiple } from '@/components/ui/SelectorMultiple'
 import type { ColumnaGrid } from '@/lib/grid/tipos'
 import { mesEnCurso } from '@/lib/fechas'
 import { mensajeDeError } from '@/lib/errores'
+import { useMemoria } from '@/lib/memoria/useMemoria'
+import { useConsultaViva } from '@/lib/datos/useConsultaViva'
 import {
   COLUMNAS_HOROMETROS_SAP,
   COLUMNAS_LABORES_SAP,
@@ -51,6 +53,7 @@ import { Modal } from '@/components/ui/Modal'
 import { PanelLaboresHorometro } from '@/components/registro/PanelLaboresHorometro'
 import { puedeEnTicket } from '@/lib/permisos/captura'
 import { PROCESOS, procesoInfo } from '@/lib/estados'
+import { ProcesoEnLote } from '@/components/ticket/ProcesoEnLote'
 import type { Equipo, Operador, ProcesoTicket, TurnoTipo } from '@/lib/types'
 
 export type FilaControl = {
@@ -161,16 +164,14 @@ export function ControlHorometros({
     [reglas, usuarioId]
   )
 
-  const [filas, setFilas] = useState<FilaControl[] | null>(null)
-  const [cargando, setCargando] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
   const [ocupado, setOcupado] = useState(false)
 
+  // Rango y filtros se RECUERDAN por usuario (lib/memoria): al volver a la pantalla siguen como se dejaron
   const inicial = useMemo(mesEnCurso, [])
-  const [rango, setRango] = useState(inicial)
-  const [consulta, setConsulta] = useState(inicial)
-  const [externos, setExternos] = useState(VACIOS)
+  const [rango, setRango] = useMemoria('horometros:rango', inicial)
+  const [consulta, setConsulta, memoriaLista] = useMemoria('horometros:consulta', inicial)
+  const [externos, setExternos] = useMemoria('horometros:filtros', VACIOS)
 
   // Sin tope: el rango trae todas sus lecturas, por tramos. Ver
   // `lib/supabase/paginar`.
@@ -183,9 +184,10 @@ export function ControlHorometros({
         .lte('fecha', consulta.hasta)
         .order('equipo_codigo', { ascending: true })
         .order('fecha', { ascending: true })
-        // El mismo desempate que usa la vista para encadenar: dentro de un
-        // día el diurno va antes que el nocturno. Sin esto la pantalla
-        // ordenaba distinto que el cálculo y las filas parecían saltadas.
+        // El mismo orden que usa la vista para encadenar (sql/87): dentro de
+        // un día, por la lectura (el horómetro sólo avanza), y el turno como
+        // desempate. Sin esto la pantalla ordenaba distinto que el cálculo.
+        .order('horometro_inicial', { ascending: true })
         .order('turno', { ascending: true })
         .order('id', { ascending: true })
         .range(desde, hasta)
@@ -193,44 +195,19 @@ export function ControlHorometros({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [consulta.desde, consulta.hasta])
 
-  // `silencioso`: sin encender el «cargando», para refrescar tras editar
-  // sin atenuar la tabla. La cuadrícula NO se desmonta en ningún caso:
-  // sus filtros, orden y búsqueda viven en ella y se conservan.
-  const recargar = useCallback(async (silencioso = false) => {
-    if (!silencioso) setCargando(true)
-    const { datos, error: e } = await leer()
-    if (!silencioso) setCargando(false)
-    if (e) {
-      setError(e)
-      setFilas([])
-      return
-    }
-    setError(null)
-    setFilas(datos)
-  }, [leer])
-
-  useEffect(() => {
-    let vivo = true
-    async function cargar() {
-      // Se enciende ANTES de pedir: el hueco entre el clic y la primera
-      // fila es donde la pantalla parecía colgada.
-      setCargando(true)
-      const { datos, error: e } = await leer()
-      if (!vivo) return
-      setCargando(false)
-      if (e) {
-        setError(e)
-        setFilas([])
-        return
-      }
-      setError(null)
-      setFilas(datos)
-    }
-    cargar()
-    return () => {
-      vivo = false
-    }
-  }, [leer])
+  // Consulta viva (lib/datos/useConsultaViva): al volver se ve al instante lo último traído y se actualiza sola
+  // —al regresar a la ventana o cuando cambian horómetros, tickets o labores—. `recargar(true)` tras editar
+  // actualiza sin atenuar la tabla; la cuadrícula nunca se desmonta, así que filtros, orden y búsqueda se conservan.
+  // Espera a `memoriaLista` para consultar directamente el rango recordado (y no antes el mes en curso).
+  const { filas, cargando, error: errorConsulta, recargar } = useConsultaViva<FilaControl>({
+    clave: `horometros:${consulta.desde}:${consulta.hasta}`,
+    leer,
+    tablas: ['horometros', 'tickets', 'registros'],
+    habilitado: memoriaLista,
+  })
+  // Error de una acción (guardar, eliminar); el de la consulta lo da la consulta viva
+  const [errorAccion, setError] = useState<string | null>(null)
+  const error = errorAccion ?? errorConsulta
 
   const cargadas = useMemo(() => filas ?? [], [filas])
 
@@ -278,7 +255,7 @@ export function ControlHorometros({
 
   const activos = Object.values(externos).filter((v) => v.length > 0).length
 
-  const [rapido, setRapido] = useState<Rapido>(null)
+  const [rapido, setRapido] = useMemoria<Rapido>('horometros:rapido', null)
   const [viendoLabores, setViendoLabores] = useState<FilaControl | null>(null)
 
   // La 78 trae `cantidad_labores`; sin ella la tarjeta vuelve a la lectura
@@ -655,6 +632,7 @@ export function ControlHorometros({
       <DataGrid<FilaControl>
           filas={enGrid}
           cargando={cargando}
+          memoria="horometros"
           columnas={columnas}
           titulo="Horometros"
           nombreArchivo={`horometros-${consulta.desde}-a-${consulta.hasta}`}
@@ -764,6 +742,17 @@ export function ControlHorometros({
                   {fuera} fuera de tu permiso: no se {fuera === 1 ? 'toca' : 'tocan'}
                 </span>
               )}
+              {/* Revisión por lotes: el proceso de los tickets de lo marcado, de una vez */}
+              <ProcesoEnLote
+                filas={lista.filter((f) => marcadas.includes(f.id))}
+                reglas={reglas}
+                onError={(m) => setError(m)}
+                onListo={(m) => {
+                  limpiar()
+                  setAviso(m)
+                  void recargar(true)
+                }}
+              />
               {puedeEditar && ids.length > 0 && (
                 <>
                   <select

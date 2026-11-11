@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Alerta, AreaTexto, Boton, Campo, Entrada, Tarjeta } from '@/components/ui/Primitivos'
@@ -14,6 +14,10 @@ import {
   ultimoOperadorDeEquipo,
   type OperadorSugerido,
 } from '@/lib/horometro/repositorioSugerencia'
+import { ultimaLecturaDeEquipo, type LecturaAnterior } from '@/lib/horometro/repositorioLectura'
+import { lecturasMismoDia } from '@/lib/horometro/repositorioMismoDia'
+import { MARCA_HOROMETRO_MALO, revisarRepetido, type LecturaDelDia } from '@/lib/horometro/repetido'
+import Link from 'next/link'
 
 type Props = {
   ticketId: string
@@ -72,6 +76,71 @@ export function HorometroForm({
     operador_id: horometroBase?.operador_id ?? '',
     comentario: horometroBase?.comentario ?? '',
   })
+
+  /**
+   * Continuidad: la última lectura final del equipo antes de esta jornada. Al revisar, Torre de Control cuadra
+   * que el inicial siga donde terminó el final anterior; aquí se propone ese valor y se avisa en el momento si
+   * lo tecleado no coincide (sin bloquear: un cambio de horómetro o una reparación lo justifican).
+   * Se guarda con la clave equipo|turno para no mostrar la lectura de otro equipo mientras llega la nueva.
+   */
+  const [anterior, setAnterior] = useState<{ clave: string; lectura: LecturaAnterior | null } | null>(null)
+  const propuesto = useRef<string | null>(null)
+  const claveLectura = `${form.equipo_id}|${form.turno}`
+  useEffect(() => {
+    if (!form.equipo_id) return
+    let vigente = true
+    const clave = `${form.equipo_id}|${form.turno}`
+    ultimaLecturaDeEquipo(form.equipo_id, fechaTicket, form.turno, horometroBase?.id).then((lectura) => {
+      if (!vigente) return
+      setAnterior({ clave, lectura })
+      if (!lectura) return
+      const valor = String(lectura.final)
+      // Sólo se propone sobre un campo vacío o sobre la propuesta anterior; lo tecleado a mano no se toca
+      setForm((f) => {
+        if (f.horometro_inicial !== '' && f.horometro_inicial !== propuesto.current) return f
+        propuesto.current = valor
+        return { ...f, horometro_inicial: valor }
+      })
+    })
+    return () => {
+      vigente = false
+    }
+  }, [form.equipo_id, form.turno, fechaTicket, horometroBase?.id])
+  const lecturaAnterior = anterior?.clave === claveLectura ? anterior.lectura : null
+  const desfase = useMemo(() => {
+    if (!lecturaAnterior || form.horometro_inicial.trim() === '') return null
+    const ini = Number(form.horometro_inicial.replace(',', '.'))
+    if (Number.isNaN(ini)) return null
+    return Math.round((ini - lecturaAnterior.final) * 100) / 100
+  }, [lecturaAnterior, form.horometro_inicial])
+
+  /**
+   * Registro repetido: otras lecturas de ESTE equipo en ESTA fecha (de cualquier capturador, sql/88). Si el
+   * inicial y el final son iguales a uno ya registrado, casi siempre es el mismo equipo capturado otra vez en vez
+   * de agregarle labores al primero. No se bloquea del todo: se ofrece ir a ese registro o «Reportar horómetro
+   * malo y guardar» (queda la marca en el comentario para quien revisa). Un traslape sólo se avisa.
+   */
+  const [mismoDia, setMismoDia] = useState<{ equipo: string; lecturas: LecturaDelDia[] } | null>(null)
+  useEffect(() => {
+    if (!form.equipo_id) return
+    let vigente = true
+    const equipo = form.equipo_id
+    lecturasMismoDia(equipo, fechaTicket, horometroBase?.id).then((lecturas) => {
+      if (vigente) setMismoDia({ equipo, lecturas })
+    })
+    return () => {
+      vigente = false
+    }
+  }, [form.equipo_id, fechaTicket, horometroBase?.id])
+  const { repetida, traslapes } = useMemo(
+    () =>
+      revisarRepetido(
+        mismoDia?.equipo === form.equipo_id ? mismoDia.lecturas : [],
+        form.horometro_inicial,
+        form.horometro_final
+      ),
+    [mismoDia, form.equipo_id, form.horometro_inicial, form.horometro_final]
+  )
 
   // Vista previa en vivo de las horas máquina: el operador ve el cálculo
   // mientras teclea, sin tener que guardar para descubrir un error.
@@ -160,9 +229,21 @@ export function HorometroForm({
     return { id: data.id, titulo: data.nombre, subtitulo: data.codigo ?? undefined }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    void guardar(false)
+  }
+
+  /** `reportarMalo`: guardar aunque repita lecturas, dejando la marca de horómetro malo en el comentario. */
+  async function guardar(reportarMalo: boolean) {
     setError(null)
+
+    if (repetida && !reportarMalo) {
+      document.querySelector('[data-repetido]')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      return setError(
+        'Este equipo ya está registrado ese día con las mismas lecturas. Elige una opción del aviso amarillo.'
+      )
+    }
 
     // Toda la validación en una llamada, y en el orden en que se llenan
     // los campos: el primer problema que encuentra es el que se dice.
@@ -191,7 +272,10 @@ export function HorometroForm({
       horometro_final: revisado.valor.horometroFinal,
       horas_hombre: revisado.valor.horasHombre,
       operador_id: form.operador_id || null,
-      comentario: form.comentario || null,
+      comentario:
+        reportarMalo && !form.comentario.includes(MARCA_HOROMETRO_MALO)
+          ? `${MARCA_HOROMETRO_MALO} Lecturas repetidas con otro registro del día. ${form.comentario}`.trim()
+          : form.comentario || null,
     }
 
     if (horometroBase?.id) {
@@ -351,6 +435,82 @@ export function HorometroForm({
           </Campo>
         </div>
 
+        {lecturaAnterior && !repetida && (
+          <p
+            data-continuidad={desfase === null ? 'sin-dato' : desfase === 0 ? 'ok' : 'desfase'}
+            className={`-mt-1 rounded-xl px-3.5 py-2.5 text-sm ring-1 ring-inset ${
+              desfase !== null && desfase !== 0
+                ? 'bg-amber-50 text-amber-800 ring-amber-600/20'
+                : 'bg-slate-50 text-slate-600 ring-slate-200/70'
+            }`}
+          >
+            Última lectura del equipo: <strong>{lecturaAnterior.final}</strong> ·{' '}
+            {formatearFecha(lecturaAnterior.fecha)} ({lecturaAnterior.turno === 'NOCTURNO' ? 'nocturno' : 'diurno'})
+            {desfase !== null && desfase !== 0 && (
+              <>
+                <br />
+                <strong>
+                  El inicial no sigue esa lectura ({desfase > 0 ? '+' : ''}
+                  {desfase}).
+                </strong>{' '}
+                Revísalo, o explica el motivo en Comentarios.
+              </>
+            )}
+            {desfase === 0 && <span className="text-brand-700"> · sigue la secuencia ✓</span>}
+          </p>
+        )}
+
+        {repetida && (
+          <div
+            data-repetido
+            className="flex flex-col gap-3 rounded-xl bg-amber-50 px-3.5 py-3 text-sm text-amber-800 ring-1 ring-inset ring-amber-600/30"
+          >
+            <p>
+              <strong>Este equipo ya está registrado ese día con las mismas lecturas</strong> ({repetida.inicial} →{' '}
+              {repetida.final}, {repetida.turno === 'NOCTURNO' ? 'nocturno' : 'diurno'}
+              {repetida.operador ? `, ${repetida.operador}` : ''}
+              {repetida.esMio ? '' : repetida.capturo ? `, lo capturó ${repetida.capturo}` : ', lo capturó otra persona'}
+){' '}
+              <strong>
+                {repetida.labores === 0
+                  ? 'y no tiene labores'
+                  : repetida.labores === 1
+                    ? 'y ya tiene 1 labor'
+                    : `y ya tiene ${repetida.labores} labores`}
+              </strong>
+              .
+              Un horómetro no marca lo mismo dos veces en un día: si faltan labores, agrégalas a ese registro.
+            </p>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              {repetida.esMio && (
+                <Link
+                  href={`/tickets/${repetida.ticketId}/horometros/${repetida.id}/registros/nuevo`}
+                  data-ir-repetido
+                  className="flex min-h-11 flex-1 items-center justify-center rounded-xl bg-brand-700 px-3 text-sm font-semibold text-white"
+                >
+                  Agregar labores a ese registro
+                </Link>
+              )}
+              <button
+                type="button"
+                data-reportar-malo
+                disabled={guardando}
+                onClick={() => void guardar(true)}
+                className="flex min-h-11 flex-1 items-center justify-center rounded-xl bg-white px-3 text-sm font-semibold text-amber-800 ring-1 ring-inset ring-amber-600/40"
+              >
+                Reportar horómetro malo y guardar
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!repetida && traslapes.length > 0 && (
+          <p data-traslape className="rounded-xl bg-amber-50 px-3.5 py-2.5 text-sm text-amber-800 ring-1 ring-inset ring-amber-600/20">
+            Ese día este equipo ya tiene {traslapes.map((l) => `${l.inicial} → ${l.final}`).join(', ')}: las lecturas se
+            pisan. Revisa que no sea el mismo trabajo registrado dos veces.
+          </p>
+        )}
+
         {horasMaquina !== null && (
           <div
             className={`flex items-center justify-between rounded-xl px-3.5 py-3 ring-1 ring-inset ${
@@ -392,7 +552,8 @@ export function HorometroForm({
 
       {error && <Alerta>{error}</Alerta>}
 
-      <div className="sticky bottom-20 z-10 lg:bottom-4">
+      {/* Con un registro repetido, las salidas son las dos del aviso: el botón fijo se quita para no taparlo */}
+      <div className={`sticky bottom-20 z-10 lg:bottom-4 ${repetida ? 'hidden' : ''}`}>
         <Boton type="submit" tamano="lg" className="w-full" disabled={guardando}>
           {guardando
           ? 'Guardando…'

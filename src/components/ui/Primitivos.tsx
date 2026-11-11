@@ -117,6 +117,8 @@ const tonos = {
 } as const
 
 export type Tono = keyof typeof tonos
+/** Las mismas clases de color, para botones que deben verse del color de su estado. */
+export const CLASES_TONO = tonos
 
 export function Insignia({
   tono = 'gris',

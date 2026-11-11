@@ -5,18 +5,15 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Modal } from '@/components/ui/Modal'
 import { Alerta, Boton, Campo, Entrada } from '@/components/ui/Primitivos'
-import { IconLock, IconPencil, IconSend, IconTrash, IconUnlock } from '@/components/ui/Icons'
-import { PROCESOS } from '@/lib/estados'
+import { IconLock, IconPencil, IconTrash, IconUnlock } from '@/components/ui/Icons'
 import { mensajeDeError } from '@/lib/errores'
 import { ahoraIso } from '@/lib/fechas'
-import type { ProcesoTicket, Ticket } from '@/lib/types'
-import { puede } from '@/lib/permisos/puede'
+import type { Ticket } from '@/lib/types'
 import { enRevision, estaNotificado, puedeEditarEnRevision } from '@/lib/permisos/captura'
 import { armarReglas, canExecuteAction, type ReglasPlanas } from '@/lib/permisos/clientABAC'
 
 export function AccionesTicket({
   ticket,
-  permisos,
   reglas: reglasPlanas,
   nombreUsuario,
 }: {
@@ -58,10 +55,7 @@ export function AccionesTicket({
   const puedeEditar = canExecuteAction(reglas, 'tickets', 'editar', fila)
   const puedeBorrar = canExecuteAction(reglas, 'tickets', 'eliminar', fila)
 
-  // Mandar a revisión es lo contrario de editar en revisión: se hace
-  // desde el paso 0 y es justamente lo último que hace quien captura.
-  const puedeEnviarARevision =
-    ticket.proceso === 'REGISTRADO' && canExecuteAction(reglas, 'tickets', 'editar', fila)
+  // «Enviar a revisión» ya no está aquí: el proceso lo mueve quien tenga «Mover proceso» (ProcesoTicketBarra)
 
   async function cerrarTicket() {
     if (!confirm('¿Cerrar este ticket? Ya no podrás editar sus horómetros ni labores.')) return
@@ -77,25 +71,6 @@ export function AccionesTicket({
     const { error } = await supabase.rpc('reabrir_ticket', { p_ticket_id: ticket.id })
     setCargando(null)
     if (error) return setError(mensajeDeError(error, 'No se pudo reabrir el ticket.'))
-    router.refresh()
-  }
-
-  async function enviarARevision() {
-    setCargando('revision')
-    setError(null)
-    const { error } = await supabase.rpc('cambiar_proceso_ticket', {
-      p_ticket_id: ticket.id,
-      p_proceso: 'REVISANDO' as ProcesoTicket,
-    })
-    setCargando(null)
-    if (error) {
-      return setError(
-        mensajeDeError(
-          error,
-          'No se pudo enviar a revisión. Si el ticket está cerrado y el error persiste, falta correr la migración 32.'
-        )
-      )
-    }
     router.refresh()
   }
 
@@ -140,13 +115,6 @@ export function AccionesTicket({
           )
         )}
 
-        {puedeEnviarARevision && (
-          <Boton variante="suave" tamano="sm" onClick={enviarARevision} disabled={cargando === 'revision'}>
-            <IconSend className="h-4 w-4" />
-            {cargando === 'revision' ? 'Enviando…' : 'Enviar a revisión'}
-          </Boton>
-        )}
-
         {puedeBorrar && (
           <Boton
             variante="peligro"
@@ -182,7 +150,6 @@ export function AccionesTicket({
         abierto={editando}
         onCerrar={() => setEditando(false)}
         ticket={ticket}
-        permisos={permisos}
         nombreUsuario={nombreUsuario}
       />
     </>
@@ -197,50 +164,25 @@ function EditarTicketModal({
   abierto,
   onCerrar,
   ticket,
-  permisos,
   nombreUsuario,
 }: {
   abierto: boolean
   onCerrar: () => void
   ticket: Ticket
-  permisos: string[]
-  /**
-   * Las mismas reglas con sus tres ejes. Van como lista de pares porque
-   * un `Map` en las props de un componente de cliente depende de cómo
-   * serialice cada versión del framework.
-   */
-  reglas?: ReglasPlanas
   nombreUsuario: string
 }) {
   const supabase = createClient()
   const router = useRouter()
   const [fecha, setFecha] = useState(ticket.fecha)
   const [estado, setEstado] = useState(ticket.estado)
-  const [proceso, setProceso] = useState<ProcesoTicket>(ticket.proceso ?? 'REGISTRADO')
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Quien tiene «Ver todo» en Tickets mueve el ticket por todo el flujo;
-  // el resto sólo puede avisar de que terminó en campo. Es la misma regla
-  // que aplica `cambiar_proceso_ticket` en la base.
-  const mueveElFlujo = puede(new Set(permisos), 'tickets', 'ver_todo')
-
+  // El PROCESO ya no se edita aquí: se mueve con los botones de la barra de proceso (ProcesoTicketBarra),
+  // y sólo quien tiene «Mover proceso» en la matriz.
   async function guardar() {
     setGuardando(true)
     setError(null)
-
-    // El proceso se mueve por RPC porque tiene reglas propias; el resto
-    // va por UPDATE normal y lo filtra RLS.
-    if (proceso !== ticket.proceso) {
-      const { error: errProceso } = await supabase.rpc('cambiar_proceso_ticket', {
-        p_ticket_id: ticket.id,
-        p_proceso: proceso,
-      })
-      if (errProceso) {
-        setGuardando(false)
-        return setError(mensajeDeError(errProceso, 'No se pudo cambiar el proceso.'))
-      }
-    }
 
     const cambios: Record<string, unknown> = { fecha }
     if (estado !== ticket.estado) {
@@ -317,38 +259,6 @@ function EditarTicketModal({
                 {op.etiqueta}
               </button>
             ))}
-          </div>
-        </Campo>
-
-        {/* Proceso: los 4 pasos hacia SAP */}
-        <Campo
-          etiqueta="Proceso"
-          ayuda={
-            mueveElFlujo
-              ? undefined
-              : 'Sin «Ver todo» en Tickets sólo puedes enviarlo a revisión; el resto del flujo lo mueve quien revisa.'
-          }
-        >
-          <div className="grid grid-cols-2 gap-2">
-            {PROCESOS.map((p) => {
-              const bloqueado = !mueveElFlujo && p.valor !== 'REGISTRADO' && p.valor !== 'REVISANDO'
-              return (
-                <button
-                  key={p.valor}
-                  type="button"
-                  disabled={bloqueado}
-                  onClick={() => setProceso(p.valor)}
-                  className={`rounded-xl border px-3 py-3 text-left text-sm font-semibold transition-all disabled:opacity-40 ${
-                    proceso === p.valor
-                      ? 'border-brand-700 bg-brand-700 text-white'
-                      : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
-                  }`}
-                >
-                  <span className="block text-[11px] font-bold opacity-60">{p.numero}</span>
-                  {p.etiqueta}
-                </button>
-              )
-            })}
           </div>
         </Campo>
 

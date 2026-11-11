@@ -7,7 +7,8 @@ import {
 } from '@/lib/permisos/captura'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getPermisos, getReglas } from '@/lib/auth'
+import { getPermisos, getReglas, getUsuarioActual } from '@/lib/auth'
+import { ProcesoTicketBarra } from '@/components/ticket/ProcesoTicketBarra'
 import { aplanarReglas } from '@/lib/permisos/clientABAC'
 import { AccionesTicket } from '@/components/ticket/AccionesTicket'
 import { TablaHorometros } from '@/components/horometro/TablaHorometros'
@@ -174,6 +175,7 @@ export default async function TicketDetailPage({
   // es una marca de avance, no un candado.
   const permisos = await getPermisos()
   const reglas = await getReglas()
+  const usuarioActual = await getUsuarioActual()
   // Agregar y corregir son casillas distintas desde la migración 44: los
   // INSERT piden «crear» y los UPDATE «editar». Era lo que dejaba al
   // Digitador sin poder agregar un horómetro.
@@ -195,7 +197,8 @@ export default async function TicketDetailPage({
   const lotesUnicos = new Set(detalles.map((d) => d.lote_temporada_id)).size
 
   return (
-    <div className="anim-aparecer flex flex-col gap-4 p-4 lg:p-6">
+    <>
+    <div className="anim-aparecer flex flex-col gap-4 p-4 pb-28 lg:p-6 lg:pb-6">
       {/* Volver (sólo celular: en escritorio la lista está al lado) */}
       <Link
         href="/tickets"
@@ -209,12 +212,16 @@ export default async function TicketDetailPage({
       <Tarjeta className="p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <h1 className="text-xl font-bold tracking-tight text-slate-900">{ticket.codigo}</h1>
+            {/* La FECHA es el título: es como el capturador piensa su jornada. El código va pequeño (se usa
+                para buscar y en SAP, pero leído en el teléfono es una tira de letras) */}
+            <h1 className="text-xl font-bold tracking-tight text-slate-900">
+              {fechaTitulo(ticket.fecha)}
+            </h1>
             <p className="mt-0.5 text-sm text-slate-500">
               {nombreCreador}
               {ticket.departamento ? ` · ${ticket.departamento}` : ''}
             </p>
-            <p className="text-sm text-slate-400">{formatearFecha(ticket.fecha)}</p>
+            <p className="break-all text-xs text-slate-400">{ticket.codigo}</p>
           </div>
 
           <div className="flex flex-col items-end gap-1.5">
@@ -229,6 +236,17 @@ export default async function TicketDetailPage({
 
         <p className="mt-3 text-xs text-slate-400">{proceso.descripcion}</p>
 
+        {/* El proceso en 4 pasos y, para quien tenga «Mover proceso», moverlo de un toque */}
+        <div className="mt-3">
+          <ProcesoTicketBarra
+            ticketId={ticket.id}
+            proceso={ticket.proceso}
+            duenoId={ticket.usuario_id}
+            usuarioId={usuarioActual?.id ?? null}
+            reglas={aplanarReglas(reglas)}
+          />
+        </div>
+
         {/* Un ticket notificado se queda de sólo lectura y hay que decirlo:
             si no, el usuario busca el botón de editar y cree que se
             perdió. */}
@@ -236,7 +254,7 @@ export default async function TicketDetailPage({
           <p className="mt-3 rounded-lg bg-slate-100 px-3 py-2 text-xs text-slate-500">
             Ya liquidado en SAP: horómetros y labores quedan de{' '}
             <strong>sólo lectura</strong>. Para corregir algo hay que devolver el ticket a un
-            proceso anterior; quien tenga «Ver todo» en Tickets puede hacerlo.
+            proceso anterior, y eso sólo lo hace el Administrador.
           </p>
         ) : (
           congelado && (
@@ -380,6 +398,21 @@ export default async function TicketDetailPage({
         {ticket.cerrado_at ? ` · Cerrado el ${formatearFechaHora(ticket.cerrado_at)}` : ''}
       </p>
     </div>
+
+    {/* FUERA del contenedor animado: un transform en un ancestro rompe position: fixed */}
+    {/* En el teléfono, la acción del día siempre a mano (encima de la barra inferior): agregar el siguiente
+        equipo sin tener que bajar hasta la lista de horómetros */}
+    {puedeAgregarHorometros && (
+      <Link
+        href={`/tickets/${ticketId}/horometros/nuevo`}
+        className="fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom)+4.75rem)] z-20 flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-brand-700 px-4 text-base font-semibold text-white shadow-[var(--shadow-raised)] active:scale-[0.98] lg:hidden"
+        data-agregar-equipo
+      >
+        <IconPlus className="h-5 w-5" />
+        Agregar equipo
+      </Link>
+    )}
+    </>
   )
 }
 
@@ -399,4 +432,14 @@ function Metrica({
       <p className="text-[11px] font-medium text-slate-400">{etiqueta}</p>
     </div>
   )
+}
+
+/** «2026-11-09» → «lunes, 9 de noviembre de 2026» (fecha de la jornada, que ya es un día de Honduras). */
+function fechaTitulo(iso: string): string {
+  const [a, m, d] = iso.slice(0, 10).split('-').map(Number)
+  if (!a || !m || !d) return iso
+  const texto = new Date(Date.UTC(a, m - 1, d, 12)).toLocaleDateString('es-HN', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
+  })
+  return texto.charAt(0).toUpperCase() + texto.slice(1)
 }
