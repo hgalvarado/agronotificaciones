@@ -43,10 +43,10 @@
 
 ## 4. Pendientes (borrar al completar)
 
-- [ ] **Usuario corre `sql/86` y `sql/87`** en desarrollo. Luego Claude re-corre `pruebas/qa/tickets_v2.ps1`
-      (botones de proceso y freno de la base) y `revision_lotes.ps1` (ahora con botones; sin la 86 no hay botones).
+- [ ] **Usuario corre `sql/88`** en desarrollo (sin ella el aviso de repetido solo ve los registros propios).
 - [ ] **Pasar a producción** cuando el usuario diga «pasa a producción»: push `desarrollo`, merge a `main`
-      (worktree aparte, sin tocar su servidor local), esperar Vercel, y el usuario corre 84, 85, 86 y 87.
+      (worktree aparte, sin tocar su servidor local), esperar Vercel, y el usuario corre 84, 85, 86, 87 y 88.
+- [ ] (Idea) En /horometros, filtro o insignia para comentarios con «[Horómetro malo]».
 - [ ] Duplicados viejos: en desarrollo hay capturadores con varios tickets «Registrado» del mismo día (hasta
       8). La 86 no los toca; la consulta para verlos está al final de `sql/86`. Decidir con el usuario.
 - [ ] **Velocidad de Labores**: medido. La consulta en la base es rápida (~10 ms en réplica; ~300 ms ida y
@@ -108,4 +108,10 @@
   `mover_proceso` en la matriz, concedida a roles con Aprobar/Notificar: 2 Torre de Control y 6 Digitador
   Análisis); botones de un toque (`BotonesProceso`): barra de 4 pasos en el detalle, «→ siguiente» en cada
   fila, selección por día o por paso. Lógica en `lib/tickets/proceso.ts`. QA `tickets_v2.ps1` 15/15.
+  86 y 87 corridas en desarrollo (2026-11-11); QA con la 86: tickets_v2 18/18, revision_lotes 9/9.
+- **2026-11-11 · Equipo registrado dos veces** (`sql/88`, `lib/horometro/repetido.ts`): si el equipo ya tiene
+  ese día las MISMAS lecturas, el formulario lo avisa (y quita el botón fijo de guardar) con dos salidas:
+  «Agregar labores a ese registro» o «Reportar horómetro malo y guardar» (marca `[Horómetro malo]` en el
+  comentario). Traslape = solo aviso. Por qué: capturadores volvían a registrar el equipo en vez de agregarle
+  labores. QA `horometro_repetido.ps1` 11/11.
 - Ojo QA: copiar archivos de rutas con `[ticketId]` con `Copy-Item -LiteralPath` (los corchetes son comodín).
