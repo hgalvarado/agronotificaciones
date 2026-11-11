@@ -23,7 +23,7 @@ try {
     OK (-not (JS "!!($ELIMINAR)")) 'Ticket con equipos: no aparece «Eliminar»'
     Captura 'eliminar_ticket_bloqueado.png'
     $msg = ''
-    try { Rest "tickets?id=eq.$tk" 'Delete' | Out-Null } catch { $msg = "$($_.ErrorDetails.Message)" }
+    try { Rest "tickets?id=eq.$tk" 'Delete' | Out-Null } catch { $msg = "$($_.ErrorDetails.Message)"; if (-not $msg -and $_.Exception.Response) { $msg = (New-Object IO.StreamReader($_.Exception.Response.GetResponseStream())).ReadToEnd() } }
     OK ((& $existe) -and $msg -match 'primero elimina sus equipos') 'La base frena el borrado completo' $msg
 
     # Vacío: se puede

@@ -40,10 +40,9 @@
 
 ## 4. Pendientes (borrar al completar)
 
-- [ ] **Usuario corre `sql/89` en producción** (QA en desarrollo 6/6). Compatible con el código publicado.
-- [ ] **Eliminar ticket solo vacío** (`sql/90`, casilla «Eliminar con registros»): usuario corre la 90 en
-      desarrollo → Claude corre `pruebas/qa/eliminar_ticket_capturador.ps1` (sin la 90: 5/7, la base aún deja
-      borrar) → publicar (AccionesTicket: botón «Reabrir» y «Eliminar» solo vacío) → 90 en producción.
+- [ ] **Publicar** (cuando diga «pasa a producción»): `desarrollo` trae AccionesTicket con «Reabrir» para el
+      capturador y «Eliminar» solo vacío. Después de Vercel, el usuario corre `sql/90` en producción.
+      (89 ya corrida en ambas; 90 en desarrollo. QA: cerrar 6/6, eliminar 7/7, Torre de Control borra con equipos.)
 - [ ] **Filtro «Horómetro malo» en /horometros** (aprobado por el usuario 2026-11-11): tarjeta/filtro rápido
       para las filas cuyo comentario trae «[Horómetro malo]» (`MARCA_HOROMETRO_MALO` en `lib/horometro/repetido.ts`).
 - [ ] Duplicados viejos: en desarrollo hay capturadores con varios tickets «Registrado» del mismo día (hasta
