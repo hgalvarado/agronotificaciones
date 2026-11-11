@@ -184,9 +184,10 @@ export function ControlHorometros({
         .lte('fecha', consulta.hasta)
         .order('equipo_codigo', { ascending: true })
         .order('fecha', { ascending: true })
-        // El mismo desempate que usa la vista para encadenar: dentro de un
-        // día el diurno va antes que el nocturno. Sin esto la pantalla
-        // ordenaba distinto que el cálculo y las filas parecían saltadas.
+        // El mismo orden que usa la vista para encadenar (sql/87): dentro de
+        // un día, por la lectura (el horómetro sólo avanza), y el turno como
+        // desempate. Sin esto la pantalla ordenaba distinto que el cálculo.
+        .order('horometro_inicial', { ascending: true })
         .order('turno', { ascending: true })
         .order('id', { ascending: true })
         .range(desde, hasta)
