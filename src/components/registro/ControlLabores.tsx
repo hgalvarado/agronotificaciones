@@ -42,6 +42,7 @@ import { mensajeDeError } from '@/lib/errores'
 import { filasLaboresSap } from '@/lib/sap/exportacion'
 import { BotonExportarSap } from '@/components/ui/BotonExportarSap'
 import { PROCESOS, procesoInfo } from '@/lib/estados'
+import { ProcesoEnLote } from '@/components/ticket/ProcesoEnLote'
 import type { ProcesoTicket, TurnoTipo } from '@/lib/types'
 
 type FilaLabor = {
@@ -998,6 +999,17 @@ export function ControlLabores({
                   {fuera} fuera de tu permiso: no se {fuera === 1 ? 'toca' : 'tocan'}
                 </span>
               )}
+              {/* Revisión por lotes: el proceso de los tickets de lo marcado, de una vez */}
+              <ProcesoEnLote
+                filas={lista.filter((f) => marcadas.includes(f.id))}
+                reglas={reglas}
+                onError={(m) => setError(m)}
+                onListo={(m) => {
+                  limpiar()
+                  setAviso(m)
+                  void recargar(true)
+                }}
+              />
               {puedeEditar && ids.length > 0 && (
                 <>
                   <select

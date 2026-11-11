@@ -53,6 +53,7 @@ import { Modal } from '@/components/ui/Modal'
 import { PanelLaboresHorometro } from '@/components/registro/PanelLaboresHorometro'
 import { puedeEnTicket } from '@/lib/permisos/captura'
 import { PROCESOS, procesoInfo } from '@/lib/estados'
+import { ProcesoEnLote } from '@/components/ticket/ProcesoEnLote'
 import type { Equipo, Operador, ProcesoTicket, TurnoTipo } from '@/lib/types'
 
 export type FilaControl = {
@@ -740,6 +741,17 @@ export function ControlHorometros({
                   {fuera} fuera de tu permiso: no se {fuera === 1 ? 'toca' : 'tocan'}
                 </span>
               )}
+              {/* Revisión por lotes: el proceso de los tickets de lo marcado, de una vez */}
+              <ProcesoEnLote
+                filas={lista.filter((f) => marcadas.includes(f.id))}
+                reglas={reglas}
+                onError={(m) => setError(m)}
+                onListo={(m) => {
+                  limpiar()
+                  setAviso(m)
+                  void recargar(true)
+                }}
+              />
               {puedeEditar && ids.length > 0 && (
                 <>
                   <select
