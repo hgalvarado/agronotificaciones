@@ -119,15 +119,11 @@ export function AppShell({
       icono: <IconPlan />,
       visible:
         ve('plan') ||
-        ve('trasplante_plan') ||
-        ve('trasplante_diario') ||
         ve('rotacion') ||
-        ve('turnos_riego') ||
         ve('desinfeccion_plan') ||
         ve('desinfeccion_ejecucion') ||
         ve('desinfeccion_logistica') ||
-        ve('desinfeccion_reporte') ||
-        ve('telecom'),
+        ve('desinfeccion_reporte'),
       hijos: [
         {
           href: '/plan/APS',
@@ -137,16 +133,6 @@ export function AppShell({
           visible: ve('plan_aps'),
         },
         {
-          href: '/trasplante',
-          // Desde la 66 el módulo son DOS pantallas. El menú se enciende
-          // con cualquiera de las dos: quien sólo tiene el plan entra por
-          // el mismo sitio y ve su pestaña, no las otras.
-          pantalla: 'trasplante_diario',
-          etiqueta: 'Trasplante',
-          icono: <IconChart />,
-          visible: ve('trasplante_plan') || ve('trasplante_diario'),
-        },
-        {
           href: '/controles/rotacion',
           pantalla: 'rotacion',
           etiqueta: 'Cultivos de Rotación',
@@ -154,15 +140,6 @@ export function AppShell({
           visible: ve('rotacion'),
         },
         {
-          href: '/avances/turnos-riego',
-          pantalla: 'turnos_riego',
-          etiqueta: 'Turnos de riego',
-          icono: <IconGota />,
-          visible: ve('turnos_riego'),
-        },
-        {
-          // Va junto a Riego porque se ejecuta sobre el TURNO de riego:
-          // quien entra aquí viene de mirar los turnos.
           href: '/controles/desinfeccion',
           // Cuatro pantallas desde la 66; basta una para que el menú
           // aparezca, y dentro sólo se dibujan las pestañas que tenga.
@@ -174,13 +151,6 @@ export function AppShell({
             ve('desinfeccion_ejecucion') ||
             ve('desinfeccion_logistica') ||
             ve('desinfeccion_reporte'),
-        },
-        {
-          href: '/telecom',
-          pantalla: 'telecom',
-          etiqueta: 'Líneas Corporativas',
-          icono: <IconTicket />,
-          visible: ve('telecom'),
         },
       ],
     },

@@ -14,7 +14,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Alerta, Boton, Campo, Entrada, Selector } from '@/components/ui/Primitivos'
 import { formatearFecha } from '@/lib/estados'
-import { n2 } from '@/lib/trasplante/formato'
+import { n2 } from '@/lib/formato/reporte'
 import {
   fechaAplicacionPrevista,
   fechaCosechaPrevista,

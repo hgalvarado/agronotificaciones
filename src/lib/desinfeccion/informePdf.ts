@@ -22,7 +22,7 @@
  */
 
 import { ANCHO, ALTO, PALETA, Pagina, construirPdf, type Rgb } from '@/lib/pdf/documento'
-import { n2 } from '@/lib/trasplante/formato'
+import { n2 } from '@/lib/formato/reporte'
 import {
   cuadrillaDe,
   dossierDe,

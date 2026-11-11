@@ -26,7 +26,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Alerta, Boton, Campo, Esqueleto, Selector, Tarjeta } from '@/components/ui/Primitivos'
 import { IconDescargar } from '@/components/ui/Icons'
-import { n2 } from '@/lib/trasplante/formato'
+import { n2 } from '@/lib/formato/reporte'
 import { descargar } from '@/lib/hojas'
 import { hoyIso } from '@/lib/fechas'
 import { canExecuteAction, type Reglas } from '@/lib/permisos/clientABAC'

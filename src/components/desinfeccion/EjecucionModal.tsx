@@ -42,7 +42,7 @@ import {
 } from '@/components/ui/Primitivos'
 import { EntradaReloj } from '@/components/ui/EntradaReloj'
 import { IconCheck, IconLock, IconPlus, IconTrash } from '@/components/ui/Icons'
-import { n2 } from '@/lib/trasplante/formato'
+import { n2 } from '@/lib/formato/reporte'
 import { hoyIso } from '@/lib/fechas'
 import {
   crearJornal,

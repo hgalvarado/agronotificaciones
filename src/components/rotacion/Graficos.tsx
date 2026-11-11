@@ -17,7 +17,7 @@
  * la impresión no espera a que hidrate nada.
  */
 
-import { AZUL, n2, pct } from '@/lib/trasplante/formato'
+import { AZUL, n2, pct } from '@/lib/formato/reporte'
 
 const GRIS = '#e2e8f0'
 const VERDE = '#047857'

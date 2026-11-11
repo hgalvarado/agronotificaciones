@@ -43,3 +43,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Respaldos de base de datos (datos reales: NUNCA suben)
+respaldos/
