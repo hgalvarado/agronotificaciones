@@ -43,10 +43,10 @@
 
 ## 4. Pendientes (borrar al completar)
 
-- [ ] **Usuario corre `sql/88`** en desarrollo (sin ella el aviso de repetido solo ve los registros propios).
 - [ ] **Pasar a producción** cuando el usuario diga «pasa a producción»: push `desarrollo`, merge a `main`
       (worktree aparte, sin tocar su servidor local), esperar Vercel, y el usuario corre 84, 85, 86, 87 y 88.
-- [ ] (Idea) En /horometros, filtro o insignia para comentarios con «[Horómetro malo]».
+- [ ] **Filtro «Horómetro malo» en /horometros** (aprobado por el usuario 2026-11-11): tarjeta/filtro rápido
+      para las filas cuyo comentario trae «[Horómetro malo]» (`MARCA_HOROMETRO_MALO` en `lib/horometro/repetido.ts`).
 - [ ] Duplicados viejos: en desarrollo hay capturadores con varios tickets «Registrado» del mismo día (hasta
       8). La 86 no los toca; la consulta para verlos está al final de `sql/86`. Decidir con el usuario.
 - [ ] **Velocidad de Labores**: medido. La consulta en la base es rápida (~10 ms en réplica; ~300 ms ida y
