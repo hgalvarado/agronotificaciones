@@ -40,7 +40,8 @@ export async function leerResumen(
 
 export async function leerPagina(
   mes: string,
-  proceso: string,
+  /** null = todos los procesos del mes */
+  proceso: string | null,
   f: FiltrosTickets,
   cursor: Cursor,
   limite = 40

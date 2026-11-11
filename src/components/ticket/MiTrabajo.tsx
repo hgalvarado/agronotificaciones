@@ -114,7 +114,7 @@ export function MiTrabajo({ usuarioId, onNuevo }: { usuarioId: string; onNuevo: 
             Pendientes de terminar · {pendientes.length}
           </p>
           <p className="px-1 pt-0.5 text-xs text-slate-500">
-            Siguen en «Registrando»: complétalos para que Torre de Control los revise.
+            Siguen en «Registrando» hasta que Torre de Control los pase a revisión: complétalos.
           </p>
           <ul className="mt-2 space-y-1.5">
             {pendientes.slice(0, VISIBLES).map((t) => (

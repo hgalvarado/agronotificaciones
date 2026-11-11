@@ -9,9 +9,9 @@ function Proceso($id) { (Rest "tickets?select=proceso&id=eq.$id" -Servicio)[0].p
 function Marcar-Y-Pasar($codigo, $destino) {
     # Marca todas las filas visibles con el código y elige el destino en el selector del lote
     $n = JS "(() => { const fs = [...document.querySelectorAll('tr')].filter(tr => tr.innerText.includes('$codigo')); fs.forEach(tr => tr.querySelector('[aria-label=""Seleccionar fila""]')?.click()); return fs.length })()"
-    $sel = Esperar "!!document.querySelector('[data-proceso-lote]')" 5000
+    $sel = Esperar "!!document.querySelector('[data-proceso-lote] [data-destino]')" 5000
     JS "window.confirm = () => true; true" | Out-Null
-    JS "(() => { const s = document.querySelector('[data-proceso-lote]'); s.value = '$destino'; s.dispatchEvent(new Event('change', { bubbles: true })); return true })()" | Out-Null
+    JS "document.querySelector('[data-proceso-lote] [data-destino=$destino]').click(); true" | Out-Null
     return @($n, $sel)
 }
 try {

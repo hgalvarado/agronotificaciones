@@ -7,7 +7,8 @@ import {
 } from '@/lib/permisos/captura'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getPermisos, getReglas } from '@/lib/auth'
+import { getPermisos, getReglas, getUsuarioActual } from '@/lib/auth'
+import { ProcesoTicketBarra } from '@/components/ticket/ProcesoTicketBarra'
 import { aplanarReglas } from '@/lib/permisos/clientABAC'
 import { AccionesTicket } from '@/components/ticket/AccionesTicket'
 import { TablaHorometros } from '@/components/horometro/TablaHorometros'
@@ -174,6 +175,7 @@ export default async function TicketDetailPage({
   // es una marca de avance, no un candado.
   const permisos = await getPermisos()
   const reglas = await getReglas()
+  const usuarioActual = await getUsuarioActual()
   // Agregar y corregir son casillas distintas desde la migración 44: los
   // INSERT piden «crear» y los UPDATE «editar». Era lo que dejaba al
   // Digitador sin poder agregar un horómetro.
@@ -234,6 +236,17 @@ export default async function TicketDetailPage({
 
         <p className="mt-3 text-xs text-slate-400">{proceso.descripcion}</p>
 
+        {/* El proceso en 4 pasos y, para quien tenga «Mover proceso», moverlo de un toque */}
+        <div className="mt-3">
+          <ProcesoTicketBarra
+            ticketId={ticket.id}
+            proceso={ticket.proceso}
+            duenoId={ticket.usuario_id}
+            usuarioId={usuarioActual?.id ?? null}
+            reglas={aplanarReglas(reglas)}
+          />
+        </div>
+
         {/* Un ticket notificado se queda de sólo lectura y hay que decirlo:
             si no, el usuario busca el botón de editar y cree que se
             perdió. */}
@@ -241,7 +254,7 @@ export default async function TicketDetailPage({
           <p className="mt-3 rounded-lg bg-slate-100 px-3 py-2 text-xs text-slate-500">
             Ya liquidado en SAP: horómetros y labores quedan de{' '}
             <strong>sólo lectura</strong>. Para corregir algo hay que devolver el ticket a un
-            proceso anterior; quien tenga «Ver todo» en Tickets puede hacerlo.
+            proceso anterior, y eso sólo lo hace el Administrador.
           </p>
         ) : (
           congelado && (

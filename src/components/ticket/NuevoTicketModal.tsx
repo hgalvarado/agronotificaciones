@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Modal } from '@/components/ui/Modal'
@@ -74,6 +74,39 @@ export function NuevoTicketModal({
   // a la pantalla de carga masiva en vez de a capturar horómetros.
   const esHistorico = fecha < ayer
 
+  /**
+   * Un ticket «0 · Registrando» por persona y día (sql/86). Si ya existe el de esa fecha, en vez de crear otro se
+   * lleva a ese: los equipos que falten se agregan ahí. Otro de la misma fecha se puede crear sólo cuando ese ya
+   * pasó a «1 · Revisando» o más (le faltó un equipo después de enviarlo). Se pregunta al cambiar fecha o dueño.
+   */
+  const [existente, setExistente] = useState<{ clave: string; id: string | null } | null>(null)
+  const claveExistente = `${duenoId}|${fecha}`
+  useEffect(() => {
+    if (!abierto || !fecha || !duenoId) return
+    let vigente = true
+    const clave = `${duenoId}|${fecha}`
+    supabase
+      .from('tickets')
+      .select('id')
+      .eq('usuario_id', duenoId)
+      .eq('fecha', fecha)
+      .eq('proceso', 'REGISTRADO')
+      .limit(1)
+      .then(({ data }) => {
+        if (vigente) setExistente({ clave, id: data?.[0]?.id ?? null })
+      })
+    return () => {
+      vigente = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [abierto, fecha, duenoId])
+  const idExistente = existente?.clave === claveExistente ? existente.id : null
+
+  function irAlExistente(id: string) {
+    onCerrar()
+    router.push(`/tickets/${id}`)
+  }
+
   const dueno = usuarios.find((u) => u.id === duenoId)
   const nombreDueno = dueno?.nombre ?? nombreUsuario
   const departamentoDueno =
@@ -81,6 +114,7 @@ export function NuevoTicketModal({
 
   async function crear() {
     if (!fecha) return setError('Escribe la fecha de la jornada.')
+    if (idExistente) return irAlExistente(idExistente)
     setGuardando(true)
     setError(null)
 
@@ -101,6 +135,9 @@ export function NuevoTicketModal({
 
     setGuardando(false)
     if (dbError) {
+      // La base lo frenó porque ya hay uno de esa fecha (otra pestaña, otro teléfono): llevar a ese
+      const otro = /ticket:([0-9a-f-]{36})/.exec(dbError.message ?? '')?.[1]
+      if (otro) return irAlExistente(otro)
       setError(mensajeDeError(dbError, 'No se pudo crear el ticket.'))
       return
     }
@@ -122,8 +159,14 @@ export function NuevoTicketModal({
           <Boton variante="secundario" className="flex-1" onClick={onCerrar} disabled={guardando}>
             Cancelar
           </Boton>
-          <Boton className="flex-1" onClick={crear} disabled={guardando}>
-            {guardando ? 'Creando…' : esHistorico ? 'Crear histórico' : 'Crear ticket'}
+          <Boton className="flex-1" onClick={crear} disabled={guardando} data-crear-ticket>
+            {guardando
+              ? 'Creando…'
+              : idExistente
+                ? 'Ir al ticket de ese día'
+                : esHistorico
+                  ? 'Crear histórico'
+                  : 'Crear ticket'}
           </Boton>
         </div>
       }
@@ -194,7 +237,16 @@ export function NuevoTicketModal({
           </Campo>
         )}
 
-        {esHistorico && (
+        {idExistente && (
+          <div data-ticket-existente>
+            <Alerta tono="azul">
+              Ya existe el ticket de esa fecha y sigue en «0 · Registrando». Los equipos que falten se agregan
+              ahí: no hace falta crear otro.
+            </Alerta>
+          </div>
+        )}
+
+        {esHistorico && !idExistente && (
           <Alerta tono="ambar">
             Es una jornada de una fecha pasada. Al crearlo se abre su detalle, donde puedes cargar
             los horómetros y las labores de golpe desde Excel.
