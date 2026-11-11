@@ -32,7 +32,7 @@
 
 ## 3. Estado actual (2026-11-11)
 
-- **Producción al día**: `main` = `ddf6b7e` (todo lo de `desarrollo`). `sql/83`–`90` corridas
+- **Producción al día**: `main` = `7ed69a6` (todo lo de `desarrollo`). `sql/83`–`90` corridas
   en desarrollo y producción. El usuario dio «Mover proceso» a Torre de Control en producción.
 - Supabase: Telecom retirado en ambas bases (`sql/83`, respaldo en esquema `respaldo`).
 - **Dato del usuario**: los capturadores registran la jornada de AYER o días anteriores (cuando el trabajo ya
@@ -40,7 +40,6 @@
 
 ## 4. Pendientes (borrar al completar)
 
-- [ ] **Publicar «Mi trabajo: sin cerrar»** cuando el usuario diga «pasa a producción» (solo código, sin SQL).
 - [ ] **Filtro «Horómetro malo» en /horometros** (aprobado por el usuario 2026-11-11): tarjeta/filtro rápido
       para las filas cuyo comentario trae «[Horómetro malo]» (`MARCA_HOROMETRO_MALO` en `lib/horometro/repetido.ts`).
 - [ ] Duplicados viejos: en desarrollo hay capturadores con varios tickets «Registrado» del mismo día (hasta
