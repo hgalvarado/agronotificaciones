@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMemoria } from '@/lib/memoria/useMemoria'
+import { MiTrabajo } from './MiTrabajo'
 import { useAvisosCambios } from '@/lib/datos/useAvisosCambios'
 import { useParams } from 'next/navigation'
 import { Alerta, Boton, Campo, Insignia, Selector } from '@/components/ui/Primitivos'
@@ -18,6 +19,7 @@ import { BotonFiltros } from './FiltrosTickets'
 import { leerCapturadores, leerResumen } from '@/lib/tickets/repositorio'
 import {
   SIN_FILTROS,
+  cuantosFiltros,
   type BloqueTickets,
   type Capturador,
   type FilaTicket as FilaTicketDato,
@@ -306,7 +308,7 @@ export function ListaTickets({
                 className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand-700 px-3 text-sm font-semibold text-white shadow-[var(--shadow-raised)] transition-all hover:bg-brand-800 active:scale-[0.98]"
               >
                 <IconPlus className="h-4 w-4" />
-                Generar
+                Nuevo
               </button>
             )}
           </div>
@@ -343,10 +345,15 @@ export function ListaTickets({
       </div>
 
       <div className="scroll-suave flex-1 overflow-y-auto px-3 py-3 lg:px-3">
-        <p className="px-1 pb-2 text-xs text-slate-400">
-          {total} {total === 1 ? 'ticket' : 'tickets'} en el historial. Abre un mes y un proceso para
-          verlos; se bajan de cuarenta en cuarenta.
-        </p>
+        {/* Lo primero en el teléfono: el ticket de hoy y lo pendiente. Se oculta al buscar o filtrar, que es
+            cuando se viene a consultar el historial */}
+        {!modoSeleccion && cuantosFiltros(filtros) === 0 && (
+          <MiTrabajo usuarioId={usuarioId} onNuevo={() => setAbrirNuevo(true)} />
+        )}
+
+        <h2 className="px-1 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+          Historial · {total} {total === 1 ? 'ticket' : 'tickets'}
+        </h2>
 
         <ArbolTickets
           bloques={bloques}
