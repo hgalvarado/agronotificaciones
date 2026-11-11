@@ -30,21 +30,16 @@
 - Mobile-first (capturadores en el teléfono). Funciones homogéneas en todos los módulos. Operable con teclado.
 - Respuestas al usuario en español, claras, sin jerga innecesaria.
 
-## 3. Estado actual (2026-11-10, noche)
+## 3. Estado actual (2026-11-11)
 
-- `main` en producción: commit `40dacd3` (sin Telecom, Trasplante ni Turnos de riego en la UI).
-- `desarrollo` adelante de `main` (sin push): Fase 1 (`7ff21ec`), tickets en el celular (`9c94457`),
-  continuidad al capturar (`e4ea6a4`), revisión por lotes (`ebd9f39`).
-- SQL: `sql/84` corrida en desarrollo (falta producción). `sql/85` (última lectura) **sin correr en ninguna
-  base** — el código funciona sin ella (respaldo con RLS), pero el capturador solo verá sus propias lecturas.
+- **Producción al día**: `main` = `4580222` (todo lo de `desarrollo` hasta la memoria). `sql/83`–`88` corridas
+  en desarrollo y producción. El usuario dio «Mover proceso» a Torre de Control en producción.
 - Supabase: Telecom retirado en ambas bases (`sql/83`, respaldo en esquema `respaldo`).
 - **Dato del usuario**: los capturadores registran la jornada de AYER o días anteriores (cuando el trabajo ya
   se hizo). Nunca asumir «hoy»; la continuidad se calcula contra la lectura anterior a la fecha del ticket.
 
 ## 4. Pendientes (borrar al completar)
 
-- [ ] **Usuario corre en PRODUCCIÓN** `sql/84` → `85` → `86` → `87` → `88` (código ya publicado el 2026-11-11,
-      `main` = `4580222`). Hasta correr la 86 nadie puede mover procesos en producción.
 - [ ] **Filtro «Horómetro malo» en /horometros** (aprobado por el usuario 2026-11-11): tarjeta/filtro rápido
       para las filas cuyo comentario trae «[Horómetro malo]» (`MARCA_HOROMETRO_MALO` en `lib/horometro/repetido.ts`).
 - [ ] Duplicados viejos: en desarrollo hay capturadores con varios tickets «Registrado» del mismo día (hasta
