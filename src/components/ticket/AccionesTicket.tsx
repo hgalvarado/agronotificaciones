@@ -16,8 +16,11 @@ export function AccionesTicket({
   ticket,
   reglas: reglasPlanas,
   nombreUsuario,
+  cantidadEquipos = 0,
 }: {
   ticket: Ticket
+  /** Horómetros del ticket: con equipos, eliminar pide «Eliminar con registros» (sql/90). */
+  cantidadEquipos?: number
   /**
    * Los permisos efectivos, como `"pantalla:accion"`. Antes llegaba el
    * ROL y esta barra comparaba nombres de rol a mano,
@@ -53,7 +56,13 @@ export function AccionesTicket({
   // alcance sobre esta fila y la condición contra su proceso y su estado.
   const fila = { proceso: ticket.proceso, estado: ticket.estado }
   const puedeEditar = canExecuteAction(reglas, 'tickets', 'editar', fila)
-  const puedeBorrar = canExecuteAction(reglas, 'tickets', 'eliminar', fila)
+  // Un ticket con equipos sólo lo elimina quien tenga «Eliminar con registros» (sql/90); sin ella, sólo vacío
+  const conEquipos = cantidadEquipos > 0
+  const puedeBorrarConRegistros = canExecuteAction(reglas, 'tickets', 'eliminar_con_contenido', fila)
+  const puedeBorrar =
+    canExecuteAction(reglas, 'tickets', 'eliminar', fila) && (!conEquipos || puedeBorrarConRegistros)
+  const borrarBloqueadoPorEquipos =
+    canExecuteAction(reglas, 'tickets', 'eliminar', fila) && conEquipos && !puedeBorrarConRegistros
   // Reabrir se pregunta como lo pregunta la base (sql/89): «¿podría editarlo si estuviera abierto?». Así el
   // capturador reabre su ticket cerrado mientras siga en «0 · Registrado».
   const puedeReabrir = canExecuteAction(reglas, 'tickets', 'editar', { ...fila, estado: 'ABIERTO' })
@@ -80,7 +89,9 @@ export function AccionesTicket({
   async function eliminarTicket() {
     if (
       !confirm(
-        'Se eliminará el ticket junto con TODOS sus horómetros y labores. Esta acción no se puede deshacer. ¿Continuar?'
+        conEquipos
+          ? `Se eliminará el ticket junto con sus ${cantidadEquipos} ${cantidadEquipos === 1 ? 'equipo' : 'equipos'} y TODAS sus labores. Esta acción no se puede deshacer. ¿Continuar?`
+          : 'Se eliminará este ticket vacío. ¿Continuar?'
       )
     )
       return
@@ -131,6 +142,14 @@ export function AccionesTicket({
           </Boton>
         )}
       </div>
+
+      {borrarBloqueadoPorEquipos && (
+        <p className="mt-2 text-xs text-slate-400" data-eliminar-bloqueado>
+          Para eliminar este ticket, primero elimina{' '}
+          {cantidadEquipos === 1 ? 'su equipo' : `sus ${cantidadEquipos} equipos`} (desde la lista de horómetros,
+          uno por uno).
+        </p>
+      )}
 
       {/* Por qué no están los botones. Uno que desaparece sin decir
           nada se reporta como «se perdió el botón de editar», y quien lo

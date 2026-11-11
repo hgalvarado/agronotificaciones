@@ -273,6 +273,7 @@ export default async function TicketDetailPage({
             permisos={[...permisos]}
             reglas={aplanarReglas(reglas)}
             nombreUsuario={nombreCreador}
+            cantidadEquipos={horometros.length}
           />
         </div>
       </Tarjeta>
