@@ -123,8 +123,7 @@ export function AppShell({
         ve('desinfeccion_plan') ||
         ve('desinfeccion_ejecucion') ||
         ve('desinfeccion_logistica') ||
-        ve('desinfeccion_reporte') ||
-        ve('telecom'),
+        ve('desinfeccion_reporte'),
       hijos: [
         {
           href: '/plan/APS',
@@ -152,13 +151,6 @@ export function AppShell({
             ve('desinfeccion_ejecucion') ||
             ve('desinfeccion_logistica') ||
             ve('desinfeccion_reporte'),
-        },
-        {
-          href: '/telecom',
-          pantalla: 'telecom',
-          etiqueta: 'Líneas Corporativas',
-          icono: <IconTicket />,
-          visible: ve('telecom'),
         },
       ],
     },
