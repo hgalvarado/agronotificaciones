@@ -1,7 +1,9 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useMemoria } from '@/lib/memoria/useMemoria'
+import { useAvisosCambios } from '@/lib/datos/useAvisosCambios'
 import { useParams } from 'next/navigation'
 import { Alerta, Boton, Campo, Insignia, Selector } from '@/components/ui/Primitivos'
 import { Modal } from '@/components/ui/Modal'
@@ -155,7 +157,8 @@ export function ListaTickets({
     router.refresh()
   }
 
-  const [filtros, setFiltros] = useState<FiltrosTickets>(SIN_FILTROS)
+  // Filtros y búsqueda se RECUERDAN por usuario (lib/memoria): al volver a Tickets siguen como se dejaron
+  const [filtros, setFiltros] = useMemoria<FiltrosTickets>('tickets:filtros', SIN_FILTROS)
   const [bloques, setBloques] = useState<BloqueTickets[]>(resumenInicial)
   const [capturadores, setCapturadores] = useState<Capturador[]>(capturadoresIniciales)
   const [cargando, setCargando] = useState(false)
@@ -163,13 +166,24 @@ export function ListaTickets({
 
   // El texto se escribe seguido, así que la consulta espera a que la
   // persona termine: sin esto serían ocho viajes para escribir «TK-1024».
-  const [texto, setTexto] = useState('')
+  const [texto, setTexto] = useMemoria('tickets:texto', '')
   useEffect(() => {
     const t = setTimeout(() => {
       setFiltros((antes) => (antes.busqueda === texto ? antes : { ...antes, busqueda: texto }))
     }, 350)
     return () => clearTimeout(t)
-  }, [texto])
+  }, [texto, setFiltros])
+
+  // Los CONTEOS se ponen al día solos (al volver a la ventana o cuando cambia un ticket), sin cerrar los meses
+  // ni los bloques que la persona tiene abiertos: solo se reemplazan los números del resumen
+  const ultimaCuenta = useRef(0)
+  const recontar = useCallback(async () => {
+    ultimaCuenta.current = Date.now()
+    const { bloques: b, error: e } = await leerResumen(filtros)
+    if (!e) setBloques(b)
+  }, [filtros])
+  const ultimaVezCuenta = useCallback(() => ultimaCuenta.current, [])
+  useAvisosCambios({ tablas: ['tickets'], alCambiar: () => void recontar(), ultima: ultimaVezCuenta })
 
   /**
    * Cuántas veces el servidor ha vuelto a contar.

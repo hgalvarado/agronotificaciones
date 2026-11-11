@@ -41,6 +41,14 @@ type ItemNav = {
   hijos?: ItemNav[]
 }
 
+/**
+ * Pantallas que se precargan COMPLETAS desde el menú: al tocarlas se abren al instante (el navegador ya tiene la
+ * página). Solo las de trabajo diario y cuyos datos se actualizan solos (useConsultaViva / useAvisosCambios): lo
+ * precargado nunca enseña registros viejos. El resto sigue con la precarga normal de Next.js.
+ */
+const PRECARGA_COMPLETA = new Set(['/tickets', '/horometros', '/labores'])
+const precargaCompleta = (href: string) => (PRECARGA_COMPLETA.has(href) ? true : undefined)
+
 export function AppShell({
   nombre,
   rolNombre,
@@ -372,6 +380,7 @@ export function AppShell({
             <Link
               key={item.href}
               href={item.href}
+              prefetch={precargaCompleta(item.href)}
               className={`flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[11px] font-semibold transition-colors ${
                 activo(item.href) ? 'text-brand-700' : 'text-slate-400'
               }`}
@@ -412,6 +421,7 @@ export function AppShell({
                     <Link
                       key={item.href}
                       href={item.href}
+                      prefetch={precargaCompleta(item.href)}
                       onClick={() => setAbrirMas(false)}
                       className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold transition-colors ${
                         activo(item.href) ? 'bg-brand-50 text-brand-800' : 'text-slate-600'
@@ -446,6 +456,7 @@ function EnlaceNav({
   return (
     <Link
       href={href}
+      prefetch={precargaCompleta(href)}
       className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
         activo
           ? 'bg-brand-50 text-brand-800'

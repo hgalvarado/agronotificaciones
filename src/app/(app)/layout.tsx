@@ -1,6 +1,7 @@
 import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 import { getNavegacion, getPerfilActual, getPermisos, getUsuarioActual } from '@/lib/auth'
+import { MemoriaUsuario } from '@/lib/memoria/useMemoria'
 import { AppShell } from '@/components/ui/AppShell'
 import { LogoutButton } from '@/components/ui/LogoutButton'
 import { Vigilante } from '@/components/ui/Vigilante'
@@ -37,6 +38,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
 
   return (
+    <MemoriaUsuario usuarioId={perfil.id}>
     <AppShell
       nombre={perfil.nombre}
       rolNombre={rol?.nombre ?? 'Sin rol'}
@@ -54,6 +56,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <Vigilante>{children}</Vigilante>
       </Suspense>
     </AppShell>
+    </MemoriaUsuario>
   )
 }
 

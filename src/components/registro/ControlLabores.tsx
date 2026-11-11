@@ -15,7 +15,7 @@
  */
 
 import Link from 'next/link'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { leerTodo } from '@/lib/supabase/paginar'
 import { armarReglas, canExecuteAction, type ReglasPlanas } from '@/lib/permisos/clientABAC'
@@ -36,6 +36,8 @@ import {
   type CampoLinea,
 } from '@/lib/registro/repositorioLinea'
 import { mesEnCurso } from '@/lib/fechas'
+import { useMemoria } from '@/lib/memoria/useMemoria'
+import { useConsultaViva } from '@/lib/datos/useConsultaViva'
 import { mensajeDeError } from '@/lib/errores'
 import { filasLaboresSap } from '@/lib/sap/exportacion'
 import { BotonExportarSap } from '@/components/ui/BotonExportarSap'
@@ -223,24 +225,23 @@ export function ControlLabores({
     [reglas, usuarioId]
   )
 
-  const [filas, setFilas] = useState<FilaLabor[] | null>(null)
-  const [cargando, setCargando] = useState(true)
   const [editando, setEditando] = useState<FilaLabor | null>(null)
   const [enTemporada, setEnTemporada] = useState<string[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [errorAccion, setError] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
   const [ocupado, setOcupado] = useState(false)
   const [vista, setVista] = useState<ColumnaVista[] | null>(null)
 
   const inicial = useMemo(() => mesEnCurso(), [])
-  const [rango, setRango] = useState(inicial)
-  const [consulta, setConsulta] = useState(inicial)
-  const [externos, setExternos] = useState(VACIOS)
+  // Rango, temporadas y filtros se RECUERDAN por usuario (lib/memoria): al volver siguen como se dejaron
+  const [rango, setRango] = useMemoria('labores:rango', inicial)
+  const [consulta, setConsulta, memoriaLista] = useMemoria('labores:consulta', inicial)
+  const [externos, setExternos] = useMemoria('labores:filtros', VACIOS)
   // La temporada NO espera al botón «Consultar». El rango de fechas sí,
   // porque ampliarlo son miles de filas y se cambia de dos en dos
   // campos; elegir una temporada es un clic y tiene que contestar solo.
   // Antes se guardaba junto al rango y por eso no disparaba nada.
-  const [temporadas_, setTemporadas] = useState<string[]>([])
+  const [temporadas_, setTemporadas] = useMemoria<string[]>('labores:temporadas', [])
 
   // El rango de fechas manda TODO lo que hay en él.
   //
@@ -267,42 +268,16 @@ export function ControlLabores({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [consulta.desde, consulta.hasta, temporadas_])
 
-  const recargar = useCallback(async () => {
-    setCargando(true)
-    const { datos, error: e } = await leer()
-    setCargando(false)
-    if (e) {
-      setError(e)
-      setFilas([])
-      return
-    }
-    setError(null)
-    setFilas(datos)
-  }, [leer])
-
-  useEffect(() => {
-    let vivo = true
-    async function cargar() {
-      // Se enciende ANTES de pedir, no después: el hueco entre el clic y
-      // la primera fila es justo donde la pantalla parecía colgada.
-      setCargando(true)
-      const { datos, error: e } = await leer()
-      if (!vivo) return
-      setCargando(false)
-      if (e) {
-        setError(e)
-        setFilas([])
-        return
-      }
-      setError(null)
-      setFilas(datos)
-    }
-    cargar()
-    return () => {
-      vivo = false
-    }
-  }, [leer])
-
+  // Consulta viva (lib/datos/useConsultaViva): al volver se ve al instante lo último traído y se actualiza sola
+  // —al regresar a la ventana o cuando cambian labores, horómetros o tickets—. Espera a `memoriaLista` para pedir
+  // directamente el rango y las temporadas recordadas.
+  const { filas, cargando, error: errorConsulta, recargar } = useConsultaViva<FilaLabor>({
+    clave: `labores:${consulta.desde}:${consulta.hasta}:${temporadas_.join('|')}`,
+    leer,
+    tablas: ['registro_detalle', 'registros', 'horometros', 'tickets'],
+    habilitado: memoriaLista,
+  })
+  const error = errorAccion ?? errorConsulta
   // El DataGrid identifica la fila por `id`; aquí la línea es el detalle:
   // una labor con tres lotes son tres líneas, y cada una se edita y se
   // elimina por separado.
@@ -897,6 +872,7 @@ export function ControlLabores({
       {aviso && <Alerta tono="azul">{aviso}</Alerta>}
 
       <DataGrid<Fila>
+          memoria="labores"
           filas={lista}
           cargando={cargando}
           columnas={visibles}

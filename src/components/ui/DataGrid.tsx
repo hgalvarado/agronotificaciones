@@ -40,6 +40,7 @@ import {
   filtrar as filtrarFilas,
 } from '@/lib/grid/filtros'
 import { useHidratado } from '@/lib/ui/hidratado'
+import { useMemoria } from '@/lib/memoria/useMemoria'
 import type { ColumnaGrid, Filtro, Filtros, Orden } from '@/lib/grid/tipos'
 import {
   agregacionesDe,
@@ -129,6 +130,7 @@ export function DataGrid<T extends { id: string }>({
   onEditarCelda,
   puedeEditarCelda = false,
   cargando = false,
+  memoria,
 }: {
   filas: T[]
   columnas: ColumnaGrid<T>[]
@@ -176,10 +178,16 @@ export function DataGrid<T extends { id: string }>({
    * sin filas, se dibuja el esqueleto.
    */
   cargando?: boolean
+  /**
+   * Nombre con el que se RECUERDAN orden, filtros de columna y búsqueda (por usuario y pantalla): al volver se
+   * encuentran como se dejaron. Sin esto, la tabla empieza limpia cada vez.
+   */
+  memoria?: string
 }) {
-  const [orden, setOrden] = useState<Orden | null>(ordenInicial ?? null)
-  const [filtros, setFiltros] = useState<Filtros>({})
-  const [busqueda, setBusqueda] = useState('')
+  // Con `memoria`, orden, filtros de columna y búsqueda se recuerdan por usuario (lib/memoria). Sin ella, como siempre
+  const [orden, setOrden] = useMemoria<Orden | null>(memoria ? `grid:${memoria}:orden` : '', ordenInicial ?? null)
+  const [filtros, setFiltros] = useMemoria<Filtros>(memoria ? `grid:${memoria}:filtros` : '', {})
+  const [busqueda, setBusqueda] = useMemoria(memoria ? `grid:${memoria}:busqueda` : '', '')
   const [marcadas, setMarcadas] = useState<Set<string>>(new Set())
 
   const filtrables = useMemo(() => columnas.filter((c) => c.tipo !== 'ninguno'), [columnas])
