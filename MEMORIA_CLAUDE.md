@@ -32,7 +32,7 @@
 
 ## 3. Estado actual (2026-11-11)
 
-- **Producción al día**: `main` = `4580222` (todo lo de `desarrollo` hasta la memoria). `sql/83`–`88` corridas
+- **Producción al día**: `main` = `ddf6b7e` (todo lo de `desarrollo`). `sql/83`–`89` corridas
   en desarrollo y producción. El usuario dio «Mover proceso» a Torre de Control en producción.
 - Supabase: Telecom retirado en ambas bases (`sql/83`, respaldo en esquema `respaldo`).
 - **Dato del usuario**: los capturadores registran la jornada de AYER o días anteriores (cuando el trabajo ya
@@ -40,9 +40,7 @@
 
 ## 4. Pendientes (borrar al completar)
 
-- [ ] **Publicar** (cuando diga «pasa a producción»): `desarrollo` trae AccionesTicket con «Reabrir» para el
-      capturador y «Eliminar» solo vacío. Después de Vercel, el usuario corre `sql/90` en producción.
-      (89 ya corrida en ambas; 90 en desarrollo. QA: cerrar 6/6, eliminar 7/7, Torre de Control borra con equipos.)
+- [ ] **Usuario corre `sql/90` en producción** (código publicado 2026-11-11, `main` = `ddf6b7e`).
 - [ ] **Filtro «Horómetro malo» en /horometros** (aprobado por el usuario 2026-11-11): tarjeta/filtro rápido
       para las filas cuyo comentario trae «[Horómetro malo]» (`MARCA_HOROMETRO_MALO` en `lib/horometro/repetido.ts`).
 - [ ] Duplicados viejos: en desarrollo hay capturadores con varios tickets «Registrado» del mismo día (hasta
