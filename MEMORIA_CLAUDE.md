@@ -43,8 +43,8 @@
 
 ## 4. Pendientes (borrar al completar)
 
-- [ ] **Pasar a producción** cuando el usuario diga «pasa a producción»: push `desarrollo`, merge a `main`
-      (worktree aparte, sin tocar su servidor local), esperar Vercel, y el usuario corre 84, 85, 86, 87 y 88.
+- [ ] **Usuario corre en PRODUCCIÓN** `sql/84` → `85` → `86` → `87` → `88` (código ya publicado el 2026-11-11,
+      `main` = `4580222`). Hasta correr la 86 nadie puede mover procesos en producción.
 - [ ] **Filtro «Horómetro malo» en /horometros** (aprobado por el usuario 2026-11-11): tarjeta/filtro rápido
       para las filas cuyo comentario trae «[Horómetro malo]» (`MARCA_HOROMETRO_MALO` en `lib/horometro/repetido.ts`).
 - [ ] Duplicados viejos: en desarrollo hay capturadores con varios tickets «Registrado» del mismo día (hasta
