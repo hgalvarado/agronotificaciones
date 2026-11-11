@@ -43,9 +43,12 @@
 
 ## 4. Pendientes (borrar al completar)
 
-- [ ] **Usuario corre `sql/85`** en desarrollo (y en producción después del deploy).
+- [ ] **Usuario corre `sql/86` y `sql/87`** en desarrollo. Luego Claude re-corre `pruebas/qa/tickets_v2.ps1`
+      (botones de proceso y freno de la base) y `revision_lotes.ps1` (ahora con botones; sin la 86 no hay botones).
 - [ ] **Pasar a producción** cuando el usuario diga «pasa a producción»: push `desarrollo`, merge a `main`
-      (worktree aparte, sin tocar su servidor local), esperar Vercel, y el usuario corre `sql/84` y `sql/85`.
+      (worktree aparte, sin tocar su servidor local), esperar Vercel, y el usuario corre 84, 85, 86 y 87.
+- [ ] Duplicados viejos: en desarrollo hay capturadores con varios tickets «Registrado» del mismo día (hasta
+      8). La 86 no los toca; la consulta para verlos está al final de `sql/86`. Decidir con el usuario.
 - [ ] **Velocidad de Labores**: medido. La consulta en la base es rápida (~10 ms en réplica; ~300 ms ida y
       vuelta pidiendo solo `detalle_id`). Lo lento es la transferencia: `select *` = ~300 KB/mes, 64 columnas,
       0.9–3 s según la red. Siguiente paso: en `ControlLabores` pedir solo las columnas que usan la tabla, los
@@ -95,3 +98,14 @@
   «Pasar sus N tickets a…» (`components/ticket/ProcesoEnLote.tsx`, usa `actualizar_tickets_masivo`; destinos
   según la matriz de permisos). La continuidad por equipo ya existía (comparativo, filtro «Con desfase»).
   QA `revision_lotes.ps1` 9/9.
+- **2026-11-11 · Comparativo** (`b992290`, `sql/87`): con dos lecturas del mismo turno en un día la ventana
+  cruzaba la secuencia (T6603-A79 04-nov: +6/−10/+4). Ahora dentro del día encadena por lectura (HI, HF) y el
+  turno es desempate. Réplica: 0 desfases nuevos; solo desaparecen los falsos.
+- **2026-11-11 · Tickets v2** (`5752097`, `sql/86`), pedidos del usuario:
+  recientes por día (mes en curso; en cambio de mes, mínimo 10 días) en vez del acordeón mes→proceso;
+  un ticket «Registrando» por persona y día (la ventana lleva al existente + trigger); el capturador ya no
+  tiene «Enviar a revisión»: el proceso lo mueve quien tenga la casilla **«Mover proceso»** (acción
+  `mover_proceso` en la matriz, concedida a roles con Aprobar/Notificar: 2 Torre de Control y 6 Digitador
+  Análisis); botones de un toque (`BotonesProceso`): barra de 4 pasos en el detalle, «→ siguiente» en cada
+  fila, selección por día o por paso. Lógica en `lib/tickets/proceso.ts`. QA `tickets_v2.ps1` 15/15.
+- Ojo QA: copiar archivos de rutas con `[ticketId]` con `Copy-Item -LiteralPath` (los corchetes son comodín).
