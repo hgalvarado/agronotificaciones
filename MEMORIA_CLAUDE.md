@@ -32,7 +32,7 @@
 
 ## 3. Estado actual (2026-11-11)
 
-- **Producción al día**: `main` = `ddf6b7e` (todo lo de `desarrollo`). `sql/83`–`89` corridas
+- **Producción al día**: `main` = `ddf6b7e` (todo lo de `desarrollo`). `sql/83`–`90` corridas
   en desarrollo y producción. El usuario dio «Mover proceso» a Torre de Control en producción.
 - Supabase: Telecom retirado en ambas bases (`sql/83`, respaldo en esquema `respaldo`).
 - **Dato del usuario**: los capturadores registran la jornada de AYER o días anteriores (cuando el trabajo ya
@@ -40,7 +40,7 @@
 
 ## 4. Pendientes (borrar al completar)
 
-- [ ] **Usuario corre `sql/90` en producción** (código publicado 2026-11-11, `main` = `ddf6b7e`).
+- [ ] **Publicar «Mi trabajo: sin cerrar»** cuando el usuario diga «pasa a producción» (solo código, sin SQL).
 - [ ] **Filtro «Horómetro malo» en /horometros** (aprobado por el usuario 2026-11-11): tarjeta/filtro rápido
       para las filas cuyo comentario trae «[Horómetro malo]» (`MARCA_HOROMETRO_MALO` en `lib/horometro/repetido.ts`).
 - [ ] Duplicados viejos: en desarrollo hay capturadores con varios tickets «Registrado» del mismo día (hasta
@@ -115,4 +115,11 @@
   «solo abiertos y en Registrando» falla con el ticket ya cerrado. Era un error viejo; se notó al quitar
   «Enviar a revisión». cerrar/reabrir pasan a `security definer` y validan el permiso sobre el ticket ANTES del
   cambio. Ojo con cualquier otra escritura «invoker» que cambie `estado`: le pasaría lo mismo.
+- **2026-11-11 · Eliminar solo vacío** (`sql/90`, publicado `ddf6b7e`; 90 corrida en ambas): casilla
+  «Eliminar con registros»; sin ella un ticket con horómetros no se elimina (trigger). QA 7/7.
+- **2026-11-11 · Mi trabajo = sin cerrar**: el capturador termina su parte CERRANDO el ticket (el paso a
+  Revisando es de Torre de Control). «Pendientes» pasa a «Sin cerrar» (solo tickets ABIERTOS en Registrando);
+  la jornada cerrada muestra «Ya cerraste esta jornada». QA `mi_trabajo_cerrados.ps1` 7/7.
+- Ojo QA: los avisos de la base (Realtime) tardan ~3-4 s en conectarse al abrir una pantalla; en pruebas,
+  esperar antes de cambiar datos «desde fuera».
 - Ojo QA: copiar archivos de rutas con `[ticketId]` con `Copy-Item -LiteralPath` (los corchetes son comodín).

@@ -7,7 +7,8 @@
  * niveles. Lo que la persona viene a hacer es: registrar la JORNADA A NOTIFICAR —por regla la de AYER (así lo propone
  * «Generar ticket»), o la de hoy si se registra el mismo día— y terminar lo que dejó pendiente. Eso va arriba, con botones grandes para el pulgar; el historial queda debajo.
  *
- * «Pendientes» = mis tickets que siguen en 0 · Registrando (Torre de Control todavía no los revisa). Se actualiza
+ * «Sin cerrar» = mis tickets en 0 · Registrando que sigo teniendo ABIERTOS. El capturador termina su parte
+ * cerrando el ticket; el paso a «1 · Revisando» lo da Torre de Control (pedido del usuario 2026-11-11). Se actualiza
  * solo (useConsultaViva: al volver a la ventana y con avisos de la base).
  */
 
@@ -64,7 +65,13 @@ export function MiTrabajo({ usuarioId, onNuevo }: { usuarioId: string; onNuevo: 
     () => (filas ?? []).find((t) => t.fecha === hoy) ?? (filas ?? []).find((t) => t.fecha === ayer) ?? null,
     [filas, hoy, ayer]
   )
-  const pendientes = useMemo(() => (filas ?? []).filter((t) => t.id !== deHoy?.id), [filas, deHoy])
+  // Pendiente = SIN CERRAR. El capturador termina su parte cerrando el ticket; pasarlo a «1 · Revisando» es de
+  // quien revisa (Torre de Control). Un ticket cerrado en «0 · Registrando» ya no es trabajo suyo.
+  const pendientes = useMemo(
+    () => (filas ?? []).filter((t) => t.id !== deHoy?.id && t.estado === 'ABIERTO'),
+    [filas, deHoy]
+  )
+  const jornadaCerrada = deHoy?.estado === 'CERRADO'
 
   return (
     <section aria-label="Mi trabajo" className="mb-4 space-y-3" data-mi-trabajo>
@@ -75,10 +82,24 @@ export function MiTrabajo({ usuarioId, onNuevo }: { usuarioId: string; onNuevo: 
         </p>
         {cargando && !filas ? (
           <div className="mt-3 h-12 animate-pulse rounded-xl bg-brand-100/60" />
+        ) : deHoy && jornadaCerrada ? (
+          <>
+            <p className="mt-1 text-sm text-slate-600" data-jornada-cerrada>
+              Ya cerraste esta jornada (
+              <strong>{equipos(deHoy) === 0 ? 'sin equipos' : textoEquipos(equipos(deHoy))}</strong>). Torre de
+              Control la revisa.
+            </p>
+            <Link
+              href={`/tickets/${deHoy.id}`}
+              className="mt-3 flex min-h-11 items-center justify-center rounded-xl bg-white px-4 text-sm font-semibold text-brand-800 ring-1 ring-inset ring-brand-200 active:scale-[0.98]"
+            >
+              Ver ticket
+            </Link>
+          </>
         ) : deHoy ? (
           <>
             <p className="mt-1 text-sm text-slate-600">
-              Tu ticket lleva <strong>{textoEquipos(equipos(deHoy))}</strong>.
+              Tu ticket lleva <strong>{textoEquipos(equipos(deHoy))}</strong>. Ciérralo cuando termines de registrar.
             </p>
             <Link
               href={`/tickets/${deHoy.id}`}
@@ -111,10 +132,10 @@ export function MiTrabajo({ usuarioId, onNuevo }: { usuarioId: string; onNuevo: 
         <div className="rounded-2xl border border-amber-100 bg-amber-50 p-3">
           <p className="px-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-700">
             <span className="h-2 w-2 rounded-full bg-amber-500" aria-hidden />
-            Pendientes de terminar · {pendientes.length}
+            Sin cerrar · {pendientes.length}
           </p>
           <p className="px-1 pt-0.5 text-xs text-slate-500">
-            Siguen en «Registrando» hasta que Torre de Control los pase a revisión: complétalos.
+            Termina de registrarlos y ciérralos: así Torre de Control sabe que ya terminaste.
           </p>
           <ul className="mt-2 space-y-1.5">
             {pendientes.slice(0, VISIBLES).map((t) => (
@@ -131,7 +152,7 @@ export function MiTrabajo({ usuarioId, onNuevo }: { usuarioId: string; onNuevo: 
           </ul>
           {pendientes.length > VISIBLES && (
             <p className="px-1 pt-2 text-xs text-slate-500">
-              y {pendientes.length - VISIBLES} más en el historial (proceso 0 · Registrando).
+              y {pendientes.length - VISIBLES} más sin cerrar en el historial.
             </p>
           )}
         </div>
