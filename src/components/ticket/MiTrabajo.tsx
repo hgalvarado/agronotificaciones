@@ -90,7 +90,9 @@ export function MiTrabajo({ usuarioId, onNuevo }: { usuarioId: string; onNuevo: 
           </>
         ) : (
           <>
-            <p className="mt-1 text-sm text-slate-600">Todavía no registras la jornada de ayer.</p>
+            <p className="mt-1 text-sm text-slate-600">
+              Todavía no registras la jornada de ayer. Si es de otro día anterior, elige la fecha al crearla.
+            </p>
             <button
               type="button"
               onClick={onNuevo}

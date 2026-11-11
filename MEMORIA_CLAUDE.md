@@ -33,21 +33,26 @@
 ## 3. Estado actual (2026-11-10, noche)
 
 - `main` en producción: commit `40dacd3` (sin Telecom, Trasplante ni Turnos de riego en la UI).
-- `desarrollo` adelante de `main` con la **Fase 1** (commit `7ff21ec`): filtros recordados, pantallas al
-  instante, actualización automática (foco + Realtime). Ya corrida la `sql/84` en desarrollo; **falta en
-  producción** (después del deploy).
+- `desarrollo` adelante de `main` (sin push): Fase 1 (`7ff21ec`), tickets en el celular (`9c94457`),
+  continuidad al capturar (`e4ea6a4`), revisión por lotes (`ebd9f39`).
+- SQL: `sql/84` corrida en desarrollo (falta producción). `sql/85` (última lectura) **sin correr en ninguna
+  base** — el código funciona sin ella (respaldo con RLS), pero el capturador solo verá sus propias lecturas.
 - Supabase: Telecom retirado en ambas bases (`sql/83`, respaldo en esquema `respaldo`).
+- **Dato del usuario**: los capturadores registran la jornada de AYER o días anteriores (cuando el trabajo ya
+  se hizo). Nunca asumir «hoy»; la continuidad se calcula contra la lectura anterior a la fecha del ticket.
 
 ## 4. Pendientes (borrar al completar)
 
-- [ ] **Fase 1 en producción**: cuando el usuario diga «pasa a producción»: push `desarrollo`, merge a `main`
-      (worktree aparte, sin tocar su servidor local), esperar Vercel, y el usuario corre `sql/84` en producción.
-- [ ] **Velocidad de Labores**: la vista `v_labores_control` tarda ~1.1 s por mes (consulta en la base).
-      Analizar con EXPLAIN en la réplica e índices / forma de la vista.
-- [ ] **Fase 2 · Revisión por lotes** desde `/horometros` y `/labores`: acciones masivas de proceso sobre los
-      tickets de lo seleccionado, continuidad por equipo destacada, (opcional) marca «revisado» por línea.
-- [ ] **Fase 3 · Tickets en el celular**: pantalla «Hoy», estados con nombres claros, menos niveles, flujo guiado.
-- [ ] **Fase 3 · Captura sin señal** (PWA): guardar local y enviar al volver la conexión.
+- [ ] **Usuario corre `sql/85`** en desarrollo (y en producción después del deploy).
+- [ ] **Pasar a producción** cuando el usuario diga «pasa a producción»: push `desarrollo`, merge a `main`
+      (worktree aparte, sin tocar su servidor local), esperar Vercel, y el usuario corre `sql/84` y `sql/85`.
+- [ ] **Velocidad de Labores**: medido. La consulta en la base es rápida (~10 ms en réplica; ~300 ms ida y
+      vuelta pidiendo solo `detalle_id`). Lo lento es la transferencia: `select *` = ~300 KB/mes, 64 columnas,
+      0.9–3 s según la red. Siguiente paso: en `ControlLabores` pedir solo las columnas que usan la tabla, los
+      filtros y la exportación SAP (revisar cada uso antes de quitar una).
+- [ ] (Opcional, Fase 2) marca «revisado» por línea, si el usuario la quiere además de los procesos.
+- [ ] **Fase 3 · Captura sin señal** (PWA): guardar local y enviar al volver la conexión. Diseñar con cuidado
+      (duplicados, conflicto con revisión, reglas de fecha); proponerlo al usuario antes de construir.
 - [ ] DDT de Desinfección: hoy lee `siembras`/`planes_siembra` (Trasplante ya no se captura aquí). Decidir fuente.
 - [ ] Borrar tablas de Trasplante y Riego (con respaldo) cuando se resuelva el DDT. Mantener `turnos` y
       `estaciones_riego` (los usa Desinfección).
@@ -78,3 +83,15 @@
   (foco + Realtime, no interrumpe al que escribe), `DataGrid` prop `memoria`, precarga completa de
   /tickets, /horometros, /labores en el menú (`AppShell`), `sql/84` (Realtime). QA: volver a Horómetros
   1.3 s → 0.13 s; cambio de otro usuario visible en ~1.5 s sin tocar nada.
+- **2026-11-10 · Tickets en el celular** (`9c94457`): panel «Mi trabajo» (jornada a registrar = hoy o ayer,
+  pendientes en Registrando), detalle con la fecha como título, botón fijo «Agregar equipo». QA
+  `tickets_movil.ps1` 15/15. Los formularios de horómetro y labor ya eran buenos en celular (capturas con
+  `capturas_captura.ps1`); no se tocaron.
+- **2026-11-10 · Continuidad al capturar** (`e4ea6a4`): al elegir el equipo se propone el horómetro inicial
+  desde la última lectura final anterior a la jornada y se avisa (sin bloquear) si no sigue la secuencia.
+  Por qué: el usuario cuadra eso al revisar; mejor evitar el desfase en origen. `sql/85` +
+  `lib/horometro/repositorioLectura.ts`. QA `continuidad_captura.ps1` 9/9.
+- **2026-11-10 · Fase 2 revisión por lotes** (`ebd9f39`): en /horometros y /labores, al marcar líneas aparece
+  «Pasar sus N tickets a…» (`components/ticket/ProcesoEnLote.tsx`, usa `actualizar_tickets_masivo`; destinos
+  según la matriz de permisos). La continuidad por equipo ya existía (comparativo, filtro «Con desfase»).
+  QA `revision_lotes.ps1` 9/9.
