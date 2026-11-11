@@ -1,0 +1,80 @@
+# Memoria de trabajo de Claude · AgroNotificaciones
+
+> Lo escribe y mantiene Claude para retomar el hilo en conversaciones nuevas. Pedido del usuario (2026-11-10):
+> «deja siempre un .md con lo que haces y por qué, y los pendientes; cuando completes uno, bórralo».
+> Regla: **actualizar este archivo al terminar cada bloque de trabajo**. Lo hecho se resume en «Historial»;
+> los pendientes se borran al completarse.
+
+## 1. Contexto en 30 segundos
+
+- **AgroNotificaciones** (este repo): Next.js 16 + Supabase, publicado en Vercel desde `main`.
+  Los **capturadores trabajan en campo desde el teléfono** (PWA instalada, señal intermitente). El usuario
+  (Torre de Control) y su asistente **revisan por lotes** desde `/horometros` y `/labores`, no ticket por ticket.
+- **Flujo del ticket (procesos)**: 0 Registrando (campo captura) → 1 Revisando (Torre Control revisa; campo ya no
+  toca) → 2 Pendiente aprobación (lo revisó otro; el encargado verifica) → Notificado en SAP (solo Administrador).
+- **Continuidad de horómetros**: por equipo, la lectura inicial de hoy debe seguir donde terminó la final
+  anterior. Es lo que el usuario cuadra al revisar (columnas «comparativo» / desfase en `/horometros`).
+- **AGL Gestión** (`C:\HENRYALVARADO2022\AGLGestion_App`, Python + JSON en OneDrive) es el otro proyecto del
+  usuario. Ahí viven ahora Trasplante, Turnos de Riego y Líneas Telefónicas (/LN01-03). Su publicación
+  (`Publicar_Produccion.bat` → `arranque.py`) **nunca debe modificar** `data/sistema/menu_schema.json`.
+
+## 2. Reglas de trabajo (acordadas con el usuario)
+
+- Ramas: commits en `desarrollo`. **Nunca** push ni merge a `main` sin que el usuario diga «pasa a producción».
+- Bases Supabase: producción `ooxoqopaiavfhfxxtzgh` (Vercel, `.env.produccion.local`) y desarrollo
+  `ifzwqdstpoyoidsflvuo` (`.env.local`). Claude **no ejecuta SQL de DDL**: entrega `sql/NN_*.sql`, los prueba en
+  una réplica local (ver §5) y el usuario los corre en el SQL Editor (primero desarrollo, luego producción,
+  y en producción DESPUÉS de que Vercel publique el código que los necesita).
+- Borrados de tablas: respaldo previo en el esquema `respaldo` dentro de la misma migración, sin CASCADE.
+- **QA obligatoria con clics reales** antes de entregar (ver §5). Todo campo que registra datos debe funcionar.
+- Mobile-first (capturadores en el teléfono). Funciones homogéneas en todos los módulos. Operable con teclado.
+- Respuestas al usuario en español, claras, sin jerga innecesaria.
+
+## 3. Estado actual (2026-11-10, noche)
+
+- `main` en producción: commit `40dacd3` (sin Telecom, Trasplante ni Turnos de riego en la UI).
+- `desarrollo` adelante de `main` con la **Fase 1** (commit `7ff21ec`): filtros recordados, pantallas al
+  instante, actualización automática (foco + Realtime). Ya corrida la `sql/84` en desarrollo; **falta en
+  producción** (después del deploy).
+- Supabase: Telecom retirado en ambas bases (`sql/83`, respaldo en esquema `respaldo`).
+
+## 4. Pendientes (borrar al completar)
+
+- [ ] **Fase 1 en producción**: cuando el usuario diga «pasa a producción»: push `desarrollo`, merge a `main`
+      (worktree aparte, sin tocar su servidor local), esperar Vercel, y el usuario corre `sql/84` en producción.
+- [ ] **Velocidad de Labores**: la vista `v_labores_control` tarda ~1.1 s por mes (consulta en la base).
+      Analizar con EXPLAIN en la réplica e índices / forma de la vista.
+- [ ] **Fase 2 · Revisión por lotes** desde `/horometros` y `/labores`: acciones masivas de proceso sobre los
+      tickets de lo seleccionado, continuidad por equipo destacada, (opcional) marca «revisado» por línea.
+- [ ] **Fase 3 · Tickets en el celular**: pantalla «Hoy», estados con nombres claros, menos niveles, flujo guiado.
+- [ ] **Fase 3 · Captura sin señal** (PWA): guardar local y enviar al volver la conexión.
+- [ ] DDT de Desinfección: hoy lee `siembras`/`planes_siembra` (Trasplante ya no se captura aquí). Decidir fuente.
+- [ ] Borrar tablas de Trasplante y Riego (con respaldo) cuando se resuelva el DDT. Mantener `turnos` y
+      `estaciones_riego` (los usa Desinfección).
+- [ ] Al terminar las fases: borrar el usuario QA de desarrollo (`qa.rendimiento@desarrollo.local`).
+
+## 5. Cómo hacer QA (receta)
+
+1. Copia del repo para no tocar el servidor local del usuario (puerto 3000):
+   `git worktree add --detach <scratch>\qa_prod desarrollo` → `npm ci` → copiar `.env.local` → `npx next build`
+   → `npx next start -p 3100` (en segundo plano). Para probar cambios sin commit, copiar los archivos cambiados.
+2. Pruebas en `pruebas/qa/*.ps1` (arnés `comun.ps1`: Edge headless + CDP, sesión del usuario QA).
+   Ej.: `powershell -ExecutionPolicy Bypass -File pruebas/qa/tiempo_real.ps1`. Escribir con `Teclear` (teclado
+   real); asignar `.value` a mano no dispara todos los `onChange` de React.
+3. Usuario QA: solo en desarrollo, rol Torre de Control (id 2) + todas las zonas. Credenciales en
+   `pruebas/qa/qa_usuario.local.json` (ignorado por git). Si falta: crear con `POST /auth/v1/admin/users` +
+   fila en `perfiles` + `perfiles_zonas`.
+4. SQL: réplica local con `initdb` en `<scratch>\pg_qa` (puerto 5499, `-A trust`), roles/esquemas stub de Supabase,
+   y `respaldos/<fecha>/esquema_desa.sql` + `datos.sql` (del script `scripts/clonar-bd-desarrollo.ps1`).
+5. No usar `npm run build` en la carpeta del usuario (el `prebuild` borra `.next` de su servidor de desarrollo).
+
+## 6. Historial (lo hecho y por qué)
+
+- **2026-11-10 · Limpieza**: retiradas de la UI Trasplante y Turnos de riego (se migraron a AGL), imágenes de
+  ejemplo de Next, BITACORA.md. Telecom migrado a AGL (Líneas Telefónicas) y retirado (código + `sql/83`).
+- **2026-11-10 · Base de desarrollo**: proyecto Supabase separado + `scripts/clonar-bd-desarrollo.ps1`.
+- **2026-11-10 · Fase 1** (`7ff21ec`): `lib/memoria` (useMemoria: filtros por usuario y pantalla, seguro con la
+  hidratación), `lib/datos/useConsultaViva` (caché + actualización silenciosa), `lib/datos/useAvisosCambios`
+  (foco + Realtime, no interrumpe al que escribe), `DataGrid` prop `memoria`, precarga completa de
+  /tickets, /horometros, /labores en el menú (`AppShell`), `sql/84` (Realtime). QA: volver a Horómetros
+  1.3 s → 0.13 s; cambio de otro usuario visible en ~1.5 s sin tocar nada.

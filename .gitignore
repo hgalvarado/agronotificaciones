@@ -46,3 +46,7 @@ next-env.d.ts
 
 # Respaldos de base de datos (datos reales: NUNCA suben)
 respaldos/
+
+# Credenciales del usuario de prueba de QA (solo base de desarrollo)
+pruebas/qa/*.local.json
+pruebas/qa/capturas/
