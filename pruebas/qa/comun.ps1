@@ -99,8 +99,12 @@ function Errores-Pagina { return (JS "(window.__err||[]).join(' || ')") }
 function Rest($ruta, $metodo = 'Get', $cuerpo = $null, [switch]$Servicio) {
     $llave = if ($Servicio) { $script:Serv } else { $script:Anon }
     $auth = if ($Servicio) { $script:Serv } else { $script:Token }
-    $h = @{ apikey = $llave; Authorization = "Bearer $auth"; 'Content-Type' = 'application/json'; Prefer = 'return=representation' }
-    if ($cuerpo -ne $null) { return Invoke-RestMethod -Method $metodo -Uri "$script:Url/rest/v1/$ruta" -Headers $h -Body ($cuerpo | ConvertTo-Json -Depth 10) }
+    $h = @{ apikey = $llave; Authorization = "Bearer $auth"; Prefer = 'return=representation' }
+    # -ContentType explícito y cuerpo en bytes UTF-8: en PowerShell 5.1 un POST ignora el Content-Type de -Headers
+    if ($null -ne $cuerpo) {
+        $bytes = [Text.Encoding]::UTF8.GetBytes(($cuerpo | ConvertTo-Json -Depth 10))
+        return Invoke-RestMethod -Method $metodo -Uri "$script:Url/rest/v1/$ruta" -Headers $h -ContentType 'application/json; charset=utf-8' -Body $bytes
+    }
     return Invoke-RestMethod -Method $metodo -Uri "$script:Url/rest/v1/$ruta" -Headers $h
 }
 

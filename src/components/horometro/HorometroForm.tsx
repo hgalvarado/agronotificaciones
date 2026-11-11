@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Alerta, AreaTexto, Boton, Campo, Entrada, Tarjeta } from '@/components/ui/Primitivos'
@@ -14,6 +14,7 @@ import {
   ultimoOperadorDeEquipo,
   type OperadorSugerido,
 } from '@/lib/horometro/repositorioSugerencia'
+import { ultimaLecturaDeEquipo, type LecturaAnterior } from '@/lib/horometro/repositorioLectura'
 
 type Props = {
   ticketId: string
@@ -72,6 +73,43 @@ export function HorometroForm({
     operador_id: horometroBase?.operador_id ?? '',
     comentario: horometroBase?.comentario ?? '',
   })
+
+  /**
+   * Continuidad: la última lectura final del equipo antes de esta jornada. Al revisar, Torre de Control cuadra
+   * que el inicial siga donde terminó el final anterior; aquí se propone ese valor y se avisa en el momento si
+   * lo tecleado no coincide (sin bloquear: un cambio de horómetro o una reparación lo justifican).
+   * Se guarda con la clave equipo|turno para no mostrar la lectura de otro equipo mientras llega la nueva.
+   */
+  const [anterior, setAnterior] = useState<{ clave: string; lectura: LecturaAnterior | null } | null>(null)
+  const propuesto = useRef<string | null>(null)
+  const claveLectura = `${form.equipo_id}|${form.turno}`
+  useEffect(() => {
+    if (!form.equipo_id) return
+    let vigente = true
+    const clave = `${form.equipo_id}|${form.turno}`
+    ultimaLecturaDeEquipo(form.equipo_id, fechaTicket, form.turno, horometroBase?.id).then((lectura) => {
+      if (!vigente) return
+      setAnterior({ clave, lectura })
+      if (!lectura) return
+      const valor = String(lectura.final)
+      // Sólo se propone sobre un campo vacío o sobre la propuesta anterior; lo tecleado a mano no se toca
+      setForm((f) => {
+        if (f.horometro_inicial !== '' && f.horometro_inicial !== propuesto.current) return f
+        propuesto.current = valor
+        return { ...f, horometro_inicial: valor }
+      })
+    })
+    return () => {
+      vigente = false
+    }
+  }, [form.equipo_id, form.turno, fechaTicket, horometroBase?.id])
+  const lecturaAnterior = anterior?.clave === claveLectura ? anterior.lectura : null
+  const desfase = useMemo(() => {
+    if (!lecturaAnterior || form.horometro_inicial.trim() === '') return null
+    const ini = Number(form.horometro_inicial.replace(',', '.'))
+    if (Number.isNaN(ini)) return null
+    return Math.round((ini - lecturaAnterior.final) * 100) / 100
+  }, [lecturaAnterior, form.horometro_inicial])
 
   // Vista previa en vivo de las horas máquina: el operador ve el cálculo
   // mientras teclea, sin tener que guardar para descubrir un error.
@@ -350,6 +388,31 @@ export function HorometroForm({
             />
           </Campo>
         </div>
+
+        {lecturaAnterior && (
+          <p
+            data-continuidad={desfase === null ? 'sin-dato' : desfase === 0 ? 'ok' : 'desfase'}
+            className={`-mt-1 rounded-xl px-3.5 py-2.5 text-sm ring-1 ring-inset ${
+              desfase !== null && desfase !== 0
+                ? 'bg-amber-50 text-amber-800 ring-amber-600/20'
+                : 'bg-slate-50 text-slate-600 ring-slate-200/70'
+            }`}
+          >
+            Última lectura del equipo: <strong>{lecturaAnterior.final}</strong> ·{' '}
+            {formatearFecha(lecturaAnterior.fecha)} ({lecturaAnterior.turno === 'NOCTURNO' ? 'nocturno' : 'diurno'})
+            {desfase !== null && desfase !== 0 && (
+              <>
+                <br />
+                <strong>
+                  El inicial no sigue esa lectura ({desfase > 0 ? '+' : ''}
+                  {desfase}).
+                </strong>{' '}
+                Revísalo, o explica el motivo en Comentarios.
+              </>
+            )}
+            {desfase === 0 && <span className="text-brand-700"> · sigue la secuencia ✓</span>}
+          </p>
+        )}
 
         {horasMaquina !== null && (
           <div
