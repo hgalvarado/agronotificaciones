@@ -27,14 +27,21 @@ export default async function UsuariosPage() {
   // Delegación (93): si administra usuarios solo de sus zonas, la ficha ofrece solo sus zonas y roles delegables.
   // Sin la 93 la función no existe: administra todo, como antes.
   const { data: todo, error: sinDelegacion } = await supabase.rpc('fn_administra_todo_usuarios', { p_accion: 'editar' })
-  let delegacion: { zonas: string[] } | null = null
+  let delegacion: { zonas: string[]; roles: number[] | null } | null = null
   if (!sinDelegacion && !todo) {
-    const { data: mias } = await supabase.rpc('fn_mis_zonas_efectivas')
-    delegacion = { zonas: ((mias as string[] | null) ?? []).map(String) }
+    // 97: los roles que administra su rol (configurado en Permisos). Sin la 97: null = los «delegables» (93)
+    const [{ data: mias }, administra] = await Promise.all([
+      supabase.rpc('fn_mis_zonas_efectivas'),
+      supabase.rpc('fn_roles_que_administro'),
+    ])
+    delegacion = {
+      zonas: ((mias as string[] | null) ?? []).map(String),
+      roles: administra.error ? null : ((administra.data as number[] | null) ?? []).map(Number),
+    }
   }
 
   return (
-    <div className="anim-aparecer mx-auto flex max-w-3xl flex-col gap-4 p-4 lg:p-6">
+    <div className="anim-aparecer mx-auto flex max-w-5xl flex-col gap-4 p-4 lg:p-6">
       <div>
         <h1 className="text-xl font-bold tracking-tight text-slate-900">Usuarios</h1>
         <p className="text-sm text-slate-400">

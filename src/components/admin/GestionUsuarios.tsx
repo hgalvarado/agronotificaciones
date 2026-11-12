@@ -12,7 +12,7 @@
  * Ningún número ni nombre de rol escrito aquí: las banderas salen de la tabla `roles`.
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import {
   Alerta,
@@ -31,6 +31,8 @@ import { mensajeDeError } from '@/lib/errores'
 import { ListaCasillasBuscable } from './ListaCasillasBuscable'
 import { FichaPermisosPersona, type PantallaFicha } from './FichaPermisosPersona'
 import { HistorialAccesos } from './HistorialAccesos'
+import { DataGrid, type ColumnaGrid } from '@/components/ui/DataGrid'
+import { useMemoria } from '@/lib/memoria/useMemoria'
 
 type RolUsuario = {
   id: number
@@ -42,8 +44,11 @@ type RolUsuario = {
   delegable?: boolean | null
 }
 
-/** 93: quien administra usuarios solo de sus zonas (jefe de zona). null = administra todo. */
-export type Delegacion = { zonas: string[] } | null
+/**
+ * 93/97: quien administra usuarios solo de sus zonas (jefe de zona). null = administra todo.
+ * oles: los que administra su rol (97, configurado en Permisos); null = sin la 97 (los «delegables»).
+ */
+export type Delegacion = { zonas: string[]; roles: number[] | null } | null
 
 type UsuarioAdmin = {
   id: string
@@ -88,6 +93,10 @@ export function GestionUsuarios({
   const [busqueda, setBusqueda] = useState('')
   const [creando, setCreando] = useState(false)
   const [editando, setEditando] = useState<UsuarioAdmin | null>(null)
+  // Preferencias de la pantalla, por usuario (se recuerdan al volver)
+  const [prefs, setPrefs] = useMemoria<Preferencias>('usuarios', { estado: 'activos', agrupar: 'rol', vista: 'lista' })
+  const [rapido, setRapido] = useState<'bloqueados' | 'sin_zona' | null>(null)
+  const [cerrados, setCerrados] = useState<Set<string>>(new Set())
 
   async function obtenerUsuarios(): Promise<UsuarioAdmin[]> {
     const res = await fetch('/api/usuarios')
@@ -124,18 +133,53 @@ export function GestionUsuarios({
     }
   }, [])
 
-  const nombreRol = new Map(roles.map((r) => [r.id, r]))
-  const filtrados = (usuarios ?? []).filter((u) => {
+  const rolPorId = useMemo(() => new Map(roles.map((r) => [r.id, r])), [roles])
+  const zonaPorId = useMemo(() => new Map(zonas.map((z) => [z.id, z.nombre])), [zonas])
+  const lista = usuarios ?? []
+  const sinZona = (u: UsuarioAdmin) => !u.todas_las_zonas && (u.zonas?.length ?? 0) === 0
+  const cuentas = {
+    activos: lista.filter((u) => u.activo).length,
+    inactivos: lista.filter((u) => !u.activo).length,
+    bloqueados: lista.filter((u) => u.bloqueado).length,
+    sin_zona: lista.filter((u) => u.activo && sinZona(u)).length,
+  }
+
+  const filtrados = lista.filter((u) => {
+    if (prefs.estado === 'activos' && !u.activo) return false
+    if (prefs.estado === 'inactivos' && u.activo) return false
+    if (rapido === 'bloqueados' && !u.bloqueado) return false
+    if (rapido === 'sin_zona' && !sinZona(u)) return false
     const q = busqueda.trim().toLowerCase()
     if (!q) return true
-    const susRoles = (u.roles_ids ?? [u.rol_id]).map((id) => nombreRol.get(id)?.nombre ?? '').join(' ')
-    return [u.nombre, u.email, u.departamento ?? '', susRoles].some((t) => t.toLowerCase().includes(q))
+    const susRoles = (u.roles_ids ?? [u.rol_id]).map((id) => rolPorId.get(id)?.nombre ?? '').join(' ')
+    const susZonas = (u.zonas ?? []).map((z) => zonaPorId.get(z) ?? '').join(' ')
+    return [u.nombre, u.email, u.departamento ?? '', susRoles, susZonas].some((t) => t.toLowerCase().includes(q))
   })
 
-  // Delegación: un jefe de zona solo asigna sus zonas, las estaciones de esas zonas y roles delegables (la base lo exige)
+  // Grupos: por rol principal, por zona (una persona sale en cada zona suya), por departamento o ninguno
+  const grupos = useMemo(() => {
+    const m = new Map<string, UsuarioAdmin[]>()
+    const meter = (clave: string, u: UsuarioAdmin) => m.set(clave, [...(m.get(clave) ?? []), u])
+    for (const u of filtrados) {
+      if (prefs.agrupar === 'rol') meter(rolPorId.get(u.rol_id)?.nombre ?? 'Sin rol', u)
+      else if (prefs.agrupar === 'departamento') meter(u.departamento || 'Sin departamento', u)
+      else if (prefs.agrupar === 'zona') {
+        if (u.todas_las_zonas) meter('Todas las zonas', u)
+        else if (!(u.zonas?.length ?? 0)) meter('Sin zona', u)
+        else for (const z of u.zonas!) meter(zonaPorId.get(z) ?? 'Zona desconocida', u)
+      } else meter('', u)
+    }
+    const fin = new Set(['Sin rol', 'Sin departamento', 'Sin zona'])
+    return [...m.entries()].sort(([a], [b]) => Number(fin.has(a)) - Number(fin.has(b)) || a.localeCompare(b, 'es'))
+  }, [filtrados, prefs.agrupar, rolPorId, zonaPorId])
+
+  // Delegación: solo sus zonas, las estaciones de esas zonas y los roles que administra su rol (la base lo exige)
   const permitidas = delegacion ? new Set(delegacion.zonas) : null
+  const rolesAsignables = delegacion
+    ? roles.filter((r) => !r.acceso_total && (delegacion.roles ? delegacion.roles.includes(r.id) : r.delegable))
+    : roles
   const comun = {
-    roles: delegacion ? roles.filter((r) => r.delegable && !r.acceso_total) : roles,
+    roles: rolesAsignables,
     departamentos,
     zonas: permitidas ? zonas.filter((z) => permitidas.has(z.id)) : zonas,
     estaciones: permitidas ? estaciones.filter((e) => e.zona_id && permitidas.has(e.zona_id)) : estaciones,
@@ -145,19 +189,133 @@ export function GestionUsuarios({
     delegado: Boolean(delegacion),
   }
 
+  const columnas: ColumnaGrid<UsuarioAdmin>[] = [
+    { campo: 'nombre', label: 'Nombre', tipo: 'texto', valor: (u) => u.nombre },
+    { campo: 'email', label: 'Correo', tipo: 'texto', valor: (u) => u.email },
+    { campo: 'principal', label: 'Rol principal', tipo: 'seleccion', valor: (u) => rolPorId.get(u.rol_id)?.nombre ?? null },
+    {
+      campo: 'roles',
+      label: 'Roles',
+      tipo: 'texto',
+      valor: (u) => (u.roles_ids ?? [u.rol_id]).map((id) => rolPorId.get(id)?.nombre ?? '').filter(Boolean).join(', '),
+    },
+    { campo: 'zonas', label: 'Zonas', tipo: 'texto', valor: (u) => textoZonas(u, zonaPorId) },
+    { campo: 'estaciones', label: 'Estaciones', tipo: 'numero', numero: true, valor: (u) => u.estaciones?.length ?? 0 },
+    { campo: 'departamento', label: 'Departamento', tipo: 'seleccion', valor: (u) => u.departamento || null },
+    { campo: 'estado', label: 'Estado', tipo: 'seleccion', valor: (u) => (u.bloqueado ? 'Bloqueado' : u.activo ? 'Activo' : 'Inactivo') },
+  ]
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
+      {/* -------- Resumen: toca para filtrar -------- */}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" data-resumen-usuarios>
+        <Contador
+          titulo="Activos"
+          valor={cuentas.activos}
+          tono="verde"
+          activo={prefs.estado === 'activos' && !rapido}
+          dato="activos"
+          onClick={() => {
+            setRapido(null)
+            setPrefs({ ...prefs, estado: 'activos' })
+          }}
+        />
+        <Contador
+          titulo="Inactivos"
+          valor={cuentas.inactivos}
+          tono="gris"
+          activo={prefs.estado === 'inactivos' && !rapido}
+          dato="inactivos"
+          onClick={() => {
+            setRapido(null)
+            setPrefs({ ...prefs, estado: 'inactivos' })
+          }}
+        />
+        <Contador
+          titulo="Bloqueados"
+          valor={cuentas.bloqueados}
+          tono="rojo"
+          activo={rapido === 'bloqueados'}
+          dato="bloqueados"
+          onClick={() => {
+            setRapido(rapido === 'bloqueados' ? null : 'bloqueados')
+            setPrefs({ ...prefs, estado: 'todos' })
+          }}
+        />
+        <Contador
+          titulo="Activos sin zona"
+          valor={cuentas.sin_zona}
+          tono="ambar"
+          activo={rapido === 'sin_zona'}
+          dato="sin_zona"
+          ayuda="No ven datos de ninguna zona"
+          onClick={() => {
+            setRapido(rapido === 'sin_zona' ? null : 'sin_zona')
+            setPrefs({ ...prefs, estado: 'activos' })
+          }}
+        />
+      </div>
+
+      {delegacion && (
+        <p className="rounded-xl bg-sky-50 px-3 py-2 text-xs text-sky-900 ring-1 ring-inset ring-sky-200" data-delegado-aviso>
+          Ves y administras solo a las personas de tus zonas con los roles que administra tu rol
+          {rolesAsignables.length ? `: ${rolesAsignables.map((r) => r.nombre).join(', ')}` : ''}.
+        </p>
+      )}
+
+      {/* -------- Barra: buscar, estado, agrupar, vista, nuevo -------- */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[220px] flex-1">
           <IconSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-300" />
           <input
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
-            placeholder="Buscar por nombre, correo, departamento o rol…"
+            placeholder="Buscar por nombre, correo, rol, zona o departamento…"
+            data-buscar-usuario
             className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm placeholder:text-slate-300 focus:border-brand-600 focus:outline-none focus:ring-4 focus:ring-brand-600/10"
           />
         </div>
-        <Boton tamano="sm" onClick={() => setCreando(true)}>
+        <Segmentos
+          etiqueta="Estado"
+          valor={prefs.estado}
+          opciones={[
+            ['activos', 'Activos'],
+            ['inactivos', 'Inactivos'],
+            ['todos', 'Todos'],
+          ]}
+          onCambiar={(v) => {
+            setRapido(null)
+            setPrefs({ ...prefs, estado: v as Preferencias['estado'] })
+          }}
+          dato="estado"
+        />
+        {prefs.vista === 'lista' && (
+          <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
+            Agrupar por
+            <select
+              value={prefs.agrupar}
+              onChange={(e) => setPrefs({ ...prefs, agrupar: e.target.value as Preferencias['agrupar'] })}
+              data-agrupar-usuarios
+              className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm font-medium text-slate-700 focus:border-brand-600 focus:outline-none"
+            >
+              <option value="rol">Rol principal</option>
+              <option value="zona">Zona</option>
+              <option value="departamento">Departamento</option>
+              <option value="ninguno">Sin agrupar</option>
+            </select>
+          </label>
+        )}
+        <Segmentos
+          etiqueta="Vista"
+          valor={prefs.vista}
+          opciones={[
+            ['lista', 'Lista'],
+            ['tabla', 'Tabla'],
+          ]}
+          onCambiar={(v) => setPrefs({ ...prefs, vista: v as Preferencias['vista'] })}
+          dato="vista"
+        />
+        <Boton tamano="sm" onClick={() => setCreando(true)} data-nuevo-usuario>
           <IconPlus className="h-4 w-4" />
           Nuevo
         </Boton>
@@ -166,70 +324,67 @@ export function GestionUsuarios({
       {error && <Alerta>{error}</Alerta>}
 
       {usuarios === null ? (
-        <ListaEsqueleto filas={4} />
+        <ListaEsqueleto filas={5} />
       ) : filtrados.length === 0 ? (
         <Tarjeta>
           <EstadoVacio
             icono={<IconUser />}
-            titulo={busqueda ? 'Sin resultados' : 'Sin usuarios'}
-            descripcion={busqueda ? 'Prueba con otra búsqueda.' : 'Crea el primer usuario.'}
+            titulo={busqueda || rapido ? 'Sin resultados' : prefs.estado === 'inactivos' ? 'No hay usuarios inactivos' : 'Sin usuarios'}
+            descripcion={busqueda || rapido ? 'Prueba con otra búsqueda o quita el filtro.' : 'Crea el primer usuario con «Nuevo».'}
           />
         </Tarjeta>
+      ) : prefs.vista === 'tabla' ? (
+        <DataGrid
+          filas={filtrados}
+          columnas={columnas}
+          titulo="Usuarios"
+          nombreArchivo="usuarios"
+          puedeExportar
+          memoria="usuarios-tabla"
+          accionFila={(u) => (
+            <button
+              type="button"
+              onClick={() => setEditando(u)}
+              className="rounded-lg border border-slate-200 p-1.5 text-slate-400 hover:bg-slate-50 hover:text-slate-700"
+              aria-label={`Editar ${u.nombre}`}
+            >
+              <IconPencil className="h-4 w-4" />
+            </button>
+          )}
+        />
       ) : (
-        <div className="flex flex-col gap-2">
-          {filtrados.map((u) => {
-            const susRoles = (u.roles_ids ?? [u.rol_id])
-              .map((id) => nombreRol.get(id))
-              .filter(Boolean) as RolUsuario[]
+        <div className="flex flex-col gap-3" data-grupos-usuarios>
+          {grupos.map(([grupo, personas]) => {
+            const cerrado = cerrados.has(grupo)
             return (
-              <Tarjeta key={u.id} className="flex items-center gap-3 p-4">
-                <div
-                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-                    u.activo ? 'bg-brand-50 text-brand-700' : 'bg-slate-100 text-slate-400'
-                  }`}
-                >
-                  {u.nombre
-                    .split(' ')
-                    .slice(0, 2)
-                    .map((p) => p[0])
-                    .join('')
-                    .toUpperCase()}
-                </div>
-
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="truncate text-sm font-bold text-slate-900">{u.nombre}</p>
-                    {u.id === miId && <Insignia tono="verde">Tú</Insignia>}
-                  </div>
-                  <p className="truncate text-xs text-slate-400">{u.email}</p>
-                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5" data-roles-usuario>
-                    {susRoles.map((r) => (
-                      <Insignia
-                        key={r.id}
-                        tono={r.acceso_total ? 'violeta' : r.solo_lectura ? 'gris' : r.id === u.rol_id ? 'azul' : 'verde'}
-                      >
-                        {r.nombre}
-                      </Insignia>
+              <section key={grupo || 'todos'} className="overflow-hidden rounded-2xl bg-white ring-1 ring-inset ring-slate-200" data-grupo={grupo}>
+                {grupo && (
+                  <button
+                    type="button"
+                    aria-expanded={!cerrado}
+                    onClick={() => {
+                      const s = new Set(cerrados)
+                      if (cerrado) s.delete(grupo)
+                      else s.add(grupo)
+                      setCerrados(s)
+                    }}
+                    className="flex w-full items-center gap-2 border-b border-slate-100 bg-slate-50/70 px-4 py-2.5 text-left"
+                  >
+                    <span className={`text-slate-400 transition-transform ${cerrado ? '' : 'rotate-90'}`}>▸</span>
+                    <span className="text-sm font-bold text-slate-800">{grupo}</span>
+                    <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-bold text-slate-500 ring-1 ring-inset ring-slate-200">
+                      {personas.length}
+                    </span>
+                  </button>
+                )}
+                {!cerrado && (
+                  <ul className="divide-y divide-slate-100">
+                    {personas.map((u) => (
+                      <FilaUsuario key={`${grupo}|${u.id}`} u={u} yo={u.id === miId} rolPorId={rolPorId} zonaPorId={zonaPorId} onEditar={() => setEditando(u)} />
                     ))}
-                    <Insignia tono="gris">
-                      {u.todas_las_zonas ? 'Todas las zonas' : `${u.zonas?.length ?? 0} zona(s)`}
-                    </Insignia>
-                    {(u.estaciones?.length ?? 0) > 0 && (
-                      <Insignia tono="gris">{u.estaciones!.length} estación(es)</Insignia>
-                    )}
-                    {u.departamento && <Insignia tono="gris">{u.departamento}</Insignia>}
-                    {!u.activo && <Insignia tono="rojo">Inactivo</Insignia>}
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => setEditando(u)}
-                  className="shrink-0 rounded-lg border border-slate-200 p-2 text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-700"
-                  aria-label={`Editar ${u.nombre}`}
-                >
-                  <IconPencil className="h-4 w-4" />
-                </button>
-              </Tarjeta>
+                  </ul>
+                )}
+              </section>
             )
           })}
         </div>
@@ -249,6 +404,170 @@ export function GestionUsuarios({
         />
       )}
     </div>
+  )
+}
+
+type Preferencias = { estado: 'activos' | 'inactivos' | 'todos'; agrupar: 'rol' | 'zona' | 'departamento' | 'ninguno'; vista: 'lista' | 'tabla' }
+
+function textoZonas(u: UsuarioAdmin, zonaPorId: Map<string, string>): string {
+  if (u.todas_las_zonas) return 'Todas las zonas'
+  const nombres = (u.zonas ?? []).map((z) => zonaPorId.get(z) ?? '?')
+  return nombres.length ? nombres.join(', ') : 'Sin zona'
+}
+
+const TONOS_CONTADOR = {
+  verde: 'text-brand-700',
+  gris: 'text-slate-600',
+  rojo: 'text-red-600',
+  ambar: 'text-amber-700',
+} as const
+
+function Contador({
+  titulo,
+  valor,
+  tono,
+  activo,
+  dato,
+  ayuda,
+  onClick,
+}: {
+  titulo: string
+  valor: number
+  tono: keyof typeof TONOS_CONTADOR
+  activo: boolean
+  dato: string
+  ayuda?: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={activo}
+      data-contador={dato}
+      title={ayuda}
+      className={`flex flex-col items-start rounded-2xl bg-white px-4 py-3 text-left ring-1 ring-inset transition-all hover:ring-brand-300 ${
+        activo ? 'ring-2 ring-brand-600' : 'ring-slate-200'
+      }`}
+    >
+      <span className={`text-2xl font-bold tabular-nums ${TONOS_CONTADOR[tono]}`}>{valor}</span>
+      <span className="text-xs font-semibold text-slate-500">{titulo}</span>
+    </button>
+  )
+}
+
+function Segmentos({
+  etiqueta,
+  valor,
+  opciones,
+  onCambiar,
+  dato,
+}: {
+  etiqueta: string
+  valor: string
+  opciones: [string, string][]
+  onCambiar: (v: string) => void
+  dato: string
+}) {
+  return (
+    <div role="group" aria-label={etiqueta} className="inline-flex rounded-lg bg-slate-100 p-0.5" data-segmentos={dato}>
+      {opciones.map(([v, t]) => (
+        <button
+          key={v}
+          type="button"
+          aria-pressed={valor === v}
+          data-opcion={v}
+          onClick={() => onCambiar(v)}
+          className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+            valor === v ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          {t}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+const COLORES_AVATAR = ['bg-brand-50 text-brand-700', 'bg-sky-50 text-sky-700', 'bg-violet-50 text-violet-700', 'bg-amber-50 text-amber-700', 'bg-rose-50 text-rose-700']
+
+function FilaUsuario({
+  u,
+  yo,
+  rolPorId,
+  zonaPorId,
+  onEditar,
+}: {
+  u: UsuarioAdmin
+  yo: boolean
+  rolPorId: Map<number, RolUsuario>
+  zonaPorId: Map<string, string>
+  onEditar: () => void
+}) {
+  const susRoles = [u.rol_id, ...(u.roles_ids ?? []).filter((id) => id !== u.rol_id)]
+    .map((id) => rolPorId.get(id))
+    .filter(Boolean) as RolUsuario[]
+  const zonasTexto = u.todas_las_zonas ? ['Todas las zonas'] : (u.zonas ?? []).map((z) => zonaPorId.get(z) ?? '?')
+  const color = u.activo ? COLORES_AVATAR[[...u.nombre].reduce((a, c) => a + c.charCodeAt(0), 0) % COLORES_AVATAR.length] : 'bg-slate-100 text-slate-400'
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onEditar}
+        data-usuario={u.email}
+        className={`flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50 focus:bg-slate-50 focus:outline-none ${u.activo ? '' : 'opacity-70'}`}
+      >
+        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-bold ${color}`}>
+          {u.nombre
+            .split(' ')
+            .filter(Boolean)
+            .slice(0, 2)
+            .map((p) => p[0])
+            .join('')
+            .toUpperCase()}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="flex flex-wrap items-center gap-2">
+            <span className="truncate text-sm font-bold text-slate-900">{u.nombre}</span>
+            {yo && <Insignia tono="verde">Tú</Insignia>}
+          </span>
+          <span className="block truncate text-xs text-slate-400">{u.email}</span>
+          <span className="mt-1.5 flex flex-wrap items-center gap-1.5" data-roles-usuario>
+            {susRoles.map((r) => (
+              <Insignia key={r.id} tono={r.acceso_total ? 'violeta' : r.solo_lectura ? 'gris' : r.id === u.rol_id ? 'azul' : 'verde'}>
+                {r.nombre}
+              </Insignia>
+            ))}
+            {zonasTexto.length === 0 ? (
+              <Insignia tono="ambar">Sin zona</Insignia>
+            ) : (
+              <Insignia tono="gris">
+                {zonasTexto.slice(0, 2).join(', ')}
+                {zonasTexto.length > 2 ? ` +${zonasTexto.length - 2}` : ''}
+              </Insignia>
+            )}
+            {(u.estaciones?.length ?? 0) > 0 && <Insignia tono="gris">{u.estaciones!.length} estación(es)</Insignia>}
+            {u.departamento && <Insignia tono="gris">{u.departamento}</Insignia>}
+          </span>
+        </span>
+        <span className="flex shrink-0 flex-col items-end gap-1">
+          {u.bloqueado ? (
+            <Insignia tono="rojo" punto>
+              Bloqueado
+            </Insignia>
+          ) : u.activo ? (
+            <Insignia tono="verde" punto>
+              Activo
+            </Insignia>
+          ) : (
+            <Insignia tono="gris" punto>
+              Inactivo
+            </Insignia>
+          )}
+          <IconPencil className="h-4 w-4 text-slate-300" />
+        </span>
+      </button>
+    </li>
   )
 }
 
@@ -514,7 +833,7 @@ function ModalUsuario({
           <div className="flex flex-col gap-2">
             {delegado ? (
               <p className="text-xs text-slate-500" data-delegado>
-                Puedes asignar solo tus zonas y los roles marcados como delegables.
+                Puedes asignar solo tus zonas y los roles que administra tu rol.
               </p>
             ) : (
             <button

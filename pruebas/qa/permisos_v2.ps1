@@ -147,9 +147,12 @@ try {
 
     # Editar: lista con dos roles, ficha de permisos, «Todas las zonas», quitar un rol
     Start-Sleep 1
-    $badges = JS "[...document.querySelectorAll('[data-roles-usuario]')].find(d => d.closest('div.flex.items-center') && d.parentElement.innerText.includes('QA Persona $sufijo'))?.innerText"
-    OK ($badges -match 'Digitador' -and $badges -match 'Jefe' -and $badges -match '1 zona' -and $badges -match '1 estaci') 'La lista muestra sus roles, zonas y estaciones' ($badges -replace "`n", ' · ')
-    ClicEn "document.querySelector('[aria-label=""Editar QA Persona $sufijo""]')" | Out-Null
+    # Lista nueva (usuarios_v3): una fila-botón por persona; en vista lista
+    if (JS "!!document.querySelector('[data-segmentos=vista] [data-opcion=lista][aria-pressed=false]')") { ClicEn "document.querySelector('[data-segmentos=vista] [data-opcion=lista]')" | Out-Null; Start-Sleep 1 }
+    $FILA = "[...document.querySelectorAll('[data-usuario]')].find(b => b.innerText.includes('QA Persona $sufijo'))"
+    $badges = JS "${FILA}?.innerText"
+    OK ($badges -match 'Digitador' -and $badges -match 'Jefe' -and $badges -notmatch 'Sin zona' -and $badges -match '1 estaci') 'La lista muestra sus roles, zonas y estaciones' ($badges -replace "`n", ' · ')
+    ClicEn "$FILA" | Out-Null
     Esperar "!!document.querySelector('[data-ver-permisos]')" | Out-Null
     ClicEn "document.querySelector('[data-ver-permisos]')" | Out-Null
     $t = Esperar "!!document.querySelector('[data-ficha-pantalla]')" 15000

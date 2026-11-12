@@ -29,6 +29,7 @@ import {
 } from '@/lib/permisos/abac'
 import { TarjetaPermisosPantalla, type AccionDePantalla, type CambioCelda } from './TarjetaPermisosPantalla'
 import { HistorialAccesos } from './HistorialAccesos'
+import { RolesQueAdministra } from './RolesQueAdministra'
 
 export type Pantalla = {
   codigo: string
@@ -95,12 +96,15 @@ export function PermisosPantallas({
   permisos,
   acciones,
   sinCasilla = [],
+  administra = null,
 }: {
   roles: RolFila[]
   pantallas: Pantalla[]
   permisos: PermisoFila[]
   acciones: AccionCatalogo[]
   sinCasilla?: LlaveSinCasilla[]
+  /** 97: filas rol → rol que administra. null = sin la migración. */
+  administra?: { rol_id: number; administra_rol_id: number }[] | null
 }) {
   const supabase = createClient()
 
@@ -134,6 +138,13 @@ export function PermisosPantallas({
   const [modoNombre, setModoNombre] = useState<'nuevo' | 'copia' | null>(null)
   const [trabajando, setTrabajando] = useState(false)
   const [verHistorial, setVerHistorial] = useState(false)
+  // 97: qué roles administra cada rol (null = sin la migración)
+  const [administraMapa, setAdministraMapa] = useState<Map<number, number[]> | null>(() => {
+    if (!administra) return null
+    const m = new Map<number, number[]>()
+    for (const f of administra) m.set(f.rol_id, [...(m.get(f.rol_id) ?? []), f.administra_rol_id])
+    return m
+  })
 
   const catalogo = useMemo(() => new Map(acciones.map((a) => [a.codigo, a])), [acciones])
 
@@ -454,6 +465,13 @@ export function PermisosPantallas({
             </button>
           </div>
           {verHistorial && <HistorialAccesos key={rol.id} rolId={rol.id} />}
+          <RolesQueAdministra
+            key={`administra-${rol.id}`}
+            rol={rol}
+            roles={listaRoles}
+            inicial={administraMapa ? (administraMapa.get(rol.id) ?? []) : null}
+            onGuardado={(rolId, lista) => setAdministraMapa((m) => new Map(m ?? []).set(rolId, lista))}
+          />
 
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative min-w-52 flex-1">

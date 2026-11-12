@@ -38,6 +38,8 @@ export default async function PermisosPage() {
     // El guardián: lo que la base exige y la matriz no ofrece. Tiene que venir vacío.
     supabase.rpc('fn_permisos_sin_casilla'),
   ])
+  // 97: qué roles administra cada rol (sin la migración: null y la pantalla no lo ofrece)
+  const administra = await supabase.rpc('fn_roles_administra')
 
   // Sin la 92 todavía, las columnas nuevas no existen: se piden las de antes y la pantalla agrupa en «Otros».
   const { data: pantallas, error } = pantallasV2.error
@@ -69,6 +71,7 @@ export default async function PermisosPage() {
           permisos={(filasPermisos as PermisoFila[] | null) ?? []}
           acciones={(acciones as AccionCatalogo[] | null) ?? []}
           sinCasilla={(sinCasilla as LlaveSinCasilla[] | null) ?? []}
+          administra={administra.error ? null : ((administra.data as { rol_id: number; administra_rol_id: number }[] | null) ?? [])}
         />
       )}
     </div>
