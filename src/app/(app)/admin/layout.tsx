@@ -27,7 +27,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     // La navegación va con Permisos: las dos deciden qué ve cada rol, y
     // sólo el Administrador entra (la propia pantalla lo comprueba).
     { pantalla: 'permisos', href: '/admin/navegacion', etiqueta: 'Navegación' },
-  ].filter((s) => puede(permisos, s.pantalla, 'ver'))
+    // 98: modo de pruebas de Fertirriego (quien configura Fertirriego)
+    { pantalla: 'fertirriego', accion: 'configurar', href: '/admin/fertirriego-pruebas', etiqueta: 'Pruebas Fertirriego' },
+  ].filter((s) => puede(permisos, s.pantalla, ('accion' in s && s.accion) || 'ver'))
 
   if (secciones.length === 0) redirect('/')
 
