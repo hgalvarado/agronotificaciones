@@ -109,6 +109,12 @@
   atributos con prefijo propio en QA; (2) una vista cuya acción escribe en una carpeta de sus `canales` se remonta
   sola y corta el paso: /SE03 va con `canales: []`; (3) en PowerShell `"$VAR?.x"` toma `?` como parte del nombre de
   la variable: usar `${VAR}?.x`; y `$est1`/`$EST1` son la MISMA variable.
+- **2026-11-12 · AGL: otra base = borrar lo anterior** (`0188018`, pedido del usuario: probará desde AGL de
+  PRODUCCIÓN contra la base de DESARROLLO). `fertirriego_campo.limpiar_otra_base`: lo bajado/publicado de otra base
+  se borra al cambiar la dirección (/SE03, bajar, publicar, abrir Campo). Unitaria 17/17, clics 4/4.
+  Revisión del usuario técnico en desarrollo (rol 8 «Integración AGL»): le falta `fertirriego_agl · publicar`; le
+  sobran permisos de fertirriego (ver/recibir/aplicar/contar) y de tickets (incl. eliminar/notificar); además
+  Gustavo Betancourth tiene el rol 8 como único rol. Se informó al usuario; no se cambió nada en la base.
 - **2026-11-12 · Filtro «Horómetro malo»** (`e3910ab`): tarjeta/filtro rápido en /horometros con las lecturas cuyo
   comentario trae `[Horómetro malo]` y cuántos equipos. QA `horometro_malo_filtro.ps1` 9/9.
 - Ojo AGL: `notificar()` va a la barra de estado (un solo mensaje): un aviso posterior pisa al anterior. No notificar
