@@ -32,8 +32,8 @@
 
 ## 3. Estado actual (2026-11-12)
 
-- `desarrollo` adelante de `main` con Permisos v2 (92, 93) y Fertirriego A–D. SQL pendiente de correr en desarrollo:
-  **solo la 96**. Nada pasa a producción hasta que el usuario lo diga (decisión 2026-11-11).
+- `desarrollo` adelante de `main` con Permisos v2 (92, 93) y Fertirriego A–D. SQL 91–96 corridas en desarrollo
+  (la 96 el 2026-11-12; QA relevo/traslado 27/27). Nada pasa a producción hasta que el usuario lo diga (decisión 2026-11-11).
 
 ### Estado anterior (2026-11-11)
 
@@ -54,10 +54,9 @@
       aplicación por turno, custodia/relevo con código TOTP verificado sin internet, traslados, kardex; captura
       sin señal; AGL publica y analiza. **Etapa A hecha** (`sql/91` corrida en desarrollo; AGL
       `fertirriego_campo.py` + botón «Publicar a campo» en /CF07). El usuario ya creó el rol «Integración AGL»;
-      falta el archivo de conexión en su PC para publicar. **Etapa B hecha** (2026-11-11, `sql/94` y `sql/95` corridas en
-      desarrollo): app de campo sin señal en `/fertirriego`. **Etapa C hecha** (2026-11-12, `496e911`): `sql/96`
-      probada en réplica 34/34 pero **SIN correr en desarrollo** → cuando el usuario la corra: QA
-      `pruebas/qa/fertirriego_relevo_traslado.ps1` (crea y borra una persona B de prueba). **Etapa D hecha** en AGL
+      falta que guarde la conexión en AGL **/SE03 Conexiones** (cifrada y compartida, 2026-11-12). **Etapa B hecha** (2026-11-11, `sql/94` y `sql/95` corridas en
+      desarrollo): app de campo sin señal en `/fertirriego`. **Etapa C hecha** (2026-11-12, `496e911`; 96 corrida en
+      desarrollo, QA `pruebas/qa/fertirriego_relevo_traslado.ps1` 27/27). **Etapa D hecha** en AGL
       (`6c74e71`, `03b55ea`). Manuales en `docs/manuales/` (+ «¿Cómo se usa?» en la app). Siguiente: **Etapa E**
       (alertas, sugerencia de envío, cierre mensual).
       Guías de Next 16 a leer antes de construir: `node_modules/next/dist/docs/01-app/02-guides/progressive-web-apps.md` y
@@ -103,6 +102,13 @@
   (`lib/manual/markdown.tsx` sin librerías; `next.config` `outputFileTracingIncludes` para que el .md viaje a Vercel).
   QA: B 27/27 (sin 96), ayuda 12/12, AGL 13/13 + unitaria 14/14; regresiones tickets 15/15, lotes 9/9, permisos 33/33
   y 18/18 (primera corrida tras recompilar falla por arranque en frío; repetir).
+- **2026-11-12 (mañana) · AGL /SE03 Conexiones cifradas** (pedido del usuario: su asistente sincroniza cuando él no
+  está; AGL se comparte por OneDrive). `backend/conexiones.py`: archivo `data/sistema/conexiones_<ENTORNO>.cifrado.json`,
+  clave maestra elegida por el usuario (opción «clave maestra», no llave fija en el código), recordada por PC con
+  DPAPI (ctypes). Unitaria 37/37, clics 28/28. Ojos: (1) `data-resumen` ya existe en otras vistas de AGL: usar
+  atributos con prefijo propio en QA; (2) una vista cuya acción escribe en una carpeta de sus `canales` se remonta
+  sola y corta el paso: /SE03 va con `canales: []`; (3) en PowerShell `"$VAR?.x"` toma `?` como parte del nombre de
+  la variable: usar `${VAR}?.x`; y `$est1`/`$EST1` son la MISMA variable.
 - **2026-11-12 · Filtro «Horómetro malo»** (`e3910ab`): tarjeta/filtro rápido en /horometros con las lecturas cuyo
   comentario trae `[Horómetro malo]` y cuántos equipos. QA `horometro_malo_filtro.ps1` 9/9.
 - Ojo AGL: `notificar()` va a la barra de estado (un solo mensaje): un aviso posterior pisa al anterior. No notificar

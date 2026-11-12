@@ -164,9 +164,11 @@ moviéndose **solo con lo que el estacionero recibe y aplica**. Apagada (por def
   Llaves del código de relevo: `fn_fert_mis_llaves()`; TOTP `fn_fert_totp` (vector RFC 6238 verificado).
   Cruce de nombres AGL ↔ aquí tolerante (`_fert_llave`: «Zona-1» = «Zona 1»).
 - **AGL**: `backend/fertirriego_campo.py` + `POST /api/fertirriego/publicar`, `GET /api/fertirriego/estado`
-  (submódulo «calculo_fertilizantes»), botón **«Publicar a campo»** en /CF07. Conexión por equipo en
-  `%LOCALAPPDATA%\AGLGestion\fertirriego_<DEV|PROD>.json` (`url`, `anon_key`, `correo`, `clave` del usuario
-  técnico). QA con clics 9/9 (copia aislada + Supabase falso hacia la réplica): 10 turnos, 17 estaciones,
+  (submódulo «calculo_fertilizantes»), botón **«Publicar a campo»** en /CF07. Conexión (`url`, `anon_key`,
+  `correo`, `clave` del usuario técnico): desde 2026-11-12 **cifrada y compartida** en
+  `data/sistema/conexiones_<DEV|PROD>.cifrado.json`, configurada en AGL **/SE03 Conexiones** (`backend/conexiones.py`;
+  clave maestra recordada por Windows/DPAPI en cada PC; pedido del usuario: que su asistente sincronice sin él). El
+  archivo anterior `%LOCALAPPDATA%\AGLGestion\fertirriego_<DEV|PROD>.json` se sigue leyendo si no hay cifrado. QA con clics 9/9 (copia aislada + Supabase falso hacia la réplica): 10 turnos, 17 estaciones,
   181 materiales, 1,131 filas de plan en < 1 s.
 - Para usarla: el usuario técnico necesita un rol con «Fertirriego · Conexión AGL»: Ver + Publicar.
 
