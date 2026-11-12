@@ -10,7 +10,7 @@
 
 - [ ] Cada participante tiene **usuario y clave** (Usuarios › nueva persona, rol «Estacionero», su zona y su estación).
 - [ ] En **«Qué puede hacer»** de cada uno aparece Fertirriego · Estaciones (Recibir, Aplicar, Contar, Relevo, Trasladar).
-- [ ] AGL publicó la temporada a campo (/CF07 › **Publicar a campo**): turnos, estaciones, productos y plan.
+- [ ] AGL publicó la temporada a campo (**/FR01 · Fertirriego › Sincronizar todo**): turnos, estaciones, productos y plan.
 - [ ] Una **estación de práctica** (ej. «Estación Capacitación») con 2–3 productos y un turno, asignada a todos los
       participantes. Se borra o se desactiva después.
 - [ ] Wi-Fi o señal en el salón para la instalación (después se practica sin señal).

@@ -103,7 +103,7 @@ Cuando un estacionero pide trasladar producto a otra estación, **elige quién l
 | **Relevos** | Relevos **para revisar** (con diferencias) o **rechazados**. |
 | **Traslados** | Traslados **en camino** que nadie ha recibido; **llegó menos** de lo enviado. |
 | **Envíos** de cada estacionero | Registros **no aceptados** que no han corregido. |
-| **AGL › /CF07 › Campo** | El comparativo **Plan · Salidas SAP · Aplicado** y la **consignación** por estación (ver manual de AGL). |
+| **AGL › /FR01 · Fertirriego** | El comparativo **Plan · Salidas SAP · Aplicado** y la **consignación** por estación (ver manual de AGL). |
 
 ### Las marcas para revisar
 

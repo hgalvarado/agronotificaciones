@@ -105,11 +105,20 @@ registra un **ajuste** por la diferencia (sobrante o faltante) y queda para revi
 4. **Fecha y hora de la entrega:** se pone sola con la hora actual. Cámbiala solo si estás registrando algo que pasó
    antes.
 5. **Documento (opcional):** número de la nota o del pedido, si lo trae.
-6. **Productos recibidos:** elige el producto y escribe la cantidad **que de verdad bajaron**. Para más productos,
-   **«Agregar producto»**.
-7. Toca **Guardar**.
+6. **Productos recibidos:** ya vienen en la lista **los productos que usa el plan de los turnos de tu estación**, y al
+   lado de cada uno lo planificado para los próximos 7 días. Escribe la cantidad **que de verdad bajaron**. Lo que no
+   llegó, **déjalo vacío** (no se registra) o quítalo con el bote de basura. Si llegó otro producto, **«Agregar
+   producto»**.
+7. Toca **Guardar**. (No hay que escribir dónde: siempre es la bodega de tu estación.)
 
 La bodega sube en el momento. Si no hay señal, igual sube en tu teléfono y se envía después.
+
+### Si te sales sin guardar (borrador)
+
+Si cierras la ventana, te llaman o se apaga el teléfono a medio registro, **no se pierde**: el botón queda marcado
+**«Borrador»**. Al volver a tocarlo sigue donde ibas («Continuando tu borrador de las 10:32»). Termínalo y toca
+**Guardar**, o toca **Descartar** para empezar de cero. Un borrador **no mueve la bodega** hasta que lo guardas.
+Funciona igual en Recibir, Aplicar, Contar, Horas de riego, Entregar estación y Traslados.
 
 ---
 

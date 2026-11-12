@@ -115,15 +115,24 @@ Los nombres son sugerencias: crea los roles que necesites. **Prueba** con «Qué
 
 Para no depender del administrador para cada alta:
 
-1. En **Permisos**, marca como **«Lo pueden asignar los jefes de zona»** los roles que un jefe puede dar (por
-   ejemplo «Estacionero»). Nunca marques roles con acceso total.
-2. Al jefe de zona dale la pantalla **Usuarios** con alcance **«Sus zonas»**.
-3. El jefe verá en Usuarios **solo a las personas de sus zonas** y, al editar, solo podrá:
-   - asignar **sus** zonas,
-   - asignar **estaciones de sus zonas**,
-   - dar **roles delegables**.
-   La base de datos lo exige aunque alguien intente otra cosa.
+1. Al jefe de zona dale la pantalla **Usuarios** con alcance **«Sus zonas»** (Ver, Crear, Editar).
+2. En **Permisos**, abre el rol del jefe (por ejemplo «Jefe de zona») › **«Usuarios que administra este rol»** y
+   marca **solo** los roles de su gente (por ejemplo «Estacionero»). Guardar.
+   - Así el jefe **solo ve y edita** a personas cuyos roles estén **todos** en esa lista y que sean de **sus zonas**.
+     Un **Digitador de campo** de su misma zona **no le aparece**: sigue dependiendo de Torre de Control.
+   - Sin nada marcado se usa la regla general: los roles con **«Lo pueden asignar los jefes de zona»**.
+   - Nunca se puede marcar un rol con acceso total ni el propio rol del jefe.
+3. Al crear o editar, el jefe solo podrá asignar **sus** zonas, **estaciones de sus zonas** y **los roles de su
+   lista**. La base de datos lo exige aunque alguien intente otra cosa.
 4. Todo cambio queda en el **Historial de accesos**.
+
+### La pantalla de Usuarios
+
+- Arriba, contadores que filtran al tocarlos: **Activos**, **Inactivos**, **Bloqueados**, **Activos sin zona** (no
+  ven datos de ninguna zona: revisarlos).
+- **Activos / Inactivos / Todos**, **Agrupar por** rol principal, zona o departamento (cada grupo se pliega), y la
+  vista **Tabla** con filtros por columna y exportar a Excel. La pantalla recuerda cómo la dejaste.
+- Toca a una persona para abrir su ficha.
 
 ---
 
