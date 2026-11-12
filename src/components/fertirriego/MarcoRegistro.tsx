@@ -17,6 +17,14 @@ import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
 import { MENSAJE_UBICACION_DENEGADA, obtenerUbicacion, permisoDenegado } from '@/lib/fertirriego/ubicacion'
 import type { Estacion, Operacion, Persona, Ubicacion } from '@/lib/fertirriego/tipos'
 
+const NOMBRE_PERMISO: Record<string, string> = {
+  aplicar: 'Aplicar',
+  anular: 'Anular',
+  relevo: 'Relevo',
+  trasladar: 'Trasladar',
+  autorizar_traslado: 'Autorizar traslado',
+}
+
 export type ContextoRegistro = { ubicacion: Ubicacion | null; enNombreDe: string | null; ejecutor: string }
 
 export function puedeRegistrar(estacion: Estacion, yo: Persona): { si: boolean; porOtro: boolean; motivo: string | null } {
@@ -50,7 +58,7 @@ export function MarcoRegistro({
    * Es la misma regla que aplica la base para esos registros.
    */
   sinCustodia?: boolean
-  permiso?: 'aplicar' | 'anular'
+  permiso?: 'aplicar' | 'anular' | 'relevo' | 'trasladar' | 'autorizar_traslado'
   titulo: string
   estacion: Estacion
   yo: Persona
@@ -65,7 +73,7 @@ export function MarcoRegistro({
   const regla = sinCustodia
     ? estacion.permisos[permiso]
       ? { si: true, porOtro: false, motivo: null }
-      : { si: false, porOtro: false, motivo: `Tu rol no tiene «${permiso === 'anular' ? 'Anular' : 'Aplicar'}» en esta estación.` }
+      : { si: false, porOtro: false, motivo: `Tu rol no tiene «${NOMBRE_PERMISO[permiso]}» en esta estación.` }
     : puedeRegistrar(estacion, yo)
   const [porQuien, setPorQuien] = useState<string>(regla.porOtro ? (estacion.custodio_id ?? '') : yo.id)
   const [guardando, setGuardando] = useState(false)

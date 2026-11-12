@@ -6,7 +6,7 @@
  */
 
 import { isoDe } from '@/lib/fechas/zona'
-import type { EstadoCampo, FilaPlan, Linea, Movimiento, Operacion, TipoMovimiento } from './tipos'
+import type { Estacion, EstadoCampo, FilaPlan, Linea, Movimiento, Operacion, Persona, TipoMovimiento } from './tipos'
 
 export type Efecto = { estacion_id: string; material_id: string; cantidad: number; tipo: TipoMovimiento }
 
@@ -47,6 +47,29 @@ export function efectosDe(op: Operacion, estado: EstadoCampo, saldo: (est: strin
           tipo: 'AJUSTE_CONTEO' as TipoMovimiento,
         }))
         .filter((e) => e.cantidad !== 0)
+    case 'relevo_recibir':
+      // Las diferencias declaradas FIJAN lo real (como un conteo)
+      return ((d.diferencias as { material_id: string; cantidad_real: number }[] | undefined) ?? [])
+        .map((l) => ({
+          estacion_id: est,
+          material_id: l.material_id,
+          cantidad: num(l.cantidad_real) - saldo(est, l.material_id),
+          tipo: 'DIFERENCIA_RELEVO' as TipoMovimiento,
+        }))
+        .filter((e) => e.cantidad !== 0)
+    case 'traslado_aceptar': {
+      const t = estado.traslados?.find((x) => x.id === d.traslado_id)
+      if (!t) return []
+      const recibidas = (d.lineas as { material_id: string; cantidad_recibida: number }[] | undefined) ?? []
+      return (t.lineas ?? [])
+        .map((l) => ({
+          estacion_id: t.destino_id,
+          material_id: l.material_id,
+          cantidad: num(recibidas.find((r) => r.material_id === l.material_id)?.cantidad_recibida ?? l.cantidad_enviada),
+          tipo: 'TRASLADO_ENTRADA' as TipoMovimiento,
+        }))
+        .filter((e) => e.cantidad > 0)
+    }
     case 'anulacion': {
       const doc = String(d.documento_id ?? '')
       const ya = new Set(estado.movimientos.filter((m) => m.anula_id).map((m) => m.anula_id))
@@ -76,6 +99,28 @@ export function saldosLocales(estado: EstadoCampo, cola: Operacion[], estacionId
     }
   }
   return saldos
+}
+
+/* ------------------------------ Custodia ------------------------------ */
+
+/**
+ * La estación como la ve el teléfono: la custodia del servidor + los relevos que este teléfono aún no envió.
+ * Así quien entregó queda bloqueado al instante (aun sin señal) y quien recibió puede trabajar enseguida.
+ */
+export function conCustodiaLocal(estacion: Estacion, cola: Operacion[], yo: Persona): Estacion {
+  let e = estacion
+  for (const op of cola) {
+    if (op.estado_local !== 'PENDIENTE' || op.datos.estacion_id !== estacion.id) continue
+    if (op.tipo === 'relevo_entregar') e = { ...e, custodio_id: yo.id, custodio: yo.nombre, custodia_estado: 'EN_ENTREGA' }
+    if (op.tipo === 'relevo_recibir') e = { ...e, custodio_id: yo.id, custodio: yo.nombre, custodia_estado: 'ACTIVA', custodia_desde: op.creado_en }
+  }
+  for (const op of cola) {
+    // Cancelar la propia entrega (pendiente) la devuelve a «activa»
+    if (op.estado_local === 'PENDIENTE' && op.tipo === 'relevo_cancelar' && e.custodio_id === yo.id && e.custodia_estado === 'EN_ENTREGA') {
+      e = { ...e, custodia_estado: 'ACTIVA' }
+    }
+  }
+  return e
 }
 
 /* ------------------------------ Kardex ------------------------------ */

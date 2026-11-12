@@ -8,6 +8,8 @@ export type PermisosEstacion = {
   aplicar: boolean
   contar: boolean
   relevo: boolean
+  trasladar: boolean
+  autorizar_traslado: boolean
   anular: boolean
   en_nombre_de: boolean
   administrar: boolean
@@ -27,6 +29,8 @@ export type Estacion = {
   custodia_desde: string | null
   permisos: PermisosEstacion
   personas: Persona[]
+  /** Quiénes pueden autorizar traslados desde esta estación (sql/96). */
+  autorizadores?: Persona[]
 }
 
 export type Turno = {
@@ -135,6 +139,50 @@ export type BitacoraRiego = {
   comentario: string | null
 }
 
+export type EstadoNovedad = 'EN_APLICACION' | 'PREPARADO' | 'PENDIENTE' | 'TERMINADO'
+export type Novedad = { turno_ciclo_id: string | null; estado: EstadoNovedad; nota: string }
+
+export type Relevo = {
+  id: string
+  estacion_id: string
+  estado: 'EN_ENTREGA' | 'RECIBIDO' | 'RECHAZADO' | 'CANCELADO' | 'ASIGNADO'
+  metodo: 'CODIGO' | 'SESION' | 'ASIGNACION'
+  entrega_id: string | null
+  entrega: string | null
+  recibe_id: string | null
+  recibe: string | null
+  entregado_at: string | null
+  recibido_at: string | null
+  novedades: Novedad[]
+  nota_entrega: string | null
+  nota_recibe: string | null
+  motivo: string | null
+  revisar: boolean
+  diferencias: { material_id: string; saldo_sistema: number; cantidad_real: number; diferencia: number }[]
+}
+
+export type Traslado = {
+  id: string
+  origen_id: string
+  destino_id: string
+  origen: string
+  destino: string
+  estado: 'POR_AUTORIZAR' | 'EN_TRANSITO' | 'ACEPTADO' | 'RECHAZADO' | 'ANULADO'
+  motivo: string
+  autorizador_id: string | null
+  autorizador: string | null
+  creado_por: string
+  creador: string | null
+  creado_at: string
+  autorizado_at: string | null
+  resuelto_at: string | null
+  nota_autorizacion: string | null
+  nota_resolucion: string | null
+  lineas: { material_id: string; cantidad_enviada: number; cantidad_recibida: number | null }[] | null
+}
+
+export type Destino = { id: string; nombre: string; zona: string | null; misma_zona: boolean }
+
 export type OperacionServidor = {
   id: string
   tipo: string
@@ -163,6 +211,10 @@ export type EstadoCampo = {
   aplicaciones: Aplicacion[]
   bitacora_riego: BitacoraRiego[]
   mis_operaciones: OperacionServidor[]
+  /** sql/96 (pueden faltar si la base aún no tiene la 96) */
+  relevos?: Relevo[]
+  traslados?: Traslado[]
+  destinos?: Destino[]
 }
 
 export type TipoOperacion =
@@ -174,6 +226,15 @@ export type TipoOperacion =
   | 'anulacion'
   | 'chofer'
   | 'vehiculo'
+  | 'relevo_entregar'
+  | 'relevo_recibir'
+  | 'relevo_cancelar'
+  | 'relevo_rechazar'
+  | 'traslado_crear'
+  | 'traslado_autorizar'
+  | 'traslado_aceptar'
+  | 'traslado_rechazar'
+  | 'traslado_cancelar'
 
 export type Ubicacion = { lat: number; lon: number; precision: number }
 

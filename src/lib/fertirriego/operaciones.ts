@@ -49,4 +49,7 @@ export const NOMBRE_OBSERVACION: Record<string, string> = {
   SALDO_NEGATIVO: 'dejó el saldo en negativo',
   FUERA_DE_PLAN: 'producto fuera del plan',
   OTRA_ESTACION: 'turno de otra estación',
+  DIFERENCIA_RELEVO: 'diferencia en el relevo',
+  DIFERENCIA_TRASLADO: 'llegó menos de lo enviado',
+  CUSTODIA_POSTERIOR: 'el jefe asignó la estación después',
 }

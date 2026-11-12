@@ -12,6 +12,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { ahoraIso } from '@/lib/fechas/zona'
 import type { AlmacenLocal } from './almacenLocal'
+import { importarLlave, type LlavePersona } from './codigo'
 import type { EstadoCampo, Operacion } from './tipos'
 
 const LOTE = 50
@@ -90,6 +91,20 @@ async function sincronizarUnaVez(almacen: AlmacenLocal, supabase: SupabaseClient
   }
   await almacen.guardarEstado(estado as EstadoCampo, ahoraIso())
   r.estado = estado as EstadoCampo
+
+  // 2b · Llaves del código de relevo (si su rol tiene «Relevo»). Se importan como no exportables.
+  const { data: llaves, error: e3 } = await supabase.rpc('fn_fert_mis_llaves')
+  if (!e3 && Array.isArray(llaves)) {
+    const importadas: LlavePersona[] = []
+    for (const l of llaves as { perfil_id: string; nombre: string; secreto: string }[]) {
+      try {
+        importadas.push({ perfil_id: l.perfil_id, nombre: l.nombre, llave: await importarLlave(l.secreto) })
+      } catch {
+        /* una llave dañada no impide el resto */
+      }
+    }
+    await almacen.guardarLlaves(importadas)
+  }
 
   // 3 · Lo aceptado ya está en el estado bajado: sale de la cola
   for (const o of await almacen.listarCola()) {

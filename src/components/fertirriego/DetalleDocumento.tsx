@@ -23,6 +23,8 @@ const NOMBRE_DOC: Record<string, string> = {
   devolucion: 'Devolución',
 }
 
+const NOMBRE_OTRO: Record<string, string> = { relevo: 'Relevo de estación', traslado: 'Traslado' }
+
 export function DetalleDocumento({
   estado,
   estacion,
@@ -51,7 +53,9 @@ export function DetalleDocumento({
   const aplicacion = estado.aplicaciones.find((a) => a.id === documentoId)
   const autor = recepcion?.registrado_por ?? aplicacion?.registrado_por ?? movs[0]?.registrado_por
   const suyo = autor === yo.id
-  const puedeAnular = !anulado && (estacion.permisos.anular || suyo) && movs.length > 0
+  // Relevos y traslados no se anulan: tienen su propio camino (rechazar, cancelar)
+  const anulable = documentoTipo in NOMBRE_DOC
+  const puedeAnular = anulable && !anulado && (estacion.permisos.anular || suyo) && movs.length > 0
   const puedeDevolver = documentoTipo === 'aplicacion' && !anulado && !!aplicacion
   const [lineas, setLineas] = useState<LineaEditable[]>(() =>
     (aplicacion?.lineas ?? []).map((l) => ({ clave: nuevoId(), material_id: l.material_id, cantidad: '' }))
@@ -59,7 +63,7 @@ export function DetalleDocumento({
 
   return (
     <MarcoRegistro
-      titulo={NOMBRE_DOC[documentoTipo] ?? 'Registro'}
+      titulo={NOMBRE_DOC[documentoTipo] ?? NOMBRE_OTRO[documentoTipo] ?? 'Registro'}
       estacion={estacion}
       yo={yo}
       registrar={registrar}
@@ -135,7 +139,7 @@ export function DetalleDocumento({
           )}
         </div>
       )}
-      {!puedeAnular && !puedeDevolver && !anulado && (
+      {anulable && !puedeAnular && !puedeDevolver && !anulado && (
         <Alerta tono="ambar">Solo quien lo registró (en su jornada) o quien tiene «Anular» puede anularlo.</Alerta>
       )}
 

@@ -20,6 +20,15 @@ const NOMBRE_TIPO: Record<string, string> = {
   anulacion: 'Anulación',
   chofer: 'Chofer nuevo',
   vehiculo: 'Vehículo nuevo',
+  relevo_entregar: 'Entrega de estación',
+  relevo_recibir: 'Recepción de estación',
+  relevo_cancelar: 'Cancelar entrega',
+  relevo_rechazar: 'No recibir la estación',
+  traslado_crear: 'Traslado',
+  traslado_autorizar: 'Autorización de traslado',
+  traslado_aceptar: 'Recepción de traslado',
+  traslado_rechazar: 'Rechazo de traslado',
+  traslado_cancelar: 'Cancelar traslado',
 }
 
 export function VistaEnvios({

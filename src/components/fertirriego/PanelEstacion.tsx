@@ -12,7 +12,7 @@ import { cantidad, planDelDia } from '@/lib/fertirriego/calculos'
 import type { EstadoCampo, Estacion, Persona } from '@/lib/fertirriego/tipos'
 import { puedeRegistrar } from './MarcoRegistro'
 
-export type Accion = 'recibir' | 'aplicar' | 'contar' | 'custodia'
+export type Accion = 'recibir' | 'aplicar' | 'contar' | 'custodia' | 'entregar' | 'recibir_relevo' | 'codigo'
 
 export function PanelEstacion({
   estado,
@@ -20,6 +20,7 @@ export function PanelEstacion({
   yo,
   saldos,
   enLinea,
+  tieneEntregaPendiente = false,
   onAccion,
   onAplicarTurno,
   onVerProducto,
@@ -29,6 +30,8 @@ export function PanelEstacion({
   yo: Persona
   saldos: Map<string, number>
   enLinea: boolean
+  /** Otra persona ya entregó la estación (está en la base): se ofrece recibirla. */
+  tieneEntregaPendiente?: boolean
   onAccion: (a: Accion) => void
   onAplicarTurno: (turnoId: string) => void
   onVerProducto: (materialId: string) => void
@@ -54,6 +57,27 @@ export function PanelEstacion({
         {estacion.custodia_desde && <p className="text-xs text-slate-500">Desde {formatearFechaHora(estacion.custodia_desde)}</p>}
         {!regla.si && <p className="mt-1 text-xs text-amber-800">{regla.motivo}</p>}
         {regla.porOtro && <p className="mt-1 text-xs text-amber-800">Puedes registrar a nombre de un estacionero de la estación.</p>}
+        {/* ---- Relevo ---- */}
+        <div className="mt-2 flex flex-wrap gap-2">
+          {estacion.permisos.relevo && estacion.custodio_id === yo.id && estacion.custodia_estado === 'ACTIVA' && (
+            <Boton tamano="sm" variante="secundario" onClick={() => onAccion('entregar')} data-entregar-estacion>
+              Entregar estación
+            </Boton>
+          )}
+          {estacion.custodio_id === yo.id && estacion.custodia_estado === 'EN_ENTREGA' && (
+            <Boton tamano="sm" onClick={() => onAccion('codigo')} data-ver-codigo>
+              Mostrar mi código de entrega
+            </Boton>
+          )}
+          {estacion.permisos.relevo && estacion.custodio_id !== yo.id && (
+            <Boton tamano="sm" onClick={() => onAccion('recibir_relevo')} data-recibir-estacion>
+              {tieneEntregaPendiente ? 'Recibir la estación (te la entregaron)' : 'Recibir estación'}
+            </Boton>
+          )}
+        </div>
+        {estacion.custodio_id === yo.id && estacion.custodia_estado === 'EN_ENTREGA' && (
+          <p className="mt-1 text-xs text-amber-800">Entregaste la estación: ya no puedes registrar en ella hasta que la vuelvas a recibir.</p>
+        )}
         {estacion.permisos.administrar && (
           <button type="button" disabled={!enLinea} onClick={() => onAccion('custodia')} data-asignar-custodia className="mt-2 text-xs font-bold text-brand-700 underline disabled:text-slate-400 disabled:no-underline">
             {enLinea ? 'Asignar la estación a una persona' : 'Asignar la estación (necesita señal)'}

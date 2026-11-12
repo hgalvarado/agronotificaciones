@@ -5,29 +5,40 @@
  * registro en el teléfono y lo envía solo cuando vuelve la conexión.
  *
  * Pestañas: Estación (bodega y acciones) · Por turno (plan contra aplicado, horas) · Bitácora (kardex) ·
- * Envíos (pendientes, rechazados, observaciones).
+ * Relevos (cambio de jornada con código) · Traslados (entre estaciones) · Envíos (pendientes, rechazados, observaciones).
  */
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Alerta, Boton, ListaEsqueleto } from '@/components/ui/Primitivos'
 import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
 import { formatearFechaHora } from '@/lib/estados'
-import { saldosLocales } from '@/lib/fertirriego/calculos'
-import type { Chofer, Vehiculo } from '@/lib/fertirriego/tipos'
+import { conCustodiaLocal, saldosLocales } from '@/lib/fertirriego/calculos'
+import { crearOperacion } from '@/lib/fertirriego/operaciones'
+import { obtenerUbicacion } from '@/lib/fertirriego/ubicacion'
+import type { Chofer, Estacion, Relevo, Traslado, Vehiculo } from '@/lib/fertirriego/tipos'
 import { useCampo } from '@/lib/fertirriego/useCampo'
 import { AsignarCustodia } from './AsignarCustodia'
 import { DetalleDocumento } from './DetalleDocumento'
 import { FormAplicacion } from './FormAplicacion'
 import { FormBitacora } from './FormBitacora'
 import { FormConteo } from './FormConteo'
+import { FormEntregarRelevo } from './FormEntregarRelevo'
+import { FormRecibirRelevo } from './FormRecibirRelevo'
+import { FormTraslado } from './FormTraslado'
+import { puedeRegistrar } from './MarcoRegistro'
+import { PantallaCodigo } from './PantallaCodigo'
+import { RechazarRelevo } from './RechazarRelevo'
+import { ResolverTraslado, type AccionTraslado } from './ResolverTraslado'
 import { FormRecepcion } from './FormRecepcion'
 import { PanelEstacion } from './PanelEstacion'
 import { RegistroServiceWorker } from './RegistroServiceWorker'
 import { VistaBitacora } from './VistaBitacora'
 import { VistaEnvios } from './VistaEnvios'
+import { VistaRelevos } from './VistaRelevos'
+import { VistaTraslados } from './VistaTraslados'
 import { VistaTurnos } from './VistaTurnos'
 
-type Pestana = 'estacion' | 'turnos' | 'bitacora' | 'envios'
+type Pestana = 'estacion' | 'turnos' | 'bitacora' | 'relevos' | 'traslados' | 'envios'
 type Ventana =
   | { tipo: 'recibir' }
   | { tipo: 'aplicar'; turno?: string; fecha?: string }
@@ -35,12 +46,20 @@ type Ventana =
   | { tipo: 'horas'; turno: string; fecha: string }
   | { tipo: 'documento'; documentoTipo: string; documentoId: string }
   | { tipo: 'custodia' }
+  | { tipo: 'entregar' }
+  | { tipo: 'recibir_relevo'; pendiente: Relevo | null }
+  | { tipo: 'codigo' }
+  | { tipo: 'rechazar_relevo'; relevo: Relevo }
+  | { tipo: 'traslado' }
+  | { tipo: 'resolver_traslado'; traslado: Traslado; accion: AccionTraslado }
   | null
 
 const PESTANAS: { clave: Pestana; nombre: string }[] = [
   { clave: 'estacion', nombre: 'Estación' },
   { clave: 'turnos', nombre: 'Por turno' },
   { clave: 'bitacora', nombre: 'Bitácora' },
+  { clave: 'relevos', nombre: 'Relevos' },
+  { clave: 'traslados', nombre: 'Traslados' },
   { clave: 'envios', nombre: 'Envíos' },
 ]
 
@@ -59,7 +78,29 @@ export function CampoFertirriego({ usuarioId }: { usuarioId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   const estaciones = estado?.estaciones ?? []
-  const estacion = estaciones.find((e) => e.id === estacionId) ?? estaciones[0] ?? null
+  const estacionServidor = estaciones.find((e) => e.id === estacionId) ?? estaciones[0] ?? null
+  // La custodia como la ve ESTE teléfono (incluye los relevos que aún no se envían)
+  const estacion = useMemo(
+    () => (estacionServidor && estado ? conCustodiaLocal(estacionServidor, cola, estado.yo) : estacionServidor),
+    [estacionServidor, estado, cola]
+  )
+  const miLlave = campo.llaves.find((l) => l.perfil_id === estado?.yo.id) ?? null
+  // Una entrega de OTRA persona que ya está en la base (para recibirla)
+  const entregaPendiente = (estado?.relevos ?? []).find((r) => r.estacion_id === estacion?.id && r.estado === 'EN_ENTREGA' && r.entrega_id !== estado?.yo.id) ?? null
+  // Mi entrega ya registrada en la base (para cancelarla)
+  const miEntrega = (estado?.relevos ?? []).find((r) => r.estacion_id === estacion?.id && r.estado === 'EN_ENTREGA' && r.entrega_id === estado?.yo.id) ?? null
+
+  /** Cancelar mi entrega: si no se ha enviado, se quita del teléfono; si ya llegó, se avisa a la base. */
+  async function cancelarEntrega() {
+    const local = cola.find((o) => o.estado_local === 'PENDIENTE' && o.tipo === 'relevo_entregar' && o.datos.estacion_id === estacion?.id)
+    if (local) await campo.descartar(local.id)
+    else if (miEntrega) {
+      const u = await obtenerUbicacion(4000)
+      await campo.registrar(crearOperacion('relevo_cancelar', { estacion_id: estacion?.id, relevo_id: miEntrega.id }, { ubicacion: u.tipo === 'ok' ? u.ubicacion : null, resumen: 'Cancelar entrega de estación' }))
+    }
+    setVentana(null)
+    guardado('Entrega cancelada: la estación sigue a tu cargo.')
+  }
 
   const saldos = useMemo(() => (estado && estacion ? saldosLocales(estado, cola, estacion.id) : new Map<string, number>()), [estado, cola, estacion])
   const pendientes = cola.filter((o) => o.estado_local === 'PENDIENTE').length
@@ -72,6 +113,24 @@ export function CampoFertirriego({ usuarioId }: { usuarioId: string }) {
     .map((o) => ({ id: o.id, placa: String(o.datos.placa), tipo: (o.datos.tipo as string) ?? null, marca: null, color: null, validado: false, pendiente: true }))
 
   const enLinea = campo.conexion === 'en_linea'
+  const porAutorizarSinEstacion = (estado?.traslados ?? []).filter((t) => t.estado === 'POR_AUTORIZAR' && t.autorizador_id === estado?.yo.id && !cola.some((o) => o.datos.traslado_id === t.id))
+  const leerBloqueo = useCallback(() => campo.preferencia<{ intentos: number; hasta: number }>('bloqueo_relevo'), [campo])
+  const guardarBloqueo = useCallback((b: { intentos: number; hasta: number }) => campo.guardarPreferencia('bloqueo_relevo', b), [campo])
+
+  /**
+   * La estación sobre la que se decide un traslado: el origen al autorizar o cancelar, el destino al recibir o
+   * rechazar. Si no está entre las suyas (un jefe que solo autoriza), se arma con lo mínimo: la base revisa todo.
+   */
+  function estacionParaTraslado(t: Traslado, a: AccionTraslado): Estacion {
+    const id = a === 'aceptar' || a === 'rechazar' ? t.destino_id : t.origen_id
+    const propia = estaciones.find((e) => e.id === id)
+    if (propia) return estado ? conCustodiaLocal(propia, cola, estado.yo) : propia
+    return {
+      id, nombre: a === 'aceptar' || a === 'rechazar' ? t.destino : t.origen, zona_id: null, zona: null,
+      custodio_id: null, custodio: null, custodia_estado: null, custodia_desde: null, personas: [],
+      permisos: { recibir: false, aplicar: false, contar: false, relevo: false, trasladar: true, autorizar_traslado: true, anular: false, en_nombre_de: false, administrar: false, gestionar_choferes: false },
+    }
+  }
   const guardado = (m: string) => {
     setAviso(m)
     setTimeout(() => setAviso((a) => (a === m ? null : a)), 6000)
@@ -116,7 +175,25 @@ export function CampoFertirriego({ usuarioId }: { usuarioId: string }) {
           Abre esta pantalla una vez con señal para descargar tus estaciones. Después funciona sin señal.
         </Alerta>
       ) : estaciones.length === 0 ? (
-        <Alerta tono="ambar">No tienes estaciones asignadas. Pide a tu jefe que te asigne en Usuarios → Estaciones de riego.</Alerta>
+        <>
+          {porAutorizarSinEstacion.length === 0 && (
+            <Alerta tono="ambar">No tienes estaciones asignadas. Pide a tu jefe que te asigne en Usuarios → Estaciones de riego.</Alerta>
+          )}
+          {/* Quien solo autoriza traslados (sin estaciones propias) ve aquí lo que le toca */}
+          {porAutorizarSinEstacion.map((t) => (
+            <div key={t.id} className="rounded-xl bg-white p-3 ring-1 ring-inset ring-amber-300" data-traslado="POR_AUTORIZAR">
+              <p className="text-sm font-bold text-slate-800">Traslado por autorizar: {t.origen} → {t.destino}</p>
+              <p className="text-xs text-slate-600">{t.motivo} · pidió {t.creador}</p>
+              <div className="mt-2 flex gap-3">
+                <button type="button" className="text-xs font-bold text-brand-700 underline" data-accion-traslado="autorizar" onClick={() => setVentana({ tipo: 'resolver_traslado', traslado: t, accion: 'autorizar' })}>Autorizar</button>
+                <button type="button" className="text-xs font-bold text-red-700 underline" data-accion-traslado="no_autorizar" onClick={() => setVentana({ tipo: 'resolver_traslado', traslado: t, accion: 'no_autorizar' })}>No autorizar</button>
+              </div>
+            </div>
+          ))}
+          {ventana?.tipo === 'resolver_traslado' && (
+            <ResolverTraslado estado={estado} estacion={estacionParaTraslado(ventana.traslado, ventana.accion)} yo={estado.yo} traslado={ventana.traslado} accion={ventana.accion} registrar={campo.registrar} onCerrar={() => setVentana(null)} onGuardado={guardado} />
+          )}
+        </>
       ) : (
         estacion && (
           <>
@@ -168,7 +245,24 @@ export function CampoFertirriego({ usuarioId }: { usuarioId: string }) {
                 yo={estado.yo}
                 saldos={saldos}
                 enLinea={enLinea}
-                onAccion={(a) => setVentana(a === 'recibir' ? { tipo: 'recibir' } : a === 'aplicar' ? { tipo: 'aplicar' } : a === 'contar' ? { tipo: 'contar' } : { tipo: 'custodia' })}
+                tieneEntregaPendiente={Boolean(entregaPendiente)}
+                onAccion={(a) =>
+                  setVentana(
+                    a === 'recibir'
+                      ? { tipo: 'recibir' }
+                      : a === 'aplicar'
+                        ? { tipo: 'aplicar' }
+                        : a === 'contar'
+                          ? { tipo: 'contar' }
+                          : a === 'entregar'
+                            ? { tipo: 'entregar' }
+                            : a === 'recibir_relevo'
+                              ? { tipo: 'recibir_relevo', pendiente: entregaPendiente }
+                              : a === 'codigo'
+                                ? { tipo: 'codigo' }
+                                : { tipo: 'custodia' }
+                  )
+                }
                 onAplicarTurno={(t) => setVentana({ tipo: 'aplicar', turno: t })}
                 onVerProducto={(m) => {
                   setMaterial(m)
@@ -193,6 +287,28 @@ export function CampoFertirriego({ usuarioId }: { usuarioId: string }) {
                 material={material}
                 onMaterial={setMaterial}
                 onAbrir={(documentoTipo, documentoId) => setVentana({ tipo: 'documento', documentoTipo, documentoId })}
+              />
+            )}
+            {pestana === 'relevos' && (
+              <VistaRelevos
+                estado={estado}
+                cola={cola}
+                estacion={estacion}
+                yo={estado.yo}
+                onRecibir={(r) => setVentana({ tipo: 'recibir_relevo', pendiente: r })}
+                onRechazar={(r) => setVentana({ tipo: 'rechazar_relevo', relevo: r })}
+                onMostrarCodigo={() => setVentana({ tipo: 'codigo' })}
+              />
+            )}
+            {pestana === 'traslados' && (
+              <VistaTraslados
+                estado={estado}
+                cola={cola}
+                estacion={estacion}
+                yo={estado.yo}
+                puedeRegistrar={puedeRegistrar(estacion, estado.yo).si}
+                onNuevo={() => setVentana({ tipo: 'traslado' })}
+                onAccion={(traslado, accion) => setVentana({ tipo: 'resolver_traslado', traslado, accion })}
               />
             )}
             {pestana === 'envios' && (
@@ -255,6 +371,61 @@ export function CampoFertirriego({ usuarioId }: { usuarioId: string }) {
                 yo={estado.yo}
                 documentoTipo={ventana.documentoTipo}
                 documentoId={ventana.documentoId}
+                registrar={campo.registrar}
+                onCerrar={() => setVentana(null)}
+                onGuardado={guardado}
+              />
+            )}
+            {ventana?.tipo === 'entregar' && (
+              <FormEntregarRelevo
+                estado={estado}
+                estacion={estacion}
+                yo={estado.yo}
+                registrar={campo.registrar}
+                onCerrar={() => setVentana(null)}
+                onGuardado={(m) => {
+                  guardado(m)
+                  setTimeout(() => setVentana({ tipo: 'codigo' }), 50)
+                }}
+              />
+            )}
+            {ventana?.tipo === 'codigo' && (
+              <PantallaCodigo
+                llave={miLlave}
+                estacion={estacion.nombre}
+                onCerrar={() => setVentana(null)}
+                onCancelarEntrega={estacion.custodia_estado === 'EN_ENTREGA' && estacion.custodio_id === estado.yo.id ? () => void cancelarEntrega() : undefined}
+              />
+            )}
+            {ventana?.tipo === 'recibir_relevo' && (
+              <FormRecibirRelevo
+                estado={estado}
+                estacion={estacion}
+                yo={estado.yo}
+                llaves={campo.llaves}
+                saldos={saldos}
+                enLinea={enLinea}
+                pendiente={ventana.pendiente}
+                leerBloqueo={leerBloqueo}
+                guardarBloqueo={guardarBloqueo}
+                registrar={campo.registrar}
+                onCerrar={() => setVentana(null)}
+                onGuardado={guardado}
+              />
+            )}
+            {ventana?.tipo === 'rechazar_relevo' && (
+              <RechazarRelevo estacion={estacion} yo={estado.yo} relevo={ventana.relevo} registrar={campo.registrar} onCerrar={() => setVentana(null)} onGuardado={guardado} />
+            )}
+            {ventana?.tipo === 'traslado' && (
+              <FormTraslado estado={estado} estacion={estacion} yo={estado.yo} saldos={saldos} registrar={campo.registrar} onCerrar={() => setVentana(null)} onGuardado={guardado} />
+            )}
+            {ventana?.tipo === 'resolver_traslado' && (
+              <ResolverTraslado
+                estado={estado}
+                estacion={estacionParaTraslado(ventana.traslado, ventana.accion)}
+                yo={estado.yo}
+                traslado={ventana.traslado}
+                accion={ventana.accion}
                 registrar={campo.registrar}
                 onCerrar={() => setVentana(null)}
                 onGuardado={guardado}

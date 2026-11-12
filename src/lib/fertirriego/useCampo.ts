@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { AlmacenLocal } from './almacenLocal'
 import { sincronizar } from './sincronizador'
+import type { LlavePersona } from './codigo'
 import type { EstadoCampo, Operacion } from './tipos'
 
 export type Conexion = 'en_linea' | 'sin_senal'
@@ -26,6 +27,7 @@ export function useCampo(usuarioId: string) {
   const [sincronizando, setSincronizando] = useState(false)
   const [conexion, setConexion] = useState<Conexion>('en_linea')
   const [error, setError] = useState<string | null>(null)
+  const [llaves, setLlaves] = useState<LlavePersona[]>([])
 
   const recargarCola = useCallback(async () => {
     if (almacen.current) setCola(await almacen.current.listarCola())
@@ -43,6 +45,7 @@ export function useCampo(usuarioId: string) {
     setConexion(r.sinRed ? 'sin_senal' : 'en_linea')
     setError(r.error)
     await recargarCola()
+    setLlaves(await almacen.current.leerLlaves())
     return r
   }, [supabase, recargarCola])
 
@@ -66,6 +69,7 @@ export function useCampo(usuarioId: string) {
         setEstado(guardado.estado)
         setSincronizadoEn(guardado.sincronizadoEn)
         setCola(await a.listarCola())
+        setLlaves(await a.leerLlaves())
       } catch (e) {
         setError(e instanceof Error ? `No se pudo abrir el almacén del teléfono: ${e.message}` : 'No se pudo abrir el almacén del teléfono.')
       } finally {
@@ -128,6 +132,7 @@ export function useCampo(usuarioId: string) {
     supabase,
     estado,
     cola,
+    llaves,
     sincronizadoEn,
     cargando,
     sincronizando,

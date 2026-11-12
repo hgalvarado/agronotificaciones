@@ -7,6 +7,7 @@
  *   - `cola` : los registros hechos en el teléfono (pendientes, rechazados). Llave = id del registro (UUID).
  */
 
+import type { LlavePersona } from './codigo'
 import type { EstadoCampo, Operacion } from './tipos'
 
 const VERSION = 1
@@ -67,6 +68,18 @@ export class AlmacenLocal {
 
   async guardarPreferencia<T>(clave: string, valor: T): Promise<void> {
     await enTransaccion(this.db, 'kv', 'readwrite', (s) => s.put(valor, `pref:${clave}`))
+  }
+
+  /**
+   * Llaves del código de relevo (la propia y las de sus compañeros), como CryptoKey NO exportable: IndexedDB las
+   * guarda tal cual (sin el secreto en texto) y la app solo puede usarlas para calcular códigos.
+   */
+  async leerLlaves(): Promise<LlavePersona[]> {
+    return ((await enTransaccion<LlavePersona[]>(this.db, 'kv', 'readonly', (s) => s.get('llaves'))) ?? []) as LlavePersona[]
+  }
+
+  async guardarLlaves(llaves: LlavePersona[]): Promise<void> {
+    await enTransaccion(this.db, 'kv', 'readwrite', (s) => s.put(llaves, 'llaves'))
   }
 
   /** La cola en el orden en que se registró (el orden importa: un chofer nuevo va antes que su recepción). */
