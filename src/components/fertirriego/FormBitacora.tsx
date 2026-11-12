@@ -11,6 +11,7 @@ import { Campo, Entrada } from '@/components/ui/Primitivos'
 import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
 import { aEntradaLocal, deEntradaLocal } from '@/lib/fechas/zona'
 import { crearOperacion } from '@/lib/fertirriego/operaciones'
+import { claveBorrador, useAutoguardado, useBorrador } from '@/lib/fertirriego/borrador'
 import type { BitacoraRiego, Estacion, Operacion, Persona, Turno } from '@/lib/fertirriego/tipos'
 import { MarcoRegistro } from './MarcoRegistro'
 
@@ -35,12 +36,18 @@ export function FormBitacora({
   onCerrar: () => void
   onGuardado: (m: string) => void
 }) {
-  const [hf, setHf] = useState(actual?.horas_fertilizacion?.toString() ?? '')
-  const [hr, setHr] = useState(actual?.horas_riego?.toString() ?? '')
-  const [inicio, setInicio] = useState(aEntradaLocal(actual?.hora_inicio))
-  const [fin, setFin] = useState(aEntradaLocal(actual?.hora_fin))
-  const [ejecutor, setEjecutor] = useState(actual?.ejecutor_id ?? yo.id)
-  const [ejecutor2, setEjecutor2] = useState(actual?.ejecutor2_id ?? '')
+  // Un borrador por turno y día
+  const borrador = useBorrador<{ hf: string; hr: string; inicio: string; fin: string; ejecutor: string; ejecutor2: string }>(
+    claveBorrador('bitacora', yo.id, estacion.id, `${turno.id}@${fecha}`)
+  )
+  const b = borrador.inicial
+  const [hf, setHf] = useState(b?.hf ?? actual?.horas_fertilizacion?.toString() ?? '')
+  const [hr, setHr] = useState(b?.hr ?? actual?.horas_riego?.toString() ?? '')
+  const [inicio, setInicio] = useState(b?.inicio ?? aEntradaLocal(actual?.hora_inicio))
+  const [fin, setFin] = useState(b?.fin ?? aEntradaLocal(actual?.hora_fin))
+  const [ejecutor, setEjecutor] = useState(b?.ejecutor ?? actual?.ejecutor_id ?? yo.id)
+  const [ejecutor2, setEjecutor2] = useState(b?.ejecutor2 ?? actual?.ejecutor2_id ?? '')
+  useAutoguardado(borrador, { hf, hr, inicio, fin, ejecutor, ejecutor2 })
 
   const personas = [{ id: yo.id, titulo: `${yo.nombre} (yo)` }, ...estacion.personas.filter((p) => p.id !== yo.id).map((p) => ({ id: p.id, titulo: p.nombre }))]
 
@@ -53,6 +60,7 @@ export function FormBitacora({
       registrar={registrar}
       onCerrar={onCerrar}
       onGuardado={onGuardado}
+      borrador={borrador}
       construir={({ ubicacion }) => {
         const vhf = horas(hf)
         const vhr = horas(hr)

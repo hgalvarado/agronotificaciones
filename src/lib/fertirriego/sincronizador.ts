@@ -113,7 +113,13 @@ async function sincronizarUnaVez(almacen: AlmacenLocal, supabase: SupabaseClient
   return r
 }
 
-/** Una sincronización a la vez (si ya hay una en curso, se espera esa). */
+let otraVuelta: Promise<ResultadoSincronizacion> | null = null
+
+/**
+ * Una sincronización a la vez. Si ya hay una en curso, lo registrado después de que empezó NO va en ella (ya leyó
+ * la cola): se hace UNA vuelta más al terminar, para que no espere al reloj de cada minuto (que además se reinicia
+ * cada vez que cambia la cola). Lo encontró la QA (2026-11-12): lo guardado justo al abrir tardaba más de 1 minuto.
+ */
 export function sincronizar(almacen: AlmacenLocal, supabase: SupabaseClient): Promise<ResultadoSincronizacion> {
   if (!enCurso) {
     enCurso = sincronizarUnaVez(almacen, supabase)
@@ -124,6 +130,13 @@ export function sincronizar(almacen: AlmacenLocal, supabase: SupabaseClient): Pr
       .finally(() => {
         enCurso = null
       })
+    return enCurso
   }
-  return enCurso
+  if (!otraVuelta) {
+    otraVuelta = enCurso.then(() => {
+      otraVuelta = null
+      return sincronizar(almacen, supabase)
+    })
+  }
+  return otraVuelta
 }

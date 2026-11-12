@@ -9,6 +9,7 @@
 import { useState } from 'react'
 import { AreaTexto, Campo } from '@/components/ui/Primitivos'
 import { crearOperacion } from '@/lib/fertirriego/operaciones'
+import { claveBorrador, useAutoguardado, useBorrador } from '@/lib/fertirriego/borrador'
 import type { EstadoCampo, EstadoNovedad, Estacion, Operacion, Persona } from '@/lib/fertirriego/tipos'
 import { MarcoRegistro } from './MarcoRegistro'
 
@@ -35,8 +36,11 @@ export function FormEntregarRelevo({
   onGuardado: (m: string) => void
 }) {
   const turnos = estado.turnos.filter((t) => t.estacion_id === estacion.id)
-  const [novedades, setNovedades] = useState<Record<string, { estado: EstadoNovedad | ''; nota: string }>>({})
-  const [nota, setNota] = useState('')
+  type Novedades = Record<string, { estado: EstadoNovedad | ''; nota: string }>
+  const borrador = useBorrador<{ novedades: Novedades; nota: string }>(claveBorrador('relevo', yo.id, estacion.id))
+  const [novedades, setNovedades] = useState<Novedades>(borrador.inicial?.novedades ?? {})
+  const [nota, setNota] = useState(borrador.inicial?.nota ?? '')
+  useAutoguardado(borrador, { novedades, nota })
 
   return (
     <MarcoRegistro
@@ -46,6 +50,7 @@ export function FormEntregarRelevo({
       registrar={registrar}
       onCerrar={onCerrar}
       onGuardado={onGuardado}
+      borrador={borrador}
       textoGuardar="Entregar y mostrar mi código"
       construir={({ ubicacion }) => {
         const lista = turnos

@@ -19,8 +19,11 @@ export function EditorLineas({
   onCambiar,
   saldos,
   plan,
+  etiquetaPlan = 'Plan',
   etiquetaCantidad = 'Cantidad',
 }: {
+  /** Texto junto a lo planificado (ej. «Plan 7 días» en la recepción). */
+  etiquetaPlan?: string
   materiales: Material[]
   lineas: LineaEditable[]
   onCambiar: (lineas: LineaEditable[]) => void
@@ -43,7 +46,12 @@ export function EditorLineas({
         const saldo = saldos?.get(l.material_id)
         const planificado = plan?.get(l.material_id)
         return (
-          <div key={l.clave} className="rounded-xl p-2.5 ring-1 ring-inset ring-slate-200" data-linea={i}>
+          <div
+            key={l.clave}
+            className="rounded-xl p-2.5 ring-1 ring-inset ring-slate-200"
+            data-linea={i}
+            data-linea-codigo={materiales.find((m) => m.id === l.material_id)?.codigo ?? ''}
+          >
             <div className="flex items-start gap-2">
               <div className="min-w-0 flex-1">
                 <SelectorBuscable
@@ -80,8 +88,8 @@ export function EditorLineas({
               </label>
               <span className="ml-auto flex flex-wrap gap-x-3 text-[11px] text-slate-500">
                 {planificado !== undefined && (
-                  <span>
-                    Plan: <strong>{cantidad(planificado)}</strong>
+                  <span data-plan-linea>
+                    {etiquetaPlan}: <strong>{cantidad(planificado)}</strong>
                   </span>
                 )}
                 {saldo !== undefined && l.material_id && (
@@ -107,6 +115,9 @@ export function EditorLineas({
   )
 }
 
+/** Error de leerLineas cuando ninguna fila trae cantidad (cada formulario puede explicarlo a su manera). */
+export const SIN_LINEAS = 'Agrega al menos un producto con su cantidad.'
+
 /** Lee las líneas: número válido > 0, sin repetidos. Devuelve el error para mostrar, o las líneas. */
 export function leerLineas(lineas: LineaEditable[]): { error: string } | { lineas: { material_id: string; cantidad: number }[] } {
   const validas: { material_id: string; cantidad: number }[] = []
@@ -120,6 +131,6 @@ export function leerLineas(lineas: LineaEditable[]): { error: string } | { linea
     if (validas.some((v) => v.material_id === l.material_id)) return { error: 'Un producto está repetido: súmalo en una sola fila.' }
     validas.push({ material_id: l.material_id, cantidad: Math.round(n * 10000) / 10000 })
   }
-  if (validas.length === 0) return { error: 'Agrega al menos un producto con su cantidad.' }
+  if (validas.length === 0) return { error: SIN_LINEAS }
   return { lineas: validas }
 }

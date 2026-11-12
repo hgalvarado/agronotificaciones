@@ -94,20 +94,43 @@ try {
     $m = Lista "fert_movimientos?select=tipo,cantidad&estacion_id=eq.$estId"
     OK ($t -ge 0 -and $m.Count -eq 1 -and $m[0].tipo -eq 'SALDO_INICIAL' -and [double]$m[0].cantidad -eq 500) 'Conteo inicial: saldo inicial 500, enviado solo'
 
-    # Recepción con chofer y vehículo nuevos
+    # Recepción: sin «¿Dónde?» y con los productos del plan de la estación ya puestos
     ClicHasta "document.querySelector('[data-accion=recibir]')" "!!document.querySelector('[data-selector-chofer]')" | Out-Null
+    OK (-not (JS "/¿Dónde\?/.test(${ULTIMO_DIALOGO}?.innerText || '')")) 'Recibir: ya no pide «¿Dónde?» (siempre es la bodega de la estación)'
+    $cods = JS "[...document.querySelectorAll('[data-linea-codigo]')].map(d => d.dataset.lineaCodigo).sort().join('|')"
+    OK ($cods -eq ((@($ACI, $SOL) | Sort-Object) -join '|') -and (JS "!!document.querySelector('[data-productos-del-plan]')") -eq $true) 'Los productos del plan de la estación vienen por defecto (vacíos)' $cods
+    OK ((JS "document.querySelector('[data-linea-codigo=""$SOL""] [data-plan-linea]')?.innerText") -match 'Plan 7 días: 120') 'Junto a cada producto: lo planificado para los próximos 7 días' (JS "document.querySelector('[data-linea-codigo=""$SOL""] [data-plan-linea]')?.innerText")
     CrearEnSelector '[data-selector-chofer] button' 'Agregar chofer' @("Chofer QA $s", '9999-0000')
     CrearEnSelector '[data-selector-vehiculo] button' 'Agregar vehículo' @("qa $s", 'Camión', 'Isuzu', 'Blanco')
-    ElegirOpcion '[data-linea="0"] button' "SOLUCION QA $s" | Out-Null
-    Teclear "document.querySelector('[data-cantidad=""0""]')" '1000'
-    ClicEn "document.querySelector('[data-agregar-linea]')" | Out-Null
-    ElegirOpcion '[data-linea="1"] button' "ACIDO QA $s" | Out-Null
-    Teclear "document.querySelector('[data-cantidad=""1""]')" '50'
+    ClicEn "document.querySelector('[data-guardar-registro]')" | Out-Null
+    $t = Esperar "/cantidad de al menos un producto recibido/.test(${ULTIMO_DIALOGO}?.innerText || '')" 15000
+    OK ($t -ge 0) 'Sin cantidades: no registra nada y lo explica'
+    Teclear "document.querySelector('[data-linea-codigo=""$SOL""] [data-cantidad]')" '1000'
+
+    # Borrador: salir sin guardar y volver (aunque se recargue la página)
+    ClicEn "[...${ULTIMO_DIALOGO}.querySelectorAll('button')].find(b => b.innerText.trim() === 'Cancelar')" | Out-Null
+    $t = Esperar "!document.querySelector('[data-selector-chofer]') && !!document.querySelector('[data-accion=recibir] [data-marca-borrador]')" 8000
+    OK ($t -ge 0 -and (JS "!!document.querySelector('[data-hay-borradores]')") -eq $true) 'Salir sin guardar: el botón Recibir queda marcado «Borrador»' (JS "document.querySelector('[data-hay-borradores]')?.innerText")
+    OK ((Lista "fert_recepciones?select=id&estacion_id=eq.$estId").Count -eq 0) 'Un borrador NO es un registro: la bodega no se movió'
+    Ir "/fertirriego?r=$s-borrador"
+    Esperar "document.querySelector('[data-estacion]')?.dataset.estacion === '$EST'" 40000 | Out-Null
+    $t = Esperar "!!document.querySelector('[data-accion=recibir] [data-marca-borrador]')" 10000
+    OK ($t -ge 0) 'Después de recargar la página, el borrador sigue ahí'
+    ClicHasta "document.querySelector('[data-accion=recibir]')" "!!document.querySelector('[data-selector-chofer]')" | Out-Null
+    $rec0 = JS "document.querySelector('[data-linea-codigo=""$SOL""] [data-cantidad]')?.value + ' · ' + document.querySelector('[data-selector-chofer]').innerText"
+    OK ((JS "!!document.querySelector('[data-borrador-recuperado]')") -eq $true -and $rec0 -match '^1000 · ' -and $rec0 -match "Chofer QA $s") 'Al volver: «Continuando tu borrador» con la cantidad y el chofer nuevo' (($rec0 + ' · ' + (JS "document.querySelector('[data-borrador-recuperado]')?.innerText")) -replace "`n", ' ')
+    Teclear "document.querySelector('[data-linea-codigo=""$ACI""] [data-cantidad]')" '50'
     Captura 'fert_recepcion_antes.png'
     ClicEn "document.querySelector('[data-guardar-registro]')" | Out-Null
     $tr = Esperar "!document.querySelector('[data-selector-chofer]')" 15000
+    # Guardado justo al abrir la pantalla (mientras ya sincronizaba): el envío va en la vuelta siguiente (hasta 1 min)
     if ($tr -lt 0) { $script:Resultados.Add("DIAG recepción: $((JS "[...document.querySelectorAll('[role=dialog]')].map(d => d.innerText).join(' ||| ')") -replace "`n", ' / ')"); Captura 'fert_recepcion_error.png' }
-    $t = Esperar "!document.querySelector('[data-pendientes-cuenta]')" 30000
+    $t = Esperar "!document.querySelector('[data-pendientes-cuenta]')" 80000
+    if ($t -lt 0) {
+        $script:Resultados.Add("DIAG pendientes=$(Pendientes) barra=$(JS "document.querySelector('[data-barra-estado]')?.dataset.barraEstado") texto=$((JS "document.querySelector('[data-barra-estado]')?.innerText") -replace "`n", ' ')")
+        foreach ($x in (Lista "fert_operaciones?select=tipo,resultado,mensaje,recibido_en&perfil_id=eq.$qaId&order=recibido_en.desc&limit=5")) { $script:Resultados.Add("DIAG op $($x.tipo) $($x.resultado) $($x.mensaje)") }
+        $script:Resultados.Add("DIAG envíos: $((JS "document.body.innerText.match(/Envíos[\s\S]{0,300}/)?.[0] || ''") -replace "`n", ' / ')")
+    }
     $rec = Lista "fert_recepciones?select=id,chofer_id,vehiculo_id&estacion_id=eq.$estId"
     foreach ($x in (Lista "fert_operaciones?select=tipo,resultado,mensaje&perfil_id=eq.$qaId&resultado=eq.RECHAZADO&order=recibido_en.desc&limit=3")) { $script:Resultados.Add("DIAG rechazado $($x.tipo): $($x.mensaje)") }
     $op = if ($rec.Count) { (Lista "fert_operaciones?select=lat,lon,observaciones&id=eq.$($rec[0].id)")[0] } else { $null }
@@ -116,6 +139,20 @@ try {
     OK ($op -and [double]$op.lat -eq 13.312) 'La recepción guarda la ubicación del teléfono' "$($op.lat), $($op.lon)"
     $sal = JS "document.querySelector('[data-saldo=""$SOL""]')?.innerText"
     OK ($sal -match '1[.,]?500') 'La bodega muestra 1,500 L' ($sal -replace "`n", ' ')
+    $lugar = (Lista "fert_recepciones?select=lugar&estacion_id=eq.$estId")[0].lugar
+    OK ($lugar -eq $EST -and -not (JS "!!document.querySelector('[data-accion=recibir] [data-marca-borrador]')")) 'Guardado: el lugar es la estación y el borrador desaparece' $lugar
+
+    # Descartar un borrador
+    $nMov = (Lista "fert_movimientos?select=id&estacion_id=eq.$estId").Count
+    ClicHasta "document.querySelector('[data-accion=contar]')" "!!document.querySelector('[data-conteo]')" | Out-Null
+    Teclear "document.querySelector('[data-conteo-material=""$ACI""] input')" '7'
+    ClicEn "[...${ULTIMO_DIALOGO}.querySelectorAll('button')].find(b => b.innerText.trim() === 'Cancelar')" | Out-Null
+    Esperar "!!document.querySelector('[data-accion=contar] [data-marca-borrador]')" 8000 | Out-Null
+    ClicHasta "document.querySelector('[data-accion=contar]')" "!!document.querySelector('[data-conteo]')" | Out-Null
+    $t = Esperar "!!document.querySelector('[data-descartar-borrador]')" 5000
+    ClicEn "document.querySelector('[data-descartar-borrador]')" | Out-Null
+    $t2 = Esperar "!document.querySelector('[data-conteo]') && !document.querySelector('[data-accion=contar] [data-marca-borrador]')" 8000
+    OK ($t -ge 0 -and $t2 -ge 0 -and (Lista "fert_movimientos?select=id&estacion_id=eq.$estId").Count -eq $nMov) 'Descartar: borra el borrador sin registrar nada'
 
     # ---------- SIN SEÑAL: Supabase bloqueado ----------
     CDP 'Network.enable' | Out-Null

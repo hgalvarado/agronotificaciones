@@ -16,6 +16,16 @@ import { Alerta, Boton } from '@/components/ui/Primitivos'
 import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
 import { MENSAJE_UBICACION_DENEGADA, obtenerUbicacion, permisoDenegado } from '@/lib/fertirriego/ubicacion'
 import type { Estacion, Operacion, Persona, Ubicacion } from '@/lib/fertirriego/tipos'
+import type { Borrador } from '@/lib/fertirriego/borrador'
+import { aEntradaLocal, hoyIso } from '@/lib/fechas/zona'
+
+/** «hoy a las 10:32» o «el 11/11 a las 18:05» (hora de Honduras). */
+function horaBorrador(iso: string): string {
+  const local = aEntradaLocal(iso) // AAAA-MM-DDTHH:mm en UTC-6
+  const [fecha, hora] = local.split('T')
+  if (!fecha || !hora) return 'antes'
+  return fecha === hoyIso() ? `hoy a las ${hora}` : `el ${fecha.slice(8, 10)}/${fecha.slice(5, 7)} a las ${hora}`
+}
 
 const NOMBRE_PERMISO: Record<string, string> = {
   aplicar: 'Aplicar',
@@ -52,7 +62,10 @@ export function MarcoRegistro({
   textoGuardar = 'Guardar',
   sinCustodia = false,
   permiso = 'aplicar',
+  borrador,
 }: {
+  /** Borrador del formulario (lib/fertirriego/borrador): se avisa si se recuperó y se borra al guardar. */
+  borrador?: Pick<Borrador<unknown>, 'recuperado' | 'terminar' | 'descartar'>
   /**
    * Sin exigir la custodia, solo el permiso: la bitácora de horas (no toca la bodega) y anular con «Anular».
    * Es la misma regla que aplica la base para esos registros.
@@ -95,6 +108,7 @@ export function MarcoRegistro({
       if (typeof r === 'string') return setError(r)
       if (r.length === 0) return
       await registrar(...r)
+      borrador?.terminar()
       onGuardado(
         u.tipo === 'ok'
           ? 'Guardado en el teléfono. Se envía solo cuando haya señal.'
@@ -125,6 +139,25 @@ export function MarcoRegistro({
       }
     >
       <div className="flex flex-col gap-4">
+        {borrador?.recuperado && (
+          <div className="flex items-center gap-2 rounded-xl bg-sky-50 px-3 py-2 text-sm text-sky-900 ring-1 ring-inset ring-sky-200" data-borrador-recuperado>
+            <span className="flex-1">
+              Continuando tu borrador de {horaBorrador(borrador.recuperado)}. Nada se ha registrado todavía.
+            </span>
+            <button
+              type="button"
+              className="shrink-0 rounded-lg px-2 py-1 text-xs font-bold text-sky-800 underline hover:bg-sky-100"
+              data-descartar-borrador
+              onClick={() => {
+                borrador.descartar()
+                onGuardado('Borrador descartado.')
+                onCerrar()
+              }}
+            >
+              Descartar
+            </button>
+          </div>
+        )}
         {!regla.si && <Alerta tono="ambar">{regla.motivo}</Alerta>}
         {regla.si && regla.porOtro && (
           <div className="rounded-xl bg-amber-50 p-3 ring-1 ring-inset ring-amber-200">

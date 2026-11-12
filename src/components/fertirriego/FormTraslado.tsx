@@ -10,6 +10,7 @@ import { useState } from 'react'
 import { Alerta, AreaTexto, Campo } from '@/components/ui/Primitivos'
 import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
 import { crearOperacion, nuevoId } from '@/lib/fertirriego/operaciones'
+import { claveBorrador, useAutoguardado, useBorrador } from '@/lib/fertirriego/borrador'
 import type { EstadoCampo, Estacion, Operacion, Persona } from '@/lib/fertirriego/tipos'
 import { EditorLineas, leerLineas, type LineaEditable } from './EditorLineas'
 import { MarcoRegistro } from './MarcoRegistro'
@@ -33,10 +34,15 @@ export function FormTraslado({
 }) {
   const destinos = (estado.destinos ?? []).filter((d) => d.id !== estacion.id)
   const autorizadores = (estacion.autorizadores ?? []).filter((a) => a.id !== yo.id)
-  const [destino, setDestino] = useState('')
-  const [autorizador, setAutorizador] = useState(autorizadores.length === 1 ? autorizadores[0].id : '')
-  const [motivo, setMotivo] = useState('')
-  const [lineas, setLineas] = useState<LineaEditable[]>([{ clave: nuevoId(), material_id: '', cantidad: '' }])
+  const borrador = useBorrador<{ destino: string; autorizador: string; motivo: string; lineas: LineaEditable[] }>(
+    claveBorrador('traslado', yo.id, estacion.id)
+  )
+  const b = borrador.inicial
+  const [destino, setDestino] = useState(b?.destino ?? '')
+  const [autorizador, setAutorizador] = useState(b?.autorizador ?? (autorizadores.length === 1 ? autorizadores[0].id : ''))
+  const [motivo, setMotivo] = useState(b?.motivo ?? '')
+  const [lineas, setLineas] = useState<LineaEditable[]>(b?.lineas ?? [{ clave: nuevoId(), material_id: '', cantidad: '' }])
+  useAutoguardado(borrador, { destino, autorizador, motivo, lineas })
   const conSaldo = estado.materiales.filter((m) => (saldos.get(m.id) ?? 0) > 0)
 
   return (
@@ -47,6 +53,7 @@ export function FormTraslado({
       registrar={registrar}
       onCerrar={onCerrar}
       onGuardado={onGuardado}
+      borrador={borrador}
       textoGuardar="Enviar a autorizar"
       construir={({ ubicacion, enNombreDe }) => {
         if (!destino) return 'Elige la estación de destino.'

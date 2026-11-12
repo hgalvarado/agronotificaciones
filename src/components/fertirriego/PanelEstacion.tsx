@@ -10,7 +10,18 @@ import { formatearFechaHora } from '@/lib/estados'
 import { hoyIso } from '@/lib/fechas/zona'
 import { cantidad, planDelDia } from '@/lib/fertirriego/calculos'
 import type { EstadoCampo, Estacion, Persona } from '@/lib/fertirriego/tipos'
+import { NOMBRE_BORRADOR, useBorradoresEstacion } from '@/lib/fertirriego/borrador'
 import { puedeRegistrar } from './MarcoRegistro'
+
+/** «Borrador» bajo el texto del botón cuando hay un registro a medias de ese tipo. */
+function MarcaBorrador({ si }: { si: boolean }) {
+  if (!si) return null
+  return (
+    <span className="mt-0.5 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-sky-800" data-marca-borrador>
+      Borrador
+    </span>
+  )
+}
 
 export type Accion = 'recibir' | 'aplicar' | 'contar' | 'custodia' | 'entregar' | 'recibir_relevo' | 'codigo'
 
@@ -37,6 +48,7 @@ export function PanelEstacion({
   onVerProducto: (materialId: string) => void
 }) {
   const regla = puedeRegistrar(estacion, yo)
+  const borradores = useBorradoresEstacion(yo.id, estacion.id)
   const hoy = hoyIso()
   const turnos = estado.turnos.filter((t) => t.estacion_id === estacion.id)
   const planHoy = turnos.map((t) => ({ t, plan: planDelDia(estado.plan, t.id, hoy) })).filter((x) => x.plan.size > 0)
@@ -61,7 +73,7 @@ export function PanelEstacion({
         <div className="mt-2 flex flex-wrap gap-2">
           {estacion.permisos.relevo && estacion.custodio_id === yo.id && estacion.custodia_estado === 'ACTIVA' && (
             <Boton tamano="sm" variante="secundario" onClick={() => onAccion('entregar')} data-entregar-estacion>
-              Entregar estación
+              Entregar estación{borradores.has('relevo') ? ' (borrador)' : ''}
             </Boton>
           )}
           {estacion.custodio_id === yo.id && estacion.custodia_estado === 'EN_ENTREGA' && (
@@ -90,19 +102,28 @@ export function PanelEstacion({
         {estacion.permisos.recibir && (
           <Boton onClick={() => onAccion('recibir')} disabled={!regla.si} className="flex-col py-4" data-accion="recibir">
             Recibir
+            <MarcaBorrador si={borradores.has('recepcion')} />
           </Boton>
         )}
         {estacion.permisos.aplicar && (
           <Boton onClick={() => onAccion('aplicar')} disabled={!regla.si} className="flex-col py-4" data-accion="aplicar">
             Aplicar
+            <MarcaBorrador si={borradores.has('aplicacion')} />
           </Boton>
         )}
         {estacion.permisos.contar && (
           <Boton variante="secundario" onClick={() => onAccion('contar')} disabled={!regla.si} className="flex-col py-4" data-accion="contar">
             Contar
+            <MarcaBorrador si={borradores.has('conteo')} />
           </Boton>
         )}
       </div>
+      {borradores.size > 0 && (
+        <p className="-mt-2 text-xs text-sky-800" data-hay-borradores>
+          Tienes {borradores.size === 1 ? 'un registro a medias' : `${borradores.size} registros a medias`} (
+          {[...borradores].map((t) => NOMBRE_BORRADOR[t]).join(', ')}): ábrelo para terminarlo o descartarlo.
+        </p>
+      )}
 
       {/* ---- Plan de hoy ---- */}
       {planHoy.length > 0 && (

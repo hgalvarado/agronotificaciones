@@ -13,8 +13,11 @@ import { ayerIso, hoyIso } from '@/lib/fechas/zona'
 import { cantidad, planDelDia } from '@/lib/fertirriego/calculos'
 import { crearOperacion, nuevoId } from '@/lib/fertirriego/operaciones'
 import type { EstadoCampo, Estacion, Operacion, Persona } from '@/lib/fertirriego/tipos'
+import { claveBorrador, useAutoguardado, useBorrador } from '@/lib/fertirriego/borrador'
 import { EditorLineas, leerLineas, type LineaEditable } from './EditorLineas'
 import { MarcoRegistro } from './MarcoRegistro'
+
+type DatosAplicacion = { turno: string; fecha: string; ejecutor2: string; editadas: LineaEditable[] | null }
 
 export function FormAplicacion({
   estado,
@@ -38,12 +41,18 @@ export function FormAplicacion({
   onGuardado: (m: string) => void
 }) {
   const turnos = useMemo(() => estado.turnos.filter((t) => t.estacion_id === estacion.id), [estado.turnos, estacion.id])
-  const [turno, setTurno] = useState(turnoInicial ?? (turnos.length === 1 ? turnos[0].id : ''))
-  const [fecha, setFecha] = useState(fechaInicial ?? hoyIso())
-  const [ejecutor2, setEjecutor2] = useState('')
+  // Un borrador por turno y día cuando se abre desde uno (Por turno); si no, uno general de la estación
+  const borrador = useBorrador<DatosAplicacion>(
+    claveBorrador('aplicacion', yo.id, estacion.id, [turnoInicial, fechaInicial].filter(Boolean).join('@'))
+  )
+  const b = borrador.inicial
+  const [turno, setTurno] = useState(b?.turno ?? turnoInicial ?? (turnos.length === 1 ? turnos[0].id : ''))
+  const [fecha, setFecha] = useState(b?.fecha ?? fechaInicial ?? hoyIso())
+  const [ejecutor2, setEjecutor2] = useState(b?.ejecutor2 ?? '')
   // null = todavía no escribió nada: se muestran las cantidades del plan del turno y día elegidos
-  const [editadas, setEditadas] = useState<LineaEditable[] | null>(null)
+  const [editadas, setEditadas] = useState<LineaEditable[] | null>(b?.editadas ?? null)
   const [aceptaNegativo, setAceptaNegativo] = useState(false)
+  useAutoguardado(borrador, { turno, fecha, ejecutor2, editadas })
 
   const plan = useMemo(() => planDelDia(estado.plan, turno, fecha), [estado.plan, turno, fecha])
 
@@ -67,6 +76,7 @@ export function FormAplicacion({
       registrar={registrar}
       onCerrar={onCerrar}
       onGuardado={onGuardado}
+      borrador={borrador}
       construir={({ ubicacion, enNombreDe, ejecutor }) => {
         if (!turno) return 'Elige el turno.'
         if (!fecha || fecha > hoyIso()) return 'La fecha no puede ser futura.'

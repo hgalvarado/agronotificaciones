@@ -11,6 +11,7 @@ import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
 import { ahoraIso } from '@/lib/fechas/zona'
 import { cantidad } from '@/lib/fertirriego/calculos'
 import { crearOperacion } from '@/lib/fertirriego/operaciones'
+import { claveBorrador, useAutoguardado, useBorrador } from '@/lib/fertirriego/borrador'
 import type { EstadoCampo, Estacion, Operacion, Persona } from '@/lib/fertirriego/tipos'
 import { MarcoRegistro } from './MarcoRegistro'
 
@@ -38,8 +39,10 @@ export function FormConteo({
     return estado.materiales.filter((m) => ids.has(m.id))
   }, [estado, estacion.id, saldos])
 
-  const [extra, setExtra] = useState<string[]>([])
-  const [contado, setContado] = useState<Record<string, string>>({})
+  const borrador = useBorrador<{ extra: string[]; contado: Record<string, string> }>(claveBorrador('conteo', yo.id, estacion.id))
+  const [extra, setExtra] = useState<string[]>(borrador.inicial?.extra ?? [])
+  const [contado, setContado] = useState<Record<string, string>>(borrador.inicial?.contado ?? {})
+  useAutoguardado(borrador, { extra, contado })
   const lista = [...sugeridos, ...estado.materiales.filter((m) => extra.includes(m.id) && !sugeridos.some((s) => s.id === m.id))]
 
   return (
@@ -50,6 +53,7 @@ export function FormConteo({
       registrar={registrar}
       onCerrar={onCerrar}
       onGuardado={onGuardado}
+      borrador={borrador}
       construir={({ ubicacion, enNombreDe }) => {
         const lineas: { material_id: string; cantidad_real: number }[] = []
         for (const m of lista) {

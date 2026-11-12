@@ -16,7 +16,9 @@ export type ResultadoUbicacion =
 
 export async function permisoDenegado(): Promise<boolean> {
   try {
-    const estado = await navigator.permissions?.query({ name: 'geolocation' as PermissionName })
+    // Con límite: algunos navegadores no responden la consulta mientras el permiso está «pendiente»
+    const consulta = navigator.permissions?.query({ name: 'geolocation' as PermissionName })
+    const estado = await Promise.race([consulta, new Promise<undefined>((r) => setTimeout(() => r(undefined), 2000))])
     return estado?.state === 'denied'
   } catch {
     return false
@@ -26,6 +28,9 @@ export async function permisoDenegado(): Promise<boolean> {
 export function obtenerUbicacion(espera = 8000): Promise<ResultadoUbicacion> {
   return new Promise((resolver) => {
     if (!('geolocation' in navigator)) return resolver({ tipo: 'sin_ubicacion' })
+    // El «timeout» del GPS no corre mientras el permiso espera respuesta: sin este límite, Guardar se quedaba
+    // «Guardando…» para siempre (lo vio la QA 2026-11-12). Pasado el límite se guarda «sin ubicación».
+    setTimeout(() => resolver({ tipo: 'sin_ubicacion' }), espera + 2000)
     navigator.geolocation.getCurrentPosition(
       (p) =>
         resolver({

@@ -8,7 +8,15 @@ function Servidor([switch]$Apagar) {
     if ($Apagar) { Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -match 'start -p 3100' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }; Start-Sleep 1 }
     else { Start-Process -FilePath 'cmd.exe' -ArgumentList '/c npx next start -p 3100' -WorkingDirectory $CarpetaServidor -WindowStyle Hidden; for ($i = 0; $i -lt 30; $i++) { try { if ((Invoke-WebRequest http://localhost:3100/login -UseBasicParsing -TimeoutSec 3).StatusCode -eq 200) { return } } catch {}; Start-Sleep 1 } }
 }
+# Rol temporal con «Ver» en Fertirriego (no depende de cómo esté configurado el rol del usuario QA); se borra al final
+$qaId = $script:QA.id
+$origRoles = @(foreach ($x in (Rest 'rpc/fn_roles_de_perfiles' 'Post' @{} -Servicio)) { if ($x.perfil_id -eq $qaId) { [int]$x.rol_id } })
+$origPrincipal = (Rest "perfiles?select=rol_id&id=eq.$qaId" -Servicio)[0].rol_id
+$rolTmp = $null
 try {
+    $rolTmp = (Rest 'roles' 'Post' @{ codigo = "QA_AYUDA_$(Get-Random)"; nombre = "QA Ayuda $(Get-Random)" } -Servicio)[0].id
+    Rest 'permisos' 'Post' @{ rol_id = $rolTmp; recurso = 'fertirriego'; accion = 'ver'; alcance = 'propietario' } -Servicio | Out-Null
+    Rest 'rpc/fn_asignar_roles' 'Post' @{ p_perfil = $qaId; p_roles = @($origRoles + $rolTmp); p_principal = $origPrincipal } -Servicio | Out-Null
     Ir "/fertirriego?r=$(Get-Random)"
     $t = Esperar "!!document.querySelector('[data-barra-estado]') && !!document.querySelector('[data-ayuda]')" 40000
     OK ($t -ge 0) 'Fertirriego muestra «¿Cómo se usa?»' "$t ms"
@@ -44,6 +52,8 @@ try {
 }
 catch { $script:Resultados.Add("EXCEPCION $($_.Exception.Message)") }
 finally {
+    try { Rest 'rpc/fn_asignar_roles' 'Post' @{ p_perfil = $qaId; p_roles = $origRoles; p_principal = $origPrincipal } -Servicio | Out-Null } catch { $script:Resultados.Add("LIMPIEZA roles: $($_.Exception.Message)") }
+    try { if ($rolTmp) { Rest "permisos?rol_id=eq.$rolTmp" 'Delete' -Servicio | Out-Null; Rest "roles?id=eq.$rolTmp" 'Delete' -Servicio | Out-Null } } catch { $script:Resultados.Add("LIMPIEZA rol: $($_.Exception.Message)") }
     try { CDP 'Network.setBlockedURLs' @{ urls = @() } | Out-Null } catch {}
     if (-not (Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -match 'start -p 3100' })) { Servidor }
     Terminar-QA

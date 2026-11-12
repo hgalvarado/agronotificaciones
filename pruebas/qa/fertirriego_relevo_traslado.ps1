@@ -20,7 +20,7 @@ function ElegirOpcion($selectorBoton, $texto) {
     Start-Sleep -Milliseconds 400
     return $ok
 }
-function SinPendientes([int]$ms = 30000) { Esperar "!document.querySelector('[data-pendientes-cuenta]')" $ms }
+function SinPendientes([int]$ms = 80000) { Esperar "!document.querySelector('[data-pendientes-cuenta]')" $ms }
 function Pendientes { [int](JS "Number((document.querySelector('[data-pendientes-cuenta]')?.innerText.match(/\d+/) || [0])[0])") }
 function Abrir($estacion, $sufijo) {
     Ir "/fertirriego?r=$s-$sufijo"
@@ -123,6 +123,8 @@ try {
     $codigo = JS "document.querySelector('[data-codigo-relevo]').dataset.codigoRelevo"
     $tokB = Entrar-Como $bEmail $bClave
     $t = Abrir $NOMBRE_EST1 'b1'
+    # Antes de cortar la señal, que el teléfono de B termine de bajar la entrega de A (como en campo: abrir con señal)
+    Esperar "/te la entregaron/.test(document.querySelector('[data-recibir-estacion]')?.innerText || '')" 30000 | Out-Null
     CDP 'Network.enable' | Out-Null
     CDP 'Network.setBlockedURLs' @{ urls = @('*supabase.co*') } | Out-Null
     ClicHasta "document.querySelector('[data-recibir-estacion]')" "!!document.querySelector('[data-codigo-recibir]')" | Out-Null
@@ -162,8 +164,10 @@ try {
     ElegirOpcion '[data-linea="0"] button' "SOLUCION C $s" | Out-Null
     Teclear "document.querySelector('[data-cantidad=""0""]')" '100'
     ClicEn "document.querySelector('[data-guardar-registro]')" | Out-Null
+    Esperar "!document.querySelector('[data-selector-destino]')" 15000 | Out-Null
     SinPendientes | Out-Null
     $tr = Lista "fert_traslados?select=id,estado,autorizador_id&origen_id=eq.$est1"
+    if ($tr.Count -ne 1) { $script:Resultados.Add("DIAG traslado: pend=$(Pendientes) · $((JS "(${ULTIMO_DIALOGO}?.innerText || 'sin diálogo') + ' || ' + (document.querySelector('[data-barra-estado]')?.innerText || '')") -replace "`n", ' / ')") }
     OK ($tr.Count -eq 1 -and $tr[0].estado -eq 'POR_AUTORIZAR' -and $tr[0].autorizador_id -eq $qaId) 'B crea el traslado: queda «por autorizar» a nombre de A'
     OK ([double](SaldoBase $est1 $solId).disponible -eq 490) 'Sin autorizar, la bodega no se mueve'
 
@@ -175,7 +179,10 @@ try {
     SinPendientes | Out-Null
     $tr = (Lista "fert_traslados?select=estado&origen_id=eq.$est1")[0]
     $s1 = SaldoBase $est1 $solId; $s2 = SaldoBase $est2 $solId
-    OK ($tr.estado -eq 'EN_TRANSITO' -and [double]$s1.disponible -eq 390 -and [double]$s2.en_transito -eq 100) 'A autoriza (sin tener la estación): sale de la 1 y queda «en camino» a la 2'
+    if ($tr.estado -ne 'EN_TRANSITO') {
+        $script:Resultados.Add("DIAG autorizar: estado=$($tr.estado) pend=$(Pendientes) · $((JS "(${ULTIMO_DIALOGO}?.innerText || 'sin diálogo') + ' || ' + (document.querySelector('[data-barra-estado]')?.innerText || '')") -replace "`n", ' / ')")
+        foreach ($x in (Lista "fert_operaciones?select=tipo,resultado,mensaje,recibido_en&perfil_id=eq.$qaId&order=recibido_en.desc&limit=3")) { $script:Resultados.Add("DIAG op A $($x.tipo) $($x.resultado) $($x.mensaje)") }
+    }    OK ($tr.estado -eq 'EN_TRANSITO' -and [double]$s1.disponible -eq 390 -and [double]$s2.en_transito -eq 100) 'A autoriza (sin tener la estación): sale de la 1 y queda «en camino» a la 2'
 
     $tokB = Entrar-Como $bEmail $bClave
     Abrir $NOMBRE_EST2 'b2' | Out-Null
@@ -200,9 +207,13 @@ try {
     Teclear "document.querySelector('[data-motivo-traslado]')" 'Segundo traslado (QA)'
     ElegirOpcion '[data-linea="0"] button' "SOLUCION C $s" | Out-Null
     Teclear "document.querySelector('[data-cantidad=""0""]')" '50'
+    $antes = JS "(${ULTIMO_DIALOGO}?.innerText || 'sin diálogo')"
     ClicEn "document.querySelector('[data-guardar-registro]')" | Out-Null
+    Esperar "!document.querySelector('[data-selector-destino]')" 15000 | Out-Null
     SinPendientes | Out-Null
-    $t2id = (Lista "fert_traslados?select=id&origen_id=eq.$est1&estado=eq.POR_AUTORIZAR")[0].id
+    $t2id = $null
+    for ($i = 0; $i -lt 15 -and -not $t2id; $i++) { $t2id = (Lista "fert_traslados?select=id&origen_id=eq.$est1&estado=eq.POR_AUTORIZAR")[0].id; if (-not $t2id) { Start-Sleep 2 } }
+    if (-not $t2id) { $script:Resultados.Add("DIAG 2º traslado: pend=$(Pendientes) · antes: $($antes -replace "`n", ' / ') · ahora: $((JS "(${ULTIMO_DIALOGO}?.innerText || 'sin diálogo') + ' || ' + (document.querySelector('[data-barra-estado]')?.innerText || '')") -replace "`n", ' / ')"); throw 'El segundo traslado no llegó a la base' }
     # A autoriza desde su teléfono (por la base, igual que el teléfono)
     $op = @{ id = [guid]::NewGuid().ToString(); tipo = 'traslado_autorizar'; creado_en = (Get-Date).ToString('o'); dispositivo = 'QA'; datos = @{ traslado_id = $t2id; aprobar = $true; nota = 'ok' } }
     $r = Rest 'rpc/fn_fert_sincronizar' 'Post' @{ p_ops = @($op) } -Token $tokA

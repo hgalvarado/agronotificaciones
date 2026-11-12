@@ -218,6 +218,48 @@ export function kardex(estado: EstadoCampo, cola: Operacion[], estacionId: strin
 /* ----------------------------- Plan y turnos ----------------------------- */
 
 /** Lo planificado para un turno en un día: {material → cantidad}. */
+/**
+ * Productos que usa el plan de los turnos ACTIVOS de una estación (recepción: van por defecto).
+ *   materiales  ordenados por cuándo se necesitan: primero los de la fecha más próxima desde `hoy`; después los que
+ *               ya pasaron (el más reciente primero).
+ *   proximos    lo planificado para la estación en [hoy, hoy + dias), por producto (guía de cuánto debería llegar).
+ */
+export function productosDelPlan(
+  plan: FilaPlan[],
+  turnos: { id: string; estacion_id: string | null; activo: boolean }[],
+  estacionId: string,
+  hoy: string,
+  dias: number
+): { materiales: string[]; proximos: Map<string, number> } {
+  const deLaEstacion = new Set(turnos.filter((t) => t.estacion_id === estacionId && t.activo !== false).map((t) => t.id))
+  const hasta = sumarDiasIso(hoy, dias)
+  const siguiente = new Map<string, string>() // primera fecha >= hoy
+  const anterior = new Map<string, string>() // última fecha < hoy
+  const proximos = new Map<string, number>()
+  for (const p of plan) {
+    if (!deLaEstacion.has(p.turno_ciclo_id)) continue
+    const f = String(p.fecha).slice(0, 10)
+    if (f >= hoy) {
+      if (!siguiente.has(p.material_id) || f < siguiente.get(p.material_id)!) siguiente.set(p.material_id, f)
+      if (f < hasta) proximos.set(p.material_id, (proximos.get(p.material_id) ?? 0) + num(p.cantidad))
+    } else if (!anterior.has(p.material_id) || f > anterior.get(p.material_id)!) {
+      anterior.set(p.material_id, f)
+    }
+  }
+  const futuros = [...siguiente.entries()].sort((a, b) => a[1].localeCompare(b[1]) || a[0].localeCompare(b[0])).map(([m]) => m)
+  const pasados = [...anterior.entries()]
+    .filter(([m]) => !siguiente.has(m))
+    .sort((a, b) => b[1].localeCompare(a[1]) || a[0].localeCompare(b[0]))
+    .map(([m]) => m)
+  return { materiales: [...futuros, ...pasados], proximos }
+}
+
+function sumarDiasIso(iso: string, dias: number): string {
+  const d = new Date(`${iso}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + dias)
+  return d.toISOString().slice(0, 10)
+}
+
 export function planDelDia(plan: FilaPlan[], turnoId: string, fecha: string): Map<string, number> {
   const m = new Map<string, number>()
   for (const p of plan) {
