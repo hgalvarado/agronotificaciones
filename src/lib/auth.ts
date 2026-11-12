@@ -37,7 +37,9 @@ export const getPerfilActual = cache(async (): Promise<{
   const supabase = await createClient()
   const { data } = await supabase
     .from('perfiles')
-    .select('*, roles(*)')
+    // La relación se nombra (perfiles.rol_id): si algún día hay otro camino entre perfiles y roles,
+    // un `roles(*)` a secas se vuelve ambiguo, la consulta falla y nadie puede entrar.
+    .select('*, roles!perfiles_rol_id_fkey(*)')
     .eq('id', user.id)
     .maybeSingle()
 
@@ -113,6 +115,19 @@ export const getMisZonas = cache(async (): Promise<string[]> => {
   if (!user) return []
 
   const supabase = await createClient()
+
+  // Migración 92: «Todas las zonas» es una casilla del perfil. Con ella encendida, sus zonas son todas
+  // (así los selectores ofrecen todo y el recorte zonal no recorta). Sin la 92, la columna no existe.
+  const { data: perfil } = await supabase
+    .from('perfiles')
+    .select('todas_las_zonas')
+    .eq('id', user.id)
+    .maybeSingle()
+  if ((perfil as { todas_las_zonas?: boolean } | null)?.todas_las_zonas) {
+    const { data: todas } = await supabase.from('zonas').select('id')
+    return ((todas as { id: string }[] | null) ?? []).map((z) => z.id)
+  }
+
   const { data, error } = await supabase
     .from('perfiles_zonas')
     .select('zona_id')

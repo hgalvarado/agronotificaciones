@@ -40,6 +40,11 @@
 
 ## 4. Pendientes (borrar al completar)
 
+- [ ] **Pasar Permisos v2 a producción** (cuando el usuario diga): 1) publicar el código (funciona sin la 92);
+      2) correr `sql/92` en producción; 3) verificar que se entra y que Permisos/Usuarios abren. Antes de correrla,
+      la prueba `pruebas/sql/92_equivalencia.sql` sobre un clon fresco de producción. Siguientes pasos de permisos:
+      P3 historial de cambios, P4 menú desde la base, P5 delegación a jefes de zona.
+
 - [ ] **Fertirriego** (diseño aprobado 2026-11-11, `docs/fertirriego-diseno.md`): bodega por estación,
       aplicación por turno, custodia/relevo con código TOTP verificado sin internet, traslados, kardex; captura
       sin señal; AGL publica y analiza. **Etapa A hecha** (`sql/91` sin correr; AGL `fertirriego_campo.py` +
@@ -126,6 +131,16 @@
 - **2026-11-11 · Mi trabajo = sin cerrar**: el capturador termina su parte CERRANDO el ticket (el paso a
   Revisando es de Torre de Control). «Pendientes» pasa a «Sin cerrar» (solo tickets ABIERTOS en Registrando);
   la jornada cerrada muestra «Ya cerraste esta jornada». QA `mi_trabajo_cerrados.ps1` 7/7.
+- **2026-11-11 · Permisos v2** (`sql/92`, corrida en desarrollo; producción pendiente): varios roles por persona
+  (`seguridad.perfiles_roles`, unión: alcance más amplio; `perfiles.rol_id` = principal), «Todas las zonas»
+  explícito (`perfiles.todas_las_zonas`; las vistas ESTRICTAS no cambian), `pantallas.modulo/usa_condicion/
+  etiquetas_alcance`, `acciones.nivel`. Pantallas nuevas: Permisos por módulo con niveles rápidos
+  (`PermisosPantallas` + `TarjetaPermisosPantalla`, `lib/permisos/niveles.ts`) y ficha de Usuarios (roles,
+  zonas, estaciones, «Qué puede hacer»). Pruebas: `pruebas/sql/92_permisos.sql` 38/38,
+  `92_equivalencia.sql` (antes/después: 0 diferencias para usuarios existentes), QA `permisos_v2.ps1` 33/33.
+  **Lección**: una tabla en `public` con FK a perfiles y a roles vuelve ambiguo `perfiles?select=*,roles(*)` en
+  PostgREST y NADIE entra (pasó en desarrollo). Tablas puente de seguridad van fuera de `public`; los embeds de
+  roles se nombran (`roles!perfiles_rol_id_fkey`).
 - **2026-11-11 · Fertirriego Etapa A** (`sql/91`, pruebas `pruebas/sql/91_fertirriego.sql` 57/57): tablas,
   libro inalterable, saldos, custodia, llaves TOTP, `fn_fert_sincronizar` (idempotente por UUID del teléfono,
   cada registro por separado, lo dudoso se marca y no se pierde), `fn_fert_publicar` para AGL. Réplica de

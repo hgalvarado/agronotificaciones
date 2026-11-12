@@ -20,36 +20,40 @@ export default async function PermisosPage() {
   const supabase = await createClient()
   const [
     { data: roles },
-    { data: pantallas, error },
+    pantallasV2,
     { data: filasPermisos },
-    { data: acciones },
+    accionesV2,
     { data: sinCasilla },
   ] = await Promise.all([
     supabase.from('roles').select('*').order('id'),
+    // Migración 92: módulo, condición y nombres del alcance por pantalla
     supabase
       .from('pantallas')
-      .select('codigo, nombre, descripcion, ruta, acciones')
+      .select('codigo, nombre, descripcion, ruta, acciones, modulo, usa_condicion, etiquetas_alcance')
       .order('orden'),
-    // Desde la 53 la fila ya no es la respuesta: `permitido` puede venir
-    // en falso y la fila sigue ahí, guardando el alcance y la condición.
+    // `permitido` puede venir en falso y la fila sigue ahí, guardando el alcance y la condición.
     supabase.from('permisos').select('rol_id, recurso, accion, permitido, alcance, condicion'),
-    // El catálogo de acciones manda las columnas. Llega con la migración
-    // 44; sin ella la pantalla se dibuja igual, sacando las columnas de
-    // lo que declare cada pantalla. `escribe` decide si la celda ofrece
-    // condición: en las de lectura la base la ignora.
-    supabase.from('acciones').select('codigo, nombre, descripcion, orden, escribe').order('orden'),
-    // Y el guardián: lo que la base exige y la matriz no ofrece. Tiene que
-    // venir vacío.
+    // El catálogo de acciones: nombres, si escribe y (92) su nivel para los niveles rápidos.
+    supabase.from('acciones').select('codigo, nombre, descripcion, orden, escribe, nivel').order('orden'),
+    // El guardián: lo que la base exige y la matriz no ofrece. Tiene que venir vacío.
     supabase.rpc('fn_permisos_sin_casilla'),
   ])
+
+  // Sin la 92 todavía, las columnas nuevas no existen: se piden las de antes y la pantalla agrupa en «Otros».
+  const { data: pantallas, error } = pantallasV2.error
+    ? await supabase.from('pantallas').select('codigo, nombre, descripcion, ruta, acciones').order('orden')
+    : pantallasV2
+  const { data: acciones } = accionesV2.error
+    ? await supabase.from('acciones').select('codigo, nombre, descripcion, orden, escribe').order('orden')
+    : accionesV2
 
   return (
     <div className="anim-aparecer mx-auto flex max-w-5xl flex-col gap-4 p-4 lg:p-6">
       <div>
         <h1 className="text-xl font-bold tracking-tight text-slate-900">Permisos</h1>
         <p className="text-sm text-slate-400">
-          Qué puede ver y hacer cada rol, pantalla por pantalla. Las columnas salen del catálogo de
-          la base: todo lo que la aplicación restrinja tiene aquí su casilla.
+          Qué puede ver y hacer cada rol, módulo por módulo. Elige el nivel de un toque y ajusta el
+          alcance; se guarda al instante. Las zonas y los roles de cada persona se asignan en Usuarios.
         </p>
       </div>
 
