@@ -29,6 +29,10 @@ function Abrir($estacion, $sufijo) {
         ElegirOpcion '[data-selector-estacion] button' $estacion | Out-Null
     }
     $t2 = Esperar "document.querySelector('[data-estacion]')?.dataset.estacion === '$estacion'" 15000
+    # La pantalla abre con lo guardado en el teléfono y luego baja lo nuevo: esperar a que termine esa sincronización
+    # (con la base de desarrollo puede tardar >10 s; antes la prueba buscaba botones que todavía no habían llegado)
+    Start-Sleep -Milliseconds 500
+    Esperar "!!document.querySelector('[data-actualizar]') && !document.querySelector('[data-actualizar]').disabled" 40000 | Out-Null
     return [Math]::Max($t, $t2)
 }
 function SaldoBase($est, $mat) { $x = Lista "fert_saldos?select=disponible,en_transito&estacion_id=eq.$est&material_id=eq.$mat"; if ($x.Count) { return $x[0] } else { return @{ disponible = 0; en_transito = 0 } } }

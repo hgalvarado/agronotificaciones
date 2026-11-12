@@ -109,6 +109,15 @@
   atributos con prefijo propio en QA; (2) una vista cuya acción escribe en una carpeta de sus `canales` se remonta
   sola y corta el paso: /SE03 va con `canales: []`; (3) en PowerShell `"$VAR?.x"` toma `?` como parte del nombre de
   la variable: usar `${VAR}?.x`; y `$est1`/`$EST1` son la MISMA variable.
+- **2026-11-12 (tarde) · Recibir con plan, borradores, /FR01** (`a449a3c` AgroNoti, `22f378b` AGL): recibir sin
+  «¿Dónde?» y con los productos del plan de la estación; borradores (`lib/fertirriego/borrador.ts`); AGL /FR01 una
+  sola pantalla (Sincronizar todo, vista previa, comparativo, consignación, relevos). Defectos hallados: GPS sin
+  límite dejaba «Guardando…» para siempre (ubicacion.ts); lo guardado durante una sincronización esperaba ≥1 min
+  (sincronizador: una vuelta más). QA: campo 37/37, relevo/traslado 27/27, ayuda 12/12, FR01 19/19, conexiones 28/28.
+  **Lección de proceso (el usuario se quejó, con razón, de 2 h perdidas)**: no relanzar la prueba lenta a ciegas;
+  analizar el código/prueba primero, una corrida para confirmar, tope de 30 min y avisar. En QA de campo, tras abrir
+  la pantalla esperar a que `[data-actualizar]` deje de estar deshabilitado (la base de desarrollo tarda >10 s).
+  En desarrollo el rol Torre de Control quedó sin permisos de Fertirriego (lo cambió el usuario o alguien; avisado).
 - **2026-11-12 · AGL: otra base = borrar lo anterior** (`0188018`, pedido del usuario: probará desde AGL de
   PRODUCCIÓN contra la base de DESARROLLO). `fertirriego_campo.limpiar_otra_base`: lo bajado/publicado de otra base
   se borra al cambiar la dirección (/SE03, bajar, publicar, abrir Campo). Unitaria 17/17, clics 4/4.
