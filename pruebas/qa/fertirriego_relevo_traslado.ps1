@@ -39,7 +39,7 @@ $orig = (Lista "perfiles?select=rol_id,todas_las_zonas&id=eq.$qaId")[0]
 $origRoles = @(foreach ($x in (Lista 'rpc/fn_roles_de_perfiles' 'Post' @{})) { if ($x.perfil_id -eq $qaId) { [int]$x.rol_id } })
 $idAdmin = (Lista 'roles?select=id&acceso_total=eq.true&limit=1')[0].id
 $z1 = (Lista 'zonas?select=id,nombre&activo=eq.true&order=nombre&limit=1')[0]
-$EST1 = "QA Relevo $s"; $EST2 = "QA Destino $s"; $TURNO = "TQC-$s"; $SOL = "QA-SOLC-$s"
+$NOMBRE_EST1 = "QA Relevo $s"; $NOMBRE_EST2 = "QA Destino $s"; $TURNO = "TQC-$s"; $SOL = "QA-SOLC-$s"
 $rolEst = $null; $bId = $null; $est1 = $null; $est2 = $null
 $bEmail = "qa.$([guid]::NewGuid().ToString('N').Substring(0,10))@desarrollo.local"; $bClave = "Qa-$(Get-Random)-x$(Get-Random)"
 $bNombre = "QA Compañero $s"
@@ -53,13 +53,13 @@ try {
     Rest 'perfiles' 'Post' @{ id = $bId; nombre = $bNombre; rol_id = $rolEst; todas_las_zonas = $false } -Servicio | Out-Null
     Rest 'perfiles_zonas' 'Post' @{ perfil_id = $bId; zona_id = $z1.id } -Servicio | Out-Null
     Rest 'rpc/fn_asignar_roles' 'Post' @{ p_perfil = $qaId; p_roles = @($orig.rol_id, $idAdmin); p_principal = $orig.rol_id } -Servicio | Out-Null
-    $est1 = (Rest 'estaciones_riego' 'Post' @{ nombre = $EST1; zona_id = $z1.id } -Servicio)[0].id
-    $est2 = (Rest 'estaciones_riego' 'Post' @{ nombre = $EST2; zona_id = $z1.id } -Servicio)[0].id
+    $est1 = (Rest 'estaciones_riego' 'Post' @{ nombre = $NOMBRE_EST1; zona_id = $z1.id } -Servicio)[0].id
+    $est2 = (Rest 'estaciones_riego' 'Post' @{ nombre = $NOMBRE_EST2; zona_id = $z1.id } -Servicio)[0].id
     $pub = Rest 'rpc/fn_fert_publicar' 'Post' @{ p = @{
         temporada = "QA $s"
-        estaciones = @(@{ nombre = $EST1; zona = $z1.nombre }, @{ nombre = $EST2; zona = $z1.nombre })
+        estaciones = @(@{ nombre = $NOMBRE_EST1; zona = $z1.nombre }, @{ nombre = $NOMBRE_EST2; zona = $z1.nombre })
         materiales = @(@{ codigo = $SOL; descripcion = "SOLUCION C $s"; unidad = 'L'; grupo = '1800' })
-        turnos = @(@{ agl_id = "TR-QC-$s"; turno = $TURNO; temporada = "QA $s"; ciclo = 'Ciclo QA'; fecha_siembra = (Get-Date).AddDays(-5).ToString('yyyy-MM-dd'); estacion = $EST1; zona = $z1.nombre; area_mz = 10; estado = 'Creado' })
+        turnos = @(@{ agl_id = "TR-QC-$s"; turno = $TURNO; temporada = "QA $s"; ciclo = 'Ciclo QA'; fecha_siembra = (Get-Date).AddDays(-5).ToString('yyyy-MM-dd'); estacion = $NOMBRE_EST1; zona = $z1.nombre; area_mz = 10; estado = 'Creado' })
         plan = @()
     } }
     $solId = (Lista "materiales?select=id&codigo=eq.$SOL")[0].id
@@ -73,15 +73,22 @@ try {
 
     # ============ B abre la app una vez CON señal (baja las llaves de sus compañeros) ============
     $tokB = Entrar-Como $bEmail $bClave
-    $t = Abrir $EST1 'b0'
+    $t = Abrir $NOMBRE_EST1 'b0'
     OK ($t -ge 0) 'B abre Fertirriego con señal (baja las llaves de la estación)' "$t ms"
     Start-Sleep 2
 
     # ============ A: saldo inicial y ENTREGA ============
     $tokA = Entrar-Como $script:QA.email $script:QA.clave
-    $t = Abrir $EST1 'a1'
+    $t = Abrir $NOMBRE_EST1 'a1'
     OK ($t -ge 0 -and (JS "/a tu cargo/.test(document.querySelector('[data-custodia]')?.innerText || '')")) 'A abre su estación (a su cargo)'
     ClicHasta "document.querySelector('[data-accion=contar]')" "!!document.querySelector('[data-conteo]')" | Out-Null
+    # Producto nuevo (sin saldo ni plan): se agrega con «Contar otro producto», como en campo
+    $FILA_SOL = "document.querySelector('[data-conteo-material=""$SOL""]')"
+    if (-not (JS "!!$FILA_SOL")) {
+        ClicHasta "[...$ULTIMO_DIALOGO.querySelectorAll('button')].find(b => /Agregar producto/.test(b.innerText))" "document.querySelectorAll('[role=dialog]').length > 1 && !!$ULTIMO_DIALOGO.querySelector('input[inputmode=search]')" | Out-Null
+        ClicEn "[...$ULTIMO_DIALOGO.querySelectorAll('button')].find(b => b.innerText.includes('$SOL'))" | Out-Null
+        Esperar "!!$FILA_SOL" 4000 | Out-Null
+    }
     Teclear "document.querySelector('[data-conteo-material=""$SOL""] input')" '500'
     ClicEn "document.querySelector('[data-guardar-registro]')" | Out-Null
     SinPendientes | Out-Null
@@ -90,7 +97,7 @@ try {
     ClicHasta "document.querySelector('[data-entregar-estacion]')" "!!document.querySelector('[data-novedades]')" | Out-Null
     # Sin novedades no deja entregar
     ClicEn "document.querySelector('[data-guardar-registro]')" | Out-Null
-    $sinNov = Esperar "/novedades|estado de cada turno/i.test($ULTIMO_DIALOGO?.innerText || '')" 4000
+    $sinNov = Esperar "/Escribe las novedades|estado de cada turno/.test(${ULTIMO_DIALOGO}?.innerText || '')" 15000
     OK ($sinNov -ge 0) 'Entregar sin novedades: pide la bitácora'
     ClicEn "document.querySelector('[data-novedad-turno=""$TURNO""] [data-estado-novedad=EN_APLICACION]')" | Out-Null
     Teclear "document.querySelector('[data-novedad-turno=""$TURNO""] input')" 'Va por la mitad del tanque'
@@ -115,7 +122,7 @@ try {
     Esperar "(() => { const r = 30 - Math.floor(Date.now() / 1000) % 30; return r > 12 })()" 20000 | Out-Null
     $codigo = JS "document.querySelector('[data-codigo-relevo]').dataset.codigoRelevo"
     $tokB = Entrar-Como $bEmail $bClave
-    $t = Abrir $EST1 'b1'
+    $t = Abrir $NOMBRE_EST1 'b1'
     CDP 'Network.enable' | Out-Null
     CDP 'Network.setBlockedURLs' @{ urls = @('*supabase.co*') } | Out-Null
     ClicHasta "document.querySelector('[data-recibir-estacion]')" "!!document.querySelector('[data-codigo-recibir]')" | Out-Null
@@ -148,7 +155,7 @@ try {
     # ============ TRASLADO: B pide, A autoriza, B recibe en la otra estación ============
     ClicHasta "document.querySelector('[data-pestana=traslados]')" "!!document.querySelector('[data-nuevo-traslado]')" | Out-Null
     ClicHasta "document.querySelector('[data-nuevo-traslado]')" "!!document.querySelector('[data-selector-destino]')" | Out-Null
-    ElegirOpcion '[data-selector-destino] button' $EST2 | Out-Null
+    ElegirOpcion '[data-selector-destino] button' $NOMBRE_EST2 | Out-Null
     $nombreA = (Lista "perfiles?select=nombre&id=eq.$qaId")[0].nombre
     if (-not (JS "/$([regex]::Escape($nombreA))/.test(document.querySelector('[data-selector-autorizador]')?.innerText || '')")) { ElegirOpcion '[data-selector-autorizador] button' $nombreA | Out-Null }
     Teclear "document.querySelector('[data-motivo-traslado]')" 'A Destino se le acabó la solución (QA)'
@@ -161,7 +168,7 @@ try {
     OK ([double](SaldoBase $est1 $solId).disponible -eq 490) 'Sin autorizar, la bodega no se mueve'
 
     $tokA = Entrar-Como $script:QA.email $script:QA.clave
-    Abrir $EST1 'a2' | Out-Null
+    Abrir $NOMBRE_EST1 'a2' | Out-Null
     ClicHasta "document.querySelector('[data-pestana=traslados]')" "!!document.querySelector('[data-por-autorizar], [data-accion-traslado=autorizar]')" | Out-Null
     ClicHasta "document.querySelector('[data-accion-traslado=autorizar]')" "!!document.querySelector('[data-detalle-traslado]')" | Out-Null
     ClicEn "document.querySelector('[data-guardar-registro]')" | Out-Null
@@ -171,7 +178,7 @@ try {
     OK ($tr.estado -eq 'EN_TRANSITO' -and [double]$s1.disponible -eq 390 -and [double]$s2.en_transito -eq 100) 'A autoriza (sin tener la estación): sale de la 1 y queda «en camino» a la 2'
 
     $tokB = Entrar-Como $bEmail $bClave
-    Abrir $EST2 'b2' | Out-Null
+    Abrir $NOMBRE_EST2 'b2' | Out-Null
     ClicHasta "document.querySelector('[data-pestana=traslados]')" "!!document.querySelector('[data-llegando]')" | Out-Null
     ClicHasta "document.querySelector('[data-llegando] [data-accion-traslado=aceptar]')" "!!document.querySelector('[data-recibido=""0""]')" | Out-Null
     Teclear "document.querySelector('[data-recibido=""0""]')" '95'
@@ -185,10 +192,10 @@ try {
     Captura 'fert_traslado_recibido.png'
 
     # ============ TRASLADO RECHAZADO: vuelve a la estación de origen ============
-    Abrir $EST1 'b3' | Out-Null
+    Abrir $NOMBRE_EST1 'b3' | Out-Null
     ClicHasta "document.querySelector('[data-pestana=traslados]')" "!!document.querySelector('[data-nuevo-traslado]')" | Out-Null
     ClicHasta "document.querySelector('[data-nuevo-traslado]')" "!!document.querySelector('[data-selector-destino]')" | Out-Null
-    ElegirOpcion '[data-selector-destino] button' $EST2 | Out-Null
+    ElegirOpcion '[data-selector-destino] button' $NOMBRE_EST2 | Out-Null
     if (-not (JS "/$([regex]::Escape($nombreA))/.test(document.querySelector('[data-selector-autorizador]')?.innerText || '')")) { ElegirOpcion '[data-selector-autorizador] button' $nombreA | Out-Null }
     Teclear "document.querySelector('[data-motivo-traslado]')" 'Segundo traslado (QA)'
     ElegirOpcion '[data-linea="0"] button' "SOLUCION C $s" | Out-Null
@@ -199,11 +206,11 @@ try {
     # A autoriza desde su teléfono (por la base, igual que el teléfono)
     $op = @{ id = [guid]::NewGuid().ToString(); tipo = 'traslado_autorizar'; creado_en = (Get-Date).ToString('o'); dispositivo = 'QA'; datos = @{ traslado_id = $t2id; aprobar = $true; nota = 'ok' } }
     $r = Rest 'rpc/fn_fert_sincronizar' 'Post' @{ p_ops = @($op) } -Token $tokA
-    Abrir $EST2 'b4' | Out-Null
+    Abrir $NOMBRE_EST2 'b4' | Out-Null
     ClicHasta "document.querySelector('[data-pestana=traslados]')" "!!document.querySelector('[data-llegando]')" | Out-Null
     ClicHasta "document.querySelector('[data-llegando] [data-accion-traslado=rechazar]')" "!!document.querySelector('[data-nota-traslado]')" | Out-Null
     ClicEn "document.querySelector('[data-guardar-registro]')" | Out-Null
-    $sinMotivo = Esperar "/motivo/i.test($ULTIMO_DIALOGO?.innerText || '') && !!document.querySelector('[data-nota-traslado]')" 4000
+    $sinMotivo = Esperar "/Escribe el motivo/.test(${ULTIMO_DIALOGO}?.innerText || '') && !!document.querySelector('[data-nota-traslado]')" 15000
     OK ($sinMotivo -ge 0) 'Rechazar sin motivo: lo pide'
     Teclear "document.querySelector('[data-nota-traslado]')" 'No lo pedimos (QA)'
     ClicEn "document.querySelector('[data-guardar-registro]')" | Out-Null
@@ -219,7 +226,11 @@ try {
     OK ($ancho -le 420) 'Teléfono: sin desplazamiento lateral' "scrollWidth $ancho"
     $e = Errores-Pagina; OK (-not $e) 'Sin errores en la página' $e
 }
-catch { $script:Resultados.Add("EXCEPCION $($_.Exception.Message) $($_.ErrorDetails.Message)") }
+catch {
+    $cuerpo = $_.ErrorDetails.Message
+    if (-not $cuerpo -and $_.Exception.Response) { try { $cuerpo = (New-Object IO.StreamReader($_.Exception.Response.GetResponseStream())).ReadToEnd() } catch {} }
+    $script:Resultados.Add("EXCEPCION (línea $($_.InvocationInfo.ScriptLineNumber)) $($_.Exception.Message) $cuerpo")
+}
 finally {
     try { CDP 'Network.setBlockedURLs' @{ urls = @() } | Out-Null } catch {}
     try {
@@ -254,7 +265,7 @@ finally {
     try { if ($rolEst) { Rest "permisos?rol_id=eq.$rolEst" 'Delete' -Servicio | Out-Null; Rest "roles?id=eq.$rolEst" 'Delete' -Servicio | Out-Null } } catch { $script:Resultados.Add("LIMPIEZA rol: $($_.Exception.Message)") }
     try {
         $ahora = @(foreach ($x in (Lista 'rpc/fn_roles_de_perfiles' 'Post' @{})) { if ($x.perfil_id -eq $qaId) { [int]$x.rol_id } }) | Sort-Object
-        $queda = (Lista "estaciones_riego?select=id&nombre=in.(""$EST1"",""$EST2"")").Count + (Lista "materiales?select=id&codigo=eq.$SOL").Count
+        $queda = (Lista "estaciones_riego?select=id&nombre=in.(""$NOMBRE_EST1"",""$NOMBRE_EST2"")").Count + (Lista "materiales?select=id&codigo=eq.$SOL").Count
         OK ((($ahora -join ',') -eq (($origRoles | Sort-Object) -join ',')) -and $queda -eq 0) 'Limpieza: nada de la prueba queda en desarrollo y el usuario QA está como estaba' "roles $($ahora -join ','), restos $queda"
     } catch { $script:Resultados.Add("LIMPIEZA verificación: $($_.Exception.Message)") }
     Terminar-QA
