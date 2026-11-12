@@ -109,6 +109,10 @@
   atributos con prefijo propio en QA; (2) una vista cuya acción escribe en una carpeta de sus `canales` se remonta
   sola y corta el paso: /SE03 va con `canales: []`; (3) en PowerShell `"$VAR?.x"` toma `?` como parte del nombre de
   la variable: usar `${VAR}?.x`; y `$est1`/`$EST1` son la MISMA variable.
+- **2026-11-12 · PASA A PRODUCCIÓN (código)**: `main` = `f54812e` (merge de `desarrollo` 2dada53, hecho en un worktree
+  aparte para no tocar el CLAUDE.md del usuario). Equivalencia sobre `qa` (= producción hasta la 90) + 91..98: 2 de
+  4.560 diferencias, ambas esperadas (Administrador y rol de solo consulta ganan permisos del módulo NUEVO
+  Fertirriego; nada se quita). Falta que el usuario corra 91→98 en producción y configure rol/usuario técnico/SE03.
 - **Ojo Supabase (lo vio la QA de la 98)**: Supabase rechaza `UPDATE`/`DELETE` sin `WHERE` («UPDATE requires a WHERE
   clause», extensión safeupdate) AUN dentro de funciones; la réplica local no lo tiene. Siempre poner `where`
   (`where id`, `where x is not null`). La 98 se corrigió y se vuelve a correr encima.
