@@ -18,6 +18,7 @@ import {
   IconSettings,
   IconGota,
   IconTicket,
+  IconTractor,
   IconUser,
 } from './Icons'
 import { CampanaNotificaciones } from './CampanaNotificaciones'
@@ -25,6 +26,21 @@ import { Logo } from './Logo'
 import { SelectorTema } from './SelectorTema'
 import { repartir } from '@/lib/navegacion/barra'
 import { PANTALLAS_CATALOGO, veAlgunCatalogo } from '@/lib/catalogos/grupos'
+import { entradasDeLaBase, type PantallaDeMenu } from '@/lib/navegacion/menuBase'
+
+/** Los íconos que puede pedir una pantalla desde la base (`pantallas.icono`). */
+const ICONOS_MENU: Record<string, React.ReactNode> = {
+  gota: <IconGota />,
+  gauge: <IconGauge />,
+  tractor: <IconTractor />,
+  chart: <IconChart />,
+  plan: <IconPlan />,
+  mappin: <IconMapPin />,
+  dinero: <IconDinero />,
+  ajustes: <IconSettings />,
+  usuario: <IconUser />,
+  ticket: <IconTicket />,
+}
 
 type ItemNav = {
   href: string
@@ -55,8 +71,11 @@ export function AppShell({
 
   permisos,
   navegacion = [],
+  pantallasMenu = [],
   children,
 }: {
+  /** Pantallas nuevas que la base pone en el menú (migración 93). */
+  pantallasMenu?: PantallaDeMenu[]
   nombre: string
   rolNombre: string
 
@@ -193,6 +212,23 @@ export function AppShell({
       visible: ve('usuarios'),
     },
   ]
+
+  // Módulos nuevos que la base pone en el menú (93): se agregan al final, sin tocar lo de arriba
+  const yaEnMenu = {
+    codigos: new Set([...items.flatMap((i) => [i.pantalla, ...(i.hijos ?? []).map((h) => h.pantalla)]), ...PANTALLAS_CATALOGO]),
+    hrefs: new Set(items.flatMap((i) => [i.href, ...(i.hijos ?? []).map((h) => h.href)])),
+  }
+  const icono = (nombre: string) => ICONOS_MENU[nombre] ?? <IconPlan />
+  for (const e of entradasDeLaBase(pantallasMenu, ve, yaEnMenu)) {
+    items.push({
+      href: e.href,
+      pantalla: e.pantalla,
+      etiqueta: e.etiqueta,
+      icono: icono(e.icono),
+      visible: true,
+      hijos: e.hijos?.map((h) => ({ href: h.href, pantalla: h.pantalla, etiqueta: h.etiqueta, icono: icono(h.icono), visible: true })),
+    })
+  }
   // Un grupo se muestra si él es visible y tiene al menos un hijo visible.
   const visibles = items
     .map((i) => (i.hijos ? { ...i, hijos: i.hijos.filter((h) => h.visible) } : i))

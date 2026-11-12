@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { exigirPermiso } from '@/lib/permisos/portero'
 import { ahoraIso } from '@/lib/fechas'
+import { accesosSinMigracion93, leerRoles, validarRoles } from '@/lib/usuarios/rolesPerfil'
+import { guardarAccesos, puedoEditarPersona } from '@/lib/usuarios/accesos'
 
 /* ------------------------------------------------------------------ */
 /* PATCH · actualizar datos, rol, estado o contraseña                  */
@@ -14,32 +16,49 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
 
   try {
     const body = await request.json()
-    const { nombre, rol_id, departamento, whatsapp, activo, password, zonas } = body
+    const { nombre, departamento, whatsapp, activo, password, zonas, todas_las_zonas } = body
+    const roles = leerRoles(body)
 
     const admin = createAdminClient()
 
-    // Candado de seguridad: el admin no puede desactivarse ni degradarse a
-    // sí mismo. Si lo hiciera, el sistema podría quedarse sin ningún
-    // administrador y habría que arreglarlo a mano en Supabase.
-    if (id === yo) {
-      if (activo === false) {
-        return NextResponse.json(
-          { error: 'No puedes desactivar tu propia cuenta.' },
-          { status: 400 }
-        )
-      }
-      if (rol_id !== undefined && Number(rol_id) !== 1) {
-        return NextResponse.json(
-          { error: 'No puedes quitarte a ti mismo el rol de Administrador.' },
-          { status: 400 }
-        )
+    // Candado de seguridad: nadie se desactiva ni se quita a sí mismo el acceso total. Si lo hiciera, el
+    // sistema podría quedarse sin administrador. Se pregunta a la bandera del rol, no a un número.
+    if (id === yo && activo === false) {
+      return NextResponse.json({ error: 'No puedes desactivar tu propia cuenta.' }, { status: 400 })
+    }
+    if (roles) {
+      const problema = await validarRoles(admin, roles, { debeConservarAccesoTotal: id === yo })
+      if (problema) return NextResponse.json({ error: problema }, { status: 400 })
+    }
+
+    // Delegación (93): un jefe de zona solo edita a personas de sus zonas. La base lo decide.
+    if (!(await puedoEditarPersona(id))) {
+      return NextResponse.json(
+        { error: 'No puedes editar a esta persona: no es de tus zonas o tiene roles que no administras.' },
+        { status: 403 }
+      )
+    }
+
+    // 1) Accesos (roles, «Todas las zonas», zonas): con la sesión de quien edita, en una sola transacción, con
+    //    las reglas de delegación y anotado en el historial (93).
+    const tocaAccesos = Boolean(roles) || todas_las_zonas !== undefined || Array.isArray(zonas)
+    if (tocaAccesos) {
+      const r = await guardarAccesos(id, {
+        roles: roles?.roles,
+        principal: roles?.principal,
+        todas: todas_las_zonas === undefined ? undefined : Boolean(todas_las_zonas),
+        zonas: Array.isArray(zonas) ? zonas : undefined,
+      })
+      if (!r.ok && !r.sinMigracion) return NextResponse.json({ error: r.error }, { status: 400 })
+      if (!r.ok && r.sinMigracion) {
+        const problema = await accesosSinMigracion93(admin, id, roles, todas_las_zonas, zonas)
+        if (problema) return NextResponse.json({ error: problema }, { status: 400 })
       }
     }
 
-    // 1) Cambios en el perfil
+    // 2) Datos del perfil
     const cambios: Record<string, unknown> = {}
     if (nombre !== undefined) cambios.nombre = nombre
-    if (rol_id !== undefined) cambios.rol_id = rol_id
     if (departamento !== undefined) cambios.departamento = departamento || null
     if (whatsapp !== undefined) cambios.whatsapp = whatsapp || null
     if (activo !== undefined) cambios.activo = activo
@@ -48,25 +67,6 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       cambios.updated_at = ahoraIso()
       const { error } = await admin.from('perfiles').update(cambios).eq('id', id)
       if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-    }
-
-    // 1b) Zonas asignadas. Se reemplazan enteras: diferenciar altas y
-    //     bajas desde el navegador es cómo se acaba con una zona pegada
-    //     que nadie sabe de dónde salió. Una lista vacía DESRESTRINGE:
-    //     el usuario vuelve a ver toda la finca.
-    if (Array.isArray(zonas)) {
-      const { error } = await admin.from('perfiles_zonas').delete().eq('perfil_id', id)
-      // Si la migración 41 no está corrida la tabla no existe: se ignora
-      // en vez de tumbar el guardado del resto del perfil.
-      if (error && !/does not exist|schema cache/i.test(error.message)) {
-        return NextResponse.json({ error: error.message }, { status: 400 })
-      }
-      if (!error && zonas.length > 0) {
-        const { error: e2 } = await admin
-          .from('perfiles_zonas')
-          .insert(zonas.map((z: string) => ({ perfil_id: id, zona_id: z })))
-        if (e2) return NextResponse.json({ error: e2.message }, { status: 400 })
-      }
     }
 
     // 2) Bloqueo real en Auth al desactivar.

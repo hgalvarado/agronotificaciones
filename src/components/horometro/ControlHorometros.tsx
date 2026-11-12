@@ -49,6 +49,7 @@ import {
 } from '@/lib/sap/exportacion'
 import { BotonExportarSap } from '@/components/ui/BotonExportarSap'
 import { validarHorasHombre } from '@/lib/horometro/validacion'
+import { MARCA_HOROMETRO_MALO } from '@/lib/horometro/repetido'
 import { Modal } from '@/components/ui/Modal'
 import { PanelLaboresHorometro } from '@/components/registro/PanelLaboresHorometro'
 import { puedeEnTicket } from '@/lib/permisos/captura'
@@ -92,9 +93,11 @@ export type FilaControl = {
 }
 
 /** Filtro rápido de las tarjetas. */
-type Rapido = 'desfase' | 'sinLabores' | null
+type Rapido = 'desfase' | 'sinLabores' | 'malo' | null
 
 const conDesfase = (f: FilaControl) => f.comparativo != null && Number(f.comparativo) !== 0
+/** El capturador reportó el horómetro malo al registrar lecturas repetidas (88: marca en el comentario). */
+const horometroMalo = (f: FilaControl) => (f.comentario ?? '').includes(MARCA_HOROMETRO_MALO)
 /** Horas de máquina y ninguna labor colgada: jornada sin notificar (78). */
 const sinLabores = (f: FilaControl) =>
   f.cantidad_labores !== null &&
@@ -276,6 +279,8 @@ export function ControlHorometros({
       conDesfase: desfasadas.length,
       huecos,
       jornadasSinLabores: sin.length,
+      malos: lista.filter(horometroMalo).length,
+      equiposMalos: new Set(lista.filter(horometroMalo).map((f) => f.equipo_id)).size,
       horasNoNotificadas: hayConteo
         ? Math.round(sin.reduce((a, f) => a + Number(f.horas_maquina ?? 0), 0) * 100) / 100
         : huecos,
@@ -288,6 +293,7 @@ export function ControlHorometros({
   const enGrid = useMemo(() => {
     if (rapido === 'desfase') return lista.filter(conDesfase)
     if (rapido === 'sinLabores') return lista.filter(sinLabores)
+    if (rapido === 'malo') return lista.filter(horometroMalo)
     return lista
   }, [lista, rapido])
 
@@ -584,7 +590,7 @@ export function ControlHorometros({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <Tarjeta className="px-3.5 py-3">
           <p className="text-xl font-bold tracking-tight text-slate-900">{resumen.total}</p>
           <p className="text-[11px] font-medium text-slate-400">Registros</p>
@@ -614,6 +620,15 @@ export function ControlHorometros({
               : 'Corre la migración 78 para filtrar'
           }
         />
+        <TarjetaFiltro
+          activa={rapido === 'malo'}
+          onClick={() => setRapido((r) => (r === 'malo' ? null : 'malo'))}
+          valor={resumen.malos}
+          tono={resumen.malos > 0 ? 'text-red-600' : 'text-slate-900'}
+          etiqueta="Horómetro malo"
+          detalle={resumen.malos > 0 ? `${resumen.equiposMalos} ${resumen.equiposMalos === 1 ? 'equipo reportado' : 'equipos reportados'}` : undefined}
+          dato="malo"
+        />
       </div>
 
       {error && <Alerta>{error}</Alerta>}
@@ -624,7 +639,7 @@ export function ControlHorometros({
           onClick={() => setRapido(null)}
           className="self-start px-1 text-xs font-semibold text-brand-700 hover:underline"
         >
-          Filtro rápido: {rapido === 'desfase' ? 'con desfase' : 'horas sin labores'} · {enGrid.length}{' '}
+          Filtro rápido: {rapido === 'desfase' ? 'con desfase' : rapido === 'malo' ? 'horómetro malo' : 'horas sin labores'} · {enGrid.length}{' '}
           de {lista.length} · Quitar
         </button>
       )}
@@ -870,6 +885,7 @@ function TarjetaFiltro({
   tono,
   etiqueta,
   detalle,
+  dato,
 }: {
   activa: boolean
   onClick: () => void
@@ -878,11 +894,14 @@ function TarjetaFiltro({
   tono: string
   etiqueta: string
   detalle?: string
+  /** Marca para pruebas (`data-filtro-rapido`). */
+  dato?: string
 }) {
   return (
     <button
       type="button"
       aria-pressed={activa}
+      data-filtro-rapido={dato}
       disabled={deshabilitada}
       onClick={onClick}
       className={`flex min-h-16 flex-col items-start rounded-2xl border bg-white px-3.5 py-3 text-left shadow-[var(--shadow-card)] transition-all disabled:cursor-default ${

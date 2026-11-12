@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { exigirPermiso } from '@/lib/permisos/portero'
+import { accesosSinMigracion93, leerRoles, rolesPorPerfil, validarRoles } from '@/lib/usuarios/rolesPerfil'
+import { guardarAccesos, motivoNoAsignar, personasVisibles } from '@/lib/usuarios/accesos'
 
 /* ------------------------------------------------------------------ */
 /* GET · listar usuarios (perfil + correo de Supabase Auth)            */
@@ -18,23 +20,33 @@ export async function GET() {
       { data: perfiles, error: errPerfiles },
       { data: authData, error: errAuth },
       { data: asignadas },
+      rolesPorPerfilMapa,
+      { data: estacionesAsignadas },
     ] = await Promise.all([
-      admin.from('perfiles').select('*, roles(*)').order('nombre'),
+      // La relación se nombra: con la 92 hay más de un camino entre perfiles y roles para quien mire
+      admin.from('perfiles').select('*, roles!perfiles_rol_id_fkey(*)').order('nombre'),
       admin.auth.admin.listUsers({ page: 1, perPage: 1000 }),
-      // Llega con la migración 41. Sin ella, `asignadas` viene nulo y
-      // todos salen sin zonas, que es exactamente «ven todo»: el
-      // comportamiento de siempre.
       admin.from('perfiles_zonas').select('perfil_id, zona_id'),
+      // Migración 92 (varios roles) y 91 (estaciones). Sin ellas: un rol y sin estaciones.
+      rolesPorPerfil(admin),
+      admin.from('perfiles_estaciones').select('perfil_id, estacion_id'),
     ])
+    // Delegación (93): un jefe de zona solo ve a las personas de sus zonas
+    const visibles = await personasVisibles()
 
     if (errPerfiles) throw errPerfiles
     if (errAuth) throw errAuth
 
-    const zonasPorPerfil = new Map<string, string[]>()
-    for (const f of asignadas ?? []) {
-      const id = f.perfil_id as string
-      zonasPorPerfil.set(id, [...(zonasPorPerfil.get(id) ?? []), f.zona_id as string])
+    const agrupar = (filas: Record<string, unknown>[] | null, campo: string) => {
+      const m = new Map<string, (string | number)[]>()
+      for (const f of filas ?? []) {
+        const id = f.perfil_id as string
+        m.set(id, [...(m.get(id) ?? []), f[campo] as string | number])
+      }
+      return m
     }
+    const zonasPorPerfil = agrupar(asignadas, 'zona_id') as Map<string, string[]>
+    const estacionesPorPerfil = agrupar(estacionesAsignadas, 'estacion_id') as Map<string, string[]>
 
     // El correo vive en auth.users, no en perfiles: se cruzan por id.
     const correos = new Map(authData.users.map((u) => [u.id, u.email ?? '']))
@@ -49,11 +61,15 @@ export async function GET() {
       ])
     )
 
-    const usuarios = (perfiles ?? []).map((p) => ({
+    const usuarios = (perfiles ?? []).filter((p) => !visibles || visibles.has(p.id)).map((p) => ({
       ...p,
       email: correos.get(p.id) ?? '',
       bloqueado: baneados.get(p.id) ?? false,
       zonas: zonasPorPerfil.get(p.id) ?? [],
+      // Sin la 92: su único rol; y «todas» como se comportaba antes (sin zonas = todas)
+      roles_ids: rolesPorPerfilMapa.get(p.id) ?? [p.rol_id],
+      todas_las_zonas: p.todas_las_zonas ?? !(zonasPorPerfil.get(p.id)?.length ?? 0),
+      estaciones: estacionesPorPerfil.get(p.id) ?? [],
     }))
 
     return NextResponse.json({ usuarios })
@@ -71,9 +87,10 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { email, password, nombre, rol_id, departamento, whatsapp, zonas } = body
+    const { email, password, nombre, departamento, whatsapp, zonas, todas_las_zonas } = body
+    const roles = leerRoles(body)
 
-    if (!email || !password || !nombre || !rol_id) {
+    if (!email || !password || !nombre || !roles?.roles.length) {
       return NextResponse.json(
         { error: 'Correo, contraseña, nombre y rol son obligatorios.' },
         { status: 400 }
@@ -87,6 +104,14 @@ export async function POST(request: NextRequest) {
     }
 
     const admin = createAdminClient()
+    const problemaRoles = await validarRoles(admin, roles)
+    if (problemaRoles) return NextResponse.json({ error: problemaRoles }, { status: 400 })
+
+    // Delegación (93): antes de crear nada, ¿puede dar estos accesos? (un jefe: sus zonas, roles delegables)
+    const listaZonas: string[] = Array.isArray(zonas) ? zonas : []
+    const todas = todas_las_zonas === undefined ? listaZonas.length === 0 : Boolean(todas_las_zonas)
+    const motivo = await motivoNoAsignar(roles.roles, todas, listaZonas)
+    if (motivo) return NextResponse.json({ error: motivo }, { status: 403 })
 
     // 1) Crear el usuario en Supabase Auth, ya confirmado (no hay correo
     //    de verificación que el personal de campo tenga que abrir).
@@ -106,27 +131,32 @@ export async function POST(request: NextRequest) {
     // 2) Crear su perfil (rol, departamento). Si esto falla hay que
     //    deshacer el usuario de Auth, o quedaría un huérfano que no
     //    puede entrar y que bloquea volver a usar ese correo.
-    const { error: errPerfil } = await admin.from('perfiles').insert({
+    const perfil: Record<string, unknown> = {
       id: creado.user.id,
       nombre,
-      rol_id,
+      rol_id: roles.principal,
       departamento: departamento || null,
       whatsapp: whatsapp || null,
       activo: true,
-    })
+    }
+    const { error: errPerfil } = await admin.from('perfiles').insert(perfil)
 
     if (errPerfil) {
       await admin.auth.admin.deleteUser(creado.user.id)
       return NextResponse.json({ error: errPerfil.message }, { status: 400 })
     }
 
-    // Las zonas van después del perfil porque apuntan a él. Una lista
-    // vacía no inserta nada, y eso es lo correcto: sin zonas asignadas
-    // el usuario ve toda la finca.
-    if (Array.isArray(zonas) && zonas.length > 0) {
-      await admin
-        .from('perfiles_zonas')
-        .insert(zonas.map((z: string) => ({ perfil_id: creado.user.id, zona_id: z })))
+    // Accesos (roles, «Todas las zonas», zonas) con la sesión de quien crea: reglas de delegación + historial.
+    // Si la base los rechaza, se deshace el alta entera (no queda una cuenta a medias).
+    const r = await guardarAccesos(creado.user.id, { roles: roles.roles, principal: roles.principal, todas, zonas: listaZonas })
+    const problema = r.ok
+      ? null
+      : r.sinMigracion
+        ? await accesosSinMigracion93(admin, creado.user.id, roles, todas, listaZonas)
+        : r.error
+    if (problema) {
+      await admin.auth.admin.deleteUser(creado.user.id)
+      return NextResponse.json({ error: problema }, { status: 400 })
     }
 
     return NextResponse.json({ ok: true, id: creado.user.id })

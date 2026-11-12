@@ -53,6 +53,21 @@ function Iniciar-QA([string]$Base = 'http://localhost:3100', [int]$Ancho = 1440,
     CDP 'Page.addScriptToEvaluateOnNewDocument' @{ source = "window.__err=[];addEventListener('error',e=>__err.push(String(e.message)));addEventListener('unhandledrejection',e=>__err.push('promesa: '+String(e.reason)));" } | Out-Null
 }
 
+# Cambia la sesión del navegador a otra persona (simula «otro teléfono»). Devuelve su token para Rest -Token.
+function Entrar-Como([string]$Email, [string]$Clave) {
+    $ses = Invoke-RestMethod -Method Post -Uri "$script:Url/auth/v1/token?grant_type=password" -Headers @{ apikey = $script:Anon; 'Content-Type' = 'application/json' } -Body (@{ email = $Email; password = $Clave } | ConvertTo-Json)
+    $json = [pscustomobject]@{ access_token = $ses.access_token; token_type = 'bearer'; expires_in = $ses.expires_in; expires_at = $ses.expires_at; refresh_token = $ses.refresh_token; user = $ses.user } | ConvertTo-Json -Depth 10 -Compress
+    $valor = 'base64-' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($json)).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+    $nombre = 'sb-ifzwqdstpoyoidsflvuo-auth-token'
+    CDP 'Network.clearBrowserCookies' | Out-Null
+    $partes = @(); for ($i = 0; $i -lt $valor.Length; $i += 3180) { $partes += $valor.Substring($i, [Math]::Min(3180, $valor.Length - $i)) }
+    for ($i = 0; $i -lt $partes.Count; $i++) {
+        $n = if ($partes.Count -eq 1) { $nombre } else { "$nombre.$i" }
+        CDP 'Network.setCookie' @{ name = $n; value = $partes[$i]; domain = 'localhost'; path = '/' } | Out-Null
+    }
+    return $ses.access_token
+}
+
 function Pantalla([int]$Ancho = 1440, [int]$Alto = 900, [switch]$Movil) {
     CDP 'Emulation.setDeviceMetricsOverride' @{ width = $Ancho; height = $Alto; deviceScaleFactor = 1; mobile = [bool]$Movil } | Out-Null
     if ($Movil) { CDP 'Emulation.setTouchEmulationEnabled' @{ enabled = $true } | Out-Null }
@@ -96,9 +111,9 @@ function Captura($archivo) {
 function Errores-Pagina { return (JS "(window.__err||[]).join(' || ')") }
 
 # REST de Supabase (desarrollo). -Servicio usa la llave service_role (para preparar o restaurar datos de prueba)
-function Rest($ruta, $metodo = 'Get', $cuerpo = $null, [switch]$Servicio) {
+function Rest($ruta, $metodo = 'Get', $cuerpo = $null, [switch]$Servicio, [string]$Token = '') {
     $llave = if ($Servicio) { $script:Serv } else { $script:Anon }
-    $auth = if ($Servicio) { $script:Serv } else { $script:Token }
+    $auth = if ($Servicio) { $script:Serv } elseif ($Token) { $Token } else { $script:Token }
     $h = @{ apikey = $llave; Authorization = "Bearer $auth"; Prefer = 'return=representation' }
     # -ContentType explícito y cuerpo en bytes UTF-8: en PowerShell 5.1 un POST ignora el Content-Type de -Headers
     if ($null -ne $cuerpo) {

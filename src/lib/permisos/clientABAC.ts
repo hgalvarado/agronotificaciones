@@ -152,9 +152,10 @@ export function canExecuteAction(
     if (regla.alcance === 'zonal' && !esMio) {
       // Sin zonas asignadas, el eje zonal no recorta: es lo que hace
       // `fn_ve_zona` en la base.
+      // Una fila sin zona no la recorta la zona, igual que `fn_ve_zona` con zona nula.
       const zonas = contexto.zonas
       if (zonas && zonas.size > 0) {
-        if (fila.zonaId == null || !zonas.has(fila.zonaId)) return false
+        if (fila.zonaId != null && !zonas.has(fila.zonaId)) return false
       }
     }
   }
