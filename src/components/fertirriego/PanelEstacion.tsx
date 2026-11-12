@@ -30,6 +30,7 @@ export function PanelEstacion({
   estacion,
   yo,
   saldos,
+  saldosEnvases,
   enLinea,
   tieneEntregaPendiente = false,
   onAccion,
@@ -40,6 +41,8 @@ export function PanelEstacion({
   estacion: Estacion
   yo: Persona
   saldos: Map<string, number>
+  /** Envases por tipo en esta estación (con lo pendiente de enviar). */
+  saldosEnvases?: Map<string, number>
   enLinea: boolean
   /** Otra persona ya entregó la estación (está en la base): se ofrece recibirla. */
   tieneEntregaPendiente?: boolean
@@ -53,6 +56,10 @@ export function PanelEstacion({
   const turnos = estado.turnos.filter((t) => t.estacion_id === estacion.id)
   const planHoy = turnos.map((t) => ({ t, plan: planDelDia(estado.plan, t.id, hoy) })).filter((x) => x.plan.size > 0)
   const material = (id: string) => estado.materiales.find((m) => m.id === id)
+  const nombreEnvase = (id: string) => estado.envases_tipos?.find((e) => e.id === id)?.nombre ?? 'Envase'
+  const envases = [...(saldosEnvases ?? new Map<string, number>()).entries()]
+    .filter(([, v]) => v !== 0)
+    .sort((a, b) => nombreEnvase(a[0]).localeCompare(nombreEnvase(b[0]), 'es'))
   const productos = [...saldos.entries()].filter(([, v]) => v !== 0).sort((a, b) => (material(a[0])?.descripcion ?? '').localeCompare(material(b[0])?.descripcion ?? ''))
 
   return (
@@ -183,6 +190,31 @@ export function PanelEstacion({
           </div>
         )}
       </div>
+
+      {/* ---- Envases (sql/99; sin la 99 no se muestra) ---- */}
+      {(estado.envases_tipos?.length ?? 0) > 0 && (
+        <div data-envases-estacion>
+          <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">Envases en la estación</p>
+          {envases.length === 0 ? (
+            <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500 ring-1 ring-inset ring-slate-200">
+              Sin envases registrados. Se cuentan al recibir producto (recibidos / entregados) y en el conteo.
+            </p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {envases.map(([id, v]) => (
+                <span
+                  key={id}
+                  data-saldo-envase={nombreEnvase(id)}
+                  className={`inline-flex items-baseline gap-1.5 rounded-xl bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 ${v < 0 ? 'text-red-700' : 'text-slate-800'}`}
+                >
+                  <span className="font-semibold">{nombreEnvase(id)}</span>
+                  <span className="text-base font-bold tabular-nums">{v}</span>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

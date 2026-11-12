@@ -37,9 +37,16 @@ export function FormBitacora({
   onGuardado: (m: string) => void
 }) {
   // Un borrador por turno y día
-  const borrador = useBorrador<{ hf: string; hr: string; inicio: string; fin: string; ejecutor: string; ejecutor2: string }>(
-    claveBorrador('bitacora', yo.id, estacion.id, `${turno.id}@${fecha}`)
-  )
+  const borrador = useBorrador<{
+    hf: string
+    hr: string
+    inicio: string
+    fin: string
+    ejecutor: string
+    ejecutor2: string
+    ppmCabezal?: string
+    ppmCampo?: string
+  }>(claveBorrador('bitacora', yo.id, estacion.id, `${turno.id}@${fecha}`))
   const b = borrador.inicial
   const [hf, setHf] = useState(b?.hf ?? actual?.horas_fertilizacion?.toString() ?? '')
   const [hr, setHr] = useState(b?.hr ?? actual?.horas_riego?.toString() ?? '')
@@ -47,7 +54,10 @@ export function FormBitacora({
   const [fin, setFin] = useState(b?.fin ?? aEntradaLocal(actual?.hora_fin))
   const [ejecutor, setEjecutor] = useState(b?.ejecutor ?? actual?.ejecutor_id ?? yo.id)
   const [ejecutor2, setEjecutor2] = useState(b?.ejecutor2 ?? actual?.ejecutor2_id ?? '')
-  useAutoguardado(borrador, { hf, hr, inicio, fin, ejecutor, ejecutor2 })
+  // Piloto 1, punto 8 (sql/99): ppm de cloro en el cabezal de riego y en el campo (cinta)
+  const [ppmCabezal, setPpmCabezal] = useState(b?.ppmCabezal ?? actual?.ppm_cloro_cabezal?.toString() ?? '')
+  const [ppmCampo, setPpmCampo] = useState(b?.ppmCampo ?? actual?.ppm_cloro_campo?.toString() ?? '')
+  useAutoguardado(borrador, { hf, hr, inicio, fin, ejecutor, ejecutor2, ppmCabezal, ppmCampo })
 
   const personas = [{ id: yo.id, titulo: `${yo.nombre} (yo)` }, ...estacion.personas.filter((p) => p.id !== yo.id).map((p) => ({ id: p.id, titulo: p.nombre }))]
 
@@ -61,30 +71,42 @@ export function FormBitacora({
       onCerrar={onCerrar}
       onGuardado={onGuardado}
       borrador={borrador}
+      rapido
       construir={({ ubicacion }) => {
         const vhf = horas(hf)
         const vhr = horas(hr)
         for (const [n, v] of [['de fertilización', vhf], ['de riego', vhr]] as const) {
           if (v !== null && (!Number.isFinite(v) || v < 0 || v > 24)) return `Las horas ${n} deben estar entre 0 y 24.`
         }
+        const vCab = horas(ppmCabezal)
+        const vCampo = horas(ppmCampo)
+        for (const [n, v] of [['del cabezal', vCab], ['del campo', vCampo]] as const) {
+          if (v !== null && (!Number.isFinite(v) || v < 0 || v > 1000)) return `Las ppm de cloro ${n} deben estar entre 0 y 1000.`
+        }
         const ini = inicio ? deEntradaLocal(inicio) : null
         const fi = fin ? deEntradaLocal(fin) : null
         if (ini && fi && fi < ini) return 'La hora final no puede ser anterior a la inicial.'
-        if (vhf === null && vhr === null && !ini && !fi) return 'Escribe al menos las horas de fertilización o de riego.'
+        if (vhf === null && vhr === null && !ini && !fi && vCab === null && vCampo === null) {
+          return 'Escribe al menos las horas de fertilización o de riego.'
+        }
+        const datos: Record<string, unknown> = {
+          estacion_id: estacion.id,
+          turno_ciclo_id: turno.id,
+          fecha,
+          horas_fertilizacion: vhf,
+          horas_riego: vhr,
+          hora_inicio: ini,
+          hora_fin: fi,
+          ejecutor_id: ejecutor || null,
+          ejecutor2_id: ejecutor2 || null,
+        }
+        // Solo si se escribieron (lo vacío no borra lo que ya estaba; la base sin la 99 no los conoce)
+        if (vCab !== null) datos.ppm_cloro_cabezal = vCab
+        if (vCampo !== null) datos.ppm_cloro_campo = vCampo
         return [
           crearOperacion(
             'bitacora',
-            {
-              estacion_id: estacion.id,
-              turno_ciclo_id: turno.id,
-              fecha,
-              horas_fertilizacion: vhf,
-              horas_riego: vhr,
-              hora_inicio: ini,
-              hora_fin: fi,
-              ejecutor_id: ejecutor || null,
-              ejecutor2_id: ejecutor2 || null,
-            },
+            datos,
             { ubicacion, resumen: `Bitácora de riego · ${turno.turno} · ${fecha}` }
           ),
         ]
@@ -97,6 +119,14 @@ export function FormBitacora({
         </Campo>
         <Campo etiqueta="Horas de riego">
           <Entrada inputMode="decimal" value={hr} onChange={(e) => setHr(e.target.value.replace(/[^\d.,]/g, ''))} placeholder="0" data-horas-riego />
+        </Campo>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Campo etiqueta="Ppm cloro (cabezal de riego)">
+          <Entrada inputMode="decimal" value={ppmCabezal} onChange={(e) => setPpmCabezal(e.target.value.replace(/[^\d.,]/g, ''))} placeholder="Opcional" data-ppm-cabezal />
+        </Campo>
+        <Campo etiqueta="Ppm cloro (campo, en cinta)">
+          <Entrada inputMode="decimal" value={ppmCampo} onChange={(e) => setPpmCampo(e.target.value.replace(/[^\d.,]/g, ''))} placeholder="Opcional" data-ppm-campo />
         </Campo>
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

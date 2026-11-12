@@ -8,7 +8,68 @@
 import { useEffect, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Alerta, Boton } from '@/components/ui/Primitivos'
-import { codigoEn, pasoDe, segundosRestantes, type LlavePersona } from '@/lib/fertirriego/codigo'
+import { codigoEn, codigoLargoEn, pasoDe, pasoLargoDe, segundosRestantes, venceCodigoLargo, type LlavePersona } from '@/lib/fertirriego/codigo'
+import { aEntradaLocal } from '@/lib/fechas/zona'
+
+/** «13/11 a las 12:10» (hora de Honduras). */
+function cuando(ms: number): string {
+  const [f, h] = aEntradaLocal(new Date(ms).toISOString()).split('T')
+  return `${f.slice(8, 10)}/${f.slice(5, 7)} a las ${h}`
+}
+
+/**
+ * Relevo de noche (pedido del usuario tras la prueba piloto): quien entrega termina a medianoche y el compañero llega
+ * cuando él ya duerme. Le deja un código de 8 dígitos que vale 12 horas (escrito en la estación o por WhatsApp).
+ */
+function CodigoLargo({ llave, estacion }: { llave: LlavePersona; estacion: string }) {
+  const [codigo, setCodigo] = useState<{ valor: string; vence: number } | null>(null)
+  const [aviso, setAviso] = useState<string | null>(null)
+
+  async function mostrar() {
+    const ahora = Date.now()
+    setCodigo({ valor: await codigoLargoEn(llave.llave, pasoLargoDe(ahora)), vence: venceCodigoLargo(ahora) })
+  }
+
+  if (!codigo) {
+    return (
+      <button type="button" onClick={() => void mostrar()} className="mt-2 text-sm font-semibold text-brand-700 underline" data-ver-codigo-largo>
+        ¿Te vas antes de que llegue tu compañero? Ver código de 12 horas
+      </button>
+    )
+  }
+  const texto = `Código de entrega de ${estacion}: ${codigo.valor.slice(0, 4)} ${codigo.valor.slice(4)} (vale hasta el ${cuando(codigo.vence)}).`
+  return (
+    <div className="mt-3 w-full rounded-xl bg-amber-50 p-3 text-center ring-1 ring-inset ring-amber-200" data-codigo-largo={codigo.valor}>
+      <p className="text-xs font-semibold text-amber-900">Código de entrega (vale 12 horas)</p>
+      <p className="my-1 font-mono text-4xl font-bold tracking-[0.2em] text-slate-900">
+        {codigo.valor.slice(0, 4)} {codigo.valor.slice(4)}
+      </p>
+      <p className="text-xs text-amber-900">
+        Vale hasta el {cuando(codigo.vence)}. Déjalo escrito en la estación o mándalo por WhatsApp: tu compañero lo escribe en
+        «Recibir estación», aunque no haya señal. No lo compartas con nadie más.
+      </p>
+      <Boton
+        variante="secundario"
+        className="mt-2"
+        onClick={async () => {
+          try {
+            if (navigator.share) await navigator.share({ text: texto })
+            else {
+              await navigator.clipboard.writeText(texto)
+              setAviso('Copiado. Pégalo en WhatsApp.')
+            }
+          } catch {
+            /* el usuario cerró la ventana de compartir */
+          }
+        }}
+        data-compartir-codigo-largo
+      >
+        Compartir
+      </Boton>
+      {aviso && <p className="mt-1 text-xs text-slate-600">{aviso}</p>}
+    </div>
+  )
+}
 
 export function PantallaCodigo({
   llave,
@@ -78,6 +139,7 @@ export function PantallaCodigo({
             <div className="h-full bg-brand-600 transition-all" style={{ width: `${(restan / 30) * 100}%` }} />
           </div>
           <p className="text-xs text-slate-500">Cambia en {restan} s. Funciona sin señal.</p>
+          <CodigoLargo llave={llave} estacion={estacion} />
         </div>
       )}
     </Modal>

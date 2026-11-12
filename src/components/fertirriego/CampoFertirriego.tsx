@@ -8,11 +8,20 @@
  * Relevos (cambio de jornada con código) · Traslados (entre estaciones) · Envíos (pendientes, rechazados, observaciones).
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alerta, Boton, ListaEsqueleto } from '@/components/ui/Primitivos'
 import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
 import { formatearFechaHora } from '@/lib/estados'
 import { conCustodiaLocal, saldosLocales } from '@/lib/fertirriego/calculos'
+import { envasesPendientes, saldosEnvasesLocales } from '@/lib/fertirriego/envases'
+import {
+  compartirFallo,
+  EVENTO_GUARDADO_FALLIDO,
+  EVENTO_GUARDADO_INICIADO,
+  type GuardadoFallido,
+  type GuardadoIniciado,
+} from '@/lib/fertirriego/guardadoFondo'
+import { productosPendientes } from '@/lib/fertirriego/productos'
 import { crearOperacion } from '@/lib/fertirriego/operaciones'
 import { obtenerUbicacion } from '@/lib/fertirriego/ubicacion'
 import type { Chofer, Estacion, Relevo, Traslado, Vehiculo } from '@/lib/fertirriego/tipos'
@@ -66,12 +75,53 @@ const PESTANAS: { clave: Pestana; nombre: string }[] = [
 
 export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; manual?: string | null }) {
   const campo = useCampo(usuarioId)
-  const { estado, cola } = campo
+  const estadoServidor = campo.estado
+  const cola = campo.cola
+  // Lo creado en el teléfono que aún no llega (productos y envases de campo) se ve en todas las listas al instante
+  const estado = useMemo(() => {
+    if (!estadoServidor) return null
+    const productos = productosPendientes(cola).filter((p) => !estadoServidor.materiales.some((m) => m.id === p.id))
+    const envases = envasesPendientes(cola).filter((e) => !(estadoServidor.envases_tipos ?? []).some((x) => x.id === e.id))
+    if (!productos.length && !envases.length) return estadoServidor
+    return {
+      ...estadoServidor,
+      materiales: [...estadoServidor.materiales, ...productos],
+      envases_tipos: estadoServidor.envases_tipos ? [...estadoServidor.envases_tipos, ...envases] : estadoServidor.envases_tipos,
+    }
+  }, [estadoServidor, cola])
   const [estacionId, setEstacionId] = useState('')
   const [pestana, setPestana] = useState<Pestana>('estacion')
   const [ventana, setVentana] = useState<Ventana>(null)
   const [aviso, setAviso] = useState<string | null>(null)
   const [material, setMaterial] = useState('')
+
+  // Guardado en segundo plano (MarcoRegistro rápido): qué ventana se estaba guardando, y los que fallaron
+  const ultimaVentana = useRef<Ventana>(null)
+  const estacionIdRef = useRef('')
+  useEffect(() => {
+    if (ventana) ultimaVentana.current = ventana
+  }, [ventana])
+  const enCurso = useRef(new Map<string, { ventana: Ventana; estacionId: string }>())
+  const [fallos, setFallos] = useState<(GuardadoFallido & { ventana: Ventana; estacionId: string })[]>([])
+  useEffect(() => {
+    const iniciado = (e: Event) => {
+      const { id } = (e as CustomEvent<GuardadoIniciado>).detail
+      enCurso.current.set(id, { ventana: ultimaVentana.current, estacionId: estacionIdRef.current })
+      // Se limpia solo: el guardado termina en segundos
+      setTimeout(() => enCurso.current.delete(id), 120_000)
+    }
+    const fallido = (e: Event) => {
+      const d = (e as CustomEvent<GuardadoFallido>).detail
+      const origen = enCurso.current.get(d.id)
+      setFallos((f) => [...f, { ...d, ventana: origen?.ventana ?? null, estacionId: origen?.estacionId ?? '' }])
+    }
+    window.addEventListener(EVENTO_GUARDADO_INICIADO, iniciado)
+    window.addEventListener(EVENTO_GUARDADO_FALLIDO, fallido)
+    return () => {
+      window.removeEventListener(EVENTO_GUARDADO_INICIADO, iniciado)
+      window.removeEventListener(EVENTO_GUARDADO_FALLIDO, fallido)
+    }
+  }, [])
 
   // La estación que eligió la última vez (en este teléfono)
   useEffect(() => {
@@ -103,7 +153,23 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
     guardado('Entrega cancelada: la estación sigue a tu cargo.')
   }
 
+  useEffect(() => {
+    estacionIdRef.current = estacion?.id ?? ''
+  }, [estacion])
+
   const saldos = useMemo(() => (estado && estacion ? saldosLocales(estado, cola, estacion.id) : new Map<string, number>()), [estado, cola, estacion])
+  const saldosEnvases = useMemo(
+    () => (estado && estacion ? saldosEnvasesLocales(estado, cola, estacion.id) : new Map<string, number>()),
+    [estado, cola, estacion]
+  )
+
+  /** «Reintentar»: vuelve a abrir ese formulario (con su borrador) en su estación. */
+  function reintentar(f: (typeof fallos)[number]) {
+    setFallos((x) => x.filter((y) => y.id !== f.id))
+    if (f.estacionId && f.estacionId !== estacion?.id && estaciones.some((e) => e.id === f.estacionId)) setEstacionId(f.estacionId)
+    if (f.ventana) setVentana(f.ventana)
+    else guardado(`Abre otra vez «${f.formulario}»: tu borrador sigue ahí.`)
+  }
   const pendientes = cola.filter((o) => o.estado_local === 'PENDIENTE').length
   const rechazados = cola.filter((o) => o.estado_local === 'RECHAZADO').length
   const choferesPendientes: Chofer[] = cola
@@ -171,6 +237,23 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
           {aviso}
         </div>
       )}
+      {fallos.map((f) => (
+        <div key={f.id} role="alert" data-guardado-fallido className="rounded-xl bg-red-50 p-3 text-sm text-red-900 ring-1 ring-inset ring-red-300">
+          <p className="font-bold">No se pudo guardar «{f.formulario}» ({f.estacion}, {f.hora}).</p>
+          <p className="mt-0.5 text-xs">Lo que escribiste quedó como borrador. Error: {f.error}</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Boton tamano="sm" onClick={() => reintentar(f)} data-reintentar-guardado>
+              Reintentar
+            </Boton>
+            <Boton tamano="sm" variante="secundario" onClick={() => void compartirFallo(f)} data-avisar-fallo>
+              Avisar
+            </Boton>
+            <button type="button" className="ml-auto text-xs font-semibold text-red-800 underline" onClick={() => setFallos((x) => x.filter((y) => y.id !== f.id))}>
+              Cerrar
+            </button>
+          </div>
+        </div>
+      ))}
 
       {!estado ? (
         <Alerta tono="ambar">
@@ -252,6 +335,7 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
                 estacion={estacion}
                 yo={estado.yo}
                 saldos={saldos}
+                saldosEnvases={saldosEnvases}
                 enLinea={enLinea}
                 tieneEntregaPendiente={Boolean(entregaPendiente)}
                 onAccion={(a) =>
@@ -337,6 +421,7 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
                 estacion={estacion}
                 yo={estado.yo}
                 saldos={saldos}
+                saldosEnvases={saldosEnvases}
                 choferesPendientes={choferesPendientes}
                 vehiculosPendientes={vehiculosPendientes}
                 registrar={campo.registrar}
@@ -350,6 +435,7 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
                 estacion={estacion}
                 yo={estado.yo}
                 saldos={saldos}
+                cola={cola}
                 turnoInicial={ventana.turno}
                 fechaInicial={ventana.fecha}
                 registrar={campo.registrar}
@@ -358,7 +444,7 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
               />
             )}
             {ventana?.tipo === 'contar' && (
-              <FormConteo estado={estado} estacion={estacion} yo={estado.yo} saldos={saldos} registrar={campo.registrar} onCerrar={() => setVentana(null)} onGuardado={guardado} />
+              <FormConteo estado={estado} estacion={estacion} yo={estado.yo} saldos={saldos} saldosEnvases={saldosEnvases} registrar={campo.registrar} onCerrar={() => setVentana(null)} onGuardado={guardado} />
             )}
             {ventana?.tipo === 'horas' && (
               <FormBitacora

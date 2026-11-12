@@ -188,8 +188,9 @@ try {
 
     # Por turno: plan contra aplicado y horas
     ClicHasta "document.querySelector('[data-pestana=turnos]')" "!!document.querySelector('[data-turno=""$TURNO""]')" | Out-Null
-    $dia = JS "document.querySelector('[data-dia-turno=""$hoy""]')?.innerText"
-    OK ($dia -match 'plan 120' -and $dia -match 'aplicado 120') 'Por turno: plan 120 · aplicado 120' (($dia -split "`n") -join ' · ')
+    # 99: tarjeta por DDT con Producto | Plan | Real | Var
+    $dia = JS "document.querySelector('[data-dia-turno=""$hoy""] [data-producto-tarjeta=""$SOL""]')?.innerText"
+    OK (($dia -split '\s+' | Where-Object { $_ -eq '120' }).Count -ge 2) 'Por turno: plan 120 · real 120' (($dia -split "`n") -join ' · ')
     ClicHasta "document.querySelector('[data-dia-turno=""$hoy""] [data-horas-dia]')" "!!document.querySelector('[data-horas-fert]')" | Out-Null
     Teclear "document.querySelector('[data-horas-fert]')" '2.5'
     Teclear "document.querySelector('[data-horas-riego]')" '6'

@@ -13,7 +13,7 @@ import { useEffect, useState } from 'react'
 import { Alerta, AreaTexto, Campo, Insignia } from '@/components/ui/Primitivos'
 import { ahoraIso } from '@/lib/fechas/zona'
 import { cantidad } from '@/lib/fertirriego/calculos'
-import { verificarCodigo, type LlavePersona } from '@/lib/fertirriego/codigo'
+import { verificarCodigo, verificarCodigoLargo, type LlavePersona } from '@/lib/fertirriego/codigo'
 import { crearOperacion } from '@/lib/fertirriego/operaciones'
 import type { EstadoCampo, Estacion, Operacion, Persona, Relevo } from '@/lib/fertirriego/tipos'
 import { ESTADOS_NOVEDAD } from './FormEntregarRelevo'
@@ -50,7 +50,9 @@ export function FormRecibirRelevo({
   onCerrar: () => void
   onGuardado: (m: string) => void
 }) {
-  const [metodo, setMetodo] = useState<'CODIGO' | 'SESION'>('CODIGO')
+  const [metodo, setMetodo] = useState<'CODIGO' | 'CODIGO_LARGO' | 'SESION'>('CODIGO')
+  const largo = metodo === 'CODIGO_LARGO'
+  const digitos = largo ? 8 : 6
   const [codigo, setCodigo] = useState('')
   const [quien, setQuien] = useState<LlavePersona | null>(null)
   const [momento, setMomento] = useState<string | null>(null)
@@ -78,9 +80,9 @@ export function FormRecibirRelevo({
     setCodigo(valor)
     setQuien(null)
     setAviso(null)
-    if (valor.length < 6) return
+    if (valor.length < digitos) return
     if (bloqueado) return setAviso('Demasiados intentos. Espera unos minutos.')
-    const persona = await verificarCodigo(valor, llaves, yo.id)
+    const persona = largo ? await verificarCodigoLargo(valor, llaves, yo.id) : await verificarCodigo(valor, llaves, yo.id)
     if (persona) {
       setQuien(persona)
       setMomento(ahoraIso())
@@ -96,7 +98,9 @@ export function FormRecibirRelevo({
     setAviso(
       intentos >= MAX_INTENTOS
         ? 'Código equivocado 5 veces: bloqueado 5 minutos.'
-        : `El código no corresponde a nadie de la estación (o ya cambió). Intento ${intentos} de ${MAX_INTENTOS}.`
+        : largo
+          ? `El código no corresponde a nadie de la estación o ya pasaron más de 12 horas. Intento ${intentos} de ${MAX_INTENTOS}.`
+          : `El código no corresponde a nadie de la estación (o ya cambió). Intento ${intentos} de ${MAX_INTENTOS}.`
     )
   }
 
@@ -128,8 +132,8 @@ export function FormRecibirRelevo({
               estacion_id: estacion.id,
               entrega_id: entrega,
               metodo,
-              codigo: metodo === 'CODIGO' ? codigo : null,
-              momento_codigo: metodo === 'CODIGO' ? momento : null,
+              codigo: metodo !== 'SESION' ? codigo : null,
+              momento_codigo: metodo !== 'SESION' ? momento : null,
               diferencias: difs,
               nota: nota.trim() || null,
             },
@@ -154,26 +158,29 @@ export function FormRecibirRelevo({
         </div>
       )}
 
-      {pendiente && enLinea && (
-        <div className="flex gap-1.5" role="tablist">
-          {(['CODIGO', 'SESION'] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              role="tab"
-              aria-selected={metodo === m}
-              onClick={() => setMetodo(m)}
-              data-metodo={m}
-              className={`rounded-full px-3 py-1.5 text-xs font-semibold ring-1 ring-inset ${metodo === m ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-600 ring-slate-200'}`}
-            >
-              {m === 'CODIGO' ? 'Con código' : 'Sin código (con sesión en su teléfono)'}
-            </button>
-          ))}
-        </div>
-      )}
+      <div className="flex flex-wrap gap-1.5" role="tablist">
+        {(pendiente && enLinea ? (['CODIGO', 'CODIGO_LARGO', 'SESION'] as const) : (['CODIGO', 'CODIGO_LARGO'] as const)).map((m) => (
+          <button
+            key={m}
+            type="button"
+            role="tab"
+            aria-selected={metodo === m}
+            onClick={() => {
+              setMetodo(m)
+              setCodigo('')
+              setQuien(null)
+              setAviso(null)
+            }}
+            data-metodo={m}
+            className={`rounded-full px-3 py-1.5 text-xs font-semibold ring-1 ring-inset ${metodo === m ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-600 ring-slate-200'}`}
+          >
+            {m === 'CODIGO' ? 'Está aquí (código de 6)' : m === 'CODIGO_LARGO' ? 'Me dejó un código (8 dígitos)' : 'Sin código (con sesión en su teléfono)'}
+          </button>
+        ))}
+      </div>
 
-      {metodo === 'CODIGO' && (
-        <Campo etiqueta="Código que te muestra quien entrega" requerido>
+      {metodo !== 'SESION' && (
+        <Campo etiqueta={largo ? 'Código de entrega que te dejó (vale 12 horas)' : 'Código que te muestra quien entrega'} requerido>
           {companeros.length === 0 ? (
             <Alerta tono="ambar">
               Este teléfono todavía no tiene las llaves de tus compañeros. Ábrelo una vez con señal (después funciona sin señal).
@@ -183,13 +190,13 @@ export function FormRecibirRelevo({
               <input
                 inputMode="numeric"
                 autoComplete="one-time-code"
-                maxLength={6}
+                maxLength={digitos}
                 value={codigo}
                 disabled={bloqueado}
-                onChange={(e) => void probar(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                placeholder="000000"
+                onChange={(e) => void probar(e.target.value.replace(/\D/g, '').slice(0, digitos))}
+                placeholder={largo ? '00000000' : '000000'}
                 data-codigo-recibir
-                className="w-44 rounded-xl border border-slate-200 bg-white px-4 py-3 text-center font-mono text-3xl tracking-[0.3em] focus:border-brand-600 focus:outline-none"
+                className={`${largo ? 'w-60' : 'w-44'} rounded-xl border border-slate-200 bg-white px-4 py-3 text-center font-mono text-3xl tracking-[0.3em] focus:border-brand-600 focus:outline-none`}
               />
               {quien && (
                 <span data-codigo-ok>

@@ -29,6 +29,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     { pantalla: 'permisos', href: '/admin/navegacion', etiqueta: 'Navegación' },
     // 98: modo de pruebas de Fertirriego (quien configura Fertirriego)
     { pantalla: 'fertirriego', accion: 'configurar', href: '/admin/fertirriego-pruebas', etiqueta: 'Pruebas Fertirriego' },
+    // 99: choferes, vehículos, envases y productos de campo (quien gestiona choferes)
+    { pantalla: 'fertirriego', accion: 'gestionar_choferes', href: '/admin/fertirriego-catalogos', etiqueta: 'Choferes y catálogos de campo' },
   ].filter((s) => puede(permisos, s.pantalla, ('accion' in s && s.accion) || 'ver'))
 
   if (secciones.length === 0) redirect('/')

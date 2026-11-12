@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { Modal } from './Modal'
 import { Alerta, Boton, Campo, Entrada } from './Primitivos'
 import { IconCheck, IconChevronDown, IconPlus, IconSearch, IconX } from './Icons'
@@ -9,6 +9,16 @@ export type OpcionBuscable = {
   id: string
   titulo: string
   subtitulo?: string
+  /** Si se da, la lista muestra un encabezado cada vez que cambia el grupo (las opciones ya vienen ordenadas). */
+  grupo?: string
+}
+
+export type CampoCreacion = {
+  key: string
+  label: string
+  requerido?: boolean
+  /** Valores sugeridos como botones (un toque los escribe); se puede escribir otro. */
+  opciones?: string[]
 }
 
 // Campo de selección pensado para catálogos largos en celular:
@@ -36,7 +46,7 @@ export function SelectorBuscable({
   disabled?: boolean
   creacionRapida?: {
     etiqueta: string
-    campos: { key: string; label: string; requerido?: boolean }[]
+    campos: CampoCreacion[]
     onCrear: (valores: Record<string, string>) => Promise<OpcionBuscable>
   }
 }) {
@@ -55,7 +65,9 @@ export function SelectorBuscable({
     if (!q) return opciones
     return opciones.filter(
       (o) =>
-        o.titulo.toLowerCase().includes(q) || (o.subtitulo ?? '').toLowerCase().includes(q)
+        o.titulo.toLowerCase().includes(q) ||
+        (o.subtitulo ?? '').toLowerCase().includes(q) ||
+        (o.grupo ?? '').toLowerCase().includes(q)
     )
   }, [opciones, busqueda])
 
@@ -164,7 +176,25 @@ export function SelectorBuscable({
                   value={nuevo[c.key] ?? ''}
                   onChange={(e) => setNuevo((p) => ({ ...p, [c.key]: e.target.value }))}
                   autoFocus={c === creacionRapida.campos[0]}
+                  data-campo-crear={c.key}
                 />
+                {c.opciones && c.opciones.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5" data-opciones-campo={c.key}>
+                    {c.opciones.map((o) => (
+                      <button
+                        key={o}
+                        type="button"
+                        aria-pressed={nuevo[c.key] === o}
+                        onClick={() => setNuevo((p) => ({ ...p, [c.key]: o }))}
+                        className={`rounded-full px-3 py-1.5 text-xs font-semibold ring-1 ring-inset ${
+                          nuevo[c.key] === o ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-600 ring-slate-200'
+                        }`}
+                      >
+                        {o}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </Campo>
             ))}
             {error && <Alerta>{error}</Alerta>}
@@ -231,14 +261,20 @@ export function SelectorBuscable({
                   Ningún resultado para «{busqueda}».
                 </p>
               ) : (
-                filtradas.map((o) => (
-                  <BotonOpcion
-                    key={o.id}
-                    titulo={o.titulo}
-                    subtitulo={o.subtitulo}
-                    marcado={o.id === valor}
-                    onClick={() => elegir(o.id)}
-                  />
+                filtradas.map((o, i) => (
+                  <Fragment key={o.id}>
+                    {o.grupo && o.grupo !== filtradas[i - 1]?.grupo && (
+                      <p className="mt-2 px-2 pb-1 pt-2 text-[11px] font-bold uppercase tracking-wide text-slate-400" data-grupo-opciones={o.grupo}>
+                        {o.grupo}
+                      </p>
+                    )}
+                    <BotonOpcion
+                      titulo={o.titulo}
+                      subtitulo={o.subtitulo}
+                      marcado={o.id === valor}
+                      onClick={() => elegir(o.id)}
+                    />
+                  </Fragment>
                 ))
               )}
             </div>
