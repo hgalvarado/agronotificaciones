@@ -54,6 +54,7 @@ export function FormTraslado({
       onCerrar={onCerrar}
       onGuardado={onGuardado}
       borrador={borrador}
+      rapido
       textoGuardar="Enviar a autorizar"
       construir={({ ubicacion, enNombreDe }) => {
         if (!destino) return 'Elige la estación de destino.'

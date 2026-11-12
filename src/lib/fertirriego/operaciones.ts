@@ -52,4 +52,5 @@ export const NOMBRE_OBSERVACION: Record<string, string> = {
   DIFERENCIA_RELEVO: 'diferencia en el relevo',
   DIFERENCIA_TRASLADO: 'llegó menos de lo enviado',
   CUSTODIA_POSTERIOR: 'el jefe asignó la estación después',
+  DDT_SIN_PLAN: 'el DDT elegido no está en el plan',
 }

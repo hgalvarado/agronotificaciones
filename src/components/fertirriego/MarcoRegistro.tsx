@@ -10,13 +10,15 @@
  *   - Sin una de las dos, no se registra (se explica por qué).
  */
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Alerta, Boton } from '@/components/ui/Primitivos'
 import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
-import { MENSAJE_UBICACION_DENEGADA, obtenerUbicacion, permisoDenegado } from '@/lib/fertirriego/ubicacion'
+import { MENSAJE_UBICACION_DENEGADA, obtenerUbicacion, permisoDenegado, type ResultadoUbicacion } from '@/lib/fertirriego/ubicacion'
 import type { Estacion, Operacion, Persona, Ubicacion } from '@/lib/fertirriego/tipos'
-import type { Borrador } from '@/lib/fertirriego/borrador'
+import { copiaBorrador, restaurarBorrador, type Borrador } from '@/lib/fertirriego/borrador'
+import { avisarFallido, avisarIniciado } from '@/lib/fertirriego/guardadoFondo'
+import { nuevoId } from '@/lib/fertirriego/operaciones'
 import { aEntradaLocal, hoyIso } from '@/lib/fechas/zona'
 
 /** «hoy a las 10:32» o «el 11/11 a las 18:05» (hora de Honduras). */
@@ -63,9 +65,16 @@ export function MarcoRegistro({
   sinCustodia = false,
   permiso = 'aplicar',
   borrador,
+  rapido = false,
 }: {
   /** Borrador del formulario (lib/fertirriego/borrador): se avisa si se recuperó y se borra al guardar. */
-  borrador?: Pick<Borrador<unknown>, 'recuperado' | 'terminar' | 'descartar'>
+  borrador?: Pick<Borrador<unknown>, 'clave' | 'recuperado' | 'terminar' | 'descartar'>
+  /**
+   * Guardado rápido (piloto 1): valida, cierra y termina en segundo plano. `construir` recibe `ubicacion: null`;
+   * la ubicación se pone después en TODAS las operaciones que devuelva. Si falla, vuelve el borrador y la pantalla
+   * avisa (guardadoFondo). Los relevos no lo usan (necesitan el resultado antes de seguir).
+   */
+  rapido?: boolean
   /**
    * Sin exigir la custodia, solo el permiso: la bitácora de horas (no toca la bodega) y anular con «Anular».
    * Es la misma regla que aplica la base para esos registros.
@@ -92,33 +101,88 @@ export function MarcoRegistro({
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // La ubicación se empieza a pedir al ABRIR el formulario (piloto 1, punto 2): al tocar Guardar ya suele estar
+  const ubicacionPedida = useRef<Promise<ResultadoUbicacion> | null>(null)
+  const ubicacionLista = useRef<ResultadoUbicacion | null>(null)
+  useEffect(() => {
+    const p = obtenerUbicacion()
+    ubicacionPedida.current = p
+    void p.then((r) => {
+      ubicacionLista.current = r
+    })
+  }, [])
+
+  /** La ubicación para el registro: la ya obtenida, la que se está pidiendo, o (si el GPS no respondió) otra vez. */
+  function ubicacionAhora(): Promise<ResultadoUbicacion> {
+    const lista = ubicacionLista.current
+    if (lista && lista.tipo !== 'sin_ubicacion') return Promise.resolve(lista)
+    if (!lista && ubicacionPedida.current) return ubicacionPedida.current
+    return obtenerUbicacion()
+  }
+
+  const MENSAJE_OK = 'Guardado en el teléfono. Se envía solo cuando haya señal.'
+  const MENSAJE_SIN_GPS = 'Guardado en el teléfono (el GPS no respondió: quedará marcado «sin ubicación»).'
+
   async function guardar() {
     setError(null)
     if (!regla.si) return setError(regla.motivo)
     if (regla.porOtro && !porQuien) return setError('Elige a nombre de quién registras.')
     setGuardando(true)
     try {
-      if (await permisoDenegado()) return setError(MENSAJE_UBICACION_DENEGADA)
-      const u = await obtenerUbicacion()
-      if (u.tipo === 'denegado') return setError(MENSAJE_UBICACION_DENEGADA)
+      if (ubicacionLista.current?.tipo === 'denegado' || (await permisoDenegado())) return setError(MENSAJE_UBICACION_DENEGADA)
       // Sin la estación a cargo, el registro va SIEMPRE «por otro» (aunque elija su propio nombre): así la base
       // aplica la regla de «Registrar por otro» y no la de custodia
       const enNombreDe = regla.porOtro ? porQuien : null
-      const r = await construir({ ubicacion: u.tipo === 'ok' ? u.ubicacion : null, enNombreDe, ejecutor: enNombreDe ?? yo.id })
+      const contexto = { enNombreDe, ejecutor: enNombreDe ?? yo.id }
+
+      if (!rapido) {
+        const u = await ubicacionAhora()
+        if (u.tipo === 'denegado') return setError(MENSAJE_UBICACION_DENEGADA)
+        const r = await construir({ ...contexto, ubicacion: u.tipo === 'ok' ? u.ubicacion : null })
+        if (typeof r === 'string') return setError(r)
+        if (r.length === 0) return
+        await registrar(...r)
+        borrador?.terminar()
+        onGuardado(u.tipo === 'ok' ? MENSAJE_OK : MENSAJE_SIN_GPS)
+        onCerrar()
+        return
+      }
+
+      // Rápido: se valida aquí; la ubicación y el almacén terminan en segundo plano con el formulario ya cerrado
+      const r = await construir({ ...contexto, ubicacion: null })
       if (typeof r === 'string') return setError(r)
       if (r.length === 0) return
-      await registrar(...r)
+      const id = nuevoId()
+      avisarIniciado({ id })
+      const copia = borrador ? copiaBorrador(borrador.clave) : null
+      // El borrador se quita ya (si se vuelve a abrir el formulario mientras termina, no se registra dos veces)
       borrador?.terminar()
-      onGuardado(
-        u.tipo === 'ok'
-          ? 'Guardado en el teléfono. Se envía solo cuando haya señal.'
-          : 'Guardado en el teléfono (el GPS no respondió: quedará marcado «sin ubicación»).'
-      )
+      onGuardado('Guardando…')
       onCerrar()
+      void terminarEnFondo(id, r, copia)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo guardar.')
     } finally {
       setGuardando(false)
+    }
+  }
+
+  async function terminarEnFondo(id: string, ops: Operacion[], copia: string | null) {
+    try {
+      const u = await ubicacionAhora()
+      if (u.tipo === 'denegado') throw new Error(MENSAJE_UBICACION_DENEGADA)
+      const ubicacion = u.tipo === 'ok' ? u.ubicacion : null
+      await registrar(...ops.map((o) => ({ ...o, ubicacion })))
+      onGuardado(u.tipo === 'ok' ? MENSAJE_OK : MENSAJE_SIN_GPS)
+    } catch (e) {
+      if (borrador) restaurarBorrador(borrador.clave, copia)
+      avisarFallido({
+        id,
+        formulario: titulo,
+        estacion: estacion.nombre,
+        error: e instanceof Error ? e.message : String(e),
+        hora: aEntradaLocal(new Date().toISOString()).replace('T', ' '),
+      })
     }
   }
 

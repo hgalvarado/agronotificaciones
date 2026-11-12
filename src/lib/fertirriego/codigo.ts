@@ -47,6 +47,53 @@ export function segundosRestantes(ms = Date.now()): number {
 
 export type LlavePersona = { perfil_id: string; nombre: string; llave: CryptoKey }
 
+/*
+ * Código de ENTREGA de 12 horas (relevo de noche, sql/99): quien entrega se va antes de que llegue el compañero.
+ * Igual que el de 30 s pero con pasos de 10 minutos, contador 2^40 + paso (nunca coincide con un código de 30 s) y
+ * 8 dígitos. Se calcula con el paso de la hora de entrega; vale 72 pasos (12 horas). Lo verifica la base con
+ * fn_fert_codigo_largo_valido.
+ */
+export const PASO_LARGO_SEGUNDOS = 600
+export const PASOS_VALIDEZ_LARGO = 72
+
+export function pasoLargoDe(ms: number): number {
+  return Math.floor(ms / 1000 / PASO_LARGO_SEGUNDOS)
+}
+
+export async function codigoLargoEn(llave: CryptoKey, paso: number): Promise<string> {
+  const contador = new ArrayBuffer(8)
+  const vista = new DataView(contador)
+  vista.setUint32(0, 256 + Math.floor(paso / 2 ** 32)) // 2^40 = 256 · 2^32
+  vista.setUint32(4, paso >>> 0)
+  const h = new Uint8Array(await crypto.subtle.sign('HMAC', llave, contador))
+  const o = h[19] & 15
+  const v = ((h[o] & 127) << 24) | (h[o + 1] << 16) | (h[o + 2] << 8) | h[o + 3]
+  return String(v % 100_000_000).padStart(8, '0')
+}
+
+/** Hasta cuándo vale un código de entrega generado en `ms` (inicio de su paso + 12 h). */
+export function venceCodigoLargo(ms: number): number {
+  return (pasoLargoDe(ms) + PASOS_VALIDEZ_LARGO + 1) * PASO_LARGO_SEGUNDOS * 1000
+}
+
+/** ¿De quién es este código de entrega? (generado en las últimas 12 horas). Un código inválido NUNCA pasa. */
+export async function verificarCodigoLargo(
+  codigo: string,
+  llaves: LlavePersona[],
+  yoId: string,
+  ms = Date.now()
+): Promise<LlavePersona | null> {
+  if (!/^\d{8}$/.test(codigo)) return null
+  const paso = pasoLargoDe(ms)
+  for (const l of llaves) {
+    if (l.perfil_id === yoId) continue
+    for (let d = 1; d >= -PASOS_VALIDEZ_LARGO; d--) {
+      if ((await codigoLargoEn(l.llave, paso + d)) === codigo) return l
+    }
+  }
+  return null
+}
+
 /**
  * ¿De quién es este código ahora? Busca entre las llaves de los compañeros (no la propia), con ±1 paso de
  * tolerancia (relojes un poco distintos). Devuelve la persona o null. Un código inválido NUNCA pasa.

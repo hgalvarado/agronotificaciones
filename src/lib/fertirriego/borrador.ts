@@ -73,6 +73,8 @@ export function borradoresDe(usuario: string, estacion: string): Set<TipoBorrado
 }
 
 export type Borrador<T> = {
+  /** Dónde se guarda (localStorage). */
+  clave: string
   /** Lo que se recuperó al abrir (null = formulario nuevo). Úsese solo para los valores iniciales. */
   inicial: T | null
   /** Hora (ISO) del borrador recuperado. */
@@ -108,7 +110,29 @@ export function useBorrador<T>(clave: string): Borrador<T> {
     window.dispatchEvent(new Event('fert:borradores'))
   }, [clave])
 
-  return { inicial: abierto?.datos ?? null, recuperado: abierto?.guardado ?? null, guardar, terminar, descartar: terminar }
+  return { clave, inicial: abierto?.datos ?? null, recuperado: abierto?.guardado ?? null, guardar, terminar, descartar: terminar }
+}
+
+/** El borrador tal como está guardado (texto), para devolverlo si el guardado en segundo plano falla. */
+export function copiaBorrador(clave: string): string | null {
+  try {
+    return localStorage.getItem(clave)
+  } catch {
+    return null
+  }
+}
+
+/** Devuelve un borrador copiado con copiaBorrador (el guardado falló: que no se pierda lo escrito). */
+export function restaurarBorrador(clave: string, texto: string | null) {
+  if (!texto) return
+  try {
+    const b = JSON.parse(texto) as Guardado<unknown>
+    // Con la hora de ahora, para que no venza y se vea como el más reciente
+    localStorage.setItem(clave, JSON.stringify({ ...b, guardado: new Date().toISOString() }))
+    window.dispatchEvent(new Event('fert:borradores'))
+  } catch {
+    /* sin almacenamiento: no hay cómo devolverlo */
+  }
 }
 
 /** Guarda `datos` como borrador cada vez que cambian. */

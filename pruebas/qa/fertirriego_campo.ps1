@@ -125,6 +125,9 @@ try {
     $tr = Esperar "!document.querySelector('[data-selector-chofer]')" 15000
     # Guardado justo al abrir la pantalla (mientras ya sincronizaba): el envío va en la vuelta siguiente (hasta 1 min)
     if ($tr -lt 0) { $script:Resultados.Add("DIAG recepción: $((JS "[...document.querySelectorAll('[role=dialog]')].map(d => d.innerText).join(' ||| ')") -replace "`n", ' / ')"); Captura 'fert_recepcion_error.png' }
+    Start-Sleep -Milliseconds 1500
+    $fallo = JS "document.querySelector('[data-guardado-fallido]')?.innerText || ''"
+    if ($fallo) { $script:Resultados.Add("DIAG guardado fallido: $($fallo -replace "`n", ' / ')") }
     $t = Esperar "!document.querySelector('[data-pendientes-cuenta]')" 80000
     if ($t -lt 0) {
         $script:Resultados.Add("DIAG pendientes=$(Pendientes) barra=$(JS "document.querySelector('[data-barra-estado]')?.dataset.barraEstado") texto=$((JS "document.querySelector('[data-barra-estado]')?.innerText") -replace "`n", ' ')")
@@ -188,8 +191,9 @@ try {
 
     # Por turno: plan contra aplicado y horas
     ClicHasta "document.querySelector('[data-pestana=turnos]')" "!!document.querySelector('[data-turno=""$TURNO""]')" | Out-Null
-    $dia = JS "document.querySelector('[data-dia-turno=""$hoy""]')?.innerText"
-    OK ($dia -match 'plan 120' -and $dia -match 'aplicado 120') 'Por turno: plan 120 · aplicado 120' (($dia -split "`n") -join ' · ')
+    # 99: tarjeta por DDT con Producto | Plan | Real | Var
+    $dia = JS "document.querySelector('[data-dia-turno=""$hoy""] [data-producto-tarjeta=""$SOL""]')?.innerText"
+    OK (($dia -split '\s+' | Where-Object { $_ -eq '120' }).Count -ge 2) 'Por turno: plan 120 · real 120' (($dia -split "`n") -join ' · ')
     ClicHasta "document.querySelector('[data-dia-turno=""$hoy""] [data-horas-dia]')" "!!document.querySelector('[data-horas-fert]')" | Out-Null
     Teclear "document.querySelector('[data-horas-fert]')" '2.5'
     Teclear "document.querySelector('[data-horas-riego]')" '6'

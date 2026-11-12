@@ -55,7 +55,23 @@ export type FilaPlan = {
   horas_riego: number | null
 }
 
-export type Material = { id: string; codigo: string; descripcion: string | null; unidad: string | null }
+export type Material = {
+  id: string
+  codigo: string
+  descripcion: string | null
+  unidad: string | null
+  /** sql/99: clase para agrupar (grupo de artículos de SAP o la elegida en campo). */
+  grupo?: string | null
+  /** sql/99: MARA = viene de AGL; CAMPO = creado por el estacionero (nunca va a MARA). */
+  origen?: 'MARA' | 'CAMPO'
+  validado?: boolean
+  /** sql/99: fertilizante que entra a los análisis (lo decide AGL). Los demás son solo control de inventario. */
+  analisis?: boolean
+  pendiente?: boolean
+}
+export type EnvaseTipo = { id: string; nombre: string; validado: boolean; pendiente?: boolean }
+export type SaldoEnvase = { estacion_id: string; envase_id: string; saldo: number }
+export type LineaEnvase = { envase_id: string; recibidos: number; entregados: number }
 export type Chofer = { id: string; nombre: string; validado: boolean; pendiente?: boolean }
 export type Vehiculo = {
   id: string
@@ -110,6 +126,9 @@ export type Recepcion = {
   registrado_por: string
   anulado_at: string | null
   motivo_anulacion: string | null
+  /** sql/99 */
+  turnos?: string[] | null
+  envases?: LineaEnvase[] | null
 }
 
 export type Aplicacion = {
@@ -125,6 +144,11 @@ export type Aplicacion = {
   anulado_at: string | null
   motivo_anulacion: string | null
   lineas: Linea[] | null
+  /** sql/99: DDT del plan elegido (null si es extra o teléfono viejo) */
+  ddt_plan?: number | null
+  fecha_plan?: string | null
+  extra?: boolean
+  ddt_real?: number | null
 }
 
 export type BitacoraRiego = {
@@ -137,6 +161,9 @@ export type BitacoraRiego = {
   ejecutor_id: string | null
   ejecutor2_id: string | null
   comentario: string | null
+  /** sql/99 */
+  ppm_cloro_cabezal?: number | null
+  ppm_cloro_campo?: number | null
 }
 
 export type EstadoNovedad = 'EN_APLICACION' | 'PREPARADO' | 'PENDIENTE' | 'TERMINADO'
@@ -146,7 +173,7 @@ export type Relevo = {
   id: string
   estacion_id: string
   estado: 'EN_ENTREGA' | 'RECIBIDO' | 'RECHAZADO' | 'CANCELADO' | 'ASIGNADO'
-  metodo: 'CODIGO' | 'SESION' | 'ASIGNACION'
+  metodo: 'CODIGO' | 'CODIGO_LARGO' | 'SESION' | 'ASIGNACION'
   entrega_id: string | null
   entrega: string | null
   recibe_id: string | null
@@ -215,6 +242,9 @@ export type EstadoCampo = {
   relevos?: Relevo[]
   traslados?: Traslado[]
   destinos?: Destino[]
+  /** sql/99 (pueden faltar si la base aún no tiene la 99) */
+  envases_tipos?: EnvaseTipo[]
+  envases_saldos?: SaldoEnvase[]
 }
 
 export type TipoOperacion =
@@ -226,6 +256,8 @@ export type TipoOperacion =
   | 'anulacion'
   | 'chofer'
   | 'vehiculo'
+  | 'producto'
+  | 'envase_tipo'
   | 'relevo_entregar'
   | 'relevo_recibir'
   | 'relevo_cancelar'

@@ -95,6 +95,19 @@
 
 ## 6. Historial (lo hecho y por qué)
 
+- **2026-11-12 (tarde-noche) · Prueba piloto 1: 10 observaciones** (contrato `docs/fertirriego-piloto1.md`, `sql/99`
+  corrida en DESARROLLO; producción pendiente). Recibir con turnos/comentario/envases; guardado en segundo plano
+  (`MarcoRegistro` `rapido`, `lib/fertirriego/guardadoFondo.ts`); Aplicar por DDT o Extra + DDT real; pestaña Turno por
+  DDT; ppm de cloro; relevo de noche con código de 12 h (8 dígitos, pasos de 10 min, contador 2^40+paso:
+  `codigo.ts` ↔ `fn_fert_codigo_largo`); productos de CAMPO (`materiales.origen='CAMPO'`, `activo=false` para que otros
+  módulos no los vean); `materiales.fert_analisis` (lo decide AGL por grupo: solo fertilizantes entran al comparativo);
+  Administración › Choferes y catálogos de campo. AGL `10ac7da` + `2327c54` (clasificación /FR01, análisis solo
+  fertilizantes). Pruebas: réplica 67/67 (+98 26/26), unitarias 11/11 y 8/8, clics piloto1 29/29, campo 37/37,
+  relevo 27/27, modo pruebas 8/8, AGL 37/37 + 14/14 + 17/17 + clics 24/24.
+  Ojos: `Tarjeta` NO pasa atributos `data-*` (envolver en `div`); en QA `$radio` pisa `$RADIO`; el texto de `Campo`
+  e `Insignia` sale en MAYÚSCULAS en `innerText` (usar `textContent`); con guardado en segundo plano, esperar ~1.5 s
+  antes de mirar la cola.
+
 - **2026-11-12 (noche, trabajo autónomo; bitácora en `reporte7am.md`)**: Etapa C (relevo con código TOTP sin internet,
   traslados con autorización, exportación a AGL — `sql/96`, UI en `components/fertirriego/*Relevo*`, `*Traslado*`,
   `PantallaCodigo`, `lib/fertirriego/codigo.ts`), Etapa D en AGL (`fertirriego_analisis.py`, pestaña Campo en /CF07),
@@ -109,6 +122,10 @@
   atributos con prefijo propio en QA; (2) una vista cuya acción escribe en una carpeta de sus `canales` se remonta
   sola y corta el paso: /SE03 va con `canales: []`; (3) en PowerShell `"$VAR?.x"` toma `?` como parte del nombre de
   la variable: usar `${VAR}?.x`; y `$est1`/`$EST1` son la MISMA variable.
+- **2026-11-12 · PASA A PRODUCCIÓN (código)**: `main` = `f54812e` (merge de `desarrollo` 2dada53, hecho en un worktree
+  aparte para no tocar el CLAUDE.md del usuario). Equivalencia sobre `qa` (= producción hasta la 90) + 91..98: 2 de
+  4.560 diferencias, ambas esperadas (Administrador y rol de solo consulta ganan permisos del módulo NUEVO
+  Fertirriego; nada se quita). Falta que el usuario corra 91→98 en producción y configure rol/usuario técnico/SE03.
 - **Ojo Supabase (lo vio la QA de la 98)**: Supabase rechaza `UPDATE`/`DELETE` sin `WHERE` («UPDATE requires a WHERE
   clause», extensión safeupdate) AUN dentro de funciones; la réplica local no lo tiene. Siempre poner `where`
   (`where id`, `where x is not null`). La 98 se corrigió y se vuelve a correr encima.
