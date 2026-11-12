@@ -42,8 +42,8 @@
 
 - [ ] **Pasar Permisos v2 a producción** (cuando el usuario diga): 1) publicar el código (funciona sin la 92);
       2) correr `sql/92` en producción; 3) verificar que se entra y que Permisos/Usuarios abren. Antes de correrla,
-      la prueba `pruebas/sql/92_equivalencia.sql` sobre un clon fresco de producción. Siguientes pasos de permisos:
-      P3 historial de cambios, P4 menú desde la base, P5 delegación a jefes de zona.
+      la prueba `pruebas/sql/92_equivalencia.sql` sobre un clon fresco de producción (91+92+93). Decisión del usuario
+      (2026-11-11): NADA a producción hasta tener todos los módulos nuevos listos y probados en desarrollo.
 
 - [ ] **Fertirriego** (diseño aprobado 2026-11-11, `docs/fertirriego-diseno.md`): bodega por estación,
       aplicación por turno, custodia/relevo con código TOTP verificado sin internet, traslados, kardex; captura
@@ -141,6 +141,14 @@
   **Lección**: una tabla en `public` con FK a perfiles y a roles vuelve ambiguo `perfiles?select=*,roles(*)` en
   PostgREST y NADIE entra (pasó en desarrollo). Tablas puente de seguridad van fuera de `public`; los embeds de
   roles se nombran (`roles!perfiles_rol_id_fkey`).
+- **2026-11-11 · Permisos P3-P5** (`sql/93`, corrida en desarrollo): historial de accesos (`seguridad.bitacora_accesos`,
+  `fn_historial_accesos`, componente `HistorialAccesos`), menú desde la base para pantallas nuevas (`pantallas.en_menu/icono`,
+  `lib/navegacion/menuBase.ts`; el menú escrito no se toca), delegación a jefes de zona (`roles.delegable`,
+  `fn_guardar_accesos_persona` con la sesión de quien edita; la API de Usuarios ya no escribe accesos con la llave de
+  servicio). Pruebas `pruebas/sql/93_permisos.sql` 21/21, QA `permisos_delegacion.ps1` 18/18 y `permisos_v2.ps1` 33/33.
+- Ojo QA: un clic antes de que React tome la página se PIERDE y el siguiente cae en otro lado (marcó «Torre de Control»
+  como delegable; se revirtió). Repetir el clic hasta ver el efecto (aria-selected) y abortar si no. Y verificar al final
+  que el usuario QA quedó como estaba (`permisos_delegacion.ps1` lo hace).
 - **2026-11-11 · Fertirriego Etapa A** (`sql/91`, pruebas `pruebas/sql/91_fertirriego.sql` 57/57): tablas,
   libro inalterable, saldos, custodia, llaves TOTP, `fn_fert_sincronizar` (idempotente por UUID del teléfono,
   cada registro por separado, lo dudoso se marca y no se pierde), `fn_fert_publicar` para AGL. Réplica de

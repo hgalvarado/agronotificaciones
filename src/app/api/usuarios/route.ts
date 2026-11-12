@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { exigirPermiso } from '@/lib/permisos/portero'
-import { leerRoles, rolesPorPerfil, sincronizarRoles, validarRoles } from '@/lib/usuarios/rolesPerfil'
+import { accesosSinMigracion93, leerRoles, rolesPorPerfil, validarRoles } from '@/lib/usuarios/rolesPerfil'
+import { guardarAccesos, motivoNoAsignar, personasVisibles } from '@/lib/usuarios/accesos'
 
 /* ------------------------------------------------------------------ */
 /* GET · listar usuarios (perfil + correo de Supabase Auth)            */
@@ -30,6 +31,8 @@ export async function GET() {
       rolesPorPerfil(admin),
       admin.from('perfiles_estaciones').select('perfil_id, estacion_id'),
     ])
+    // Delegación (93): un jefe de zona solo ve a las personas de sus zonas
+    const visibles = await personasVisibles()
 
     if (errPerfiles) throw errPerfiles
     if (errAuth) throw errAuth
@@ -58,7 +61,7 @@ export async function GET() {
       ])
     )
 
-    const usuarios = (perfiles ?? []).map((p) => ({
+    const usuarios = (perfiles ?? []).filter((p) => !visibles || visibles.has(p.id)).map((p) => ({
       ...p,
       email: correos.get(p.id) ?? '',
       bloqueado: baneados.get(p.id) ?? false,
@@ -104,6 +107,12 @@ export async function POST(request: NextRequest) {
     const problemaRoles = await validarRoles(admin, roles)
     if (problemaRoles) return NextResponse.json({ error: problemaRoles }, { status: 400 })
 
+    // Delegación (93): antes de crear nada, ¿puede dar estos accesos? (un jefe: sus zonas, roles delegables)
+    const listaZonas: string[] = Array.isArray(zonas) ? zonas : []
+    const todas = todas_las_zonas === undefined ? listaZonas.length === 0 : Boolean(todas_las_zonas)
+    const motivo = await motivoNoAsignar(roles.roles, todas, listaZonas)
+    if (motivo) return NextResponse.json({ error: motivo }, { status: 403 })
+
     // 1) Crear el usuario en Supabase Auth, ya confirmado (no hay correo
     //    de verificación que el personal de campo tenga que abrir).
     const { data: creado, error: errAuth } = await admin.auth.admin.createUser({
@@ -129,29 +138,25 @@ export async function POST(request: NextRequest) {
       departamento: departamento || null,
       whatsapp: whatsapp || null,
       activo: true,
-      // Migración 92: explícito. Si no lo mandan, como antes: sin zonas marcadas = todas
-      todas_las_zonas: todas_las_zonas ?? !(Array.isArray(zonas) && zonas.length > 0),
     }
-    let { error: errPerfil } = await admin.from('perfiles').insert(perfil)
-    if (errPerfil && /todas_las_zonas/.test(errPerfil.message)) {
-      delete perfil.todas_las_zonas   // código publicado antes de correr la 92
-      ;({ error: errPerfil } = await admin.from('perfiles').insert(perfil))
-    }
+    const { error: errPerfil } = await admin.from('perfiles').insert(perfil)
 
     if (errPerfil) {
       await admin.auth.admin.deleteUser(creado.user.id)
       return NextResponse.json({ error: errPerfil.message }, { status: 400 })
     }
 
-    // Los demás roles (el principal ya lo puso el trigger de la 92)
-    const problema = await sincronizarRoles(admin, creado.user.id, roles)
-    if (problema) return NextResponse.json({ error: problema }, { status: 400 })
-
-    // Las zonas van después del perfil porque apuntan a él.
-    if (Array.isArray(zonas) && zonas.length > 0) {
-      await admin
-        .from('perfiles_zonas')
-        .insert(zonas.map((z: string) => ({ perfil_id: creado.user.id, zona_id: z })))
+    // Accesos (roles, «Todas las zonas», zonas) con la sesión de quien crea: reglas de delegación + historial.
+    // Si la base los rechaza, se deshace el alta entera (no queda una cuenta a medias).
+    const r = await guardarAccesos(creado.user.id, { roles: roles.roles, principal: roles.principal, todas, zonas: listaZonas })
+    const problema = r.ok
+      ? null
+      : r.sinMigracion
+        ? await accesosSinMigracion93(admin, creado.user.id, roles, todas, listaZonas)
+        : r.error
+    if (problema) {
+      await admin.auth.admin.deleteUser(creado.user.id)
+      return NextResponse.json({ error: problema }, { status: 400 })
     }
 
     return NextResponse.json({ ok: true, id: creado.user.id })

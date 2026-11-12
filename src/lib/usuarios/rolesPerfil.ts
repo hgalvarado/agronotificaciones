@@ -61,6 +61,38 @@ export async function sincronizarRoles(
   return e2 ? e2.message : null
 }
 
+/**
+ * El camino anterior a la 93 (código publicado antes de correr el SQL): roles, «Todas las zonas» y zonas con la
+ * llave de servicio, como lo hacía la API. Tolera que tampoco esté la 92.
+ */
+export async function accesosSinMigracion93(
+  admin: SupabaseClient,
+  perfilId: string,
+  roles: EntradaRoles | null,
+  todas: unknown,
+  zonas: unknown
+): Promise<string | null> {
+  if (roles) {
+    const problema = await sincronizarRoles(admin, perfilId, roles)
+    if (problema) return problema
+  }
+  if (todas !== undefined) {
+    const { error } = await admin.from('perfiles').update({ todas_las_zonas: Boolean(todas) }).eq('id', perfilId)
+    if (error && !/todas_las_zonas/.test(error.message)) return error.message
+  }
+  if (Array.isArray(zonas)) {
+    const { error } = await admin.from('perfiles_zonas').delete().eq('perfil_id', perfilId)
+    if (error && !/does not exist|schema cache/i.test(error.message)) return error.message
+    if (!error && zonas.length > 0) {
+      const { error: e2 } = await admin
+        .from('perfiles_zonas')
+        .insert(zonas.map((z: string) => ({ perfil_id: perfilId, zona_id: z })))
+      if (e2) return e2.message
+    }
+  }
+  return null
+}
+
 /** {perfil → sus roles}. Sin la 92: vacío (cada quien con su rol principal). */
 export async function rolesPorPerfil(admin: SupabaseClient): Promise<Map<string, number[]>> {
   const m = new Map<string, number[]>()

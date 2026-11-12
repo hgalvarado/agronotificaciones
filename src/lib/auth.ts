@@ -158,6 +158,33 @@ export const getNavegacion = cache(async (): Promise<string[]> => {
   return filas.map((f) => f.pantalla)
 })
 
+/** Una pantalla que la base pone en el menú (migración 93: `pantallas.en_menu`). */
+export type PantallaMenu = {
+  codigo: string
+  nombre: string
+  ruta: string
+  icono: string | null
+  modulo: string | null
+}
+
+/**
+ * Las pantallas NUEVAS que salen solas en el menú (Fertirriego, combustible, parámetros…). El menú de siempre
+ * sigue escrito en AppShell; esto solo agrega. Sin la 93 la columna no existe y devuelve vacío.
+ */
+export const getPantallasMenu = cache(async (): Promise<PantallaMenu[]> => {
+  const user = await getUsuarioActual()
+  if (!user) return []
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('pantallas')
+    .select('codigo, nombre, ruta, icono, modulo')
+    .eq('en_menu', true)
+    .not('ruta', 'is', null)
+    .order('orden')
+  if (error) return []
+  return (data as PantallaMenu[] | null) ?? []
+})
+
 export { canExecuteAction, zonasParaCrear, filtrarPorZona } from '@/lib/permisos/clientABAC'
 export type { Regla, Reglas } from '@/lib/permisos/clientABAC'
 

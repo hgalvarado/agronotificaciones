@@ -24,6 +24,15 @@ export default async function UsuariosPage() {
     ? await supabase.from('pantallas').select('codigo, nombre').order('orden')
     : pantallasV2
 
+  // Delegación (93): si administra usuarios solo de sus zonas, la ficha ofrece solo sus zonas y roles delegables.
+  // Sin la 93 la función no existe: administra todo, como antes.
+  const { data: todo, error: sinDelegacion } = await supabase.rpc('fn_administra_todo_usuarios', { p_accion: 'editar' })
+  let delegacion: { zonas: string[] } | null = null
+  if (!sinDelegacion && !todo) {
+    const { data: mias } = await supabase.rpc('fn_mis_zonas_efectivas')
+    delegacion = { zonas: ((mias as string[] | null) ?? []).map(String) }
+  }
+
   return (
     <div className="anim-aparecer mx-auto flex max-w-3xl flex-col gap-4 p-4 lg:p-6">
       <div>
@@ -41,6 +50,7 @@ export default async function UsuariosPage() {
         pantallas={pantallas ?? []}
         acciones={acciones ?? []}
         puedeAsignarEstaciones={puede(permisos, 'fertirriego', 'administrar_estaciones')}
+        delegacion={delegacion}
         miId={perfil?.id ?? ''}
       />
     </div>

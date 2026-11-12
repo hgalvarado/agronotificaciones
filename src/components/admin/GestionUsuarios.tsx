@@ -30,6 +30,7 @@ import { createClient } from '@/lib/supabase/client'
 import { mensajeDeError } from '@/lib/errores'
 import { ListaCasillasBuscable } from './ListaCasillasBuscable'
 import { FichaPermisosPersona, type PantallaFicha } from './FichaPermisosPersona'
+import { HistorialAccesos } from './HistorialAccesos'
 
 type RolUsuario = {
   id: number
@@ -37,7 +38,12 @@ type RolUsuario = {
   nombre: string
   acceso_total?: boolean | null
   solo_lectura?: boolean | null
+  /** 93: lo pueden asignar quienes administran solo sus zonas. */
+  delegable?: boolean | null
 }
+
+/** 93: quien administra usuarios solo de sus zonas (jefe de zona). null = administra todo. */
+export type Delegacion = { zonas: string[] } | null
 
 type UsuarioAdmin = {
   id: string
@@ -64,8 +70,10 @@ export function GestionUsuarios({
   pantallas,
   acciones,
   puedeAsignarEstaciones,
+  delegacion = null,
   miId,
 }: {
+  delegacion?: Delegacion
   roles: RolUsuario[]
   departamentos: { id: string; nombre: string }[]
   zonas: { id: string; nombre: string }[]
@@ -124,7 +132,18 @@ export function GestionUsuarios({
     return [u.nombre, u.email, u.departamento ?? '', susRoles].some((t) => t.toLowerCase().includes(q))
   })
 
-  const comun = { roles, departamentos, zonas, estaciones, pantallas, acciones, puedeAsignarEstaciones }
+  // Delegación: un jefe de zona solo asigna sus zonas, las estaciones de esas zonas y roles delegables (la base lo exige)
+  const permitidas = delegacion ? new Set(delegacion.zonas) : null
+  const comun = {
+    roles: delegacion ? roles.filter((r) => r.delegable && !r.acceso_total) : roles,
+    departamentos,
+    zonas: permitidas ? zonas.filter((z) => permitidas.has(z.id)) : zonas,
+    estaciones: permitidas ? estaciones.filter((e) => e.zona_id && permitidas.has(e.zona_id)) : estaciones,
+    pantallas,
+    acciones,
+    puedeAsignarEstaciones,
+    delegado: Boolean(delegacion),
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -249,7 +268,9 @@ function ModalUsuario({
   pantallas,
   acciones,
   puedeAsignarEstaciones,
+  delegado,
 }: {
+  delegado: boolean
   usuario?: UsuarioAdmin
   esYo?: boolean
   onCerrar: () => void
@@ -271,7 +292,7 @@ function ModalUsuario({
     principal: usuario?.rol_id ?? 0,
     departamento: usuario?.departamento ?? '',
     whatsapp: usuario?.whatsapp ?? '',
-    todasLasZonas: usuario?.todas_las_zonas ?? false,
+    todasLasZonas: delegado ? false : (usuario?.todas_las_zonas ?? false),
     zonas: usuario?.zonas ?? [],
     estaciones: usuario?.estaciones ?? [],
     activo: usuario?.activo ?? true,
@@ -279,6 +300,7 @@ function ModalUsuario({
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [verPermisos, setVerPermisos] = useState(false)
+  const [verHistorial, setVerHistorial] = useState(false)
 
   const nombreZona = new Map(zonas.map((z) => [z.id, z.nombre]))
 
@@ -490,6 +512,11 @@ function ModalUsuario({
           }
         >
           <div className="flex flex-col gap-2">
+            {delegado ? (
+              <p className="text-xs text-slate-500" data-delegado>
+                Puedes asignar solo tus zonas y los roles marcados como delegables.
+              </p>
+            ) : (
             <button
               type="button"
               role="switch"
@@ -505,6 +532,7 @@ function ModalUsuario({
               </span>
               Todas las zonas
             </button>
+            )}
             {!form.todasLasZonas && (
               <ListaCasillasBuscable
                 nombre="zonas"
@@ -580,6 +608,26 @@ function ModalUsuario({
             {verPermisos && (
               <div className="mt-2">
                 <FichaPermisosPersona perfilId={usuario!.id} pantallas={pantallas} acciones={acciones} />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* --------------------- Historial de accesos ------------------- */}
+        {esEdicion && (
+          <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-inset ring-slate-200">
+            <button
+              type="button"
+              aria-expanded={verHistorial}
+              data-ver-historial
+              onClick={() => setVerHistorial((v) => !v)}
+              className="text-sm font-bold text-slate-800"
+            >
+              {verHistorial ? '▾' : '▸'} Historial de sus accesos
+            </button>
+            {verHistorial && (
+              <div className="mt-2">
+                <HistorialAccesos perfilId={usuario!.id} />
               </div>
             )}
           </div>

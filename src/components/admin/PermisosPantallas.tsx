@@ -28,6 +28,7 @@ import {
   type ConfigPermiso,
 } from '@/lib/permisos/abac'
 import { TarjetaPermisosPantalla, type AccionDePantalla, type CambioCelda } from './TarjetaPermisosPantalla'
+import { HistorialAccesos } from './HistorialAccesos'
 
 export type Pantalla = {
   codigo: string
@@ -51,6 +52,8 @@ export type RolFila = {
   acceso_total?: boolean | null
   /** Mira y exporta, nunca escribe, marquen lo que marquen aquí. */
   solo_lectura?: boolean | null
+  /** 93: lo pueden asignar quienes administran usuarios solo de sus zonas (jefes de zona). */
+  delegable?: boolean | null
 }
 
 /** Una celda guardada. `permitido` falso conserva el alcance y la condición configurados. */
@@ -130,6 +133,7 @@ export function PermisosPantallas({
   const [nombreNuevo, setNombreNuevo] = useState('')
   const [modoNombre, setModoNombre] = useState<'nuevo' | 'copia' | null>(null)
   const [trabajando, setTrabajando] = useState(false)
+  const [verHistorial, setVerHistorial] = useState(false)
 
   const catalogo = useMemo(() => new Map(acciones.map((a) => [a.codigo, a])), [acciones])
 
@@ -272,6 +276,29 @@ export function PermisosPantallas({
     setEstado({ tipo: 'ok', texto: `Rol «${(nuevo as RolFila | null)?.nombre ?? nombreNuevo}» creado.` })
   }
 
+  /** 93: marcar el rol como delegable (lo pueden asignar los jefes de zona en sus zonas). */
+  async function alternarDelegable(r: RolFila) {
+    setTrabajando(true)
+    setEstado(null)
+    const valor = !r.delegable
+    const { error } = await supabase.from('roles').update({ delegable: valor }).eq('id', r.id)
+    setTrabajando(false)
+    if (error) {
+      return setEstado({
+        tipo: 'error',
+        texto: mensajeDeError(error, 'No se pudo cambiar. Si dice que no existe «delegable», falta la migración 93.'),
+      })
+    }
+    setListaRoles((l) => l.map((x) => (x.id === r.id ? { ...x, delegable: valor } : x)))
+    setDeshacer(null)
+    setEstado({
+      tipo: 'ok',
+      texto: valor
+        ? `«${r.nombre}» ya lo pueden asignar los jefes de zona.`
+        : `«${r.nombre}» solo lo asigna quien administra todo.`,
+    })
+  }
+
   async function eliminarRol(r: RolFila) {
     if (!window.confirm(`¿Eliminar el rol «${r.nombre}»? Se van también sus permisos.`)) return
     setTrabajando(true)
@@ -399,6 +426,34 @@ export function PermisosPantallas({
               )}
             </div>
           </div>
+
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={Boolean(rol.delegable)}
+              disabled={trabajando}
+              data-delegable
+              onClick={() => void alternarDelegable(rol)}
+              title="Quien administra usuarios solo de sus zonas (jefe de zona) podrá dar este rol a personas de sus zonas."
+              className="flex items-center gap-2 text-xs font-semibold text-slate-600 disabled:opacity-50"
+            >
+              <span className={`relative h-4 w-7 rounded-full transition-colors ${rol.delegable ? 'bg-brand-700' : 'bg-slate-300'}`}>
+                <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all ${rol.delegable ? 'left-3.5' : 'left-0.5'}`} />
+              </span>
+              Lo pueden asignar los jefes de zona
+            </button>
+            <button
+              type="button"
+              aria-expanded={verHistorial}
+              data-ver-historial-rol
+              onClick={() => setVerHistorial((v) => !v)}
+              className="text-xs font-semibold text-slate-500 hover:text-slate-900"
+            >
+              {verHistorial ? '▾' : '▸'} Historial de cambios
+            </button>
+          </div>
+          {verHistorial && <HistorialAccesos key={rol.id} rolId={rol.id} />}
 
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative min-w-52 flex-1">
