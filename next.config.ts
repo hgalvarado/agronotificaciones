@@ -6,6 +6,10 @@ import type { NextConfig } from "next";
 process.env.TZ = process.env.TZ ?? "America/Tegucigalpa";
 
 const nextConfig: NextConfig = {
+  /* El Manual del estacionero se lee del disco en /fertirriego (botón «¿Cómo se usa?»): que viaje al despliegue. */
+  outputFileTracingIncludes: {
+    "/fertirriego": ["./docs/manuales/01-estacionero-fertirriego.md"],
+  },
   /* El service worker de Fertirriego (public/sw.js) nunca se guarda en caché del navegador: así una versión
      nueva llega en la siguiente visita. Solo afecta a ese archivo. */
   async headers() {

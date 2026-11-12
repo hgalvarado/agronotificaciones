@@ -18,6 +18,7 @@ import { obtenerUbicacion } from '@/lib/fertirriego/ubicacion'
 import type { Chofer, Estacion, Relevo, Traslado, Vehiculo } from '@/lib/fertirriego/tipos'
 import { useCampo } from '@/lib/fertirriego/useCampo'
 import { AsignarCustodia } from './AsignarCustodia'
+import { AyudaFertirriego } from './AyudaFertirriego'
 import { DetalleDocumento } from './DetalleDocumento'
 import { FormAplicacion } from './FormAplicacion'
 import { FormBitacora } from './FormBitacora'
@@ -63,7 +64,7 @@ const PESTANAS: { clave: Pestana; nombre: string }[] = [
   { clave: 'envios', nombre: 'Envíos' },
 ]
 
-export function CampoFertirriego({ usuarioId }: { usuarioId: string }) {
+export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; manual?: string | null }) {
   const campo = useCampo(usuarioId)
   const { estado, cola } = campo
   const [estacionId, setEstacionId] = useState('')
@@ -163,6 +164,7 @@ export function CampoFertirriego({ usuarioId }: { usuarioId: string }) {
         </span>
       </div>
 
+      {manual && <AyudaFertirriego manual={manual} />}
       {campo.error && <Alerta>{campo.error}</Alerta>}
       {aviso && (
         <div role="status" data-aviso className="rounded-xl bg-brand-700 px-3 py-2 text-sm font-semibold text-white">
