@@ -227,7 +227,8 @@ export function CatalogosCampo() {
 
       {lista.length === 0 && <p className="text-sm text-slate-400">No hay nada que mostrar.</p>}
       {lista.map((f) => (
-        <Tarjeta key={f.id} className="flex flex-col gap-2 p-3" data-fila-catalogo={f.titulo}>
+        <div key={f.id} data-fila-catalogo={f.titulo}>
+        <Tarjeta className="flex flex-col gap-2 p-3">
           {editando?.id === f.id ? (
             <div className="flex flex-col gap-2">
               {CAMPOS[pestana].map((c) => (
@@ -337,6 +338,7 @@ export function CatalogosCampo() {
             </div>
           )}
         </Tarjeta>
+        </div>
       ))}
     </div>
   )

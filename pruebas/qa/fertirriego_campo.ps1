@@ -125,6 +125,9 @@ try {
     $tr = Esperar "!document.querySelector('[data-selector-chofer]')" 15000
     # Guardado justo al abrir la pantalla (mientras ya sincronizaba): el envío va en la vuelta siguiente (hasta 1 min)
     if ($tr -lt 0) { $script:Resultados.Add("DIAG recepción: $((JS "[...document.querySelectorAll('[role=dialog]')].map(d => d.innerText).join(' ||| ')") -replace "`n", ' / ')"); Captura 'fert_recepcion_error.png' }
+    Start-Sleep -Milliseconds 1500
+    $fallo = JS "document.querySelector('[data-guardado-fallido]')?.innerText || ''"
+    if ($fallo) { $script:Resultados.Add("DIAG guardado fallido: $($fallo -replace "`n", ' / ')") }
     $t = Esperar "!document.querySelector('[data-pendientes-cuenta]')" 80000
     if ($t -lt 0) {
         $script:Resultados.Add("DIAG pendientes=$(Pendientes) barra=$(JS "document.querySelector('[data-barra-estado]')?.dataset.barraEstado") texto=$((JS "document.querySelector('[data-barra-estado]')?.innerText") -replace "`n", ' ')")
