@@ -108,6 +108,7 @@ try {
     Captura 'permisos_delegacion_jefe.png'
 
     # ===================== P4 · Menú desde la base =====================
+    $script:menuOriginal = (Lista 'pantallas?select=en_menu&codigo=eq.fertirriego')[0].en_menu
     Rest 'pantallas?codigo=eq.fertirriego' 'Patch' @{ en_menu = $true } -Servicio | Out-Null
     Ir "/admin/usuarios?r=$s-2"
     Esperar "!!document.querySelector('nav')" 30000 | Out-Null
@@ -123,7 +124,8 @@ try {
 }
 catch { $script:Resultados.Add("EXCEPCION $($_.Exception.Message)") }
 finally {
-    try { Rest 'pantallas?codigo=eq.fertirriego' 'Patch' @{ en_menu = $false } -Servicio | Out-Null } catch {}
+    # El menú vuelve a como estaba (desde la 94 Fertirriego está encendido)
+    try { if ($null -ne $script:menuOriginal) { Rest 'pantallas?codigo=eq.fertirriego' 'Patch' @{ en_menu = [bool]$script:menuOriginal } -Servicio | Out-Null } } catch {}
     # Restaurar al usuario QA tal como estaba
     # Cada paso por separado: si uno falla, los demás igual se hacen. Al final se verifica contra lo guardado.
     try { Rest 'rpc/fn_asignar_roles' 'Post' @{ p_perfil = $qaId; p_roles = $origRoles; p_principal = $orig.rol_id } -Servicio | Out-Null } catch { $script:Resultados.Add("LIMPIEZA roles QA: $($_.Exception.Message)") }

@@ -47,10 +47,13 @@
 
 - [ ] **Fertirriego** (diseño aprobado 2026-11-11, `docs/fertirriego-diseno.md`): bodega por estación,
       aplicación por turno, custodia/relevo con código TOTP verificado sin internet, traslados, kardex; captura
-      sin señal; AGL publica y analiza. **Etapa A hecha** (`sql/91` sin correr; AGL `fertirriego_campo.py` +
-      botón «Publicar a campo» en /CF07). Falta: el usuario corre la 91 en desarrollo, crea rol + usuario
-      técnico (Conexión AGL: Ver + Publicar) y el archivo de conexión en su PC. Siguiente: **Etapa B** (app de
-      campo offline-first: PWA propia, IndexedDB, cola → `fn_fert_sincronizar`).
+      sin señal; AGL publica y analiza. **Etapa A hecha** (`sql/91` corrida en desarrollo; AGL
+      `fertirriego_campo.py` + botón «Publicar a campo» en /CF07). El usuario ya creó el rol «Integración AGL»;
+      falta el archivo de conexión en su PC para publicar. **Etapa B hecha** (2026-11-11, `sql/94` y `sql/95` corridas en
+      desarrollo): app de campo sin señal en `/fertirriego`. Siguiente: **Etapa C** (relevo con código TOTP y traslados),
+      luego D (AGL baja movimientos y comparativos) y E.
+      Guías de Next 16 a leer antes de construir: `node_modules/next/dist/docs/01-app/02-guides/progressive-web-apps.md` y
+      `offline-support.md`, `use-offline.md`.
 
 - [ ] **Filtro «Horómetro malo» en /horometros** (aprobado por el usuario 2026-11-11): tarjeta/filtro rápido
       para las filas cuyo comentario trae «[Horómetro malo]» (`MARCA_HOROMETRO_MALO` en `lib/horometro/repetido.ts`).
@@ -141,6 +144,15 @@
   **Lección**: una tabla en `public` con FK a perfiles y a roles vuelve ambiguo `perfiles?select=*,roles(*)` en
   PostgREST y NADIE entra (pasó en desarrollo). Tablas puente de seguridad van fuera de `public`; los embeds de
   roles se nombran (`roles!perfiles_rol_id_fkey`).
+- **2026-11-11 · Fertirriego Etapa B** (`sql/94` fn_fert_estado_campo + menú; `sql/95` la custodia se mira al REGISTRAR
+  —creado_en—, no a la hora del hecho: lo encontró la QA). Código: `lib/fertirriego/*` (IndexedDB por usuario, cola con
+  UUID, sincronizador, cálculos puros de saldo/kardex/plan), `components/fertirriego/*` (Estación, Por turno, Bitácora,
+  Envíos; formularios Recibir/Aplicar/Contar/Horas; anular/devolver; asignar custodia), `public/sw.js` (solo se instala
+  al abrir /fertirriego; guarda esa pantalla y /_next/static; lo demás va a la red igual), `app/manifest.ts`. QA
+  `fertirriego_campo.ps1` 27/27 (sin señal = Supabase bloqueado + servidor apagado; estación de prueba que se borra) y
+  regresión tickets_movil 15/15, revision_lotes 9/9, permisos_v2 33/33, permisos_delegacion 18/18.
+- Ojo QA: la primera corrida tras `next start` falla por arranque en frío (páginas lentas); repetir. Y toda prueba que
+  cambie configuración debe devolver el valor ORIGINAL (permisos_delegacion dejó Fertirriego fuera del menú; corregido).
 - **2026-11-11 · Permisos P3-P5** (`sql/93`, corrida en desarrollo): historial de accesos (`seguridad.bitacora_accesos`,
   `fn_historial_accesos`, componente `HistorialAccesos`), menú desde la base para pantallas nuevas (`pantallas.en_menu/icono`,
   `lib/navegacion/menuBase.ts`; el menú escrito no se toca), delegación a jefes de zona (`roles.delegable`,

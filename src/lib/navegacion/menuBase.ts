@@ -41,7 +41,8 @@ export function entradasDeLaBase(
 
   return [...porModulo.entries()].map(([modulo, lista]) =>
     lista.length === 1
-      ? entrada(lista[0])
+      ? // Sola en su módulo: se llama como el módulo («Fertirriego · Estaciones» → «Fertirriego»)
+        { ...entrada(lista[0]), etiqueta: lista[0].nombre.startsWith(modulo) ? modulo : lista[0].nombre }
       : {
           href: lista[0].ruta,
           pantalla: lista[0].codigo,

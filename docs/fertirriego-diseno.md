@@ -170,6 +170,13 @@ moviéndose **solo con lo que el estacionero recibe y aplica**. Apagada (por def
   181 materiales, 1,131 filas de plan en < 1 s.
 - Para usarla: el usuario técnico necesita un rol con «Fertirriego · Conexión AGL»: Ver + Publicar.
 
+## 8c. Etapa B · construida (2026-11-11)
+
+App de campo en `/fertirriego` que funciona sin señal: `sql/94` (fn_fert_estado_campo: todo lo del teléfono en una
+llamada) y `sql/95` (la custodia se mira al registrar). Datos del teléfono en IndexedDB por persona; cada registro con
+UUID en una cola que se envía sola; service worker solo para esta pantalla. Productos, estaciones, turnos y plan vienen
+de AGL (MARA y /TR02); en AgroNotificaciones no se crean. QA con clics 27/27.
+
 ## 9. Etapas
 
 | Etapa | Contenido |
