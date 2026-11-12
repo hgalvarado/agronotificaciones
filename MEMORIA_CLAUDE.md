@@ -30,7 +30,12 @@
 - Mobile-first (capturadores en el teléfono). Funciones homogéneas en todos los módulos. Operable con teclado.
 - Respuestas al usuario en español, claras, sin jerga innecesaria.
 
-## 3. Estado actual (2026-11-11)
+## 3. Estado actual (2026-11-12)
+
+- `desarrollo` adelante de `main` con Permisos v2 (92, 93) y Fertirriego A–D. SQL pendiente de correr en desarrollo:
+  **solo la 96**. Nada pasa a producción hasta que el usuario lo diga (decisión 2026-11-11).
+
+### Estado anterior (2026-11-11)
 
 - **Producción al día**: `main` = `7ed69a6` (todo lo de `desarrollo`). `sql/83`–`90` corridas
   en desarrollo y producción. El usuario dio «Mover proceso» a Torre de Control en producción.
@@ -50,8 +55,11 @@
       sin señal; AGL publica y analiza. **Etapa A hecha** (`sql/91` corrida en desarrollo; AGL
       `fertirriego_campo.py` + botón «Publicar a campo» en /CF07). El usuario ya creó el rol «Integración AGL»;
       falta el archivo de conexión en su PC para publicar. **Etapa B hecha** (2026-11-11, `sql/94` y `sql/95` corridas en
-      desarrollo): app de campo sin señal en `/fertirriego`. Siguiente: **Etapa C** (relevo con código TOTP y traslados),
-      luego D (AGL baja movimientos y comparativos) y E.
+      desarrollo): app de campo sin señal en `/fertirriego`. **Etapa C hecha** (2026-11-12, `496e911`): `sql/96`
+      probada en réplica 34/34 pero **SIN correr en desarrollo** → cuando el usuario la corra: QA
+      `pruebas/qa/fertirriego_relevo_traslado.ps1` (crea y borra una persona B de prueba). **Etapa D hecha** en AGL
+      (`6c74e71`, `03b55ea`). Manuales en `docs/manuales/` (+ «¿Cómo se usa?» en la app). Siguiente: **Etapa E**
+      (alertas, sugerencia de envío, cierre mensual).
       Guías de Next 16 a leer antes de construir: `node_modules/next/dist/docs/01-app/02-guides/progressive-web-apps.md` y
       `offline-support.md`, `use-offline.md`.
 
@@ -89,6 +97,17 @@
 5. No usar `npm run build` en la carpeta del usuario (el `prebuild` borra `.next` de su servidor de desarrollo).
 
 ## 6. Historial (lo hecho y por qué)
+
+- **2026-11-12 (noche, trabajo autónomo; bitácora en `reporte7am.md`)**: Etapa C (relevo con código TOTP sin internet,
+  traslados con autorización, exportación a AGL — `sql/96`, UI en `components/fertirriego/*Relevo*`, `*Traslado*`,
+  `PantallaCodigo`, `lib/fertirriego/codigo.ts`), Etapa D en AGL (`fertirriego_analisis.py`, pestaña Campo en /CF07),
+  manuales (`docs/manuales/`, `AGLGestion_App/docs/manual_fertirriego_AGL.md`), ayuda en la app
+  (`lib/manual/markdown.tsx` sin librerías; `next.config` `outputFileTracingIncludes` para que el .md viaje a Vercel).
+  QA: B 27/27 (sin 96), ayuda 12/12, AGL 13/13 + unitaria 14/14; regresiones tickets 15/15, lotes 9/9, permisos 33/33
+  y 18/18 (primera corrida tras recompilar falla por arranque en frío; repetir).
+- Ojo AGL: `notificar()` va a la barra de estado (un solo mensaje): un aviso posterior pisa al anterior. No notificar
+  avisos al repintar; ponerlos en un `title` o en la vista.
+- Ojo: el clasificador bloquea leer secretos (llaves `fert_llaves`) en consola: en QA, leer el código de la pantalla.
 
 - **2026-11-10 · Limpieza**: retiradas de la UI Trasplante y Turnos de riego (se migraron a AGL), imágenes de
   ejemplo de Next, BITACORA.md. Telecom migrado a AGL (Líneas Telefónicas) y retirado (código + `sql/83`).

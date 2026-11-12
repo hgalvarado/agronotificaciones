@@ -177,6 +177,34 @@ llamada) y `sql/95` (la custodia se mira al registrar). Datos del teléfono en I
 UUID en una cola que se envía sola; service worker solo para esta pantalla. Productos, estaciones, turnos y plan vienen
 de AGL (MARA y /TR02); en AgroNotificaciones no se crean. QA con clics 27/27.
 
+## 8d. Etapa C · construida (2026-11-12) — `sql/96` (probada en réplica 34/34; **falta correrla en desarrollo**)
+
+- **Relevo**: quien entrega deja novedades por turno (en aplicación / preparado / pendiente / terminado) y queda
+  bloqueado (custodia EN_ENTREGA); su teléfono muestra un código TOTP de 6 dígitos (30 s) calculado con su llave
+  (WebCrypto, `lib/fertirriego/codigo.ts`). Quien recibe lo escribe en SU teléfono, que lo verifica sin internet con
+  las llaves de sus compañeros (±1 paso; 5 fallos = 5 min de bloqueo); la base lo vuelve a verificar
+  (`fn_fert_totp_valido`, ±2 pasos sobre `momento_codigo`). Cuadre por producto: diferencias → `DIFERENCIA_RELEVO`
+  y relevo «revisar». Entrega y recepción pueden llegar en cualquier orden (se juntan). Con señal: método SESION.
+  Rechazar (con motivo) devuelve la custodia a quien entregaba; cancelar la entrega antes de que la reciban.
+- **Traslados**: crear (custodia del origen, autorizador ≠ uno mismo y con «Autorizar traslado» sobre el origen),
+  autorizar (sale del origen, `en_transito` en el destino), aceptar con lo que llegó (≤ enviado; menos =
+  `DIFERENCIA_TRASLADO`) o rechazar (vuelve al origen), cancelar antes de autorizar.
+- **Exportación a AGL**: `fn_fert_exportar(cursor, limite)` (solo «Fertirriego · Conexión AGL › Ver»).
+- QA con clics listo para correr tras la 96: `pruebas/qa/fertirriego_relevo_traslado.ps1` (dos personas en el mismo
+  navegador; el código se lee de la pantalla de quien entrega). Regresión de la Etapa B sin la 96: 27/27.
+
+## 8e. Etapa D · construida en AGL (2026-11-12)
+
+`backend/fertirriego_analisis.py`: **Bajar de campo** (por cursor, sin duplicar; `data/fertirriego/movimientos_AAAA-MM.json`
+y `campo.json` con saldos, bitácora y relevos a revisar), **comparativo** turno × producto (Plan del MRP · Cargado SAP
+por orden del turno · Aplicado neto con devoluciones y anulaciones; semáforo ±5 %, «fuera de plan») y **consignación**
+valorizada con MARA. Pestaña **Campo** en /CF07. Pruebas: unitaria 14/14, clics 13/13 (contra la réplica con la 96).
+
+## 8f. Manuales
+
+`docs/manuales/` (estacionero, jefe de zona, administrador, guion de la charla) y en AGL `docs/manual_fertirriego_AGL.md`.
+El del estacionero se abre dentro de la app («¿Cómo se usa?»), también sin señal.
+
 ## 9. Etapas
 
 | Etapa | Contenido |
