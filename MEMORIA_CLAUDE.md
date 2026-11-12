@@ -40,6 +40,13 @@
 
 ## 4. Pendientes (borrar al completar)
 
+- [ ] **Fertirriego** (diseño aprobado 2026-11-11, `docs/fertirriego-diseno.md`): bodega por estación,
+      aplicación por turno, custodia/relevo con código TOTP verificado sin internet, traslados, kardex; captura
+      sin señal; AGL publica y analiza. **Etapa A hecha** (`sql/91` sin correr; AGL `fertirriego_campo.py` +
+      botón «Publicar a campo» en /CF07). Falta: el usuario corre la 91 en desarrollo, crea rol + usuario
+      técnico (Conexión AGL: Ver + Publicar) y el archivo de conexión en su PC. Siguiente: **Etapa B** (app de
+      campo offline-first: PWA propia, IndexedDB, cola → `fn_fert_sincronizar`).
+
 - [ ] **Filtro «Horómetro malo» en /horometros** (aprobado por el usuario 2026-11-11): tarjeta/filtro rápido
       para las filas cuyo comentario trae «[Horómetro malo]» (`MARCA_HOROMETRO_MALO` en `lib/horometro/repetido.ts`).
 - [ ] Duplicados viejos: en desarrollo hay capturadores con varios tickets «Registrado» del mismo día (hasta
@@ -119,6 +126,10 @@
 - **2026-11-11 · Mi trabajo = sin cerrar**: el capturador termina su parte CERRANDO el ticket (el paso a
   Revisando es de Torre de Control). «Pendientes» pasa a «Sin cerrar» (solo tickets ABIERTOS en Registrando);
   la jornada cerrada muestra «Ya cerraste esta jornada». QA `mi_trabajo_cerrados.ps1` 7/7.
+- **2026-11-11 · Fertirriego Etapa A** (`sql/91`, pruebas `pruebas/sql/91_fertirriego.sql` 57/57): tablas,
+  libro inalterable, saldos, custodia, llaves TOTP, `fn_fert_sincronizar` (idempotente por UUID del teléfono,
+  cada registro por separado, lo dudoso se marca y no se pierde), `fn_fert_publicar` para AGL. Réplica de
+  pruebas: base `fert_qa` = copia de `qa` + la 91; ahí `auth.uid()` lee `request.jwt.claim.sub`.
 - Ojo QA: los avisos de la base (Realtime) tardan ~3-4 s en conectarse al abrir una pantalla; en pruebas,
   esperar antes de cambiar datos «desde fuera».
 - Ojo QA: copiar archivos de rutas con `[ticketId]` con `Copy-Item -LiteralPath` (los corchetes son comodín).
