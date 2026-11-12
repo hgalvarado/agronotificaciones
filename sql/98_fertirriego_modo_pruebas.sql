@@ -189,7 +189,7 @@ begin
     if exists (select 1 from seguridad.fert_pruebas where not activo and desactivado_en < now() - interval '30 days')
        and exists (select 1 from public.estaciones_riego where prueba_de is not null) then
         perform public._fert_pruebas_borrar_todo();
-        delete from seguridad.fert_pruebas_participantes;
+        delete from seguridad.fert_pruebas_participantes where perfil_id is not null;   -- Supabase exige WHERE
     end if;
 end;
 $$;
@@ -265,7 +265,7 @@ begin
     where e.prueba_de is not null
     on conflict do nothing;
     update seguridad.fert_pruebas
-    set activo = true, activado_en = now(), desactivado_en = null, cambiado_por = (select auth.uid());
+    set activo = true, activado_en = now(), desactivado_en = null, cambiado_por = (select auth.uid()) where id;
     return public.fn_fert_pruebas_estado();
 end;
 $$;
@@ -276,7 +276,7 @@ returns jsonb
 language plpgsql security definer set search_path = public, pg_temp as $$
 begin
     perform public._fert_pruebas_exigir_admin();
-    update seguridad.fert_pruebas set activo = false, desactivado_en = now(), cambiado_por = (select auth.uid());
+    update seguridad.fert_pruebas set activo = false, desactivado_en = now(), cambiado_por = (select auth.uid()) where id;
     return public.fn_fert_pruebas_estado();
 end;
 $$;
@@ -290,8 +290,8 @@ declare
 begin
     perform public._fert_pruebas_exigir_admin();
     v := public._fert_pruebas_borrar_todo();
-    delete from seguridad.fert_pruebas_participantes;
-    update seguridad.fert_pruebas set activo = false, desactivado_en = now(), cambiado_por = (select auth.uid());
+    delete from seguridad.fert_pruebas_participantes where perfil_id is not null;   -- Supabase exige WHERE
+    update seguridad.fert_pruebas set activo = false, desactivado_en = now(), cambiado_por = (select auth.uid()) where id;
     return v;
 end;
 $$;

@@ -109,6 +109,12 @@
   atributos con prefijo propio en QA; (2) una vista cuya acción escribe en una carpeta de sus `canales` se remonta
   sola y corta el paso: /SE03 va con `canales: []`; (3) en PowerShell `"$VAR?.x"` toma `?` como parte del nombre de
   la variable: usar `${VAR}?.x`; y `$est1`/`$EST1` son la MISMA variable.
+- **Ojo Supabase (lo vio la QA de la 98)**: Supabase rechaza `UPDATE`/`DELETE` sin `WHERE` («UPDATE requires a WHERE
+  clause», extensión safeupdate) AUN dentro de funciones; la réplica local no lo tiene. Siempre poner `where`
+  (`where id`, `where x is not null`). La 98 se corrigió y se vuelve a correr encima.
+- **2026-11-12 (noche) · Modo de pruebas Fertirriego** (`sql/98`, `a671340`): estaciones «PRUEBA · X» (prueba_de),
+  participantes, apagar sin borrar (30 días), borrar. Réplica 26/26. Delegación fina de Usuarios: `sql/97` (corrida
+  en desarrollo, QA jefe 7/7). Bitácora de cambios del LTP en AGL: la hace otro agente en paralelo.
 - **2026-11-12 (tarde) · Recibir con plan, borradores, /FR01** (`a449a3c` AgroNoti, `22f378b` AGL): recibir sin
   «¿Dónde?» y con los productos del plan de la estación; borradores (`lib/fertirriego/borrador.ts`); AGL /FR01 una
   sola pantalla (Sincronizar todo, vista previa, comparativo, consignación, relevos). Defectos hallados: GPS sin

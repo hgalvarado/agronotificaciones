@@ -91,8 +91,8 @@ export function ModoPruebasFertirriego({
 
   return (
     <div className="flex flex-col gap-4" data-modo-pruebas>
-      <Tarjeta className="flex flex-col gap-2 p-4" data-estado-pruebas={estado.activo ? 'activo' : 'inactivo'}>
-        <div className="flex flex-wrap items-center gap-2">
+      <Tarjeta className="flex flex-col gap-2 p-4">
+        <div className="flex flex-wrap items-center gap-2" data-estado-pruebas={estado.activo ? 'activo' : 'inactivo'}>
           {estado.activo ? (
             <Insignia tono="ambar" punto>
               Modo de pruebas ACTIVO
