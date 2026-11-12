@@ -65,8 +65,6 @@
 
 - [ ] **AGL única fuente de catálogos** (pedido y aprobado por el usuario 2026-11-11): inventario y propuesta en
       `docs/agl-fuente-unica.md`. Esperando decisiones de reconciliación (zonas 2B/2C/3C, sub-turnos, temporada 2025-26).
-- [ ] **Filtro «Horómetro malo» en /horometros** (aprobado por el usuario 2026-11-11): tarjeta/filtro rápido
-      para las filas cuyo comentario trae «[Horómetro malo]» (`MARCA_HOROMETRO_MALO` en `lib/horometro/repetido.ts`).
 - [ ] Duplicados viejos: en desarrollo hay capturadores con varios tickets «Registrado» del mismo día (hasta
       8). La 86 no los toca; la consulta para verlos está al final de `sql/86`. Decidir con el usuario.
 - [ ] **Velocidad de Labores**: medido. La consulta en la base es rápida (~10 ms en réplica; ~300 ms ida y
@@ -105,6 +103,8 @@
   (`lib/manual/markdown.tsx` sin librerías; `next.config` `outputFileTracingIncludes` para que el .md viaje a Vercel).
   QA: B 27/27 (sin 96), ayuda 12/12, AGL 13/13 + unitaria 14/14; regresiones tickets 15/15, lotes 9/9, permisos 33/33
   y 18/18 (primera corrida tras recompilar falla por arranque en frío; repetir).
+- **2026-11-12 · Filtro «Horómetro malo»** (`e3910ab`): tarjeta/filtro rápido en /horometros con las lecturas cuyo
+  comentario trae `[Horómetro malo]` y cuántos equipos. QA `horometro_malo_filtro.ps1` 9/9.
 - Ojo AGL: `notificar()` va a la barra de estado (un solo mensaje): un aviso posterior pisa al anterior. No notificar
   avisos al repintar; ponerlos en un `title` o en la vista.
 - Ojo: el clasificador bloquea leer secretos (llaves `fert_llaves`) en consola: en QA, leer el código de la pantalla.
