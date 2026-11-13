@@ -107,7 +107,7 @@ try {
     Ir "/tickets?r=$s"
     $t = Esperar "!!document.querySelector('[data-barra-movil] [data-barra-entrada]')" 60000
     $barra = JS "[...document.querySelectorAll('[data-barra-movil] [data-barra-entrada]')].map(a => a.dataset.barraEntrada + '=' + a.textContent.trim()).join('|')"
-    OK ($t -ge 0 -and $barra -match "^fertirriego=$grupo: Mi estación\|tickets=Tickets") 'Barra del teléfono = el diseñado (Fertirriego primero)' $barra
+    OK ($t -ge 0 -and $barra -match "^fertirriego=${grupo}: Mi estación\|tickets=Tickets") 'Barra del teléfono = el diseñado (Fertirriego primero)' $barra
     Pantalla -Ancho 1440 -Alto 900
 
     # ===================== Admin otra vez: copiar, descartar, restablecer =====================
