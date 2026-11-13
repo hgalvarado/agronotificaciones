@@ -56,6 +56,10 @@ function describir(e: Evento): string {
       if (a.rol_id !== d.rol_id) cambios.push(`cambió el rol principal a ${e.rol ?? ''}`)
       return `${e.persona ?? 'Persona'}: ${cambios.join(', ') || 'cambio de accesos'}`
     }
+    case 'menu_rol':
+      return e.accion === 'DELETE'
+        ? `Devolvió ${e.rol ?? 'un rol'} al menú de siempre`
+        : `${e.accion === 'INSERT' ? 'Diseñó' : 'Cambió'} el menú de ${e.rol ?? 'un rol'}`
     default:
       return `${e.accion} en ${e.tabla}`
   }

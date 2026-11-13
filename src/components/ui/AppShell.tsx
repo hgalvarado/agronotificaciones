@@ -6,54 +6,27 @@ import { createPortal } from 'react-dom'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { marcarSalidaVoluntaria } from '@/components/auth/GuardiaSesion'
-import {
-  IconChart,
-  IconChevronDown,
-  IconDinero,
-  IconGauge,
-  IconLogout,
-  IconMapPin,
-  IconMas,
-  IconPlan,
-  IconSettings,
-  IconGota,
-  IconTicket,
-  IconTractor,
-  IconUser,
-} from './Icons'
+import { IconChevronDown, IconLogout, IconMas } from './Icons'
 import { CampanaNotificaciones } from './CampanaNotificaciones'
 import { Logo } from './Logo'
 import { SelectorTema } from './SelectorTema'
+import { IconoMenu } from './iconosMenu'
 import { repartir } from '@/lib/navegacion/barra'
-import { PANTALLAS_CATALOGO, veAlgunCatalogo } from '@/lib/catalogos/grupos'
-import { entradasDeLaBase, type PantallaDeMenu } from '@/lib/navegacion/menuBase'
-
-/** Los íconos que puede pedir una pantalla desde la base (`pantallas.icono`). */
-const ICONOS_MENU: Record<string, React.ReactNode> = {
-  gota: <IconGota />,
-  gauge: <IconGauge />,
-  tractor: <IconTractor />,
-  chart: <IconChart />,
-  plan: <IconPlan />,
-  mappin: <IconMapPin />,
-  dinero: <IconDinero />,
-  ajustes: <IconSettings />,
-  usuario: <IconUser />,
-  ticket: <IconTicket />,
-}
+import { PANTALLAS_CATALOGO } from '@/lib/catalogos/grupos'
+import type { PantallaDeMenu } from '@/lib/navegacion/menuBase'
+import type { EntradaMenu } from '@/lib/navegacion/destinos'
+import { construirMenu, tieneDesde, type MenuDeRol } from '@/lib/navegacion/menuRol'
 
 type ItemNav = {
   href: string
   etiqueta: string
   icono: React.ReactNode
-  visible: boolean
   /**
-   * El código de pantalla. Es la llave con la que el Administrador
-   * configura qué sale en la barra del teléfono, así que tiene que
-   * coincidir con `pantallas.codigo`.
+   * El código de pantalla (o del destino del menú). Es la llave con la que el Administrador
+   * configura qué sale en la barra del teléfono, así que tiene que coincidir con `pantallas.codigo`.
    */
   pantalla: string
-  /** Sub-secciones. Hoy las usa «Avances». */
+  /** Sub-secciones (un grupo del menú). */
   hijos?: ItemNav[]
 }
 
@@ -65,6 +38,14 @@ type ItemNav = {
 const PRECARGA_COMPLETA = new Set(['/tickets', '/horometros', '/labores'])
 const precargaCompleta = (href: string) => (PRECARGA_COMPLETA.has(href) ? true : undefined)
 
+const aItem = (e: EntradaMenu): ItemNav => ({
+  href: e.href,
+  pantalla: e.pantalla,
+  etiqueta: e.etiqueta,
+  icono: <IconoMenu nombre={e.icono} />,
+  hijos: e.hijos?.map(aItem),
+})
+
 export function AppShell({
   nombre,
   rolNombre,
@@ -72,10 +53,13 @@ export function AppShell({
   permisos,
   navegacion = [],
   pantallasMenu = [],
+  menusRol = [],
   children,
 }: {
   /** Pantallas nuevas que la base pone en el menú (migración 93). */
   pantallasMenu?: PantallaDeMenu[]
+  /** Los roles de la persona y el menú diseñado de cada uno (migración 103). Sin diseño = el menú de siempre. */
+  menusRol?: MenuDeRol[]
   nombre: string
   rolNombre: string
 
@@ -94,145 +78,21 @@ export function AppShell({
   const [abrirMas, setAbrirMas] = useState(false)
   const [grupoAbierto, setGrupoAbierto] = useState<string | null>(null)
 
-  // El menú lo decide la MATRIZ y nada más. Antes había un respaldo por
-  // ROL para el caso de que `fn_mis_permisos` no existiera todavía, y era
-  // el último sitio donde un nombre de rol decidía lo que se ve. Si la
-  // función falta, `getPermisos` devuelve `__sin_migracion__` y aquí se
-  // enseña todo, igual que hace `puede()`: quedarse sin menú por una
+  // El menú lo decide la MATRIZ y nada más. Si `fn_mis_permisos` falta, `getPermisos` devuelve
+  // `__sin_migracion__` y aquí se enseña todo, igual que hace `puede()`: quedarse sin menú por una
   // migración pendiente sería peor que ver un acceso de más.
   const sinMigracion = permisos.includes('__sin_migracion__')
   const concedidos = new Set(permisos)
-  const ve = (pantalla: string) => sinMigracion || concedidos.has(`${pantalla}:ver`)
 
-  const items: ItemNav[] = [
-    {
-      href: '/tickets',
-      pantalla: 'tickets',
-      etiqueta: 'Tickets',
-      icono: <IconTicket />,
-      visible: ve('tickets'),
-    },
-    {
-      href: '/horometros',
-      pantalla: 'horometros',
-      etiqueta: 'Horómetros',
-      icono: <IconGauge />,
-      visible: ve('horometros'),
-    },
-    {
-      href: '/labores',
-      pantalla: 'labores',
-      etiqueta: 'Labores',
-      icono: <IconMapPin />,
-      visible: ve('labores'),
-    },
-    {
-      href: '/dashboard',
-      pantalla: 'avance',
-      etiqueta: 'Avance',
-      icono: <IconChart />,
-      visible: ve('avance'),
-    },
-    {
-      // «Controles» agrupa lo que se lleva controlado: el avance de cada
-      // proceso de campo —lo planificado contra lo hecho— y el control de
-      // activos, que es la misma idea aplicada a cosas en vez de a
-      // manzanas. Emplasticado vive en /plan/APS (el proceso APS de SAP),
-      // trasplante y riego en los suyos; las direcciones no cambian, sólo
-      // dónde se entra.
-      href: '/plan',
-      pantalla: 'plan',
-      etiqueta: 'Controles',
-      icono: <IconPlan />,
-      visible:
-        ve('plan') ||
-        ve('rotacion') ||
-        ve('desinfeccion_plan') ||
-        ve('desinfeccion_ejecucion') ||
-        ve('desinfeccion_logistica') ||
-        ve('desinfeccion_reporte'),
-      hijos: [
-        {
-          href: '/plan/APS',
-          pantalla: 'plan_aps',
-          etiqueta: 'Emplasticado',
-          icono: <IconPlan />,
-          visible: ve('plan_aps'),
-        },
-        {
-          href: '/controles/rotacion',
-          pantalla: 'rotacion',
-          etiqueta: 'Cultivos de Rotación',
-          icono: <IconChart />,
-          visible: ve('rotacion'),
-        },
-        {
-          href: '/controles/desinfeccion',
-          // Cuatro pantallas desde la 66; basta una para que el menú
-          // aparezca, y dentro sólo se dibujan las pestañas que tenga.
-          pantalla: 'desinfeccion_ejecucion',
-          etiqueta: 'Desinfección de suelo',
-          icono: <IconGota />,
-          visible:
-            ve('desinfeccion_plan') ||
-            ve('desinfeccion_ejecucion') ||
-            ve('desinfeccion_logistica') ||
-            ve('desinfeccion_reporte'),
-        },
-      ],
-    },
-    {
-      href: '/costos',
-      pantalla: 'costos',
-      etiqueta: 'Costos',
-      icono: <IconDinero />,
-      visible: ve('costos'),
-    },
-    {
-      href: '/admin/catalogos',
-      // La entrada se enseña si puede ver AL MENOS UN bloque: desde la
-      // 59 «Catálogos» son cinco casillas, no una.
-      pantalla: PANTALLAS_CATALOGO[0],
-      etiqueta: 'Catálogos',
-      icono: <IconSettings />,
-      visible: veAlgunCatalogo(ve),
-    },
-    {
-      href: '/admin/reporte-publico',
-      pantalla: 'reporte_publico',
-      etiqueta: 'Reporte público',
-      icono: <IconSettings />,
-      visible: ve('reporte_publico'),
-    },
-    {
-      href: '/admin/usuarios',
-      pantalla: 'usuarios',
-      etiqueta: 'Usuarios',
-      icono: <IconUser />,
-      visible: ve('usuarios'),
-    },
-  ]
-
-  // Módulos nuevos que la base pone en el menú (93): se agregan al final, sin tocar lo de arriba
-  const yaEnMenu = {
-    codigos: new Set([...items.flatMap((i) => [i.pantalla, ...(i.hijos ?? []).map((h) => h.pantalla)]), ...PANTALLAS_CATALOGO]),
-    hrefs: new Set(items.flatMap((i) => [i.href, ...(i.hijos ?? []).map((h) => h.href)])),
-  }
-  const icono = (nombre: string) => ICONOS_MENU[nombre] ?? <IconPlan />
-  for (const e of entradasDeLaBase(pantallasMenu, ve, yaEnMenu)) {
-    items.push({
-      href: e.href,
-      pantalla: e.pantalla,
-      etiqueta: e.etiqueta,
-      icono: icono(e.icono),
-      visible: true,
-      hijos: e.hijos?.map((h) => ({ href: h.href, pantalla: h.pantalla, etiqueta: h.etiqueta, icono: icono(h.icono), visible: true })),
-    })
-  }
-  // Un grupo se muestra si él es visible y tiene al menos un hijo visible.
-  const visibles = items
-    .map((i) => (i.hijos ? { ...i, hijos: i.hijos.filter((h) => h.visible) } : i))
-    .filter((i) => i.visible && (!i.hijos || i.hijos.length > 0))
+  // Qué entradas y en qué orden: `lib/navegacion/menuRol`. Sin menú diseñado para ninguno de sus roles es
+  // exactamente el menú de siempre; con diseño, solo ordena y nombra lo que la persona ya puede abrir.
+  const menu = construirMenu({
+    menus: menusRol,
+    tiene: tieneDesde(permisos),
+    pantallasMenu,
+    pantallasCatalogo: PANTALLAS_CATALOGO,
+  })
+  const visibles: ItemNav[] = menu.entradas.map(aItem)
 
   // Los avisos son para quien revisa: quien puede corregir un ticket es
   // quien necesita enterarse de que le cerraron uno.
@@ -287,7 +147,7 @@ export function AppShell({
           </div>
         </Link>
 
-        <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3">
+        <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3" data-menu-lateral={menu.disenado ? 'disenado' : 'siempre'} data-menu-inicio={menu.inicio ?? undefined}>
           {visibles.map((item) => {
             const hijos = item.hijos ?? []
 
@@ -296,6 +156,7 @@ export function AppShell({
               return (
                 <EnlaceNav
                   key={item.href}
+                  entrada={item.pantalla}
                   href={hijos[0].href}
                   icono={item.icono}
                   activo={activo(item.href)}
@@ -309,6 +170,7 @@ export function AppShell({
               return (
                 <EnlaceNav
                   key={item.href}
+                  entrada={item.pantalla}
                   href={item.href}
                   icono={item.icono}
                   activo={activo(item.href)}
@@ -320,7 +182,7 @@ export function AppShell({
 
             const desplegado = grupoAbierto === item.href || activo(item.href)
             return (
-              <div key={item.href}>
+              <div key={item.href} data-menu-grupo={item.etiqueta}>
                 <button
                   onClick={() => setGrupoAbierto(desplegado ? '' : item.href)}
                   className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
@@ -342,6 +204,7 @@ export function AppShell({
                       <Link
                         key={h.href}
                         href={h.href}
+                        data-menu-entrada={h.pantalla}
                         className={`rounded-lg px-3 py-2 text-sm transition-colors ${
                           activo(h.href)
                             ? 'bg-brand-50 font-semibold text-brand-800'
@@ -411,11 +274,13 @@ export function AppShell({
         <nav
           className="no-imprimir fixed inset-x-0 bottom-0 z-20 flex border-t border-slate-200 bg-white/95 backdrop-blur-md pb-[env(safe-area-inset-bottom)] lg:hidden"
           aria-label="Navegación principal"
+          data-barra-movil
         >
           {cabenAbajo.map((item) => (
             <Link
               key={item.href}
               href={item.href}
+              data-barra-entrada={item.pantalla}
               prefetch={precargaCompleta(item.href)}
               className={`flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[11px] font-semibold transition-colors ${
                 activo(item.href) ? 'text-brand-700' : 'text-slate-400'
@@ -457,6 +322,7 @@ export function AppShell({
                     <Link
                       key={item.href}
                       href={item.href}
+                      data-menu-mas={item.pantalla}
                       prefetch={precargaCompleta(item.href)}
                       onClick={() => setAbrirMas(false)}
                       className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold transition-colors ${
@@ -479,11 +345,14 @@ export function AppShell({
 
 /** Enlace del menú lateral. Se sacó aparte porque ahora hay dos usos. */
 function EnlaceNav({
+  entrada,
   href,
   icono,
   activo,
   children,
 }: {
+  /** Llave de la entrada (data-menu-entrada, para las pruebas). */
+  entrada: string
   href: string
   icono: React.ReactNode
   activo: boolean
@@ -492,6 +361,7 @@ function EnlaceNav({
   return (
     <Link
       href={href}
+      data-menu-entrada={entrada}
       prefetch={precargaCompleta(href)}
       className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
         activo
