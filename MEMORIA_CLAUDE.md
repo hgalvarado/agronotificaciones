@@ -45,10 +45,10 @@
 
 ## 4. Pendientes (borrar al completar)
 
-- [ ] **Pasar Permisos v2 a producción** (cuando el usuario diga): 1) publicar el código (funciona sin la 92);
-      2) correr `sql/92` en producción; 3) verificar que se entra y que Permisos/Usuarios abren. Antes de correrla,
-      la prueba `pruebas/sql/92_equivalencia.sql` sobre un clon fresco de producción (91+92+93). Decisión del usuario
-      (2026-11-11): NADA a producción hasta tener todos los módulos nuevos listos y probados en desarrollo.
+- [ ] **Fertirriego en producción (2026-11-13)**: código `main` = `171108f`, SQL 91–101 corridas en producción
+      (la 100 corregida se volvió a correr; AGL ya baja el detalle de prueba). Piloto con modo de pruebas activo.
+      Siguiente: Etapa E (umbrales del usuario), limpieza/archivo de lo viejo en Supabase una vez bajado a AGL
+      («Supabase es solo intermediario»), y pasar de prueba a real (apagar/borrar el modo de pruebas).
 
 - [ ] **Fertirriego** (diseño aprobado 2026-11-11, `docs/fertirriego-diseno.md`): bodega por estación,
       aplicación por turno, custodia/relevo con código TOTP verificado sin internet, traslados, kardex; captura
@@ -94,6 +94,14 @@
 5. No usar `npm run build` en la carpeta del usuario (el `prebuild` borra `.next` de su servidor de desarrollo).
 
 ## 6. Historial (lo hecho y por qué)
+
+- **2026-11-13 · Prueba piloto 2** (`docs/fertirriego-piloto2.md`): teléfono (`2c54888`: botones grandes por DDT,
+  detalle primero en bitácora, filtros y quién, «Envases» sin producto, grupos, calculadora), `sql/100` (todo el detalle
+  al teléfono y a AGL; funciones de la 99 quedan como `_base` y la pública agrega), `sql/101` (`fn_fert_exportar_pruebas`
+  + regla `_fert_agl_ve`), AGL `424dfb3` (Análisis, gráficos, «Ver datos de prueba»). Producción: `main` = `171108f`.
+  **Lección**: la 100 recreaba la función que la 101 parchaba; al volver a correr la 100 en producción AGL bajó el
+  detalle de prueba vacío. Toda migración que redefine una función parchada después debe traer el parche
+  (`c715982`). Probar SIEMPRE los órdenes de corrida 100>101>100.
 
 - **2026-11-12 (tarde-noche) · Prueba piloto 1: 10 observaciones** (contrato `docs/fertirriego-piloto1.md`, `sql/99`
   corrida en DESARROLLO; producción pendiente). Recibir con turnos/comentario/envases; guardado en segundo plano
