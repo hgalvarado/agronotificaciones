@@ -4,6 +4,7 @@ import type { Perfil, Rol } from '@/lib/types'
 import { leerAlcance, leerCondicion } from '@/lib/permisos/abac'
 import { REGLA_ABIERTA, type Reglas } from '@/lib/permisos/clientABAC'
 import { SIN_MIGRACION } from '@/lib/permisos/puede'
+import type { MenuDeRol } from '@/lib/navegacion/menuRol'
 
 // `cache()` de React deduplica dentro de UN MISMO request: aunque el
 // layout, la página y un componente anidado llamen a getPerfilActual(),
@@ -183,6 +184,20 @@ export const getPantallasMenu = cache(async (): Promise<PantallaMenu[]> => {
     .order('orden')
   if (error) return []
   return (data as PantallaMenu[] | null) ?? []
+})
+
+/**
+ * Los roles de la persona y el menú que el administrador diseñó para cada uno (migración 103), principal primero.
+ * Sin la 103, o si falla, devuelve vacío: el menú vuelve a ser el de siempre. Una preferencia de presentación
+ * nunca puede dejar a nadie sin menú.
+ */
+export const getMenusRol = cache(async (): Promise<MenuDeRol[]> => {
+  const user = await getUsuarioActual()
+  if (!user) return []
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('fn_mi_menu')
+  if (error) return []
+  return (data as MenuDeRol[] | null) ?? []
 })
 
 export { canExecuteAction, zonasParaCrear, filtrarPorZona } from '@/lib/permisos/clientABAC'

@@ -27,6 +27,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     // La navegación va con Permisos: las dos deciden qué ve cada rol, y
     // sólo el Administrador entra (la propia pantalla lo comprueba).
     { pantalla: 'permisos', href: '/admin/navegacion', etiqueta: 'Navegación' },
+    // 103: el menú de cada rol (casilla «Diseñar menú» de Permisos; de fábrica solo los roles de acceso total)
+    { pantalla: 'permisos', accion: 'disenar_menu', href: '/admin/menu', etiqueta: 'Menú por rol' },
     // 98: modo de pruebas de Fertirriego (quien configura Fertirriego)
     { pantalla: 'fertirriego', accion: 'configurar', href: '/admin/fertirriego-pruebas', etiqueta: 'Pruebas Fertirriego' },
     // 99: choferes, vehículos, envases y productos de campo (quien gestiona choferes)

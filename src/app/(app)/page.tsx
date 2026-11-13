@@ -1,4 +1,7 @@
-import { getPerfilActual } from '@/lib/auth'
+import { redirect } from 'next/navigation'
+import { getMenusRol, getPantallasMenu, getPerfilActual, getPermisos } from '@/lib/auth'
+import { PANTALLAS_CATALOGO } from '@/lib/catalogos/grupos'
+import { construirMenu, tieneDesde } from '@/lib/navegacion/menuRol'
 import { Logo } from '@/components/ui/Logo'
 import { CREADOR, LEMA, VERSION } from '@/lib/version'
 
@@ -22,7 +25,21 @@ import { CREADOR, LEMA, VERSION } from '@/lib/version'
  * armazón: una bienvenida sin menú es una pantalla sin salida.
  */
 export default async function PortadaPage() {
-  const { perfil, rol } = await getPerfilActual()
+  // 103: si el menú diseñado de su rol trae pantalla de inicio (y la puede abrir), se entra directo ahí.
+  const [{ perfil, rol }, menusRol, permisos, pantallasMenu] = await Promise.all([
+    getPerfilActual(),
+    getMenusRol(),
+    getPermisos(),
+    getPantallasMenu(),
+  ])
+  const { inicio } = construirMenu({
+    menus: menusRol,
+    tiene: tieneDesde(permisos),
+    pantallasMenu,
+    pantallasCatalogo: PANTALLAS_CATALOGO,
+  })
+  if (inicio && inicio !== '/') redirect(inicio)
+
   const nombre = perfil?.nombre?.trim() || ''
   // Sólo el primer nombre: «Bienvenido, Henry» se lee como un saludo y
   // el nombre completo del carné se lee como una credencial.

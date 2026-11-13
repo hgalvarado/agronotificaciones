@@ -1,6 +1,6 @@
 import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
-import { getNavegacion, getPantallasMenu, getPerfilActual, getPermisos, getUsuarioActual } from '@/lib/auth'
+import { getMenusRol, getNavegacion, getPantallasMenu, getPerfilActual, getPermisos, getUsuarioActual } from '@/lib/auth'
 import { MemoriaUsuario } from '@/lib/memoria/useMemoria'
 import { AppShell } from '@/components/ui/AppShell'
 import { LogoutButton } from '@/components/ui/LogoutButton'
@@ -13,11 +13,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const user = await getUsuarioActual()
   if (!user) redirect('/login')
 
-  const [{ perfil, rol }, permisos, navegacion, pantallasMenu] = await Promise.all([
+  const [{ perfil, rol }, permisos, navegacion, pantallasMenu, menusRol] = await Promise.all([
     getPerfilActual(),
     getPermisos(),
     getNavegacion(),
     getPantallasMenu(),
+    getMenusRol(),
   ])
 
   if (!perfil) {
@@ -46,6 +47,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       permisos={[...permisos]}
       navegacion={navegacion}
       pantallasMenu={pantallasMenu}
+      menusRol={menusRol}
     >
       {/* El vigilante de bucles. Sin `?diagnostico=1` no monta nada y
           no cuesta nada; con el parámetro, avisa en la consola qué se
