@@ -55,6 +55,9 @@ export type FilaPlan = {
   usuario_id: string
   usuario_nombre: string | null
   created_at: string
+  /** El turno de AGL del que se copió la siembra (migración 104). */
+  turno_id: string | null
+  turno_codigo: string | null
 }
 
 export type EstadoDesinfeccion = '1_Preriego' | '2_Lecturas' | '3_Aplicacion' | '4_Lavado'
@@ -540,6 +543,8 @@ export type EntradaPlan = {
   temporadaId: string
   loteTemporadaId: string
   ciclo: string
+  /** El turno de AGL de donde sale la siembra (104). Vacío = fecha escrita a mano. */
+  turnoId: string
   fechaSiembraCongelada: string
   diasAplicacion: string
   /**
@@ -574,6 +579,7 @@ export const PLAN_VACIO: EntradaPlan = {
   temporadaId: '',
   loteTemporadaId: '',
   ciclo: '1',
+  turnoId: '',
   fechaSiembraCongelada: '',
   diasAplicacion: '0',
   diasPreriego: '',

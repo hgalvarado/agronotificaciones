@@ -20,13 +20,19 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ImportarHoja, type Preparada } from '@/components/ui/ImportarHoja'
 import type { ListaPlantilla } from '@/lib/hojas'
-import { guardarPlan, leerPlan, siembrasDeLotes } from '@/lib/desinfeccion/repositorioCliente'
+import {
+  guardarPlan,
+  leerPlan,
+  siembrasAgl,
+  type SiembraAgl,
+} from '@/lib/desinfeccion/repositorioCliente'
 import {
   COLUMNAS_PLAN,
   MONEDAS_PLAN,
   fechaAplicacionDe,
   interpretarFilaPlan,
   llaveDePlan,
+  normalizar,
   resolver,
   type LineaPlan,
 } from '@/lib/desinfeccion/excel'
@@ -35,10 +41,11 @@ import { CICLOS, type CatalogosDesinfeccion, type LoteDesinfeccion } from '@/lib
 const CABECERAS = [
   'Lote',
   'Ciclo',
-  // La siembra ya NO se escribe: sale del plan de trasplante. Se enseña
-  // en la vista previa para que se vea de dónde salió y qué fecha de
-  // aplicación produce, antes de guardar nada.
-  'Siembra (auto)',
+  'Turno',
+  // La siembra sale del turno publicado por AGL (104) o, si no, de la
+  // columna a mano. Se enseña en la vista previa con su origen y la fecha
+  // de aplicación que produce, antes de guardar nada.
+  'Siembra',
   'Aplicación',
   'Producto',
   'Dosis/mz',
@@ -56,8 +63,9 @@ const CABECERAS = [
  */
 type PlanResuelto = LineaPlan & {
   loteTemporadaId: string
-  /** Las dos que salen del plan de trasplante, no del Excel. */
-  fechaSiembra: string
+  /** El turno de AGL resuelto (vacío = fecha a mano) y la siembra que queda. */
+  turnoId: string
+  fechaSiembraFinal: string
   variedadId: string
   productoId: string
   /** El id de la línea que pisa, si ya existía. */
@@ -103,20 +111,14 @@ export function ImportarPlan({
   const recargar = () => setVersion((v) => v + 1)
 
   /**
-   * La siembra de cada lote y ciclo, traída del plan de trasplante.
+   * La siembra de cada turno y ciclo, publicada por AGL (migración 104).
    *
    * **Por qué se precarga.** `interpretar` es síncrona —la llama
-   * `ImportarHoja` fila a fila— y la siembra vive en otra tabla. Pedirla
-   * por renglón sería una vuelta al servidor por fila, y una hoja de
-   * cien líneas tardaría más en previsualizarse que en escribirse.
-   *
-   * Se pide por CICLO porque la siembra del ciclo 1 y la del 2 son
-   * fechas distintas: mezclarlas movería la aplicación al día
-   * equivocado.
+   * `ImportarHoja` fila a fila—. Pedirla por renglón sería una vuelta al
+   * servidor por fila. Se pide por CICLO porque la siembra del ciclo 1 y
+   * la del 2 son fechas distintas. Llave: `CODIGO|ciclo` normalizado.
    */
-  const [siembras, setSiembras] = useState<Map<string, { fecha: string; variedadId: string | null }>>(
-    new Map()
-  )
+  const [siembras, setSiembras] = useState<Map<string, SiembraAgl>>(new Map())
 
   useEffect(() => {
     if (!abierto) return
@@ -133,13 +135,14 @@ export function ImportarPlan({
         )
       )
 
-      const ids = lotes.map((l) => l.lote_temporada_id)
-      const mapa = new Map<string, { fecha: string; variedadId: string | null }>()
-      for (const c of CICLOS) {
-        const porLote = await siembrasDeLotes(ids, c)
-        if (!vivo) return
-        for (const [lote, dato] of porLote) {
-          mapa.set(`${lote}|${c}`, { fecha: dato.fecha, variedadId: dato.variedadId })
+      const mapa = new Map<string, SiembraAgl>()
+      if (temporadaId) {
+        for (const c of CICLOS) {
+          const porTurno = await siembrasAgl(temporadaId, c)
+          if (!vivo) return
+          for (const dato of porTurno.values()) {
+            mapa.set(`${normalizar(dato.turnoCodigo)}|${c}`, dato)
+          }
         }
       }
       if (vivo) setSiembras(mapa)
@@ -148,7 +151,13 @@ export function ImportarPlan({
     return () => {
       vivo = false
     }
-  }, [abierto, temporadaId, version, lotes])
+  }, [abierto, temporadaId, version])
+
+  /** Los códigos de turno que AGL publicó (para la lista de la plantilla). */
+  const codigosTurno = useMemo(() => {
+    const desdeAgl = [...new Set([...siembras.values()].map((s) => s.turnoCodigo))].sort()
+    return desdeAgl.length > 0 ? desdeAgl : catalogos.turnos.map((t) => t.codigo)
+  }, [siembras, catalogos.turnos])
 
   /**
    * Los desplegables de la plantilla, sacados de la BASE.
@@ -168,16 +177,19 @@ export function ImportarPlan({
         valores: lotes.map((l) => `${l.nomenclatura}${l.nombre ? ` · ${l.nombre}` : ''}`),
       },
       { columna: 1, titulo: 'Ciclo', valores: CICLOS.map((c) => String(c)) },
+      { columna: 2, titulo: 'Turno', valores: codigosTurno },
+      // Los números son la posición dentro de `COLUMNAS_PLAN`.
       {
-        columna: 3,
+        columna: 6,
         titulo: 'Producto',
         valores: catalogos.materiales.map(
           (m) => `${m.codigo}${m.descripcion ? ` · ${m.descripcion}` : ''}`
         ),
       },
-      { columna: 7, titulo: 'Moneda', valores: [...MONEDAS_PLAN] },
+      { columna: 10, titulo: 'Moneda', valores: [...MONEDAS_PLAN] },
+      { columna: 11, titulo: 'Variedad', valores: catalogos.variedades.map((v) => v.nombre) },
     ],
-    [lotes, catalogos.materiales]
+    [lotes, catalogos.materiales, catalogos.variedades, codigosTurno]
   )
 
   function interpretar(celdas: string[], numero: number): Preparada<PlanResuelto> {
@@ -199,7 +211,8 @@ export function ImportarPlan({
       return vacio(leido.error, [
         mapa.lote ?? '',
         mapa.ciclo ?? '',
-        '',
+        mapa.turno ?? '',
+        mapa.fecha_siembra ?? '',
         '',
         mapa.producto ?? '',
         '',
@@ -212,6 +225,7 @@ export function ImportarPlan({
     const base = [
       l.lote,
       String(l.ciclo),
+      l.turno || '—',
       '',
       '',
       l.producto || '—',
@@ -233,22 +247,38 @@ export function ImportarPlan({
       return vacio(`El lote «${l.lote}» no está entre los que puedes planificar.`, base)
     }
 
-    // **La siembra y la variedad salen del plan de trasplante**, no del
-    // Excel: es lo que hace la pantalla al elegir el lote, y pedirlas en
-    // la hoja era pedir que se copiara a mano un dato que el sistema ya
-    // tiene —con el riesgo de que la copia y el original discrepen—.
-    //
-    // Sin siembra no hay de dónde contar los días a la aplicación, así
-    // que la fila rebota diciendo dónde se arregla.
-    const siembra = siembras.get(`${lote.lote_temporada_id}|${l.ciclo}`)
-    if (!siembra) {
-      return vacio(
-        `El lote «${l.lote}» no tiene siembra ni plan de siembra con fecha para el ciclo ${l.ciclo}. Se carga en Trasplante.`,
-        base
-      )
+    // **La siembra sale del turno publicado por AGL** (104). Si el turno no
+    // está en AGL con fecha para ese ciclo, sirve la fecha escrita a mano;
+    // sin ninguna de las dos no hay de dónde contar los días a la
+    // aplicación, y la fila rebota diciendo dónde se arregla.
+    let turnoId = ''
+    let fechaSiembra = l.fechaSiembra
+    let origen = 'a mano'
+    if (l.turno) {
+      const agl = siembras.get(`${normalizar(l.turno)}|${l.ciclo}`)
+      if (agl) {
+        turnoId = agl.turnoId
+        fechaSiembra = agl.fecha
+        origen = 'AGL'
+      } else if (!l.fechaSiembra) {
+        return vacio(
+          `El turno «${l.turno}» no tiene fecha de siembra publicada desde AGL para el ciclo ${l.ciclo}. Publícalo desde AGL («Publicar a campo») o escribe la fecha de siembra.`,
+          base
+        )
+      } else {
+        // Con fecha a mano, el turno se guarda igual si existe en el catálogo.
+        turnoId = catalogos.turnos.find((t) => normalizar(t.codigo) === normalizar(l.turno))?.id ?? ''
+      }
     }
-    base[2] = siembra.fecha
-    base[3] = fechaAplicacionDe(siembra.fecha, l.diasAplicacion)
+    base[3] = `${fechaSiembra} (${origen})`
+    base[4] = fechaAplicacionDe(fechaSiembra, l.diasAplicacion)
+
+    let variedadId = ''
+    if (l.variedad) {
+      const v = resolver(l.variedad, catalogos.variedades, (x) => [x.nombre])
+      if (!v) return vacio(`La variedad «${l.variedad}» no está en el catálogo.`, base)
+      variedadId = v.id
+    }
 
     // El producto es opcional —se puede planificar sin decidirlo—, pero
     // si viene escrito y no existe, eso es un error y no un hueco: callarlo
@@ -282,8 +312,9 @@ export function ImportarPlan({
       valores: {
         ...l,
         loteTemporadaId: lote.lote_temporada_id,
-        fechaSiembra: siembra.fecha,
-        variedadId: siembra.variedadId ?? '',
+        turnoId,
+        fechaSiembraFinal: fechaSiembra,
+        variedadId,
         productoId,
         idExistente,
       },
@@ -307,7 +338,8 @@ export function ImportarPlan({
         temporadaId,
         loteTemporadaId: l.loteTemporadaId,
         ciclo: String(l.ciclo),
-        fechaSiembraCongelada: l.fechaSiembra,
+        turnoId: l.turnoId,
+        fechaSiembraCongelada: l.fechaSiembraFinal,
         diasAplicacion: String(l.diasAplicacion),
         diasPreriego: l.diasPreriego === null ? '' : String(l.diasPreriego),
         variedadId: l.variedadId,
@@ -343,10 +375,10 @@ export function ImportarPlan({
       abierto={abierto}
       onCerrar={onCerrar}
       titulo="Plan de desinfección"
-      ayuda="Un renglón por línea de plan. La llave es lote + ciclo + producto + dosis: si ya existe, la línea se actualiza; con otra dosis, es una línea nueva. La fecha de siembra y la variedad salen solas del plan de trasplante. El costo vacío lo toma del historial de precios."
+      ayuda="Un renglón por línea de plan. La llave es lote + ciclo + producto + dosis: si ya existe, la línea se actualiza; con otra dosis, es una línea nueva. La fecha de siembra sale sola del turno publicado por AGL; si AGL no la tiene, escríbela (AAAA-MM-DD). La variedad es opcional. El costo vacío lo toma del historial de precios."
       columnas={COLUMNAS_PLAN}
       cabecerasResumen={CABECERAS}
-      ejemplo={['1001-040', '1', '21', 'VAP-01', '300', '10', '', 'HNL', '']}
+      ejemplo={['1001-040', '1', 'T1002-T36', '', '-70', '-2', 'VAP-01', '300', '10', '', 'HNL', '', '']}
       listas={listas}
       etiquetaActualizar="Actualiza"
       interpretar={interpretar}

@@ -10,7 +10,7 @@
  * decide. Son columnas generadas; esto es sólo verlas antes de guardar.
  */
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Alerta, Boton, Campo, Entrada, Selector } from '@/components/ui/Primitivos'
 import { formatearFecha } from '@/lib/estados'
@@ -22,7 +22,7 @@ import {
   totalesPlan,
   validarPlan,
 } from '@/lib/desinfeccion/calculo'
-import { siembrasDeLotes } from '@/lib/desinfeccion/repositorioCliente'
+import { siembrasAgl, type SiembraAgl } from '@/lib/desinfeccion/repositorioCliente'
 import { MONEDAS_PLAN } from '@/lib/desinfeccion/tipos'
 import type {
   CatalogosDesinfeccion,
@@ -65,50 +65,57 @@ export function PlanModal({
   const cosecha = fechaCosechaPrevista(entrada, ddtCosecha)
 
   /**
-   * Elegir el lote trae su siembra y su variedad.
+   * Los turnos que AGL publicó para esta temporada y ciclo, con su siembra.
    *
-   * No es un adorno: la fecha de siembra es de donde sale la de
-   * aplicación, y escribirla a mano con el plan de Trasplante abierto en
-   * otra pestaña es cómo se cuelan las fechas equivocadas. Los días a la
-   * aplicación siguen siendo a mano —eso lo decide el agrónomo, no el
-   * sistema—.
-   *
-   * Lo que ya estaba escrito NO se pisa: si alguien corrigió la fecha a
-   * propósito, el autollenado no puede deshacérsela. Y se DICE que se
-   * rellenó, porque un campo que cambia solo y en silencio es un campo
-   * que nadie vuelve a mirar.
+   * Desde la 104 la siembra vive en AGL (Trasplante se retiró de aquí):
+   * elegir el turno trae su fecha. Se pide al cambiar temporada o ciclo.
    */
-  const elegirLote = useCallback(
-    async (loteTemporadaId: string) => {
-      const base = { ...entrada, loteTemporadaId }
-      onCambiar(base)
-      setAutollenado(null)
-      if (!loteTemporadaId) return
-
-      const mapa = await siembrasDeLotes([loteTemporadaId], Number(entrada.ciclo) || null)
-      const dato = mapa.get(loteTemporadaId)
-      if (!dato) {
-        setAutollenado('Ese lote no tiene siembra capturada ni plan de siembra con fecha en Trasplante.')
+  const [turnosAgl, setTurnosAgl] = useState<SiembraAgl[]>([])
+  const [buscandoTurnos, setBuscandoTurnos] = useState(false)
+  useEffect(() => {
+    let vivo = true
+    async function leer() {
+      if (!entrada.temporadaId) {
+        setTurnosAgl([])
         return
       }
+      setBuscandoTurnos(true)
+      const mapa = await siembrasAgl(entrada.temporadaId, Number(entrada.ciclo) || null)
+      if (!vivo) return
+      setTurnosAgl([...mapa.values()].sort((a, b) => a.turnoCodigo.localeCompare(b.turnoCodigo)))
+      setBuscandoTurnos(false)
+    }
+    void leer()
+    return () => {
+      vivo = false
+    }
+  }, [entrada.temporadaId, entrada.ciclo])
 
-      const cambios: Partial<EntradaPlan> = {}
-      if (!base.fechaSiembraCongelada) cambios.fechaSiembraCongelada = dato.fecha
-      if (!base.variedadId && dato.variedadId) cambios.variedadId = dato.variedadId
-
-      if (Object.keys(cambios).length === 0) {
-        setAutollenado('El lote ya tenía fecha y variedad escritas: no se tocaron.')
+  /**
+   * Elegir el turno trae su fecha de siembra publicada por AGL.
+   *
+   * Elegirlo ES pedir esa fecha, así que se escribe aunque hubiera otra; y
+   * se DICE, porque un campo que cambia solo y en silencio es un campo que
+   * nadie vuelve a mirar. La fecha sigue congelada: si AGL la mueve
+   * después, el plan no se mueve solo (para eso está «Sincronizar»).
+   */
+  const elegirTurno = useCallback(
+    (turnoId: string) => {
+      const dato = turnosAgl.find((t) => t.turnoId === turnoId)
+      if (!turnoId || !dato) {
+        onCambiar({ ...entrada, turnoId })
+        setAutollenado(null)
         return
       }
-      onCambiar({ ...base, ...cambios })
-      // Se dice SI es prevista: desde la 63 el autollenado también mira
-      // el plan, y una fecha planificada todavía se puede mover.
+      onCambiar({ ...entrada, turnoId, fechaSiembraCongelada: dato.fecha })
       setAutollenado(
-        `Se tomó de Trasplante: siembra ${dato.origen === 'plan' ? 'prevista ' : ''}${dato.fecha}` +
-          `${dato.variedad ? ` · ${dato.variedad}` : ''}.`
+        `Siembra tomada de AGL: turno ${dato.turnoCodigo}, ${formatearFecha(dato.fecha)}.` +
+          (dato.candidatos > 1
+            ? ` AGL tiene ${dato.candidatos} registros de este turno en el ciclo: se tomó la siembra más próxima.`
+            : ''),
       )
     },
-    [entrada, onCambiar]
+    [entrada, onCambiar, turnosAgl],
   )
 
   function guardar() {
@@ -144,7 +151,7 @@ export function PlanModal({
           <Campo etiqueta="Temporada" requerido>
             <Selector
               value={entrada.temporadaId}
-              onChange={(e) => cambiar({ temporadaId: e.target.value, loteTemporadaId: '' })}
+              onChange={(e) => cambiar({ temporadaId: e.target.value, loteTemporadaId: '', turnoId: '' })}
             >
               <option value="">Elige la temporada…</option>
               {catalogos.temporadas.map((t) => (
@@ -160,7 +167,7 @@ export function PlanModal({
             <Entrada
               inputMode="numeric"
               value={entrada.ciclo}
-              onChange={(e) => cambiar({ ciclo: e.target.value })}
+              onChange={(e) => cambiar({ ciclo: e.target.value, turnoId: '' })}
             />
           </Campo>
 
@@ -171,7 +178,7 @@ export function PlanModal({
             <Selector
               value={entrada.loteTemporadaId}
               buscable
-              onChange={(e) => void elegirLote(e.target.value)}
+              onChange={(e) => cambiar({ loteTemporadaId: e.target.value })}
             >
               <option value="">Elige el lote…</option>
               {lotes.map((l) => (
@@ -184,9 +191,36 @@ export function PlanModal({
           </Campo>
 
           <Campo
+            etiqueta="Turno (siembra de AGL)"
+            className="sm:col-span-2"
+            ayuda={
+              buscandoTurnos
+                ? 'Buscando los turnos publicados desde AGL…'
+                : turnosAgl.length === 0
+                  ? 'AGL todavía no ha publicado turnos con fecha de siembra para esta temporada y ciclo («Publicar a campo» en AGL). Puedes escribir la fecha a mano.'
+                  : 'Trae la fecha de siembra del turno tal como la publicó AGL.'
+            }
+          >
+            <div data-turno-agl>
+              <Selector
+                value={entrada.turnoId}
+                buscable
+                onChange={(e) => elegirTurno(e.target.value)}
+              >
+                <option value="">Sin turno (fecha a mano)</option>
+                {turnosAgl.map((t) => (
+                  <option key={t.turnoId} value={t.turnoId}>
+                    {t.turnoCodigo} — siembra {formatearFecha(t.fecha)}
+                  </option>
+                ))}
+              </Selector>
+            </div>
+          </Campo>
+
+          <Campo
             etiqueta="Fecha de siembra"
             requerido
-            ayuda="La trae el lote desde Trasplante y se queda quieta: si la siembra se mueve, el plan no se mueve solo."
+            ayuda="Sale del turno de AGL y se queda quieta: si la siembra se mueve, el plan no se mueve solo."
           >
             <Entrada
               type="date"

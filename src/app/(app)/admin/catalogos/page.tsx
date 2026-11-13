@@ -45,7 +45,6 @@ export default async function CatalogosPage() {
     { data: materiales },
     sondaContador,
     sondaPerfil,
-    { data: planesNutricionales },
     { data: turnosCatalogo },
     { data: estacionesRiego },
     { data: productos },
@@ -90,9 +89,6 @@ export default async function CatalogosPage() {
     // ofrece. Enseñar una columna que la base no tiene sólo consigue que
     // la celda falle al tocarla.
     supabase.from('operadores').select('tipo_perfil').limit(1),
-    // Llegan con la migración 40. Si no está corrida, la pestaña sale
-    // vacía en vez de tumbar la pantalla completa.
-    supabase.from('planes_nutricionales').select('*').order('nombre'),
     // Llegan con la migración 41.
     supabase.from('turnos').select('*').order('codigo'),
     supabase.from('estaciones_riego').select('*').order('nombre'),
@@ -585,19 +581,6 @@ export default async function CatalogosPage() {
         { key: 'activo', label: 'Activo', tipo: 'checkbox' },
       ],
       filas: proveedores ?? [],
-    },
-    {
-      key: 'planes_nutricionales',
-      clave: 'nombre',
-      label: 'Planes nutricionales',
-      tabla: 'planes_nutricionales',
-      campos: [
-        { key: 'codigo', label: 'Código', tipo: 'text' },
-        { key: 'nombre', label: 'Plan nutricional', tipo: 'text', requerido: true },
-        { key: 'descripcion', label: 'Descripción', tipo: 'text' },
-        { key: 'activo', label: 'Activo', tipo: 'checkbox' },
-      ],
-      filas: planesNutricionales ?? [],
     },
     {
       key: 'turnos',

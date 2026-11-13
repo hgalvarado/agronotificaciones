@@ -74,9 +74,10 @@
 - [ ] (Opcional, Fase 2) marca «revisado» por línea, si el usuario la quiere además de los procesos.
 - [ ] **Fase 3 · Captura sin señal** (PWA): guardar local y enviar al volver la conexión. Diseñar con cuidado
       (duplicados, conflicto con revisión, reglas de fecha); proponerlo al usuario antes de construir.
-- [ ] DDT de Desinfección: hoy lee `siembras`/`planes_siembra` (Trasplante ya no se captura aquí). Decidir fuente.
-- [ ] Borrar tablas de Trasplante y Riego (con respaldo) cuando se resuelva el DDT. Mantener `turnos` y
-      `estaciones_riego` (los usa Desinfección).
+- [ ] **sql/104** (Desinfección desde AGL + retiro de Trasplante/Riego): falta que el usuario corra
+      `scripts\respaldar-tablas-viejas.ps1 -Entorno desarrollo`, luego la 104 en desarrollo, QA
+      `pruebas/qa/desinfeccion_desde_agl.ps1`; después lo mismo en producción. Borrar `respaldo.*_m104` cuando
+      ya no hagan falta (ocupan espacio).
 - [ ] Al terminar las fases: borrar el usuario QA de desarrollo (`qa.rendimiento@desarrollo.local`).
 
 ## 5. Cómo hacer QA (receta)
@@ -103,6 +104,15 @@
   **Lección**: la 100 recreaba la función que la 101 parchaba; al volver a correr la 100 en producción AGL bajó el
   detalle de prueba vacío. Toda migración que redefine una función parchada después debe traer el parche
   (`c715982`). Probar SIEMPRE los órdenes de corrida 100>101>100.
+- **2026-11-12 · Desinfección desde AGL + retiro de Trasplante/Riego** (`sql/104`, pedido del usuario: «Supabase solo
+  intermediario, llenar lo mínimo»). La siembra (DDT, cosecha) sale de `turnos_ciclo` (AGL) por turno + temporada
+  (nombre normalizado) + ciclo (número de «Ciclo 1»/«Ciclo-1»); con varias: la primera en o después de la aplicación,
+  si no la última antes (`_desinf_siembra_turno`). `desinfeccion_plan.turno_id` (para «Sincronizar»);
+  `fn_area_lote_ciclo` = plan de desinfección > área neta. Retiradas 8 tablas (siembras, siembra_productos,
+  siembras_terminadas, planes_siembra, recepcion_plantulas, turnos_riego, turnos_riego_detalle, planes_nutricionales),
+  sus vistas, 20 funciones, 2 tipos y las pantallas trasplante_plan/trasplante_diario/turnos_riego. Respaldo en la
+  base opcional (bandera `v_respaldar`, por defecto true) + script a archivos. Réplica: 104 limpia sobre prod101
+  (dos veces, y con la bandera apagada); pruebas `pruebas/sql/104_*.sql` 45/45. QA con clics escrita, sin correr (`desinfeccion_desde_agl.ps1`).
 
 - **2026-11-12 (tarde-noche) · Prueba piloto 1: 10 observaciones** (contrato `docs/fertirriego-piloto1.md`, `sql/99`
   corrida en DESARROLLO; producción pendiente). Recibir con turnos/comentario/envases; guardado en segundo plano

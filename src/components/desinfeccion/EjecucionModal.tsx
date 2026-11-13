@@ -120,7 +120,7 @@ export function EjecucionModal({
   turnosDisponibles,
   estacionesDisponibles,
   fechasSiembra,
-  siembraPrevista,
+  notaSiembra,
   /** Qué secciones venían llenas AL CARGAR. Es lo único que bloquea. */
   seccionesGuardadas,
   minimo,
@@ -151,8 +151,8 @@ export function EjecucionModal({
   turnosDisponibles: CatalogosDesinfeccion['turnos']
   estacionesDisponibles: CatalogosDesinfeccion['estaciones']
   fechasSiembra: string[]
-  /** Si esas fechas salen del PLAN de trasplante y no de una siembra ya hecha. */
-  siembraPrevista: boolean
+  /** De dónde sale la siembra (turno publicado por AGL) o por qué falta. Lo arma la cuadrícula. */
+  notaSiembra: string
   seccionesGuardadas: SeccionEjecucion[]
   /** El salario mínimo vigente de la fecha de la fase. Lo trae la cuadrícula. */
   minimo: number | null
@@ -497,13 +497,7 @@ export function EjecucionModal({
   const campoDdt = (texto: string) => (
     <Campo
       etiqueta="DDT (días desde el trasplante)"
-      ayuda={
-        !haySiembra
-          ? 'Hará falta la siembra del lote, o su plan en Trasplante, para calcularlo.'
-          : siembraPrevista
-            ? 'Contra la siembra PREVISTA del plan. Negativo = faltan días para trasplantar.'
-            : 'Contra la siembra ya capturada. Negativo = faltan días para trasplantar.'
-      }
+      ayuda={notaSiembra}
     >
       <Entrada value={texto} readOnly disabled />
     </Campo>
@@ -657,6 +651,14 @@ export function EjecucionModal({
               </span>
               <Insignia tono={fase.tono}>{fase.etiqueta}</Insignia>
             </div>
+
+            {/* Sin siembra publicada desde AGL no hay DDT: se dice aquí, a la
+                vista, y no sólo en la ayuda de cada campo (migración 104). */}
+            {!haySiembra && (
+              <div data-sin-siembra-agl>
+                <Alerta tono="ambar">{notaSiembra}</Alerta>
+              </div>
+            )}
 
             {/* ================ 0 · LOTES Y MANZANAS ================= */}
             <Acordeon
