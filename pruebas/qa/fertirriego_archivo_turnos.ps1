@@ -75,7 +75,7 @@ try {
     Rest 'rpc/fn_asignar_roles' 'Post' @{ p_perfil = $qaId; p_roles = @($rolEst, $idAdmin); p_principal = $rolEst } -Servicio | Out-Null
     $paquete = Rest 'rpc/fn_fert_exportar_turno' 'Post' @{ p_agl_id = $AGL1 }
     OK ($paquete.huella -and $paquete.filas) 'Paso 1: AGL baja el paquete completo del turno (con su huella)' "huella $("$($paquete.huella)".Substring(0, [Math]::Min(12, "$($paquete.huella)".Length)))…"
-    $reloj = [Diagnostics.Stopwatch]::StartNew(); $mal = $null; try { Rest 'rpc/fn_fert_archivar_turno' 'Post' @{ p_agl_id = $AGL1; p_huella = 'huella-equivocada' } | Out-Null } catch { $mal = $_.ErrorDetails.Message }
+    $reloj = [Diagnostics.Stopwatch]::StartNew(); $mal = $null; try { Rest 'rpc/fn_fert_archivar_turno' 'Post' @{ p_agl_id = $AGL1; p_huella = 'huella-equivocada' } | Out-Null } catch { $mal = if ($_.ErrorDetails.Message) { $_.ErrorDetails.Message } else { $_.Exception.Message } }
     OK ($null -ne $mal -and (Lista "fert_aplicaciones?select=id&turno_ciclo_id=eq.$tc1").Count -eq 1) 'Con una huella que no cuadra NO borra nada' "$mal · $($reloj.ElapsedMilliseconds) ms"
     $arch = Rest 'rpc/fn_fert_archivar_turno' 'Post' @{ p_agl_id = $AGL1; p_huella = $paquete.huella }
     $apsDesp = (Lista "fert_aplicaciones?select=id&turno_ciclo_id=eq.$tc1").Count
