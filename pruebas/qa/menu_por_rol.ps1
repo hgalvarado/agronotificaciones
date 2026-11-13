@@ -74,7 +74,7 @@ try {
     # Teclado: Enter sobre ↓ de Tickets la baja un lugar
     $antes = JS "[...document.querySelectorAll('[data-editor-menu] > li')].findIndex(l => l.dataset.destino === 'tickets')"
     JS "document.querySelector('[data-editor-menu] > li[data-destino=tickets] [data-bajar]').focus()" | Out-Null
-    CDP 'Input.dispatchKeyEvent' @{ type = 'keyDown'; key = 'Enter'; code = 'Enter'; windowsVirtualKeyCode = 13 } | Out-Null
+    CDP 'Input.dispatchKeyEvent' @{ type = 'keyDown'; key = 'Enter'; code = 'Enter'; windowsVirtualKeyCode = 13; text = "`r" } | Out-Null
     CDP 'Input.dispatchKeyEvent' @{ type = 'keyUp'; key = 'Enter'; code = 'Enter'; windowsVirtualKeyCode = 13 } | Out-Null
     $t = Esperar "[...document.querySelectorAll('[data-editor-menu] > li')].findIndex(l => l.dataset.destino === 'tickets') === $antes + 1" 3000
     OK ($t -ge 0) 'Con el teclado (Enter en ↓) se mueve una fila'
@@ -145,7 +145,7 @@ finally {
         $ahoraRoles = @(foreach ($x in (Lista 'rpc/fn_roles_de_perfiles' 'Post' @{})) { if ($x.perfil_id -eq $qaId) { [int]$x.rol_id } }) | Sort-Object
         $ahora = (Lista "perfiles?select=rol_id&id=eq.$qaId")[0]
         OK (($ahoraRoles -join ',') -eq (($origRoles | Sort-Object) -join ',') -and $ahora.rol_id -eq $orig.rol_id) 'Usuario QA restaurado como estaba' "roles $($ahoraRoles -join ',')"
-        OK (@(Lista "roles?select=id&codigo=like.QA_MENU_*").Count -eq 0) 'Rol de prueba borrado'
+        OK ((Lista "roles?select=id&codigo=like.QA_MENU_*").Count -eq 0) 'Rol de prueba borrado'
     } catch { $script:Resultados.Add("LIMPIEZA verificación: $($_.Exception.Message)") }
     Terminar-QA
 }
