@@ -9,8 +9,9 @@
 --   agm_rangos      rangos por parámetro (los publica AGL): fuera de rango = AVISO, no bloquea.
 --   fn_agm_guardar_parametros / fn_agm_guardar_clima: escritura idempotente por el UUID del teléfono (sin señal:
 --                   la cola reenvía y no duplica); un turno y día ya registrado se COMPLETA (no se duplica).
---   Permisos: pantalla «agrometricas» (matriz de la base; ningún nombre de rol). Alcance: global, zonal (estaciones
---   de sus zonas) o propietario (sus estaciones asignadas, perfiles_estaciones).
+--   Permisos: pantalla «agrometricas» (matriz de la base; ningún nombre de rol). El parametrista trabaja POR ZONA:
+--   ve y registra los turnos de sus zonas asignadas (zona del turno). Alcance: global, zonal (sus zonas) o
+--   propietario (zonas donde tiene una estación asignada).
 --   El menú se enciende cuando se publique la pantalla (en_menu queda en false aquí).
 -- Idempotente: se puede correr varias veces. Todo UPDATE/DELETE lleva WHERE (Supabase safeupdate).
 -- =====================================================================
@@ -92,29 +93,7 @@ on conflict (codigo) do update
 set nombre = excluded.nombre, descripcion = excluded.descripcion, ruta = excluded.ruta,
     orden = excluded.orden, acciones = excluded.acciones;
 
-/** ¿Puede hacer ESTA acción de AgroMétricas en ESTA estación? (mismo criterio de alcance que Fertirriego) */
-create or replace function public.fn_agm_puede(p_estacion uuid, p_accion text default 'ver')
-returns boolean
-language sql stable security definer set search_path = public, pg_temp as $$
-    select case
-        when public.fn_es_admin() then true
-        when not public.fn_tiene_permiso('agrometricas', p_accion) then false
-        else case public.fn_mi_alcance('agrometricas', p_accion)
-            when 'global' then true
-            when 'zonal' then
-                exists (select 1 from public.estaciones_riego e
-                        where e.id = p_estacion and e.zona_id is not null and public.fn_ve_zona_estricta(e.zona_id))
-                or exists (select 1 from public.perfiles_estaciones pe
-                           where pe.estacion_id = p_estacion and pe.perfil_id = (select auth.uid()))
-            else
-                exists (select 1 from public.perfiles_estaciones pe
-                        where pe.estacion_id = p_estacion and pe.perfil_id = (select auth.uid()))
-        end
-    end
-$$;
-grant execute on function public.fn_agm_puede(uuid, text) to authenticated;
-
-/** Lo mismo para una ZONA (clima): global, zonal (sus zonas) o propietario (tiene una estación asignada en esa zona). */
+/** ¿Puede hacer ESTA acción de AgroMétricas en ESTA zona? (turnos por la zona del turno, y el clima): global, zonal (sus zonas) o propietario (tiene una estación asignada en esa zona). */
 create or replace function public.fn_agm_puede_zona(p_zona uuid, p_accion text default 'ver')
 returns boolean
 language sql stable security definer set search_path = public, pg_temp as $$
@@ -133,6 +112,15 @@ language sql stable security definer set search_path = public, pg_temp as $$
 $$;
 grant execute on function public.fn_agm_puede_zona(uuid, text) to authenticated;
 
+/** Zona de un turno: la de su estación o, si no tiene, la del turno publicado por AGL. */
+create or replace function public._agm_zona_turno(p_turno_ciclo uuid)
+returns uuid
+language sql stable security definer set search_path = public, pg_temp as $$
+    select coalesce(e.zona_id, t.zona_id)
+      from public.turnos_ciclo t left join public.estaciones_riego e on e.id = t.estacion_id
+     where t.id = p_turno_ciclo
+$$;
+
 -- ---------------------------------------------------------------- RLS: leer según alcance; escribir solo por funciones
 
 alter table public.agm_rangos enable row level security;
@@ -145,7 +133,7 @@ create policy agm_rangos_leer on public.agm_rangos for select to authenticated
 
 drop policy if exists agm_parametros_leer on public.agm_parametros;
 create policy agm_parametros_leer on public.agm_parametros for select to authenticated
-    using (exists (select 1 from public.turnos_ciclo t where t.id = turno_ciclo_id and public.fn_agm_puede(t.estacion_id, 'ver')));
+    using (public.fn_agm_puede_zona(public._agm_zona_turno(turno_ciclo_id), 'ver'));
 
 drop policy if exists agm_clima_leer on public.agm_clima;
 create policy agm_clima_leer on public.agm_clima for select to authenticated
@@ -207,7 +195,7 @@ begin
     if v_fecha > v_hoy then
         raise exception 'No se registran parámetros de días futuros.' using errcode = '22023';
     end if;
-    if not public.fn_agm_puede(v_turno.estacion_id, 'registrar_parametros') then
+    if not public.fn_agm_puede_zona(public._agm_zona_turno(v_turno.id), 'registrar_parametros') then
         raise exception 'No tienes permiso para registrar parámetros en este turno.' using errcode = '42501';
     end if;
 
@@ -218,7 +206,7 @@ begin
         raise exception 'Este registro ya se guardó para otro turno o fecha.' using errcode = '22023';
     end if;
     if (v_fecha < v_hoy - 1 or (v_existe and v_previa.creado_por is distinct from auth.uid()))
-       and not public.fn_agm_puede(v_turno.estacion_id, 'corregir_parametros') then
+       and not public.fn_agm_puede_zona(public._agm_zona_turno(v_turno.id), 'corregir_parametros') then
         raise exception 'Para corregir días anteriores o registros de otra persona se necesita «Corregir parámetros».'
             using errcode = '42501';
     end if;
@@ -337,3 +325,27 @@ begin
 end
 $$;
 grant execute on function public.fn_agm_publicar_rangos(jsonb) to authenticated;
+
+/**
+ * Lo que el teléfono necesita para trabajar (y guardar para usar sin señal): turnos activos que la persona puede ver,
+ * con su estación, zona y siembra; y los rangos. -> {turnos: [...], rangos: [...]}
+ */
+create or replace function public.fn_agm_mis_turnos()
+returns jsonb
+language sql stable security definer set search_path = public, pg_temp as $$
+    select jsonb_build_object(
+        'turnos', coalesce((
+            select jsonb_agg(jsonb_build_object(
+                       'id', t.id, 'turno', tu.codigo, 'temporada', t.temporada, 'ciclo', t.ciclo,
+                       'fecha_siembra', t.fecha_siembra, 'estacion', e.nombre, 'zona_id', coalesce(e.zona_id, t.zona_id),
+                       'zona', z.nombre)
+                   order by z.nombre, e.nombre, tu.codigo)
+              from public.turnos_ciclo t
+              join public.turnos tu on tu.id = t.turno_id
+              left join public.estaciones_riego e on e.id = t.estacion_id
+              left join public.zonas z on z.id = coalesce(e.zona_id, t.zona_id)
+             where t.activo and public.fn_agm_puede_zona(coalesce(e.zona_id, t.zona_id), 'ver')), '[]'::jsonb),
+        'rangos', coalesce((select jsonb_agg(jsonb_build_object('parametro', parametro, 'minimo', minimo, 'maximo', maximo))
+                              from public.agm_rangos), '[]'::jsonb))
+$$;
+grant execute on function public.fn_agm_mis_turnos() to authenticated;
