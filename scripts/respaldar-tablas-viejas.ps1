@@ -53,8 +53,9 @@ $dir = Join-Path $raiz "respaldos\${sello}_${Entorno}_tablas_viejas"
 New-Item -ItemType Directory -Force $dir | Out-Null
 
 function Contar([string]$tabla) {
-  $h = $encabezados.Clone(); $h['Prefer'] = 'count=exact'; $h['Range'] = '0-0'
-  $r = Invoke-WebRequest -UseBasicParsing -Method Get -Headers $h -Uri "$url/rest/v1/${tabla}?select=*"
+  # Windows PowerShell 5.1 no deja poner el encabezado Range: se pide 1 fila con limit y el total viene igual
+  $h = $encabezados.Clone(); $h['Prefer'] = 'count=exact'
+  $r = Invoke-WebRequest -UseBasicParsing -Method Get -Headers $h -Uri "$url/rest/v1/${tabla}?select=*&limit=1"
   $cr = $r.Headers['Content-Range']
   if ($cr -match '/(\d+)$') { return [int64]$Matches[1] }
   throw "No se pudo contar $tabla (Content-Range: $cr)."
