@@ -114,6 +114,15 @@ export type Movimiento = {
 
 export type Linea = { material_id: string; cantidad: number; en_plan?: boolean }
 
+/** sql/100: datos de la operación que creó el registro (fert_operaciones), para el detalle. */
+export type InfoOperacion = {
+  creado_en: string | null
+  recibido_en: string | null
+  lat: number | null
+  lon: number | null
+  observaciones: string[] | null
+}
+
 export type Recepcion = {
   id: string
   estacion_id: string
@@ -129,6 +138,11 @@ export type Recepcion = {
   /** sql/99 */
   turnos?: string[] | null
   envases?: LineaEnvase[] | null
+  /** sql/100: nombre del chofer y placa (también de los inactivos), operación y «solo envases» */
+  chofer?: string | null
+  vehiculo?: string | null
+  operacion?: InfoOperacion | null
+  solo_envases?: boolean | null
 }
 
 export type Aplicacion = {
@@ -149,6 +163,34 @@ export type Aplicacion = {
   fecha_plan?: string | null
   extra?: boolean
   ddt_real?: number | null
+  /** sql/100 */
+  operacion?: InfoOperacion | null
+}
+
+/** sql/100: conteo físico con sus líneas. */
+export type Conteo = {
+  id: string
+  estacion_id: string
+  fecha_hora: string
+  comentario: string | null
+  registrado_por: string
+  anulado_at: string | null
+  motivo_anulacion: string | null
+  lineas: { material_id: string; saldo_sistema: number; cantidad_real: number; diferencia: number }[] | null
+  operacion?: InfoOperacion | null
+}
+
+/** sql/100: movimiento de envases (+ entra / − sale). */
+export type MovimientoEnvase = {
+  id: string
+  estacion_id: string
+  envase_id: string
+  cantidad: number
+  motivo: 'RECEPCION' | 'ENTREGA' | 'CONTEO' | 'ANULACION' | string
+  documento_tipo: string | null
+  documento_id: string | null
+  fecha_hora: string
+  registrado_por: string | null
 }
 
 export type BitacoraRiego = {
@@ -245,6 +287,10 @@ export type EstadoCampo = {
   /** sql/99 (pueden faltar si la base aún no tiene la 99) */
   envases_tipos?: EnvaseTipo[]
   envases_saldos?: SaldoEnvase[]
+  /** sql/100 (pueden faltar si la base aún no tiene la 100) */
+  nombres?: Record<string, string>
+  envases_movimientos?: MovimientoEnvase[]
+  conteos?: Conteo[]
 }
 
 export type TipoOperacion =

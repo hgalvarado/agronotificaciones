@@ -208,7 +208,7 @@ try {
     $kx = JS "[...document.querySelectorAll('[data-movimiento]')].map(b => b.dataset.movimiento).join(',')"
     OK ($kx -match 'APLICACION' -and $kx -match 'RECEPCION' -and $kx -match 'SALDO_INICIAL') 'Bitácora: saldo inicial, entrega y aplicación con saldo' $kx
     ClicHasta "document.querySelector('[data-movimiento=APLICACION]')" "!!document.querySelector('[data-detalle-documento]')" | Out-Null
-    ClicEn "document.querySelector('[data-modo-devolver]')" | Out-Null
+    ClicHasta "document.querySelector('[data-modo-devolver]')" "!!document.querySelector('[data-motivo]')" | Out-Null
     Start-Sleep -Milliseconds 400
     Teclear "document.querySelector('[data-cantidad=""0""]')" '10'
     Teclear "document.querySelector('[data-motivo]')" 'Sobró en el tanque (QA)'
@@ -221,6 +221,8 @@ try {
 
     # Anular la recepción ya consumida: la base lo rechaza y el teléfono lo explica
     ClicHasta "document.querySelector('[data-movimiento=RECEPCION]')" "!!document.querySelector('[data-detalle-documento]')" | Out-Null
+    # Piloto 2: primero el detalle; el motivo aparece al tocar «Anular»
+    ClicHasta "document.querySelector('[data-modo-anular]')" "!!document.querySelector('[data-motivo]')" | Out-Null
     Teclear "document.querySelector('[data-motivo]')" 'Prueba de rechazo (QA)'
     ClicEn "document.querySelector('[data-guardar-registro]')" | Out-Null
     Esperar "!document.querySelector('[data-detalle-documento]')" 15000 | Out-Null

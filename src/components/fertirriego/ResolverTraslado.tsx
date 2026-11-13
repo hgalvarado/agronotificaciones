@@ -12,6 +12,7 @@ import { AreaTexto, Campo } from '@/components/ui/Primitivos'
 import { cantidad } from '@/lib/fertirriego/calculos'
 import { crearOperacion } from '@/lib/fertirriego/operaciones'
 import type { EstadoCampo, Estacion, Operacion, Persona, Traslado } from '@/lib/fertirriego/tipos'
+import { BotonCalculadora } from './Calculadora'
 import { MarcoRegistro } from './MarcoRegistro'
 
 export type AccionTraslado = 'autorizar' | 'no_autorizar' | 'aceptar' | 'rechazar' | 'cancelar'
@@ -116,6 +117,7 @@ export function ResolverTraslado({
                   data-recibido={i}
                   className="w-28 rounded-lg border border-slate-200 bg-white px-3 py-2 text-right text-base font-semibold tabular-nums"
                 />
+                <BotonCalculadora unidad={material(l.material_id)?.unidad} onUsar={(valor) => setRecibido((r) => ({ ...r, [l.material_id]: valor }))} />
               </div>
             ))}
           </div>

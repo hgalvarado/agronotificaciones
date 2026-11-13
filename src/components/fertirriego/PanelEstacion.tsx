@@ -11,6 +11,7 @@ import { hoyIso } from '@/lib/fechas/zona'
 import { cantidad, planDelDia } from '@/lib/fertirriego/calculos'
 import type { EstadoCampo, Estacion, Persona } from '@/lib/fertirriego/tipos'
 import { NOMBRE_BORRADOR, useBorradoresEstacion } from '@/lib/fertirriego/borrador'
+import { agruparPorClase } from '@/lib/fertirriego/productos'
 import { puedeRegistrar } from './MarcoRegistro'
 
 /** «Borrador» bajo el texto del botón cuando hay un registro a medias de ese tipo. */
@@ -23,7 +24,7 @@ function MarcaBorrador({ si }: { si: boolean }) {
   )
 }
 
-export type Accion = 'recibir' | 'aplicar' | 'contar' | 'custodia' | 'entregar' | 'recibir_relevo' | 'codigo'
+export type Accion = 'recibir' | 'envases' | 'aplicar' | 'contar' | 'custodia' | 'entregar' | 'recibir_relevo' | 'codigo'
 
 export function PanelEstacion({
   estado,
@@ -60,7 +61,11 @@ export function PanelEstacion({
   const envases = [...(saldosEnvases ?? new Map<string, number>()).entries()]
     .filter(([, v]) => v !== 0)
     .sort((a, b) => nombreEnvase(a[0]).localeCompare(nombreEnvase(b[0]), 'es'))
-  const productos = [...saldos.entries()].filter(([, v]) => v !== 0).sort((a, b) => (material(a[0])?.descripcion ?? '').localeCompare(material(b[0])?.descripcion ?? ''))
+  const productos = [...saldos.entries()].filter(([, v]) => v !== 0)
+  // Piloto 2, punto 5: por grupo, Fertilizantes primero y destacados
+  const grupos = agruparPorClase(productos, ([id]) => material(id))
+  // La base tiene la 99 (envases) y la persona puede recibir: se ofrece «Envases» sin producto
+  const conEnvases = estacion.permisos.recibir && Array.isArray(estado.envases_tipos)
 
   return (
     <div className="flex flex-col gap-4">
@@ -105,11 +110,18 @@ export function PanelEstacion({
       </div>
 
       {/* ---- Acciones ---- */}
-      <div className="grid grid-cols-3 gap-2">
+      <div className={`grid gap-2 ${conEnvases ? 'grid-cols-2' : 'grid-cols-3'}`}>
         {estacion.permisos.recibir && (
           <Boton onClick={() => onAccion('recibir')} disabled={!regla.si} className="flex-col py-4" data-accion="recibir">
             Recibir
             <MarcaBorrador si={borradores.has('recepcion')} />
+          </Boton>
+        )}
+        {conEnvases && (
+          // Piloto 2, punto 4: entregar / recibir envases sin recibir producto
+          <Boton variante="secundario" onClick={() => onAccion('envases')} disabled={!regla.si} className="flex-col py-4" data-accion="envases">
+            Envases
+            <MarcaBorrador si={borradores.has('envases')} />
           </Boton>
         )}
         {estacion.permisos.aplicar && (
@@ -164,23 +176,37 @@ export function PanelEstacion({
             Sin saldo registrado. Empieza con un <strong>Conteo</strong> (saldo inicial) o una <strong>Recepción</strong>.
           </p>
         ) : (
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" data-saldos>
-            {productos.map(([id, v]) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => onVerProducto(id)}
-                data-saldo={material(id)?.codigo}
-                className="flex items-center justify-between gap-2 rounded-xl bg-white p-3 text-left ring-1 ring-inset ring-slate-200 hover:ring-brand-300"
+          <div className="flex flex-col gap-3" data-saldos>
+            {grupos.map((g) => (
+              <div
+                key={g.clase}
+                data-grupo-bodega={g.clase}
+                className={g.fertilizantes ? 'rounded-2xl bg-brand-50/60 p-2 ring-1 ring-inset ring-brand-200' : ''}
               >
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-semibold text-slate-800">{material(id)?.descripcion ?? '—'}</span>
-                  <span className="text-[11px] text-slate-400">{material(id)?.codigo}</span>
-                </span>
-                <span className={`shrink-0 text-lg font-bold tabular-nums ${v < 0 ? 'text-red-600' : 'text-slate-900'}`}>
-                  {cantidad(v)} <span className="text-xs font-semibold text-slate-500">{material(id)?.unidad}</span>
-                </span>
-              </button>
+                <p className={`mb-1 px-1 text-[11px] font-bold uppercase tracking-wide ${g.fertilizantes ? 'text-brand-800' : 'text-slate-400'}`}>
+                  {g.fertilizantes ? '★ ' : ''}
+                  {g.clase}
+                </p>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {g.items.map(([id, v]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => onVerProducto(id)}
+                      data-saldo={material(id)?.codigo}
+                      className="flex min-h-14 items-center justify-between gap-2 rounded-xl bg-white p-3 text-left ring-1 ring-inset ring-slate-200 hover:ring-brand-300"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-semibold text-slate-800">{material(id)?.descripcion ?? '—'}</span>
+                        <span className="text-[11px] text-slate-400">{material(id)?.codigo}</span>
+                      </span>
+                      <span className={`shrink-0 text-lg font-bold tabular-nums ${v < 0 ? 'text-red-600' : 'text-slate-900'}`}>
+                        {cantidad(v)} <span className="text-xs font-semibold text-slate-500">{material(id)?.unidad}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
         )}
@@ -197,7 +223,7 @@ export function PanelEstacion({
           <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">Envases en la estación</p>
           {envases.length === 0 ? (
             <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500 ring-1 ring-inset ring-slate-200">
-              Sin envases registrados. Se cuentan al recibir producto (recibidos / entregados) y en el conteo.
+              Sin envases registrados. Se cuentan al recibir producto, con «Envases» (cuando el camión solo lleva o trae envases) y en el conteo.
             </p>
           ) : (
             <div className="flex flex-wrap gap-2">

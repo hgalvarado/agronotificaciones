@@ -17,10 +17,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 const PREFIJO = 'fert:borrador:'
 const VIGENCIA_MS = 7 * 24 * 3600_000
 
-export type TipoBorrador = 'recepcion' | 'aplicacion' | 'conteo' | 'bitacora' | 'relevo' | 'traslado'
+export type TipoBorrador = 'recepcion' | 'envases' | 'aplicacion' | 'conteo' | 'bitacora' | 'relevo' | 'traslado'
 
 export const NOMBRE_BORRADOR: Record<TipoBorrador, string> = {
   recepcion: 'Recibir producto',
+  envases: 'Envases',
   aplicacion: 'Aplicar',
   conteo: 'Conteo',
   bitacora: 'Horas de riego',

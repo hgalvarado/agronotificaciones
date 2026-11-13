@@ -139,6 +139,8 @@ export type FilaKardex = {
   documento_id: string
   pendiente: boolean
   anulado: boolean
+  /** Quién lo registró (perfil). Lo pendiente: a nombre de quien se registra, o yo. */
+  registrado_por: string | null
 }
 
 export const NOMBRE_MOVIMIENTO: Record<TipoMovimiento, string> = {
@@ -172,6 +174,7 @@ export function kardex(estado: EstadoCampo, cola: Operacion[], estacionId: strin
       documento_id: m.documento_id,
       pendiente: false,
       anulado: anulados.has(m.id),
+      registrado_por: m.registrado_por ?? null,
     }))
 
   // Lo pendiente, en el orden en que se registró
@@ -201,6 +204,7 @@ export function kardex(estado: EstadoCampo, cola: Operacion[], estacionId: strin
         documento_id: op.id,
         pendiente: true,
         anulado: false,
+        registrado_por: op.en_nombre_de ?? estado.yo?.id ?? null,
       })
     })
   }
