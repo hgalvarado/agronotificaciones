@@ -15,8 +15,17 @@ function Elegir($contenedorJs, $texto) {
 }
 function CampoPorEtiqueta($etiqueta) { "[...document.querySelectorAll('[role=dialog] label, [role=dialog] div')].find(x => x.firstElementChild && x.firstElementChild.textContent.trim().startsWith('$etiqueta'))" }
 function Pestana($t) { JS "(() => { const b = [...document.querySelectorAll('button')].find(x => x.offsetParent !== null && x.textContent.trim() === '$t'); if (!b) return false; b.click(); return true })()" }
+# Un clic antes de que React tome la página se pierde: repetir hasta que la pestaña quede elegida
+function PestanaHasta($t, $condicion) { for ($i = 0; $i -lt 15; $i++) { Pestana $t | Out-Null; if ((Esperar $condicion 800) -ge 0) { return $true } }; return $false }
 
+# El usuario QA (Torre de Control en desarrollo) no tiene Desinfección: mientras dura la prueba lleva además el rol de
+# acceso total, y al final vuelve a sus roles de antes
+$qaId = $script:QA.id
+$orig = @(Rest "perfiles?select=rol_id&id=eq.$qaId" -Servicio)[0]
+$origRoles = @(foreach ($x in (Rest 'rpc/fn_roles_de_perfiles' 'Post' @{} -Servicio)) { if ($x.perfil_id -eq $qaId) { [int]$x.rol_id } })
+$idAdmin = @(Rest 'roles?select=id&acceso_total=eq.true&limit=1' -Servicio)[0].id
 try {
+    Rest 'rpc/fn_asignar_roles' 'Post' @{ p_perfil = $qaId; p_roles = @($orig.rol_id, $idAdmin); p_principal = $orig.rol_id } -Servicio | Out-Null
     # ---------------- 0 · La base ----------------
     $tem = @(Rest 'temporadas?select=id,nombre&activa=eq.true' -Servicio)[0]
     OK ($null -ne $tem) 'Hay temporada activa' $tem.nombre
@@ -27,7 +36,7 @@ try {
     $tA = $tcs | Sort-Object { $_.turnos.codigo } | Select-Object -First 1
     $codA = $tA.turnos.codigo; $fechaA = $tA.fecha_siembra
 
-    $rpc = @(Rest 'rpc/fn_desinfeccion_siembras_agl' 'Post' @{ p_temporada_id = $tem.id; p_ciclo = 1 })
+    $rpc = @(foreach ($x in (Rest 'rpc/fn_desinfeccion_siembras_agl' 'Post' @{ p_temporada_id = $tem.id; p_ciclo = 1 })) { $x })
     $filaA = $rpc | Where-Object { $_.turno_id -eq $tA.turno_id }
     OK ($rpc.Count -ge 1 -and $filaA) 'fn_desinfeccion_siembras_agl responde (sql/104 corrida)' "$($rpc.Count) turnos"
     # Con varias filas del mismo turno la base elige por fecha; aquí basta que la elegida sea una de las publicadas
@@ -41,16 +50,16 @@ try {
     }
     OK ($retiradas -eq 6) 'Las tablas de Trasplante y Riego ya no existen en la base' "$retiradas/6"
 
-    $sinAgl = @(Rest 'turnos?select=id,codigo&activo=eq.true&order=codigo' -Servicio) |
+    $sinAgl = @(foreach ($x in (Rest 'turnos?select=id,codigo&activo=eq.true&order=codigo' -Servicio)) { $x }) |
         Where-Object { $id = $_.id; -not ($tcs | Where-Object { $_.turno_id -eq $id }) } | Select-Object -First 1
 
     # ---------------- 1 · Planificación: el turno trae la siembra ----------------
     Ir '/controles/desinfeccion'
     $t0 = Esperar "[...document.querySelectorAll('button')].some(b => b.textContent.trim() === 'Planificación')" 30000
     OK ($t0 -ge 0) 'Abre Desinfección' "$t0 ms"
-    Pestana 'Planificación' | Out-Null
-    Esperar "[...document.querySelectorAll('button')].some(b => b.offsetParent && b.textContent.trim() === 'Nuevo')" 20000 | Out-Null
-    OK ((JS "[...document.querySelectorAll('th')].some(th => th.textContent.includes('Turno (AGL)'))") -eq $true) 'La cuadrícula del plan muestra la columna «Turno (AGL)»'
+    PestanaHasta 'Planificación' "[...document.querySelectorAll('button')].some(b => b.offsetParent && b.textContent.trim() === 'Nuevo')" | Out-Null
+    $tg = Esperar "[...document.querySelectorAll('th')].some(th => th.textContent.includes('Turno (AGL)'))" 15000
+    OK ($tg -ge 0) 'La cuadrícula del plan muestra la columna «Turno (AGL)»'
     Clic 'Nuevo' | Out-Null
     $t1 = Esperar "!!document.querySelector('[data-turno-agl] button[aria-haspopup=listbox]')" 15000
     OK ($t1 -ge 0) 'El formulario del plan trae el selector «Turno (siembra de AGL)»'
@@ -62,8 +71,9 @@ try {
     OK ((JS "document.body.innerText.includes('Siembra tomada de AGL')") -eq $true) 'Avisa que la fecha salió de AGL'
 
     # Lote: el primero de la lista
-    $lote = JS "(() => { const c = [...document.querySelectorAll('[role=dialog] *')].find(x => x.textContent.trim() === 'Lote' && x.parentElement?.querySelector('button[aria-haspopup=listbox]')); return c ? true : false })()"
-    JS "(() => { const c = [...document.querySelectorAll('[role=dialog] *')].find(x => x.textContent.trim() === 'Lote' && x.parentElement?.querySelector('button[aria-haspopup=listbox]')); c.parentElement.querySelector('button[aria-haspopup=listbox]').click(); return true })()" | Out-Null
+    # El selector del lote es el que dice «Elige el lote…»
+    $lote = JS "!![...document.querySelectorAll('[role=dialog] button[aria-haspopup=listbox]')].find(b => b.textContent.includes('Elige el lote'))"
+    JS "[...document.querySelectorAll('[role=dialog] button[aria-haspopup=listbox]')].find(b => b.textContent.includes('Elige el lote'))?.click(); true" | Out-Null
     Esperar "!!document.querySelector('[role=listbox] [role=option]')" 4000 | Out-Null
     $loteTexto = JS "(() => { const o = [...document.querySelectorAll('[role=listbox] [role=option]')].find(x => x.textContent.trim() && !x.textContent.includes('Elige')); o.click(); return o.textContent.trim() })()"
     OK ($lote -and $loteTexto) 'Se elige un lote' "$loteTexto"
@@ -83,21 +93,21 @@ try {
         Rest "desinfeccion_plan?id=eq.$($planQA.id)" 'Patch' @{ fecha_siembra_congelada = '2020-01-01' } -Servicio | Out-Null
         Ir '/controles/desinfeccion'
         Esperar "[...document.querySelectorAll('button')].some(b => b.textContent.trim() === 'Planificación')" 30000 | Out-Null
-        Pestana 'Planificación' | Out-Null
+        PestanaHasta 'Planificación' "[...document.querySelectorAll('button')].some(b => b.offsetParent && b.textContent.trim() === 'Nuevo')" | Out-Null
         $t3 = Esperar "[...document.querySelectorAll('tbody tr')].some(tr => tr.innerText.includes('$codA') && /2020/.test(tr.innerText))" 20000
         OK ($t3 -ge 0) 'La cuadrícula muestra la línea con la fecha movida'
-        JS "(() => { const tr = [...document.querySelectorAll('tbody tr')].find(tr => tr.innerText.includes('$codA') && /2020/.test(tr.innerText)); tr.querySelector('input[type=checkbox]').click(); return true })()" | Out-Null
+        JS "(() => { const tr = [...document.querySelectorAll('tbody tr')].find(tr => tr.innerText.includes('$codA') && /2020/.test(tr.innerText)); (tr.querySelector('[role=checkbox]') || tr.querySelector('input[type=checkbox]')).click(); return true })()" | Out-Null
         JS "window.confirm = () => true; true" | Out-Null
         Start-Sleep -Milliseconds 300
         JS "(() => { const b = [...document.querySelectorAll('button')].find(x => x.offsetParent && /^Sincronizar \d+$/.test(x.textContent.trim())); if (!b) return false; b.click(); return true })()" | Out-Null
         $t4 = Esperar "document.body.innerText.includes('línea(s) actualizadas')" 15000
+        if ($t4 -lt 0) { $script:Resultados.Add("DIAG sincronizar: t3=$t3 marcadas=$(JS "document.querySelectorAll('tbody [role=checkbox][aria-checked=true]').length") botones=$(JS "[...document.querySelectorAll('button')].filter(b => b.offsetParent && /Sincronizar/.test(b.textContent)).map(b => b.textContent.trim() + (b.disabled ? '(off)' : '')).join(',')") aviso=$((JS "document.querySelector('main')?.innerText.match(/[^\n]*(línea|Sincroniz|No se pudo)[^\n]*/g)?.slice(0,4).join(' || ') ?? ''"))") }
         $despues = @(Rest "desinfeccion_plan?select=fecha_siembra_congelada&id=eq.$($planQA.id)" -Servicio)[0].fecha_siembra_congelada
         OK ($t4 -ge 0 -and $despues -eq $fechaA) 'Sincronizar vuelve a copiar la siembra de AGL' "$despues"
     }
 
     # ---------------- 3 · Ejecución: DDT desde AGL o aviso claro ----------------
-    Pestana 'Ejecución' | Out-Null
-    Esperar "[...document.querySelectorAll('button')].some(b => b.offsetParent && b.textContent.trim() === 'Nueva ejecución')" 20000 | Out-Null
+    PestanaHasta 'Ejecución' "[...document.querySelectorAll('button')].some(b => b.offsetParent && b.textContent.trim() === 'Nueva ejecución')" | Out-Null
     Clic 'Nueva ejecución' | Out-Null
     Esperar "!!document.querySelector('[role=dialog]')" 10000 | Out-Null
     $cajaTurno = "[...document.querySelectorAll('[role=dialog] *')].find(x => x.textContent.trim().startsWith('Turno de riego') && x.parentElement?.querySelector('button[aria-haspopup=listbox], select'))?.parentElement"
@@ -118,8 +128,7 @@ try {
     Start-Sleep -Seconds 3
     OK ((Errores-Pagina) -eq '') 'El reporte abre sin errores' (Errores-Pagina)
 
-    Pestana 'Planificación' | Out-Null
-    Esperar "[...document.querySelectorAll('button')].some(b => b.offsetParent && b.textContent.trim() === 'Importar')" 15000 | Out-Null
+    PestanaHasta 'Planificación' "[...document.querySelectorAll('button')].some(b => b.offsetParent && b.textContent.trim() === 'Importar')" | Out-Null
     if ((Clic 'Importar') -eq $true) {
         Esperar "!!document.querySelector('textarea')" 10000 | Out-Null
         Start-Sleep -Milliseconds 1500   # que lleguen los turnos de AGL
@@ -137,6 +146,7 @@ try {
     OK ((Errores-Pagina) -eq '') 'Sin errores en la página' (Errores-Pagina)
 } catch { $script:Resultados.Add("EXCEPCION $($_.Exception.Message) $($_.ErrorDetails.Message)") }
 finally {
+    try { Rest 'rpc/fn_asignar_roles' 'Post' @{ p_perfil = $qaId; p_roles = $origRoles; p_principal = $orig.rol_id } -Servicio | Out-Null } catch { $script:Resultados.Add("LIMPIEZA roles QA: $($_.Exception.Message)") }
     if ($planQA) { try { Rest "desinfeccion_plan?id=eq.$($planQA.id)" 'Delete' -Servicio | Out-Null } catch {} }
     # Por si el guardado creó la línea pero la prueba no la encontró
     try { Rest "desinfeccion_plan?usuario_id=eq.$($script:QA.id)&dosis_mz=eq.300&area_planificada_mz=eq.1.5" 'Delete' -Servicio | Out-Null } catch {}
