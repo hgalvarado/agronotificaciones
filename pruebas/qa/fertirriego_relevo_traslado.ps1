@@ -20,7 +20,7 @@ function ElegirOpcion($selectorBoton, $texto) {
     Start-Sleep -Milliseconds 400
     return $ok
 }
-function SinPendientes([int]$ms = 80000) { Esperar "!document.querySelector('[data-pendientes-cuenta]')" $ms }
+function SinPendientes([int]$ms = 80000) { Start-Sleep -Milliseconds 1500; Esperar "!document.querySelector('[data-pendientes-cuenta]')" $ms }
 function Pendientes { [int](JS "Number((document.querySelector('[data-pendientes-cuenta]')?.innerText.match(/\d+/) || [0])[0])") }
 function Abrir($estacion, $sufijo) {
     Ir "/fertirriego?r=$s-$sufijo"

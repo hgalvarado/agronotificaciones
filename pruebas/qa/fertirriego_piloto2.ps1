@@ -173,7 +173,7 @@ try {
     SinPendientes | Out-Null
     $rec = Lista "fert_recepciones?select=id,chofer_id,comentario&estacion_id=eq.$estId"
     $envMov = Lista "fert_envases_movimientos?select=cantidad,motivo&estacion_id=eq.$estId"
-    $det = if ($rec.Count) { Lista "fert_recepciones_detalle?select=id&recepcion_id=eq.$($rec[0].id)" } else { @() }
+    $det = if ($rec.Count) { Lista "fert_recepciones_detalle?select=material_id&recepcion_id=eq.$($rec[0].id)" } else { @() }
     OK ($rec.Count -eq 1 -and $det.Count -eq 0 -and ($envMov | Where-Object { $_.cantidad -eq -4 }) -and ($envMov | Where-Object { $_.cantidad -eq 1 })) 'La base: recepción SIN productos con 4 entregados y 1 recibido' "rec $($rec.Count) · lineas $($det.Count) · $($envMov | ConvertTo-Json -Compress)"
     $ops = Lista "fert_operaciones?select=datos&perfil_id=eq.$qaId&tipo=eq.recepcion&order=recibido_en.desc&limit=1"
     OK ($ops.Count -eq 1 -and $ops[0].datos.solo_envases -eq $true) 'Se manda solo_envases = true' ''

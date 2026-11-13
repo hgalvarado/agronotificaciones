@@ -89,7 +89,7 @@ try {
     ClicHasta "document.querySelector('[data-accion=contar]')" "!!document.querySelector('[data-conteo]')" | Out-Null
     Teclear "document.querySelector('[data-conteo-material=""$SOL""] input')" '500'
     ClicEn "document.querySelector('[data-guardar-registro]')" | Out-Null
-    Esperar "!document.querySelector('[data-conteo]')" 15000 | Out-Null
+    Esperar "!document.querySelector('[data-conteo]')" 15000 | Out-Null; Start-Sleep -Milliseconds 1500
     $t = Esperar "!document.querySelector('[data-pendientes-cuenta]')" 30000
     $m = Lista "fert_movimientos?select=tipo,cantidad&estacion_id=eq.$estId"
     OK ($t -ge 0 -and $m.Count -eq 1 -and $m[0].tipo -eq 'SALDO_INICIAL' -and [double]$m[0].cantidad -eq 500) 'Conteo inicial: saldo inicial 500, enviado solo'
