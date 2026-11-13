@@ -4,7 +4,8 @@
 --
 --   agm_parametros  una lectura por turno (turnos_ciclo, publicado por AGL) y día: tensiómetros, riego, agua/solución
 --                   y suelo. El DDT lo calcula la base (fecha − siembra): nunca se escribe a mano.
---   agm_clima       ETo, DPV y viento una vez por estación y día (no por turno).
+--   agm_clima       ETo, DPV y viento una vez por ZONA y día (lo manda el encargado de zona; no por turno).
+--   El % y el número de fertilización NO van aquí: salen del turno (DDT del plan) y de Fertirriego › Horas.
 --   agm_rangos      rangos por parámetro (los publica AGL): fuera de rango = AVISO, no bloquea.
 --   fn_agm_guardar_parametros / fn_agm_guardar_clima: escritura idempotente por el UUID del teléfono (sin señal:
 --                   la cola reenvía y no duplica); un turno y día ya registrado se COMPLETA (no se duplica).
@@ -35,10 +36,6 @@ create table if not exists public.agm_parametros (
     tensiometro_12_pm     numeric(10,2),
     tensiometro_24_pm     numeric(10,2),
     horas_riego           numeric(10,2),
-    pct_fertilizacion     numeric(10,2),
-    extra_fertilizacion   numeric(10,2),
-    no_fertilizacion      integer,
-    fecha_fertilizacion   date,
     ce_agua               numeric(10,3),
     ph_agua               numeric(10,3),
     ce_gotero             numeric(10,3),
@@ -64,7 +61,7 @@ create index if not exists idx_agm_parametros_fecha on public.agm_parametros (fe
 
 create table if not exists public.agm_clima (
     id              uuid primary key,
-    estacion_id     uuid not null references public.estaciones_riego(id),
+    zona_id         uuid not null references public.zonas(id),
     fecha           date not null,
     eto             numeric(10,3),
     dpv             numeric(10,3),
@@ -74,7 +71,7 @@ create table if not exists public.agm_clima (
     creado_en       timestamptz not null default now(),
     actualizado_por uuid,
     actualizado_en  timestamptz,
-    constraint agm_clima_estacion_dia unique (estacion_id, fecha)
+    constraint agm_clima_zona_dia unique (zona_id, fecha)
 );
 
 -- ---------------------------------------------------------------- permisos (matriz de la base)
@@ -117,6 +114,25 @@ language sql stable security definer set search_path = public, pg_temp as $$
 $$;
 grant execute on function public.fn_agm_puede(uuid, text) to authenticated;
 
+/** Lo mismo para una ZONA (clima): global, zonal (sus zonas) o propietario (tiene una estación asignada en esa zona). */
+create or replace function public.fn_agm_puede_zona(p_zona uuid, p_accion text default 'ver')
+returns boolean
+language sql stable security definer set search_path = public, pg_temp as $$
+    select case
+        when public.fn_es_admin() then true
+        when not public.fn_tiene_permiso('agrometricas', p_accion) then false
+        else case public.fn_mi_alcance('agrometricas', p_accion)
+            when 'global' then true
+            when 'zonal' then public.fn_ve_zona_estricta(p_zona)
+                or exists (select 1 from public.perfiles_estaciones pe join public.estaciones_riego e on e.id = pe.estacion_id
+                           where e.zona_id = p_zona and pe.perfil_id = (select auth.uid()))
+            else exists (select 1 from public.perfiles_estaciones pe join public.estaciones_riego e on e.id = pe.estacion_id
+                         where e.zona_id = p_zona and pe.perfil_id = (select auth.uid()))
+        end
+    end
+$$;
+grant execute on function public.fn_agm_puede_zona(uuid, text) to authenticated;
+
 -- ---------------------------------------------------------------- RLS: leer según alcance; escribir solo por funciones
 
 alter table public.agm_rangos enable row level security;
@@ -133,7 +149,7 @@ create policy agm_parametros_leer on public.agm_parametros for select to authent
 
 drop policy if exists agm_clima_leer on public.agm_clima;
 create policy agm_clima_leer on public.agm_clima for select to authenticated
-    using (public.fn_agm_puede(estacion_id, 'ver'));
+    using (public.fn_agm_puede_zona(zona_id, 'ver'));
 
 grant select on public.agm_rangos, public.agm_parametros, public.agm_clima to authenticated;
 
@@ -174,7 +190,7 @@ declare
     v_previa  public.agm_parametros%rowtype;
     v_hoy     date := (now() at time zone 'America/Tegucigalpa')::date;
     v_cols    text[] := array['tensiometro_12_am','tensiometro_24_am','tensiometro_12_pm','tensiometro_24_pm','horas_riego',
-                              'pct_fertilizacion','extra_fertilizacion','ce_agua','ph_agua','ce_gotero','ph_gotero',
+                              'ce_agua','ph_agua','ce_gotero','ph_gotero',
                               'ce_extractor','ph_extractor','cloro_cinta','ce_suelo_antes','ce_suelo_despues'];
     v_nums    jsonb := '{}';
     c         text;
@@ -225,8 +241,6 @@ begin
         tensiometro_12_pm   = coalesce((v_nums ->> 'tensiometro_12_pm')::numeric, a.tensiometro_12_pm),
         tensiometro_24_pm   = coalesce((v_nums ->> 'tensiometro_24_pm')::numeric, a.tensiometro_24_pm),
         horas_riego         = coalesce((v_nums ->> 'horas_riego')::numeric, a.horas_riego),
-        pct_fertilizacion   = coalesce((v_nums ->> 'pct_fertilizacion')::numeric, a.pct_fertilizacion),
-        extra_fertilizacion = coalesce((v_nums ->> 'extra_fertilizacion')::numeric, a.extra_fertilizacion),
         ce_agua             = coalesce((v_nums ->> 'ce_agua')::numeric, a.ce_agua),
         ph_agua             = coalesce((v_nums ->> 'ph_agua')::numeric, a.ph_agua),
         ce_gotero           = coalesce((v_nums ->> 'ce_gotero')::numeric, a.ce_gotero),
@@ -236,8 +250,6 @@ begin
         cloro_cinta         = coalesce((v_nums ->> 'cloro_cinta')::numeric, a.cloro_cinta),
         ce_suelo_antes      = coalesce((v_nums ->> 'ce_suelo_antes')::numeric, a.ce_suelo_antes),
         ce_suelo_despues    = coalesce((v_nums ->> 'ce_suelo_despues')::numeric, a.ce_suelo_despues),
-        no_fertilizacion    = coalesce(public._agm_num(p, 'no_fertilizacion')::integer, a.no_fertilizacion),
-        fecha_fertilizacion = coalesce(nullif(p ->> 'fecha_fertilizacion', '')::date, a.fecha_fertilizacion),
         foto_calicata       = coalesce(nullif(p ->> 'foto_calicata', ''), a.foto_calicata),
         latitud             = coalesce(public._agm_num(p, 'latitud'), a.latitud),
         longitud            = coalesce(public._agm_num(p, 'longitud'), a.longitud),
@@ -255,39 +267,39 @@ end
 $$;
 grant execute on function public.fn_agm_guardar_parametros(jsonb) to authenticated;
 
-/** Clima del día por estación (ETo, DPV, viento). Mismo criterio de idempotencia y permisos. -> la fila (jsonb) */
+/** Clima del día por zona (ETo, DPV, viento; lo manda el encargado de zona). Mismo criterio de idempotencia y permisos. -> la fila (jsonb) */
 create or replace function public.fn_agm_guardar_clima(p jsonb)
 returns jsonb
 language plpgsql security definer set search_path = public, pg_temp as $$
 declare
-    v_est    uuid := nullif(p ->> 'estacion_id', '')::uuid;
+    v_zona   uuid := nullif(p ->> 'zona_id', '')::uuid;
     v_fecha  date := nullif(p ->> 'fecha', '')::date;
     v_id     uuid := nullif(p ->> 'id', '')::uuid;
     v_hoy    date := (now() at time zone 'America/Tegucigalpa')::date;
     v_previa public.agm_clima%rowtype;
     v_fila   public.agm_clima%rowtype;
 begin
-    if v_id is null or v_fecha is null or v_est is null then
-        raise exception 'Faltan la estación, la fecha o el identificador.' using errcode = '22023';
+    if v_id is null or v_fecha is null or v_zona is null then
+        raise exception 'Faltan la zona, la fecha o el identificador.' using errcode = '22023';
     end if;
     if v_fecha > v_hoy then
         raise exception 'No se registra clima de días futuros.' using errcode = '22023';
     end if;
-    if not public.fn_agm_puede(v_est, 'registrar_parametros') then
-        raise exception 'No tienes permiso para registrar clima en esta estación.' using errcode = '42501';
+    if not public.fn_agm_puede_zona(v_zona, 'registrar_parametros') then
+        raise exception 'No tienes permiso para registrar clima en esta zona.' using errcode = '42501';
     end if;
-    select * into v_previa from public.agm_clima where id = v_id or (estacion_id = v_est and fecha = v_fecha)
+    select * into v_previa from public.agm_clima where id = v_id or (zona_id = v_zona and fecha = v_fecha)
         order by (id = v_id) desc limit 1;
-    if found and (v_previa.estacion_id <> v_est or v_previa.fecha <> v_fecha) then
-        raise exception 'Este registro ya se guardó para otra estación o fecha.' using errcode = '22023';
+    if found and (v_previa.zona_id <> v_zona or v_previa.fecha <> v_fecha) then
+        raise exception 'Este registro ya se guardó para otra zona o fecha.' using errcode = '22023';
     end if;
     if (v_fecha < v_hoy - 1 or (found and v_previa.creado_por is distinct from auth.uid()))
-       and not public.fn_agm_puede(v_est, 'corregir_parametros') then
+       and not public.fn_agm_puede_zona(v_zona, 'corregir_parametros') then
         raise exception 'Para corregir días anteriores o registros de otra persona se necesita «Corregir parámetros».'
             using errcode = '42501';
     end if;
     if not found then
-        insert into public.agm_clima (id, estacion_id, fecha) values (v_id, v_est, v_fecha) returning * into v_previa;
+        insert into public.agm_clima (id, zona_id, fecha) values (v_id, v_zona, v_fecha) returning * into v_previa;
     end if;
     update public.agm_clima a set
         eto    = coalesce(public._agm_num(p, 'eto'), a.eto),

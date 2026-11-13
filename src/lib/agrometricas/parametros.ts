@@ -24,8 +24,6 @@ export const CAMPOS: CampoParametro[] = [
   { clave: 'tensiometro_12_pm', etiqueta: 'Tensiómetro 12 cm · PM', seccion: 'tensiometros', unidad: 'cb', decimales: 1 },
   { clave: 'tensiometro_24_pm', etiqueta: 'Tensiómetro 24 cm · PM', seccion: 'tensiometros', unidad: 'cb', decimales: 1 },
   { clave: 'horas_riego', etiqueta: 'Horas de riego', seccion: 'riego', unidad: 'h', decimales: 2 },
-  { clave: 'pct_fertilizacion', etiqueta: '% de fertilización', seccion: 'riego', unidad: '%', decimales: 1 },
-  { clave: 'extra_fertilizacion', etiqueta: 'Extra de fertilización', seccion: 'riego', unidad: '%', decimales: 1 },
   { clave: 'ce_agua', etiqueta: 'CE agua', seccion: 'agua', unidad: 'dS/m', decimales: 2 },
   { clave: 'ph_agua', etiqueta: 'pH agua', seccion: 'agua', decimales: 2 },
   { clave: 'ce_gotero', etiqueta: 'CE gotero', seccion: 'agua', unidad: 'dS/m', decimales: 2 },
@@ -45,7 +43,7 @@ export const SECCIONES: { clave: Seccion; titulo: string; abierta: boolean }[] =
   { clave: 'riego', titulo: 'Riego', abierta: false },
   { clave: 'agua', titulo: 'Agua y solución', abierta: false },
   { clave: 'suelo', titulo: 'Suelo y calicata', abierta: false },
-  { clave: 'clima', titulo: 'Clima del día (una vez por estación)', abierta: false },
+  { clave: 'clima', titulo: 'Clima del día (una vez por zona)', abierta: false },
 ]
 
 export interface Rango { parametro: string; minimo: number | null; maximo: number | null }

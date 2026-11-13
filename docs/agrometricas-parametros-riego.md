@@ -45,9 +45,16 @@
   corrigen solos); el usuario decide en una pantalla de revisión. Las fotos de Drive se enlazan o se copian a OneDrive.
   Se verifican los conteos contra la hoja.
 
-## 4. Preguntas para el usuario (antes de construir)
-1. ¿Quién captura: el estacionero de cada estación o un técnico por zona?
-2. ¿El clima lo toma alguien en campo o viene de una estación meteorológica?
-3. Rangos por parámetro: ¿hay valores de referencia (ej. tensiómetro ideal por DDT o fase)?
-4. «No fertilización»: ¿es el número de fertilización del plan del día? (en la hoja apunta a otro registro)
-5. Fotos de calicata viejas: ¿se copian a OneDrive o basta con un enlace a Drive?
+## 4. Respuestas del usuario (2026-11-13, no volver a preguntar)
+1. **Quién registra**: los **parametristas** (dependen del jefe de zona, igual que el estacionero). Se les asignan sus
+   estaciones (`perfiles_estaciones`) y el alcance sale de la matriz de permisos.
+2. **Clima**: lo manda por correo el encargado de zona o lo registra el parametrista → **una vez por ZONA y día**
+   (`agm_clima.zona_id`).
+3. **Rangos**: no hay referencia escrita. Propuesta: AGL los **calcula del histórico** (percentiles 5–95 por parámetro,
+   y por fase/DDT donde haya datos), el usuario los revisa con los de campo y los publica.
+4. **«No fertilización» y % de fertilización NO se registran en Parámetros**: el número de fertilización es el DDT del
+   plan del turno (ya está en Fertirriego) y el **% de fertilización se agrega a Fertirriego › Horas** del turno
+   (pendiente: SQL + formulario en Fertirriego).
+5. **Fotos de calicata**: las viejas quedan con **enlace a Drive**; las nuevas se guardan en OneDrive (el teléfono las
+   sube a Supabase Storage de paso y AGL las baja a OneDrive y las borra de Supabase).
+

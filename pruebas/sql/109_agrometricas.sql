@@ -16,8 +16,8 @@ insert into r(ok, prueba) select :'j3'::jsonb ->> 'id' = '11111111-1111-1111-111
     and (select count(*) from agm_parametros where turno_ciclo_id = :'turno') = 1, 'otro teléfono, mismo turno y día: completa la misma fila (sin duplicar)';
 do $$ begin perform public.fn_agm_guardar_parametros(jsonb_build_object('id', gen_random_uuid(), 'turno_ciclo_id', current_setting('x.t'), 'fecha', (now() + interval '3 day')::date)); insert into r(ok, prueba) values (false, 'futuro rechazado');
 exception when others then insert into r(ok, prueba) values (sqlerrm like '%futuros%', 'futuro rechazado'); end $$;
-select public.fn_agm_guardar_clima(jsonb_build_object('id','33333333-3333-3333-3333-333333333333','estacion_id',(select estacion_id from turnos_ciclo where id=:'turno'),'fecha',:'ayer','eto',5.1,'viento',3)) as c1 \gset
-insert into r(ok, prueba) select (:'c1'::jsonb ->> 'eto')::numeric = 5.1, 'clima por estación y día';
+select public.fn_agm_guardar_clima(jsonb_build_object('id','33333333-3333-3333-3333-333333333333','zona_id',(select e.zona_id from turnos_ciclo t join estaciones_riego e on e.id = t.estacion_id where t.id=:'turno'),'fecha',:'ayer','eto',5.1,'viento',3)) as c1 \gset
+insert into r(ok, prueba) select (:'c1'::jsonb ->> 'eto')::numeric = 5.1, 'clima por zona y día';
 select set_config('request.jwt.claim.sub', :'otro', true);
 do $$ begin perform public.fn_agm_guardar_parametros(jsonb_build_object('id', gen_random_uuid(), 'turno_ciclo_id', current_setting('x.t'), 'fecha', current_date - 1)); insert into r(ok, prueba) values (false, 'sin permiso rechazado');
 exception when others then insert into r(ok, prueba) values (sqlstate = '42501', 'sin permiso rechazado'); end $$;
