@@ -96,6 +96,18 @@
 
 ## 6. Historial (lo hecho y por qué)
 
+- **2026-11-13 (tarde-noche) · AgroMétricas parte 1: Parámetros de riego** (migración desde AppSheet, que sigue en
+  producción y NO se toca). Docs `docs/agrometricas-migracion.md` (32 hojas mapeadas, decisiones) y
+  `docs/agrometricas-parametros-riego.md` (respuestas del usuario). `sql/109` (parámetros por turno y día, clima por
+  zona, rangos de AGL, permisos POR ZONA del turno) y `sql/110` (calicata fija por ciclo con precisión GPS; fotos en
+  bucket privado), corridas en desarrollo. Pantallas `/agrometricas` y `/agrometricas/parametros`, cola sin señal en
+  localStorage (`lib/agrometricas/cola.ts`), `components/ui/AvisoFlotante.tsx`. Réplica 7/7 y 5/5, unitaria 7/7.
+  **Lección**: la primera pantalla tenía estilo propio y el usuario la rechazó: siempre los componentes del proyecto.
+  Falta QA con clics.
+- **2026-11-13 · AGL Mi Día** (`afc400c`): Alt+M ventana emergente, editar tareas, @usuario comparte, nota del Cerebro
+  en ventana. QA 27/27. Diseño del Comparativo de Fertirriego v2 en `AGLGestion_App/docs/fertirriego-comparativo-v2.md`
+  (se construye el domingo 2026-11-15 tras renovarse el límite semanal).
+
 - **2026-11-13 · Prueba piloto 2** (`docs/fertirriego-piloto2.md`): teléfono (`2c54888`: botones grandes por DDT,
   detalle primero en bitácora, filtros y quién, «Envases» sin producto, grupos, calculadora), `sql/100` (todo el detalle
   al teléfono y a AGL; funciones de la 99 quedan como `_base` y la pública agrega), `sql/101` (`fn_fert_exportar_pruebas`
