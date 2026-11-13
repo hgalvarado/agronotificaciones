@@ -78,7 +78,6 @@
       `scripts\respaldar-tablas-viejas.ps1 -Entorno desarrollo`, luego la 104 en desarrollo, QA
       `pruebas/qa/desinfeccion_desde_agl.ps1`; después lo mismo en producción. Borrar `respaldo.*_m104` cuando
       ya no hagan falta (ocupan espacio).
-- [ ] Al terminar las fases: borrar el usuario QA de desarrollo (`qa.rendimiento@desarrollo.local`).
 
 ## 5. Cómo hacer QA (receta)
 
@@ -88,7 +87,7 @@
 2. Pruebas en `pruebas/qa/*.ps1` (arnés `comun.ps1`: Edge headless + CDP, sesión del usuario QA).
    Ej.: `powershell -ExecutionPolicy Bypass -File pruebas/qa/tiempo_real.ps1`. Escribir con `Teclear` (teclado
    real); asignar `.value` a mano no dispara todos los `onChange` de React.
-3. Usuario QA: solo en desarrollo, rol Torre de Control (id 2) + todas las zonas. Credenciales en
+3. Usuario QA (BORRADO de desarrollo el 2026-11-13 a pedido del usuario; para una QA nueva crearlo otra vez y al terminar borrarlo): solo en desarrollo, rol Torre de Control (id 2) + todas las zonas. Credenciales en
    `pruebas/qa/qa_usuario.local.json` (ignorado por git). Si falta: crear con `POST /auth/v1/admin/users` +
    fila en `perfiles` + `perfiles_zonas`.
 4. SQL: réplica local con `initdb` en `<scratch>\pg_qa` (puerto 5499, `-A trust`), roles/esquemas stub de Supabase,
