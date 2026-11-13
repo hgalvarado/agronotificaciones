@@ -5,7 +5,7 @@
 --   agm_parametros  una lectura por turno (turnos_ciclo, publicado por AGL) y día: tensiómetros, riego, agua/solución
 --                   y suelo. El DDT lo calcula la base (fecha − siembra): nunca se escribe a mano.
 --   agm_clima       ETo, DPV y viento una vez por ZONA y día (lo manda el encargado de zona; no por turno).
---   El % y el número de fertilización NO van aquí: salen del turno (DDT del plan) y de Fertirriego › Horas.
+--   Las horas de riego, el % y el número de fertilización NO van aquí: salen del turno (DDT del plan) y de Fertirriego › Horas.
 --   agm_rangos      rangos por parámetro (los publica AGL): fuera de rango = AVISO, no bloquea.
 --   fn_agm_guardar_parametros / fn_agm_guardar_clima: escritura idempotente por el UUID del teléfono (sin señal:
 --                   la cola reenvía y no duplica); un turno y día ya registrado se COMPLETA (no se duplica).
@@ -36,7 +36,6 @@ create table if not exists public.agm_parametros (
     tensiometro_24_am     numeric(10,2),
     tensiometro_12_pm     numeric(10,2),
     tensiometro_24_pm     numeric(10,2),
-    horas_riego           numeric(10,2),
     ce_agua               numeric(10,3),
     ph_agua               numeric(10,3),
     ce_gotero             numeric(10,3),
@@ -59,6 +58,8 @@ create table if not exists public.agm_parametros (
     constraint agm_parametros_turno_dia unique (turno_ciclo_id, fecha)
 );
 create index if not exists idx_agm_parametros_fecha on public.agm_parametros (fecha);
+-- Las horas de riego salen del turno (Fertirriego › Horas): fuera de aquí (la primera versión de la 109 la tenía)
+alter table public.agm_parametros drop column if exists horas_riego;
 
 create table if not exists public.agm_clima (
     id              uuid primary key,
@@ -177,7 +178,7 @@ declare
     v_id      uuid := nullif(p ->> 'id', '')::uuid;
     v_previa  public.agm_parametros%rowtype;
     v_hoy     date := (now() at time zone 'America/Tegucigalpa')::date;
-    v_cols    text[] := array['tensiometro_12_am','tensiometro_24_am','tensiometro_12_pm','tensiometro_24_pm','horas_riego',
+    v_cols    text[] := array['tensiometro_12_am','tensiometro_24_am','tensiometro_12_pm','tensiometro_24_pm',
                               'ce_agua','ph_agua','ce_gotero','ph_gotero',
                               'ce_extractor','ph_extractor','cloro_cinta','ce_suelo_antes','ce_suelo_despues'];
     v_nums    jsonb := '{}';
@@ -228,7 +229,6 @@ begin
         tensiometro_24_am   = coalesce((v_nums ->> 'tensiometro_24_am')::numeric, a.tensiometro_24_am),
         tensiometro_12_pm   = coalesce((v_nums ->> 'tensiometro_12_pm')::numeric, a.tensiometro_12_pm),
         tensiometro_24_pm   = coalesce((v_nums ->> 'tensiometro_24_pm')::numeric, a.tensiometro_24_pm),
-        horas_riego         = coalesce((v_nums ->> 'horas_riego')::numeric, a.horas_riego),
         ce_agua             = coalesce((v_nums ->> 'ce_agua')::numeric, a.ce_agua),
         ph_agua             = coalesce((v_nums ->> 'ph_agua')::numeric, a.ph_agua),
         ce_gotero           = coalesce((v_nums ->> 'ce_gotero')::numeric, a.ce_gotero),

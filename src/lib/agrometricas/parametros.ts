@@ -7,7 +7,7 @@
  * lectura puede ser real y la persona decide.
  */
 
-export type Seccion = 'tensiometros' | 'riego' | 'agua' | 'suelo' | 'clima'
+export type Seccion = 'tensiometros' | 'agua' | 'suelo' | 'clima'
 
 export interface CampoParametro {
   clave: string          // columna en agm_parametros / agm_clima
@@ -23,7 +23,6 @@ export const CAMPOS: CampoParametro[] = [
   { clave: 'tensiometro_24_am', etiqueta: 'Tensiómetro 24 cm · AM', seccion: 'tensiometros', unidad: 'cb', decimales: 1 },
   { clave: 'tensiometro_12_pm', etiqueta: 'Tensiómetro 12 cm · PM', seccion: 'tensiometros', unidad: 'cb', decimales: 1 },
   { clave: 'tensiometro_24_pm', etiqueta: 'Tensiómetro 24 cm · PM', seccion: 'tensiometros', unidad: 'cb', decimales: 1 },
-  { clave: 'horas_riego', etiqueta: 'Horas de riego', seccion: 'riego', unidad: 'h', decimales: 2 },
   { clave: 'ce_agua', etiqueta: 'CE agua', seccion: 'agua', unidad: 'dS/m', decimales: 2 },
   { clave: 'ph_agua', etiqueta: 'pH agua', seccion: 'agua', decimales: 2 },
   { clave: 'ce_gotero', etiqueta: 'CE gotero', seccion: 'agua', unidad: 'dS/m', decimales: 2 },
@@ -40,7 +39,6 @@ export const CAMPOS: CampoParametro[] = [
 
 export const SECCIONES: { clave: Seccion; titulo: string; abierta: boolean }[] = [
   { clave: 'tensiometros', titulo: 'Tensiómetros', abierta: true },
-  { clave: 'riego', titulo: 'Riego', abierta: false },
   { clave: 'agua', titulo: 'Agua y solución', abierta: false },
   { clave: 'suelo', titulo: 'Suelo y calicata', abierta: false },
   { clave: 'clima', titulo: 'Clima del día (una vez por zona)', abierta: false },

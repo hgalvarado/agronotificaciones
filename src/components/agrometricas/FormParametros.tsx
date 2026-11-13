@@ -8,7 +8,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Boton, Campo, Entrada, AreaTexto, Alerta } from '@/components/ui/Primitivos'
+import { Alerta, AreaTexto, Boton, Campo, Entrada, Insignia, Tarjeta, TarjetaEncabezado, bordeError } from '@/components/ui/Primitivos'
+import { Acordeon } from '@/components/ui/Acordeon'
 import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
 import { createClient } from '@/lib/supabase/client'
 import { ayerIso, hoyIso } from '@/lib/fechas/zona'
@@ -97,87 +98,91 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
     enviar()
   }
 
+  const cerrar = (clave: string) => setAbiertas((a) => ({ ...a, [clave]: !a[clave] }))
+  const llenos = (seccion: string) => CAMPOS.filter((c) => c.seccion === seccion && leerNumero(valores[c.clave]) != null).length
+  const fueraEn = (seccion: string) => CAMPOS.filter((c) => c.seccion === seccion && revisar(leerNumero(valores[c.clave]), rangos.get(c.clave), c).fuera).length
+
   return (
     <>
-      <header className="flex flex-col gap-1">
-        <h1 className="text-xl font-semibold">Parámetros de riego</h1>
-        <p className="text-sm opacity-75" data-estado-cola>
-          {cola ? `${cola} por enviar` : 'Todo enviado'}
-          {datos?.bajado ? ` · turnos al ${new Date(datos.bajado).toLocaleString('es-HN', { timeZone: 'America/Tegucigalpa', dateStyle: 'short', timeStyle: 'short' })}` : ''}
-        </p>
-      </header>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-lg font-semibold text-slate-900">Parámetros de riego</h1>
+          <p className="text-sm text-slate-500">
+            {datos?.bajado ? `Turnos al ${new Date(datos.bajado).toLocaleString('es-HN', { timeZone: 'America/Tegucigalpa', dateStyle: 'short', timeStyle: 'short' })}` : 'Cargando turnos…'}
+          </p>
+        </div>
+        <span data-estado-cola><Insignia tono={cola ? 'ambar' : 'verde'} punto>{cola ? `${cola} por enviar` : 'Todo enviado'}</Insignia></span>
+      </div>
 
       {aviso && <Alerta tono="azul">{aviso}</Alerta>}
       {rechazados.map((r) => (
         <Alerta key={r.id} tono="rojo">
           No se guardó {r.resumen}: {r.mensaje}{' '}
-          <button className="underline" onClick={() => { Cola.descartarRechazado(usuarioId, r.id); refrescarCola() }}>Quitar aviso</button>
+          <button className="font-semibold underline" onClick={() => { Cola.descartarRechazado(usuarioId, r.id); refrescarCola() }}>Quitar aviso</button>
         </Alerta>
       ))}
-      {!puedeRegistrar && <Alerta tono="ambar">Puedes ver, pero no registrar parámetros (pídelo a tu jefe de zona).</Alerta>}
-      {datos === null && <p className="text-sm opacity-75">Cargando turnos… (la primera vez necesita señal)</p>}
+      {!puedeRegistrar && <Alerta tono="ambar">Puedes ver, pero no registrar parámetros. Pídelo a tu jefe de zona.</Alerta>}
 
-      <div className="flex flex-col gap-3 rounded-2xl border border-gray-400/30 p-3">
-        <Campo etiqueta="Jornada" requerido>
-          <div className="flex flex-wrap gap-2">
-            <Boton type="button" tamano="lg" variante={fecha === hoyIso() ? 'primario' : 'secundario'} onClick={() => setFecha(hoyIso())}>Hoy</Boton>
-            <Boton type="button" tamano="lg" variante={fecha === ayerIso() ? 'primario' : 'secundario'} onClick={() => setFecha(ayerIso())}>Ayer</Boton>
-            <Entrada type="date" value={fecha} max={hoyIso()} onChange={(e) => e.target.value && setFecha(e.target.value)}
-              className="h-13 min-w-40 flex-1 text-base" aria-label="Otra fecha" />
-          </div>
-        </Campo>
-        <Campo etiqueta="Turno" requerido>
-          <SelectorBuscable valor={turnoId} opciones={opciones} onCambiar={setTurnoId} placeholder="Elige el turno…"
-            etiquetaBusqueda="Buscar turno o estación…" permitirVacio={false} />
-        </Campo>
-        {turno && (
-          <p className="text-sm" data-ddt>
-            <strong>DDT {dias ?? '—'}</strong> · {turno.estacion ?? 'Sin estación'} · {turno.zona ?? ''} · {turno.temporada}
-          </p>
-        )}
-      </div>
-
-      {SECCIONES.map((s) => (
-        <section key={s.clave} className="rounded-2xl border border-gray-400/30">
-          <button type="button" className="flex min-h-13 w-full items-center justify-between px-4 text-left text-base font-semibold"
-            aria-expanded={abiertas[s.clave]} onClick={() => setAbiertas((a) => ({ ...a, [s.clave]: !a[s.clave] }))}>
-            {s.titulo}<span aria-hidden>{abiertas[s.clave] ? '▾' : '▸'}</span>
-          </button>
-          {abiertas[s.clave] && (
-            <div className="grid grid-cols-1 gap-3 px-4 pb-4 sm:grid-cols-2">
-              {CAMPOS.filter((c) => c.seccion === s.clave).map((c) => {
-                const r = revisar(leerNumero(valores[c.clave]), rangos.get(c.clave), c)
-                return (
-                  <Campo key={c.clave} etiqueta={c.unidad ? `${c.etiqueta} (${c.unidad})` : c.etiqueta}>
-                    <Entrada inputMode="decimal" enterKeyHint="next" autoComplete="off" data-campo={c.clave}
-                      className="h-13 text-lg" value={valores[c.clave] ?? ''} onChange={(e) => poner(c.clave, e.target.value)} />
-                    {r.fuera && (
-                      <p className="mt-1 text-sm text-amber-700 dark:text-amber-400" role="status">
-                        {r.mensaje}{' '}
-                        {r.sugerencia != null && (
-                          <button type="button" className="font-semibold underline" onClick={() => poner(c.clave, String(r.sugerencia))}>
-                            Usar {r.sugerencia}
-                          </button>
-                        )}
-                      </p>
-                    )}
-                  </Campo>
-                )
-              })}
-              {s.clave === 'suelo' && (
-                <p className="text-sm opacity-75 sm:col-span-2">La foto de la calicata se agrega en la siguiente versión.</p>
-              )}
+      <Tarjeta>
+        <TarjetaEncabezado titulo="Jornada y turno" />
+        <div className="flex flex-col gap-3 p-4">
+          <Campo etiqueta="Jornada" requerido>
+            <div className="grid grid-cols-3 gap-2">
+              <Boton type="button" tamano="lg" variante={fecha === hoyIso() ? 'primario' : 'secundario'} onClick={() => setFecha(hoyIso())}>Hoy</Boton>
+              <Boton type="button" tamano="lg" variante={fecha === ayerIso() ? 'primario' : 'secundario'} onClick={() => setFecha(ayerIso())}>Ayer</Boton>
+              <Entrada type="date" value={fecha} max={hoyIso()} onChange={(e) => e.target.value && setFecha(e.target.value)}
+                className="h-13 text-base" aria-label="Otra fecha" />
+            </div>
+          </Campo>
+          <Campo etiqueta="Turno" requerido>
+            <SelectorBuscable valor={turnoId} opciones={opciones} onCambiar={setTurnoId} placeholder="Elige el turno…"
+              etiquetaBusqueda="Buscar turno o estación…" permitirVacio={false} />
+          </Campo>
+          {turno && (
+            <div className="flex flex-wrap items-center gap-2" data-ddt>
+              <Insignia tono="verde">DDT {dias ?? '—'}</Insignia>
+              <Insignia tono="gris">{turno.estacion ?? 'Sin estación'}</Insignia>
+              <Insignia tono="gris">{turno.zona ?? 'Sin zona'}</Insignia>
+              <span className="text-xs text-slate-500">{[turno.ciclo, turno.temporada].filter(Boolean).join(' · ')}</span>
             </div>
           )}
-        </section>
+        </div>
+      </Tarjeta>
+
+      {SECCIONES.map((s) => (
+        <Acordeon key={s.clave} titulo={s.titulo} abierto={Boolean(abiertas[s.clave])} onAlternar={() => cerrar(s.clave)}
+          resumen={llenos(s.clave) ? <Insignia tono="azul">{llenos(s.clave)} con dato</Insignia> : undefined}
+          aviso={fueraEn(s.clave) ? `${fueraEn(s.clave)} fuera de rango` : null}>
+          <div className="grid grid-cols-2 gap-3 px-3.5 pb-4">
+            {CAMPOS.filter((c) => c.seccion === s.clave).map((c) => {
+              const r = revisar(leerNumero(valores[c.clave]), rangos.get(c.clave), c)
+              return (
+                <Campo key={c.clave} etiqueta={c.unidad ? `${c.etiqueta} (${c.unidad})` : c.etiqueta} error={r.fuera ? r.mensaje : null}>
+                  <Entrada inputMode="decimal" enterKeyHint="next" autoComplete="off" data-campo={c.clave}
+                    className={`h-12 text-base tabular-nums ${bordeError(r.fuera)}`} value={valores[c.clave] ?? ''}
+                    onChange={(e) => poner(c.clave, e.target.value)} />
+                  {r.sugerencia != null && (
+                    <button type="button" className="mt-1 text-sm font-semibold text-emerald-700 underline" onClick={() => poner(c.clave, String(r.sugerencia))}>
+                      Usar {r.sugerencia}
+                    </button>
+                  )}
+                </Campo>
+              )
+            })}
+          </div>
+        </Acordeon>
       ))}
 
-      <Campo etiqueta="Comentario">
-        <AreaTexto rows={2} value={comentario} onChange={(e) => setComentario(e.target.value)} />
-      </Campo>
+      <Tarjeta>
+        <div className="p-4">
+          <Campo etiqueta="Comentario">
+            <AreaTexto rows={2} value={comentario} onChange={(e) => setComentario(e.target.value)} />
+          </Campo>
+        </div>
+      </Tarjeta>
       {error && <Alerta tono="rojo">{error}</Alerta>}
 
-      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-gray-400/30 bg-[var(--c-superficie,white)] p-3 pb-[max(.75rem,env(safe-area-inset-bottom))]">
+      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/95 p-3 pb-[max(.75rem,env(safe-area-inset-bottom))] backdrop-blur">
         <div className="mx-auto max-w-2xl">
           <Boton type="button" tamano="lg" className="w-full" disabled={!puedeRegistrar} onClick={guardar} data-guardar>Guardar</Boton>
         </div>
