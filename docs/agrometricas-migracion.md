@@ -57,7 +57,17 @@ AGL (manda)  ──publica──▶  Supabase (intermediario mínimo)  ──▶
 | 5 | Importar el histórico a AGL + gráficas | Verificar cantidades contra la hoja |
 | 6 | Uso en paralelo 2–4 semanas → apagar AppSheet (solo lectura) | Capacitación con los manuales de Fertirriego |
 
-## 4. Decisiones del usuario (pendientes)
+## 4. Decisiones del usuario (2026-11-13, no volver a preguntar)
+1. **Módulo nuevo «AgroMétricas»** en AgroNotificaciones (NO dentro de Fertirriego), con un menú de **botones grandes**:
+   Parámetros de riego, Índice de crecimiento, Polinización, Registro de productos, Análisis, etc.
+2. **No se migran**: Siembra, Cosecha, Trasplante (y los turnos: ya **no los registra el campo**, salen de AGL; igual
+   todo lo que sea maestro).
+3. **Se migra parte por parte**: en cada parte se decide qué pasa y qué no. Lo que AppSheet obligaba a hacer de cierta
+   forma se **rediseña mejor**, pero **sin perder el histórico** (cada parte trae su histórico a AGL, verificado).
+4. El §3 (fases) queda como guía de orden; cada parte arranca con su propio mini-diseño y su validación.
+   «Registro de productos» se decide en su parte (hoy se cruza con las aplicaciones de Fertirriego).
+
+## 5. Decisiones del usuario (pendientes)
 1. ¿Siguen en uso Cosecha (3 filas), Trasplante diario y Desinfección de AppSheet, o ya se retiran?
 2. ¿Todo el histórico se importa a AGL, o solo la temporada actual?
 3. Parámetros de riego: ¿los captura el mismo estacionero de Fertirriego o otra persona?
