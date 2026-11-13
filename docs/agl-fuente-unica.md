@@ -312,3 +312,17 @@ Hacerlo **antes** de que Fertirriego tenga movimientos en producción (hoy tiene
 | 7 | Procesos: AP (AGL) vs APS (AgroNoti) | a) equivalencia sin renombrar · b) renombrar en uno de los dos | **a** |
 | 8 | Nombres de las 4 estaciones y su zona | — | Que el usuario los dé; si se reutiliza un nombre actual, mejor (conserva el id) |
 | 9 | Orden de arranque | — | Fase A en desarrollo con zonas+temporadas+estaciones+turnos primero; materiales/variedades/tareas después; lotes al final |
+
+
+## Decisiones del usuario (2026-11-13)
+
+- Acepta todas las recomendaciones de §5 (1 a 7 y 9): desactivar zonas 2B/2C/3C y los 8 sub-turnos; crear en AGL
+  Sorgo, Crotalaria y Mucuna (las variedades viejas sin uso quedan inactivas); AGL publica el precio de MARA (el
+  historial viejo queda de consulta); lotes administrativos y BOMBA-6 se quedan en AgroNotificaciones; nombres de
+  zonas y responsables los de AGL; AP = APS se relacionan sin renombrar; orden: zonas, temporadas, estaciones y
+  turnos → materiales, variedades y tareas → lotes.
+- Estaciones (punto 8): «vamos a usar las mismas de AGL; quizá cambie un poco el nombre de alguna, pero relaciónalas
+  lo más posible porque AGL manda, es el que tengo más actualizado». → Emparejar cada estación de AGL con la de
+  AgroNotificaciones por nombre normalizado (y similitud si cambió un poco); la de AgroNotificaciones conserva su id
+  e historial y toma el nombre de AGL; las que AGL ya no tiene se desactivan (no se borran) si no tienen saldo ni
+  custodio. Mostrar el emparejamiento en la vista previa para que el usuario lo confirme antes de aplicar.
