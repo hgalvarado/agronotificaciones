@@ -19,7 +19,6 @@
 
 import { useMemo, useState } from 'react'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/Primitivos'
-import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
 import { aEntradaLocal, ahoraIso, deEntradaLocal, hoyIso } from '@/lib/fechas/zona'
 import { claveBorrador, useAutoguardado, useBorrador } from '@/lib/fertirriego/borrador'
 import { productosDelPlan } from '@/lib/fertirriego/calculos'
@@ -28,6 +27,7 @@ import { crearOperacion, nuevoId } from '@/lib/fertirriego/operaciones'
 import { productosUsados } from '@/lib/fertirriego/productos'
 import type { Chofer, EnvaseTipo, EstadoCampo, Estacion, Operacion, Persona, Vehiculo } from '@/lib/fertirriego/tipos'
 import { EditorLineas, leerLineas, SIN_LINEAS, useCrearProducto, type LineaEditable } from './EditorLineas'
+import { BloqueEnvases, SelectorChofer, SelectorVehiculo } from './ChoferVehiculo'
 import { MarcoRegistro } from './MarcoRegistro'
 
 /** Días de plan que se muestran como guía junto a cada producto. */
@@ -49,8 +49,6 @@ type DatosRecepcion = {
   envasesAqui?: EnvaseTipo[]
   productosNuevos?: Operacion[]
 }
-
-const soloEnteros = (v: string) => v.replace(/\D/g, '').slice(0, 6)
 
 export function FormRecepcion({
   estado,
@@ -109,7 +107,6 @@ export function FormRecepcion({
   const [vehiculosAqui, setVehiculosAqui] = useState<Vehiculo[]>(b?.vehiculosAqui ?? [])
   const [envases, setEnvases] = useState<Record<string, { recibidos: string; entregados: string }>>(b?.envases ?? {})
   const [envasesAqui, setEnvasesAqui] = useState<EnvaseTipo[]>(b?.envasesAqui ?? [])
-  const [envaseNuevo, setEnvaseNuevo] = useState<string | null>(null)
   const productos = useCrearProducto(estado.materiales, b?.productosNuevos, con99 && estacion.permisos.recibir)
   useAutoguardado(borrador, {
     fechaHora,
@@ -139,25 +136,6 @@ export function FormRecepcion({
     () => [...(estado.envases_tipos ?? []), ...envasesAqui.filter((e) => !(estado.envases_tipos ?? []).some((x) => x.id === e.id))],
     [estado.envases_tipos, envasesAqui]
   )
-  // Primero los camiones en que ya vino este chofer
-  const deEsteChofer = new Set(estado.choferes_vehiculos.filter((cv) => cv.chofer_id === chofer).map((cv) => cv.vehiculo_id))
-
-  function cambiarEnvase(id: string, campo: 'recibidos' | 'entregados', valor: string) {
-    setEnvases((e) => ({ ...e, [id]: { recibidos: e[id]?.recibidos ?? '', entregados: e[id]?.entregados ?? '', [campo]: soloEnteros(valor) } }))
-  }
-
-  function agregarEnvase() {
-    const nombre = (envaseNuevo ?? '').trim()
-    if (!nombre) return
-    const ya = tiposEnvase.find((e) => e.nombre.trim().toLowerCase() === nombre.toLowerCase())
-    if (!ya) {
-      const id = nuevoId()
-      setNuevos((n) => [...n, crearOperacion('envase_tipo', { envase_id: id, nombre }, { id, ubicacion: null, resumen: `Envase nuevo · ${nombre}` })])
-      setEnvasesAqui((x) => [...x, { id, nombre, validado: false, pendiente: true }])
-    }
-    setEnvaseNuevo(null)
-  }
-
   return (
     <MarcoRegistro
       titulo="Recibir producto"
@@ -206,73 +184,29 @@ export function FormRecepcion({
       </Campo>
 
       <Campo etiqueta="¿Quién entregó? (chofer)" requerido>
-        <div data-selector-chofer>
-          <SelectorBuscable
-            valor={chofer}
-            opciones={choferes.map((c) => ({ id: c.id, titulo: c.nombre, subtitulo: c.validado ? undefined : 'por validar' }))}
-            onCambiar={setChofer}
-            placeholder="Elegir chofer…"
-            etiquetaBusqueda="Buscar chofer"
-            creacionRapida={{
-              etiqueta: 'Agregar chofer',
-              campos: [{ key: 'nombre', label: 'Nombre completo', requerido: true }, { key: 'telefono', label: 'Teléfono' }],
-              onCrear: async (v) => {
-                const id = nuevoId()
-                setNuevos((n) => [
-                  ...n,
-                  crearOperacion('chofer', { chofer_id: id, nombre: v.nombre, telefono: v.telefono || null }, { id, ubicacion: null, resumen: `Chofer nuevo · ${v.nombre}` }),
-                ])
-                setChoferesAqui((c) => [...c, { id, nombre: v.nombre, validado: false, pendiente: true }])
-                return { id, titulo: v.nombre, subtitulo: 'nuevo · por validar' }
-              },
-            }}
-          />
-        </div>
+        <SelectorChofer
+          valor={chofer}
+          onCambiar={setChofer}
+          choferes={choferes}
+          onNuevo={(op, c) => {
+            setNuevos((n) => [...n, op])
+            setChoferesAqui((x) => [...x, c])
+          }}
+        />
       </Campo>
 
       <Campo etiqueta="Vehículo">
-        <div data-selector-vehiculo>
-          <SelectorBuscable
-            valor={vehiculo}
-            opciones={[...vehiculos]
-              .sort((a, b) => Number(deEsteChofer.has(b.id)) - Number(deEsteChofer.has(a.id)))
-              .map((v) => ({
-                id: v.id,
-                titulo: v.placa,
-                subtitulo: [v.tipo, v.marca, v.color, deEsteChofer.has(v.id) ? 'ya vino en este' : null, v.validado ? null : 'por validar']
-                  .filter(Boolean)
-                  .join(' · '),
-              }))}
-            onCambiar={setVehiculo}
-            placeholder="Elegir vehículo…"
-            etiquetaBusqueda="Buscar placa"
-            permitirVacio
-            textoVacio="Sin vehículo"
-            creacionRapida={{
-              etiqueta: 'Agregar vehículo',
-              campos: [
-                { key: 'placa', label: 'Placa', requerido: true },
-                { key: 'tipo', label: 'Tipo (camión, pick-up…)' },
-                { key: 'marca', label: 'Marca' },
-                { key: 'color', label: 'Color' },
-              ],
-              onCrear: async (v) => {
-                const id = nuevoId()
-                const placa = v.placa.toUpperCase().replace(/\s+/g, '')
-                setNuevos((n) => [
-                  ...n,
-                  crearOperacion(
-                    'vehiculo',
-                    { vehiculo_id: id, placa, tipo: v.tipo || null, marca: v.marca || null, color: v.color || null },
-                    { id, ubicacion: null, resumen: `Vehículo nuevo · ${placa}` }
-                  ),
-                ])
-                setVehiculosAqui((x) => [...x, { id, placa, tipo: v.tipo || null, marca: v.marca || null, color: v.color || null, validado: false, pendiente: true }])
-                return { id, titulo: placa, subtitulo: 'nuevo · por validar' }
-              },
-            }}
-          />
-        </div>
+        <SelectorVehiculo
+          valor={vehiculo}
+          onCambiar={setVehiculo}
+          vehiculos={vehiculos}
+          chofer={chofer}
+          choferesVehiculos={estado.choferes_vehiculos}
+          onNuevo={(op, v) => {
+            setNuevos((n) => [...n, op])
+            setVehiculosAqui((x) => [...x, v])
+          }}
+        />
       </Campo>
 
       {turnosEstacion.length > 0 && (
@@ -326,73 +260,16 @@ export function FormRecepcion({
       {con99 && (
         <Campo etiqueta="Envases">
           <p className="mb-2 text-xs text-slate-500">Cuántos llegaron llenos y cuántos vacíos se llevó el chofer. Lo vacío cuenta como 0.</p>
-          <div className="flex flex-col divide-y divide-slate-100 rounded-xl ring-1 ring-inset ring-slate-200" data-envases-recepcion>
-            {tiposEnvase.map((t) => (
-              <div key={t.id} className="flex flex-wrap items-center gap-2 px-3 py-2.5" data-envase={t.nombre}>
-                <div className="min-w-0 flex-1 basis-28">
-                  <p className="truncate text-sm font-semibold text-slate-800">{t.nombre}</p>
-                  <p className="text-[11px] text-slate-500">
-                    {t.validado ? '' : 'por validar · '}En la estación: {saldosEnvases?.get(t.id) ?? 0}
-                  </p>
-                </div>
-                <label className="flex flex-col items-center gap-0.5">
-                  <span className="text-[10px] font-semibold uppercase text-slate-500">Recibidos</span>
-                  <input
-                    inputMode="numeric"
-                    value={envases[t.id]?.recibidos ?? ''}
-                    onChange={(e) => cambiarEnvase(t.id, 'recibidos', e.target.value)}
-                    placeholder="0"
-                    data-envase-recibidos
-                    className="w-20 rounded-lg border border-slate-200 bg-white px-2 py-2 text-right text-base font-semibold tabular-nums focus:border-brand-600 focus:outline-none"
-                  />
-                </label>
-                <label className="flex flex-col items-center gap-0.5">
-                  <span className="text-[10px] font-semibold uppercase text-slate-500">Entregados</span>
-                  <input
-                    inputMode="numeric"
-                    value={envases[t.id]?.entregados ?? ''}
-                    onChange={(e) => cambiarEnvase(t.id, 'entregados', e.target.value)}
-                    placeholder="0"
-                    data-envase-entregados
-                    className="w-20 rounded-lg border border-slate-200 bg-white px-2 py-2 text-right text-base font-semibold tabular-nums focus:border-brand-600 focus:outline-none"
-                  />
-                </label>
-              </div>
-            ))}
-            {tiposEnvase.length === 0 && <p className="px-3 py-3 text-sm text-slate-400">Agrega el tipo de envase.</p>}
-          </div>
-          {envaseNuevo === null ? (
-            <button
-              type="button"
-              data-agregar-envase
-              onClick={() => setEnvaseNuevo('')}
-              className="mt-2 inline-flex w-fit items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-semibold text-brand-700 hover:bg-brand-50"
-            >
-              + Agregar otro envase
-            </button>
-          ) : (
-            <div className="mt-2 flex gap-2">
-              <Entrada
-                value={envaseNuevo}
-                onChange={(e) => setEnvaseNuevo(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    agregarEnvase()
-                  }
-                }}
-                placeholder="Nombre (ej. Tote, Saco)"
-                autoFocus
-                data-nombre-envase-nuevo
-              />
-              <button type="button" onClick={agregarEnvase} data-crear-envase className="shrink-0 rounded-lg bg-brand-700 px-3 text-sm font-semibold text-white">
-                Agregar
-              </button>
-              <button type="button" onClick={() => setEnvaseNuevo(null)} className="shrink-0 rounded-lg px-2 text-sm text-slate-500">
-                No agregar
-              </button>
-            </div>
-          )}
+          <BloqueEnvases
+            tipos={tiposEnvase}
+            valores={envases}
+            onCambiar={setEnvases}
+            saldos={saldosEnvases}
+            onNuevoTipo={(op, t) => {
+              setNuevos((n) => [...n, op])
+              setEnvasesAqui((x) => [...x, t])
+            }}
+          />
         </Campo>
       )}
 

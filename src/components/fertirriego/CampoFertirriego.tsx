@@ -33,6 +33,7 @@ import { FormAplicacion } from './FormAplicacion'
 import { FormBitacora } from './FormBitacora'
 import { FormConteo } from './FormConteo'
 import { FormEntregarRelevo } from './FormEntregarRelevo'
+import { FormEnvases } from './FormEnvases'
 import { FormRecibirRelevo } from './FormRecibirRelevo'
 import { FormTraslado } from './FormTraslado'
 import { puedeRegistrar } from './MarcoRegistro'
@@ -51,7 +52,8 @@ import { VistaTurnos } from './VistaTurnos'
 type Pestana = 'estacion' | 'turnos' | 'bitacora' | 'relevos' | 'traslados' | 'envios'
 type Ventana =
   | { tipo: 'recibir' }
-  | { tipo: 'aplicar'; turno?: string; fecha?: string }
+  | { tipo: 'envases' }
+  | { tipo: 'aplicar'; turno?: string; fecha?: string; eleccion?: string }
   | { tipo: 'contar' }
   | { tipo: 'horas'; turno: string; fecha: string }
   | { tipo: 'documento'; documentoTipo: string; documentoId: string }
@@ -93,7 +95,7 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
   const [pestana, setPestana] = useState<Pestana>('estacion')
   const [ventana, setVentana] = useState<Ventana>(null)
   const [aviso, setAviso] = useState<string | null>(null)
-  const [material, setMaterial] = useState('')
+  const [productosBitacora, setProductosBitacora] = useState<string[]>([])
 
   // Guardado en segundo plano (MarcoRegistro rápido): qué ventana se estaba guardando, y los que fallaron
   const ultimaVentana = useRef<Ventana>(null)
@@ -289,7 +291,7 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
                   opciones={estaciones.map((e) => ({ id: e.id, titulo: e.nombre, subtitulo: e.zona ?? undefined }))}
                   onCambiar={(id) => {
                     setEstacionId(id)
-                    setMaterial('')
+                    setProductosBitacora([])
                     void campo.guardarPreferencia('estacion', id)
                   }}
                   placeholder="Elegir estación…"
@@ -342,6 +344,8 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
                   setVentana(
                     a === 'recibir'
                       ? { tipo: 'recibir' }
+                      : a === 'envases'
+                        ? { tipo: 'envases' }
                       : a === 'aplicar'
                         ? { tipo: 'aplicar' }
                         : a === 'contar'
@@ -357,7 +361,7 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
                 }
                 onAplicarTurno={(t) => setVentana({ tipo: 'aplicar', turno: t })}
                 onVerProducto={(m) => {
-                  setMaterial(m)
+                  setProductosBitacora([m])
                   setPestana('bitacora')
                 }}
               />
@@ -367,7 +371,7 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
                 estado={estado}
                 cola={cola}
                 estacion={estacion}
-                onAplicar={(turno, fecha) => setVentana({ tipo: 'aplicar', turno, fecha })}
+                onAplicar={(turno, fecha, eleccion) => setVentana({ tipo: 'aplicar', turno, fecha, eleccion })}
                 onHoras={(turno, fecha) => setVentana({ tipo: 'horas', turno, fecha })}
               />
             )}
@@ -376,8 +380,8 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
                 estado={estado}
                 cola={cola}
                 estacionId={estacion.id}
-                material={material}
-                onMaterial={setMaterial}
+                productos={productosBitacora}
+                onProductos={setProductosBitacora}
                 onAbrir={(documentoTipo, documentoId) => setVentana({ tipo: 'documento', documentoTipo, documentoId })}
               />
             )}
@@ -429,6 +433,19 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
                 onGuardado={guardado}
               />
             )}
+            {ventana?.tipo === 'envases' && (
+              <FormEnvases
+                estado={estado}
+                estacion={estacion}
+                yo={estado.yo}
+                saldosEnvases={saldosEnvases}
+                choferesPendientes={choferesPendientes}
+                vehiculosPendientes={vehiculosPendientes}
+                registrar={campo.registrar}
+                onCerrar={() => setVentana(null)}
+                onGuardado={guardado}
+              />
+            )}
             {ventana?.tipo === 'aplicar' && (
               <FormAplicacion
                 estado={estado}
@@ -438,6 +455,7 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
                 cola={cola}
                 turnoInicial={ventana.turno}
                 fechaInicial={ventana.fecha}
+                eleccionInicial={ventana.eleccion}
                 registrar={campo.registrar}
                 onCerrar={() => setVentana(null)}
                 onGuardado={guardado}

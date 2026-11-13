@@ -49,6 +49,7 @@ export function FormAplicacion({
   saldos,
   turnoInicial,
   fechaInicial,
+  eleccionInicial,
   registrar,
   onCerrar,
   onGuardado,
@@ -61,6 +62,8 @@ export function FormAplicacion({
   saldos: Map<string, number>
   turnoInicial?: string
   fechaInicial?: string
+  /** Piloto 2: abierto desde una tarjeta de «Por turno» = ese DDT (`plan:AAAA-MM-DD`) o «extra». */
+  eleccionInicial?: string
   registrar: (...ops: Operacion[]) => Promise<void>
   onCerrar: () => void
   onGuardado: (m: string) => void
@@ -72,7 +75,7 @@ export function FormAplicacion({
   )
   // Un borrador por turno y día cuando se abre desde uno (Por turno); si no, uno general de la estación
   const borrador = useBorrador<DatosAplicacion>(
-    claveBorrador('aplicacion', yo.id, estacion.id, [turnoInicial, fechaInicial].filter(Boolean).join('@'))
+    claveBorrador('aplicacion', yo.id, estacion.id, [turnoInicial, fechaInicial, eleccionInicial].filter(Boolean).join('@'))
   )
   const b = borrador.inicial
   const [turno, setTurno] = useState(b?.turno ?? turnoInicial ?? (turnos.length === 1 ? turnos[0].id : ''))
@@ -80,7 +83,7 @@ export function FormAplicacion({
   const [ejecutor2, setEjecutor2] = useState(b?.ejecutor2 ?? '')
   // null = todavía no escribió nada: se muestran las cantidades del DDT elegido
   const [editadas, setEditadas] = useState<LineaEditable[] | null>(b?.editadas ?? null)
-  const [elegida, setElegida] = useState<string | null>(b?.eleccion ?? null)
+  const [elegida, setElegida] = useState<string | null>(b?.eleccion ?? eleccionInicial ?? null)
   const [verTodos, setVerTodos] = useState(false)
   const [aceptaNegativo, setAceptaNegativo] = useState(false)
   const productos = useCrearProducto(estado.materiales, b?.productosNuevos, con99 && estacion.permisos.recibir)

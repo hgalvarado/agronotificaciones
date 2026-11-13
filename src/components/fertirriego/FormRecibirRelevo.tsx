@@ -17,6 +17,7 @@ import { verificarCodigo, verificarCodigoLargo, type LlavePersona } from '@/lib/
 import { crearOperacion } from '@/lib/fertirriego/operaciones'
 import type { EstadoCampo, Estacion, Operacion, Persona, Relevo } from '@/lib/fertirriego/tipos'
 import { ESTADOS_NOVEDAD } from './FormEntregarRelevo'
+import { BotonCalculadora } from './Calculadora'
 import { MarcoRegistro } from './MarcoRegistro'
 
 const MAX_INTENTOS = 5
@@ -225,14 +226,17 @@ export function FormRecibirRelevo({
                     </span>
                   </span>
                   {hay ? (
-                    <input
-                      inputMode="decimal"
-                      value={diferencias[id]}
-                      onChange={(e) => setDiferencias({ ...diferencias, [id]: e.target.value.replace(/[^\d.,]/g, '') })}
-                      placeholder="Lo que hay"
-                      autoFocus
-                      className="w-28 rounded-lg border border-red-300 bg-white px-3 py-2 text-right text-base font-semibold tabular-nums"
-                    />
+                    <>
+                      <input
+                        inputMode="decimal"
+                        value={diferencias[id]}
+                        onChange={(e) => setDiferencias({ ...diferencias, [id]: e.target.value.replace(/[^\d.,]/g, '') })}
+                        placeholder="Lo que hay"
+                        autoFocus
+                        className="w-28 rounded-lg border border-red-300 bg-white px-3 py-2 text-right text-base font-semibold tabular-nums"
+                      />
+                      <BotonCalculadora unidad={material(id)?.unidad} onUsar={(valor) => setDiferencias((d) => ({ ...d, [id]: valor }))} />
+                    </>
                   ) : (
                     <button
                       type="button"

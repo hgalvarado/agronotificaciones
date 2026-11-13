@@ -66,7 +66,18 @@ export function MarcoRegistro({
   permiso = 'aplicar',
   borrador,
   rapido = false,
+  soloLectura = false,
+  textoCancelar = 'Cancelar',
+  onCancelar,
 }: {
+  /**
+   * Solo ver (piloto 2, punto 2: el detalle de un registro): el pie dice solo «Listo», sin avisos de custodia y sin
+   * pedir la ubicación hasta que se elija una acción.
+   */
+  soloLectura?: boolean
+  textoCancelar?: string
+  /** El botón secundario del pie (por omisión cierra). */
+  onCancelar?: () => void
   /** Borrador del formulario (lib/fertirriego/borrador): se avisa si se recuperó y se borra al guardar. */
   borrador?: Pick<Borrador<unknown>, 'clave' | 'recuperado' | 'terminar' | 'descartar'>
   /**
@@ -105,12 +116,13 @@ export function MarcoRegistro({
   const ubicacionPedida = useRef<Promise<ResultadoUbicacion> | null>(null)
   const ubicacionLista = useRef<ResultadoUbicacion | null>(null)
   useEffect(() => {
+    if (soloLectura || ubicacionPedida.current) return
     const p = obtenerUbicacion()
     ubicacionPedida.current = p
     void p.then((r) => {
       ubicacionLista.current = r
     })
-  }, [])
+  }, [soloLectura])
 
   /** La ubicación para el registro: la ya obtenida, la que se está pidiendo, o (si el GPS no respondió) otra vez. */
   function ubicacionAhora(): Promise<ResultadoUbicacion> {
@@ -192,14 +204,20 @@ export function MarcoRegistro({
       onCerrar={onCerrar}
       titulo={`${titulo} · ${estacion.nombre}`}
       pie={
+        soloLectura ? (
+          <Boton className="w-full" onClick={onCerrar} data-listo-detalle>
+            Listo
+          </Boton>
+        ) : (
         <div className="flex gap-2">
-          <Boton variante="secundario" className="flex-1" onClick={onCerrar} disabled={guardando}>
-            Cancelar
+          <Boton variante="secundario" className="flex-1" onClick={onCancelar ?? onCerrar} disabled={guardando} data-cancelar-registro>
+            {textoCancelar}
           </Boton>
           <Boton className="flex-1" onClick={() => void guardar()} disabled={guardando || !regla.si} data-guardar-registro>
             {guardando ? 'Guardando…' : textoGuardar}
           </Boton>
         </div>
+        )
       }
     >
       <div className="flex flex-col gap-4">
@@ -222,8 +240,8 @@ export function MarcoRegistro({
             </button>
           </div>
         )}
-        {!regla.si && <Alerta tono="ambar">{regla.motivo}</Alerta>}
-        {regla.si && regla.porOtro && (
+        {!soloLectura && !regla.si && <Alerta tono="ambar">{regla.motivo}</Alerta>}
+        {!soloLectura && regla.si && regla.porOtro && (
           <div className="rounded-xl bg-amber-50 p-3 ring-1 ring-inset ring-amber-200">
             <p className="mb-1.5 text-xs font-semibold text-amber-800">
               Registras por otra persona (queda anotado que lo hiciste tú)

@@ -8,7 +8,8 @@
 import type { Material, Operacion } from './tipos'
 
 export const CLASE_FERTILIZANTES = 'Fertilizantes'
-export const CLASE_SIN_GRUPO = 'Otros productos'
+/** Piloto 2 (punto 5): sin grupo = «Otros insumos». */
+export const CLASE_SIN_GRUPO = 'Otros insumos'
 /** Clases que siempre se ofrecen al crear un producto en campo. */
 export const CLASES_BASE = ['Otros insumos', 'Otros objetos']
 
@@ -29,6 +30,30 @@ export function ordenarPorClase(materiales: Material[]): { material: Material; c
       if (fa !== fb) return fa ? -1 : 1
       return a.clase.localeCompare(b.clase, 'es') || porNombre(a.material, b.material)
     })
+}
+
+/**
+ * Agrupa por clase (piloto 2, punto 5) cualquier lista con material: Fertilizantes primero (destacados), después cada
+ * clase en orden alfabético; dentro, por nombre. Lo que no tiene material conocido va a «Otros insumos».
+ */
+export function agruparPorClase<T>(
+  items: T[],
+  materialDe: (item: T) => Material | undefined
+): { clase: string; fertilizantes: boolean; items: T[] }[] {
+  const grupos = new Map<string, { item: T; m: Material | undefined }[]>()
+  for (const item of items) {
+    const m = materialDe(item)
+    const clase = m ? claseDe(m) : CLASE_SIN_GRUPO
+    grupos.set(clase, [...(grupos.get(clase) ?? []), { item, m }])
+  }
+  const nombre = (m: Material | undefined) => m?.descripcion ?? m?.codigo ?? ''
+  return [...grupos.entries()]
+    .sort(([a], [b]) => (a === CLASE_FERTILIZANTES ? -1 : b === CLASE_FERTILIZANTES ? 1 : a.localeCompare(b, 'es')))
+    .map(([clase, lista]) => ({
+      clase,
+      fertilizantes: clase === CLASE_FERTILIZANTES,
+      items: lista.sort((x, y) => nombre(x.m).localeCompare(nombre(y.m), 'es')).map((x) => x.item),
+    }))
 }
 
 /** Clases para elegir al crear un producto: las base y las de los productos que no son fertilizantes. */

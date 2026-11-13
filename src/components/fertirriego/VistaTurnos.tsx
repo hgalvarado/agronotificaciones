@@ -8,6 +8,7 @@
  */
 
 import { useState } from 'react'
+import { Boton } from '@/components/ui/Primitivos'
 import { hoyIso, sumarDias } from '@/lib/fechas/zona'
 import { cantidad } from '@/lib/fertirriego/calculos'
 import { aplicacionesDelTurno, ddtsDelTurno, tarjetasDelTurno, type ProductoTarjeta, type TarjetaDdt } from '@/lib/fertirriego/ddt'
@@ -33,7 +34,8 @@ export function VistaTurnos({
   estado: EstadoCampo
   cola: Operacion[]
   estacion: Estacion
-  onAplicar: (turnoId: string, fecha: string) => void
+  /** eleccion: `plan:AAAA-MM-DD` (DDT de la tarjeta) o `extra`. */
+  onAplicar: (turnoId: string, fecha: string, eleccion?: string) => void
   onHoras: (turnoId: string, fecha: string) => void
 }) {
   const turnos = estado.turnos.filter((t) => t.estacion_id === estacion.id)
@@ -117,20 +119,6 @@ export function VistaTurnos({
                                   Fecha real {c.fechasReales.length ? c.fechasReales.map(dia).join(', ') : 'sin aplicar'}
                                 </p>
                               </div>
-                              {estacion.permisos.aplicar && (
-                                <span className="flex shrink-0 flex-col items-end gap-1">
-                                  {c.tipo === 'plan' && c.fecha <= hoy && (
-                                    <button type="button" onClick={() => onAplicar(t.id, c.fecha)} className="text-xs font-bold text-brand-700" data-aplicar-dia>
-                                      Aplicar
-                                    </button>
-                                  )}
-                                  {fechaHoras <= hoy && (
-                                    <button type="button" onClick={() => onHoras(t.id, fechaHoras)} className="text-xs font-bold text-slate-600" data-horas-dia>
-                                      Horas
-                                    </button>
-                                  )}
-                                </span>
-                              )}
                             </div>
 
                             {c.productos.length > 0 && (
@@ -168,6 +156,22 @@ export function VistaTurnos({
                                   <> · cloro ppm cabezal {horas.ppm_cloro_cabezal ?? '—'} · campo {horas.ppm_cloro_campo ?? '—'}</>
                                 )}
                               </p>
+                            )}
+                            {/* Piloto 2, punto 1: Aplicar y Horas grandes (para el dedo) en TODAS las tarjetas. Una tarjeta
+                                futura abre con hoy como día (no se registra en el futuro) y su DDT ya elegido. */}
+                            {estacion.permisos.aplicar && (
+                              <div className="mt-2 grid grid-cols-2 gap-2" data-acciones-tarjeta>
+                                <Boton
+                                  tamano="lg" className="w-full"
+                                  onClick={() => onAplicar(t.id, c.tipo === 'plan' ? (c.fecha <= hoy ? c.fecha : hoy) : (c.fechasReales[0] ?? hoy), c.tipo === 'plan' ? `plan:${c.fecha}` : 'extra')}
+                                  data-aplicar-dia
+                                >
+                                  Aplicar
+                                </Boton>
+                                <Boton variante="secundario" tamano="lg" className="w-full" onClick={() => onHoras(t.id, fechaHoras <= hoy ? fechaHoras : hoy)} data-horas-dia>
+                                  Horas
+                                </Boton>
+                              </div>
                             )}
                           </div>
                         )

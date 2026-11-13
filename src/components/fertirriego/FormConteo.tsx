@@ -11,7 +11,8 @@ import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
 import { ahoraIso } from '@/lib/fechas/zona'
 import { cantidad } from '@/lib/fertirriego/calculos'
 import { crearOperacion } from '@/lib/fertirriego/operaciones'
-import { productosUsados } from '@/lib/fertirriego/productos'
+import { agruparPorClase, productosUsados } from '@/lib/fertirriego/productos'
+import { BotonCalculadora } from './Calculadora'
 import { creacionDeProducto, opcionesPorClase, useCrearProducto } from './EditorLineas'
 import { claveBorrador, useAutoguardado, useBorrador } from '@/lib/fertirriego/borrador'
 import type { EstadoCampo, Estacion, Operacion, Persona } from '@/lib/fertirriego/tipos'
@@ -103,34 +104,45 @@ export function FormConteo({
       <p className="text-sm text-slate-500">
         Escribe lo que hay físicamente. Lo que no cuentes, déjalo vacío. La diferencia contra el sistema queda registrada.
       </p>
-      <div className="flex flex-col divide-y divide-slate-100 rounded-xl ring-1 ring-inset ring-slate-200" data-conteo>
-        {lista.length === 0 && <p className="px-3 py-3 text-sm text-slate-400">Agrega los productos que vas a contar.</p>}
-        {lista.map((m) => {
-          const sistema = saldos.get(m.id)
-          const v = contado[m.id] ?? ''
-          const dif = v.trim() ? Number(v.replace(',', '.')) - (sistema ?? 0) : null
-          return (
-            <div key={m.id} className="flex flex-wrap items-center gap-2 px-3 py-2.5" data-conteo-material={m.codigo}>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-slate-800">{m.descripcion ?? m.codigo}</p>
-                <p className="text-[11px] text-slate-500">
-                  Sistema: {sistema === undefined ? 'sin registros (será el saldo inicial)' : `${cantidad(sistema)} ${m.unidad ?? ''}`}
-                  {dif !== null && Number.isFinite(dif) && dif !== 0 && (
-                    <span className={dif < 0 ? ' text-red-600' : ' text-brand-700'}> · diferencia {dif > 0 ? '+' : ''}{cantidad(dif)}</span>
-                  )}
-                </p>
-              </div>
-              <input
-                inputMode="decimal"
-                value={v}
-                onChange={(e) => setContado({ ...contado, [m.id]: e.target.value.replace(/[^\d.,]/g, '') })}
-                placeholder="Contado"
-                className="w-28 rounded-lg border border-slate-200 bg-white px-3 py-2 text-right text-base font-semibold tabular-nums focus:border-brand-600 focus:outline-none"
-              />
-              <span className="w-8 text-xs text-slate-500">{m.unidad}</span>
+      <div className="flex flex-col gap-3" data-conteo>
+        {lista.length === 0 && <p className="rounded-xl px-3 py-3 text-sm text-slate-400 ring-1 ring-inset ring-slate-200">Agrega los productos que vas a contar.</p>}
+        {agruparPorClase(lista, (m) => m).map((g) => (
+          <div key={g.clase} data-grupo-conteo={g.clase}>
+            <p className={`mb-1 text-[11px] font-bold uppercase tracking-wide ${g.fertilizantes ? 'text-brand-800' : 'text-slate-400'}`}>
+              {g.fertilizantes ? '★ ' : ''}
+              {g.clase}
+            </p>
+            <div className={`flex flex-col divide-y divide-slate-100 rounded-xl ring-1 ring-inset ${g.fertilizantes ? 'bg-brand-50/40 ring-brand-200' : 'ring-slate-200'}`}>
+              {g.items.map((m) => {
+                const sistema = saldos.get(m.id)
+                const v = contado[m.id] ?? ''
+                const dif = v.trim() ? Number(v.replace(',', '.')) - (sistema ?? 0) : null
+                return (
+                  <div key={m.id} className="flex flex-wrap items-center gap-2 px-3 py-2.5" data-conteo-material={m.codigo}>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-slate-800">{m.descripcion ?? m.codigo}</p>
+                      <p className="text-[11px] text-slate-500">
+                        Sistema: {sistema === undefined ? 'sin registros (será el saldo inicial)' : `${cantidad(sistema)} ${m.unidad ?? ''}`}
+                        {dif !== null && Number.isFinite(dif) && dif !== 0 && (
+                          <span className={dif < 0 ? ' text-red-600' : ' text-brand-700'}> · diferencia {dif > 0 ? '+' : ''}{cantidad(dif)}</span>
+                        )}
+                      </p>
+                    </div>
+                    <input
+                      inputMode="decimal"
+                      value={v}
+                      onChange={(e) => setContado({ ...contado, [m.id]: e.target.value.replace(/[^\d.,]/g, '') })}
+                      placeholder="Contado"
+                      className="w-28 rounded-lg border border-slate-200 bg-white px-3 py-2 text-right text-base font-semibold tabular-nums focus:border-brand-600 focus:outline-none"
+                    />
+                    <span className="w-8 text-xs text-slate-500">{m.unidad}</span>
+                    <BotonCalculadora unidad={m.unidad} onUsar={(valor) => setContado((c) => ({ ...c, [m.id]: valor }))} />
+                  </div>
+                )
+              })}
             </div>
-          )
-        })}
+          </div>
+        ))}
       </div>
       <Campo etiqueta="Contar otro producto">
         <SelectorBuscable

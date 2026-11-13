@@ -89,7 +89,7 @@ try {
     ClicHasta "document.querySelector('[data-accion=contar]')" "!!document.querySelector('[data-conteo]')" | Out-Null
     Teclear "document.querySelector('[data-conteo-material=""$SOL""] input')" '500'
     ClicEn "document.querySelector('[data-guardar-registro]')" | Out-Null
-    Esperar "!document.querySelector('[data-conteo]')" 15000 | Out-Null
+    Esperar "!document.querySelector('[data-conteo]')" 15000 | Out-Null; Start-Sleep -Milliseconds 1500
     $t = Esperar "!document.querySelector('[data-pendientes-cuenta]')" 30000
     $m = Lista "fert_movimientos?select=tipo,cantidad&estacion_id=eq.$estId"
     OK ($t -ge 0 -and $m.Count -eq 1 -and $m[0].tipo -eq 'SALDO_INICIAL' -and [double]$m[0].cantidad -eq 500) 'Conteo inicial: saldo inicial 500, enviado solo'
@@ -208,7 +208,7 @@ try {
     $kx = JS "[...document.querySelectorAll('[data-movimiento]')].map(b => b.dataset.movimiento).join(',')"
     OK ($kx -match 'APLICACION' -and $kx -match 'RECEPCION' -and $kx -match 'SALDO_INICIAL') 'Bitácora: saldo inicial, entrega y aplicación con saldo' $kx
     ClicHasta "document.querySelector('[data-movimiento=APLICACION]')" "!!document.querySelector('[data-detalle-documento]')" | Out-Null
-    ClicEn "document.querySelector('[data-modo-devolver]')" | Out-Null
+    ClicHasta "document.querySelector('[data-modo-devolver]')" "!!document.querySelector('[data-motivo]')" | Out-Null
     Start-Sleep -Milliseconds 400
     Teclear "document.querySelector('[data-cantidad=""0""]')" '10'
     Teclear "document.querySelector('[data-motivo]')" 'Sobró en el tanque (QA)'
@@ -221,6 +221,8 @@ try {
 
     # Anular la recepción ya consumida: la base lo rechaza y el teléfono lo explica
     ClicHasta "document.querySelector('[data-movimiento=RECEPCION]')" "!!document.querySelector('[data-detalle-documento]')" | Out-Null
+    # Piloto 2: primero el detalle; el motivo aparece al tocar «Anular»
+    ClicHasta "document.querySelector('[data-modo-anular]')" "!!document.querySelector('[data-motivo]')" | Out-Null
     Teclear "document.querySelector('[data-motivo]')" 'Prueba de rechazo (QA)'
     ClicEn "document.querySelector('[data-guardar-registro]')" | Out-Null
     Esperar "!document.querySelector('[data-detalle-documento]')" 15000 | Out-Null

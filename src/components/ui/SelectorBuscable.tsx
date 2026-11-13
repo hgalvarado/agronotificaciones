@@ -11,6 +11,8 @@ export type OpcionBuscable = {
   subtitulo?: string
   /** Si se da, la lista muestra un encabezado cada vez que cambia el grupo (las opciones ya vienen ordenadas). */
   grupo?: string
+  /** El encabezado de su grupo sale resaltado (ej. Fertilizantes). */
+  destacado?: boolean
 }
 
 export type CampoCreacion = {
@@ -264,7 +266,12 @@ export function SelectorBuscable({
                 filtradas.map((o, i) => (
                   <Fragment key={o.id}>
                     {o.grupo && o.grupo !== filtradas[i - 1]?.grupo && (
-                      <p className="mt-2 px-2 pb-1 pt-2 text-[11px] font-bold uppercase tracking-wide text-slate-400" data-grupo-opciones={o.grupo}>
+                      <p
+                        className={`mt-2 px-2 pb-1 pt-2 text-[11px] font-bold uppercase tracking-wide ${o.destacado ? 'rounded-md bg-brand-50 text-brand-800' : 'text-slate-400'}`}
+                        data-grupo-opciones={o.grupo}
+                        data-grupo-destacado={o.destacado ? '' : undefined}
+                      >
+                        {o.destacado ? '★ ' : ''}
                         {o.grupo}
                       </p>
                     )}

@@ -10,9 +10,10 @@ import { SelectorBuscable, type OpcionBuscable } from '@/components/ui/SelectorB
 import { IconPlus, IconTrash } from '@/components/ui/Icons'
 import { cantidad } from '@/lib/fertirriego/calculos'
 import { nuevoId } from '@/lib/fertirriego/operaciones'
-import { clasesParaCrear, ordenarPorClase } from '@/lib/fertirriego/productos'
+import { CLASE_FERTILIZANTES, clasesParaCrear, ordenarPorClase } from '@/lib/fertirriego/productos'
 import type { Material, Operacion } from '@/lib/fertirriego/tipos'
 import { useProductosNuevos, type ProductoNuevo } from '@/lib/fertirriego/useProductosNuevos'
+import { BotonCalculadora } from './Calculadora'
 
 export type LineaEditable = { clave: string; material_id: string; cantidad: string }
 
@@ -30,6 +31,7 @@ export function opcionesPorClase(materiales: Material[]): OpcionBuscable[] {
     titulo: m.descripcion ?? m.codigo,
     subtitulo: [m.codigo, m.unidad, m.validado === false ? 'por validar' : null].filter(Boolean).join(' · '),
     grupo: conGrupos ? clase : undefined,
+    destacado: conGrupos && clase === CLASE_FERTILIZANTES,
   }))
 }
 
@@ -130,6 +132,7 @@ export function EditorLineas({
                 />
                 <span className="text-xs text-slate-500">{unidad(l.material_id)}</span>
               </label>
+              <BotonCalculadora unidad={unidad(l.material_id)} onUsar={(v) => cambiar(l.clave, { cantidad: v })} />
               <span className="ml-auto flex flex-wrap gap-x-3 text-[11px] text-slate-500">
                 {planificado !== undefined && (
                   <span data-plan-linea>
