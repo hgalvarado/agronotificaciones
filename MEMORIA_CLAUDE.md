@@ -62,8 +62,9 @@
       Guías de Next 16 a leer antes de construir: `node_modules/next/dist/docs/01-app/02-guides/progressive-web-apps.md` y
       `offline-support.md`, `use-offline.md`.
 
-- [ ] **AGL única fuente de catálogos** (pedido y aprobado por el usuario 2026-11-11): inventario y propuesta en
-      `docs/agl-fuente-unica.md`. Esperando decisiones de reconciliación (zonas 2B/2C/3C, sub-turnos, temporada 2025-26).
+- [ ] **AGL única fuente de catálogos** (pedido 2026-11-11; ampliado 2026-11-12: «unificar todos, borrar lo de
+      AgroNoti y dejar lo de AGL», Supabase mínimo, 4 estaciones, 2025-26 inactiva). Análisis completo y plan por fases
+      (sql 105–108) en `docs/agl-fuente-unica.md`. Esperando que el usuario apruebe y tome las 9 decisiones de §5.
 - [ ] Duplicados viejos: en desarrollo hay capturadores con varios tickets «Registrado» del mismo día (hasta
       8). La 86 no los toca; la consulta para verlos está al final de `sql/86`. Decidir con el usuario.
 - [ ] **Velocidad de Labores**: medido. La consulta en la base es rápida (~10 ms en réplica; ~300 ms ida y
