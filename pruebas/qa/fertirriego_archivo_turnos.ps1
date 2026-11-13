@@ -52,6 +52,7 @@ try {
     $tc1 = (Lista "turnos_ciclo?select=id&agl_id=eq.$AGL1")[0].id
     Rest 'rpc/fn_fert_asignar_persona' 'Post' @{ p_estacion = $estId; p_perfil = $qaId; p_asignar = $true } | Out-Null
     Rest 'rpc/fn_fert_asignar_custodia' 'Post' @{ p_estacion = $estId; p_perfil = $qaId; p_motivo = 'Arranque QA' } | Out-Null
+    Start-Sleep -Seconds 5   # la custodia empieza con la hora del servidor: que lo registrado después quede claramente después
 
     # ============ El estacionero registra en el turno 1 ============
     $rolEst = (Rest 'roles' 'Post' @{ codigo = "QA_ESTA_$s"; nombre = "QA Estacionero A $s" } -Servicio)[0].id
@@ -64,7 +65,7 @@ try {
     $r2 = Enviar $opAp
     $r3 = Enviar (Op 'bitacora' @{ turno_ciclo_id = $tc1; fecha = $hoy; horas_riego = 6; ppm_cloro_cabezal = 1.2 })
     $saldo0 = [double](Lista "fert_saldos?select=disponible&estacion_id=eq.$estId&material_id=eq.$solId")[0].disponible
-    OK ($r1.estado -like 'ACEPTADO*' -and $r2.estado -like 'ACEPTADO*' -and $r3.estado -like 'ACEPTADO*' -and $saldo0 -eq 380) 'El estacionero cuenta 500, aplica 120 en el turno 1 y anota horas: bodega 380' "$($r1.estado)/$($r2.estado)/$($r3.estado) · $saldo0"
+    OK ($r1.estado -like 'ACEPTADO*' -and $r2.estado -like 'ACEPTADO*' -and $r3.estado -like 'ACEPTADO*' -and $saldo0 -eq 380) 'El estacionero cuenta 500, aplica 120 en el turno 1 y anota horas: bodega 380' "$($r1.estado) $($r1.mensaje) / $($r2.estado) $($r2.mensaje) / $($r3.estado) · $saldo0"
     CDP 'Browser.grantPermissions' @{ permissions = @('geolocation'); origin = 'http://localhost:3100' } | Out-Null
     CDP 'Emulation.setGeolocationOverride' @{ latitude = 13.312; longitude = -87.195; accuracy = 12 } | Out-Null
     AbrirCampo 'a'
@@ -74,8 +75,8 @@ try {
     Rest 'rpc/fn_asignar_roles' 'Post' @{ p_perfil = $qaId; p_roles = @($rolEst, $idAdmin); p_principal = $rolEst } -Servicio | Out-Null
     $paquete = Rest 'rpc/fn_fert_exportar_turno' 'Post' @{ p_agl_id = $AGL1 }
     OK ($paquete.huella -and $paquete.filas) 'Paso 1: AGL baja el paquete completo del turno (con su huella)' "huella $("$($paquete.huella)".Substring(0, [Math]::Min(12, "$($paquete.huella)".Length)))…"
-    $mal = $null; try { Rest 'rpc/fn_fert_archivar_turno' 'Post' @{ p_agl_id = $AGL1; p_huella = 'huella-equivocada' } | Out-Null } catch { $mal = $_.ErrorDetails.Message }
-    OK ($null -ne $mal -and (Lista "fert_aplicaciones?select=id&turno_ciclo_id=eq.$tc1").Count -eq 1) 'Con una huella que no cuadra NO borra nada' "$mal"
+    $reloj = [Diagnostics.Stopwatch]::StartNew(); $mal = $null; try { Rest 'rpc/fn_fert_archivar_turno' 'Post' @{ p_agl_id = $AGL1; p_huella = 'huella-equivocada' } | Out-Null } catch { $mal = $_.ErrorDetails.Message }
+    OK ($null -ne $mal -and (Lista "fert_aplicaciones?select=id&turno_ciclo_id=eq.$tc1").Count -eq 1) 'Con una huella que no cuadra NO borra nada' "$mal · $($reloj.ElapsedMilliseconds) ms"
     $arch = Rest 'rpc/fn_fert_archivar_turno' 'Post' @{ p_agl_id = $AGL1; p_huella = $paquete.huella }
     $apsDesp = (Lista "fert_aplicaciones?select=id&turno_ciclo_id=eq.$tc1").Count
     $bitDesp = (Lista "fert_bitacora_riego?select=fecha&turno_ciclo_id=eq.$tc1").Count

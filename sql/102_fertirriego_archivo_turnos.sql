@@ -440,7 +440,9 @@ begin
     v_huella := public._fert_huella(v_filas);
     if v_huella is distinct from p_huella then
         raise exception 'El turno % cambió desde que AGL lo bajó (llegó algo nuevo del campo o se republicó el plan). '
-                        'No se borró nada: vuelve a «Terminar ciclo».', p_agl_id using errcode = '40001';
+                        'No se borró nada: vuelve a «Terminar ciclo».', p_agl_id;
+        -- Sin errcode 40001 («reintentar»): Supabase reintenta ese código solo y, como la huella nunca cuadra, se
+        -- quedaba dando vueltas hasta vencer el tiempo (lo vio la QA en desarrollo).
     end if;
     v_conteos := public._fert_conteos_filas(v_filas);
 
