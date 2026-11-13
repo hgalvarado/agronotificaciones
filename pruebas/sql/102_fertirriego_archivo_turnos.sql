@@ -180,10 +180,20 @@ select pg_temp.ok(exists (select 1 from jsonb_array_elements(fn_fert_estado_camp
                   'el teléfono ve el consolidado en el kardex de la estación');
 
 -- ---------------------------------------------------------------- el libro no se edita ni se borra
-select pg_temp.falla($q$ delete from fert_movimientos where estacion_id = pg_temp.real() and tipo = 'RECEPCION' $q$,
-                     'borrar del libro (aun como dueño de la base): bloqueado', 'no se edita ni se borra');
-select pg_temp.falla($q$ update fert_movimientos set cantidad = cantidad where estacion_id = pg_temp.real() and tipo = 'RECEPCION' $q$,
-                     'editar el libro: bloqueado', 'no se edita ni se borra');
+-- Un rol cualquiera con permiso sobre la tabla (como lo sería un usuario de la app): bloqueado. El administrador de la
+-- base (llave de servicio / SQL Editor) sí puede, para mantenimiento y para que las pruebas limpien lo suyo.
+do $$ begin create role qa_libro nologin bypassrls; exception when duplicate_object then null; end $$;
+grant usage on schema public to qa_libro;
+grant select, update, delete on public.fert_movimientos to qa_libro;
+grant select on public.estaciones_riego to qa_libro;
+grant execute on function public._fert_es_prueba(uuid) to qa_libro;
+select pg_temp.falla($q$ set local role qa_libro; delete from fert_movimientos where estacion_id = pg_temp.real() and tipo = 'RECEPCION' $q$,
+                     'borrar del libro como usuario: bloqueado', 'no se edita ni se borra');
+select pg_temp.falla($q$ set local role qa_libro; update fert_movimientos set cantidad = cantidad where estacion_id = pg_temp.real() and tipo = 'RECEPCION' $q$,
+                     'editar el libro como usuario: bloqueado', 'no se edita ni se borra');
+reset role;
+select pg_temp.ok((select prosecdef = false from pg_proc where proname = '_fert_libro_inalterable'),
+                  'el candado mira quién borra de verdad (invoker): el administrador de la base puede limpiar');
 
 -- ---------------------------------------------------------------- AGL publica: no revive el turno archivado
 select pg_temp.como(:AGL);

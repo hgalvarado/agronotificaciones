@@ -79,11 +79,15 @@ end $$;
 
 -- ---------------------------------------------------------------- 3 · el libro no se edita ni se borra
 
+-- Invoker (no definer): así current_user es quien de verdad borra. Los usuarios de la app (authenticated/anon) nunca
+-- pasan; el administrador de la base (llave de servicio de Supabase o el SQL Editor) sí, para mantenimiento y para
+-- que las pruebas limpien lo que crean.
 create or replace function public._fert_libro_inalterable()
 returns trigger
-language plpgsql security definer set search_path = public, pg_temp as $$
+language plpgsql security invoker set search_path = public, pg_temp as $$
 begin
     if coalesce(current_setting('fert.libro_permitir', true), '') = 'on'
+       or current_user in ('service_role', 'postgres', 'supabase_admin')
        or public._fert_es_prueba(old.estacion_id) then
         return case when tg_op = 'DELETE' then old else new end;
     end if;
