@@ -168,7 +168,11 @@ export type FilaInforme = {
   /** El día en que se lavó la cinta (migración 74). */
   fecha_lavado: string | null
   fecha_siembra: string | null
-  /** `real` = ya se sembró. `plan` = todavía es lo previsto. */
+  /**
+   * De dónde sale la siembra (migración 104): del turno publicado por AGL.
+   * `real` = la fecha de AGL ya pasó. `plan` = todavía es futura, o AGL no la
+   * tiene y se usa la congelada del plan de desinfección.
+   */
   origen_siembra: 'real' | 'plan' | null
   variedad: string | null
   /** Con qué se aplicó (migración 75). */

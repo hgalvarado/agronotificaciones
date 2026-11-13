@@ -9,7 +9,7 @@
  * sería prometer un guardado que Postgres rechaza.
  *
  * Aquí vive el botón **Sincronizar**, que vuelve a copiar la fecha de
- * siembra real sobre las líneas elegidas. Es a mano y sobre una
+ * siembra del turno publicado por AGL sobre las líneas elegidas. Es a mano y sobre una
  * selección, no automático: congelar la fecha es la regla del módulo, y
  * descongelarla es una decisión de quien planifica.
  */
@@ -184,6 +184,17 @@ export function GridPlan({
         editable: puedeEditarFila,
         editor: 'numero',
         valorEdicion: (f) => String(f.ciclo),
+      },
+      {
+        // De qué turno de AGL salió la siembra (104). Se cambia en «Editar»,
+        // que trae la fecha nueva al elegirlo.
+        campo: 'turno_codigo',
+        label: 'Turno (AGL)',
+        tipo: 'seleccion',
+        ancho: '9rem',
+        valor: (f) => f.turno_codigo,
+        etiqueta: (f) => f.turno_codigo ?? 'Sin turno',
+        render: (f) => <span className="text-xs">{f.turno_codigo ?? '—'}</span>,
       },
       {
         campo: 'fecha_siembra_congelada',
@@ -411,6 +422,7 @@ export function GridPlan({
       temporadaId: f.temporada_id,
       loteTemporadaId: f.lote_temporada_id,
       ciclo: String(f.ciclo),
+      turnoId: f.turno_id ?? '',
       fechaSiembraCongelada: f.fecha_siembra_congelada,
       diasAplicacion: String(f.dias_aplicacion),
       diasPreriego: f.dias_preriego === null ? '' : String(f.dias_preriego),
@@ -467,7 +479,7 @@ export function GridPlan({
     if (
       !window.confirm(
         `La fecha de siembra del plan está congelada a propósito.\n\n` +
-          `Sincronizar vuelve a copiar la siembra REAL sobre ${elegidas.length} línea(s), ` +
+          `Sincronizar vuelve a copiar la siembra de su turno en AGL sobre ${elegidas.length} línea(s), ` +
           `y eso mueve su fecha de aplicación. ¿Continuar?`
       )
     ) {
@@ -556,7 +568,7 @@ export function GridPlan({
                   variante="secundario"
                   disabled={ocupado || editables.length === 0}
                   onClick={() => void sincronizar(editables, limpiar)}
-                  title="Vuelve a copiar la fecha de siembra real sobre el plan."
+                  title="Vuelve a copiar la fecha de siembra del turno publicado por AGL."
                 >
                   Sincronizar {editables.length}
                 </Boton>

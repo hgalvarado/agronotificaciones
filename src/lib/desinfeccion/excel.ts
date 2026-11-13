@@ -30,6 +30,10 @@ import { CICLOS, MONEDAS_PLAN, type MonedaPlan } from './tipos'
 export const COLUMNAS_PLAN: ColumnaHoja[] = [
   { clave: 'lote', alias: ['Lote', 'Nomenclatura', 'Ubicacion Tecnica', 'Ubicación Técnica', 'UT'] },
   { clave: 'ciclo', alias: ['Ciclo'] },
+  // Desde la 104 la siembra sale del TURNO publicado por AGL. Si el turno
+  // no viene (o AGL no tiene su fecha), se puede escribir la siembra a mano.
+  { clave: 'turno', alias: ['Turno', 'Turno de riego', 'Turno AGL'] },
+  { clave: 'fecha_siembra', alias: ['Fecha Siembra', 'Fecha de siembra', 'Siembra'] },
   { clave: 'dias_aplicacion', alias: ['Dias Aplicacion', 'Días Aplicación', 'Dias a la aplicacion', 'Días'] },
   // OPCIONAL desde la 75: una hoja que no la traiga se importa igual, y
   // el preriego se queda sin planificar —que es distinto de planificarlo
@@ -43,6 +47,8 @@ export const COLUMNAS_PLAN: ColumnaHoja[] = [
   { clave: 'area_mz', alias: ['Area Planificada', 'Área Planificada', 'Area Mz', 'Manzanas', 'Area'] },
   { clave: 'costo_litro', alias: ['Costo Litro', 'Costo/L', 'Costo por litro'] },
   { clave: 'moneda', alias: ['Moneda', 'Divisa'] },
+  // Opcional: AGL no publica la variedad por lote.
+  { clave: 'variedad', alias: ['Variedad'] },
   { clave: 'comentarios', alias: ['Comentarios', 'Observaciones', 'Nota'] },
 ]
 
@@ -64,15 +70,19 @@ export function aMoneda(bruto: string): MonedaPlan | null {
 /**
  * Una fila de la hoja, ya entendida y con los textos sin resolver.
  *
- * **Ya no trae fecha de siembra ni variedad.** Las dos salen del plan de
- * trasplante al elegir el lote —es lo que hace la pantalla con
- * `fn_siembras_de_lotes`— y pedirlas en el Excel era pedir que se
- * copiara a mano un dato que el sistema ya tiene, con el riesgo de que
- * la copia y el original digan cosas distintas.
+ * **La siembra sale del turno** publicado por AGL (migración 104): basta
+ * escribir el turno. La fecha a mano es la salida para un turno que AGL
+ * todavía no publicó; si vienen las dos, manda la de AGL.
  */
 export type LineaPlan = {
   lote: string
   ciclo: number
+  /** Código del turno (AGL). Vacío = sin turno. */
+  turno: string
+  /** AAAA-MM-DD escrita a mano, o vacío. */
+  fechaSiembra: string
+  /** Nombre de la variedad, o vacío. */
+  variedad: string
   diasAplicacion: number
   /**
    * Días del preriego CONTRA la aplicación (migración 75).
@@ -156,6 +166,14 @@ export function interpretarFilaPlan(
     return { ok: false, error: `La moneda «${texto('moneda')}» no se entiende. Escribe HNL o USD.` }
   }
 
+  const fechaSiembra = texto('fecha_siembra')
+  if (fechaSiembra && !/^\d{4}-\d{2}-\d{2}$/.test(fechaSiembra)) {
+    return { ok: false, error: 'La fecha de siembra va como AAAA-MM-DD, o vacía si la trae el turno de AGL.' }
+  }
+  if (!texto('turno') && !fechaSiembra) {
+    return { ok: false, error: 'Falta el turno (la siembra sale de AGL) o la fecha de siembra.' }
+  }
+
   return {
     ok: true,
     valor: {
@@ -163,6 +181,10 @@ export function interpretarFilaPlan(
       // el código, que es con lo que `resolver` cruza el catálogo.
       lote: texto('lote').split(/\s*[·|—–]\s*/)[0].trim(),
       ciclo: ciclo as 1 | 2 | 3,
+      // El turno puede venir como «T1002-T36 — siembra …» desde la lista.
+      turno: texto('turno').split(/\s+[·|—–]\s*/)[0].trim(),
+      fechaSiembra,
+      variedad: texto('variedad'),
       diasAplicacion: Math.trunc(dias),
       diasPreriego: preriego === null ? null : Math.trunc(preriego),
       producto: texto('producto'),

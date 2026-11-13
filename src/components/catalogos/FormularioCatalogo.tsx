@@ -243,9 +243,3 @@ export const CAMPOS_PERSONAL: CampoCatalogo[] = [
   { key: 'nombre', label: 'Nombre', tipo: 'text', requerido: true },
 ]
 
-/** Los campos del catálogo de Planes nutricionales, por lo mismo. */
-export const CAMPOS_PLAN_NUTRICIONAL: CampoCatalogo[] = [
-  { key: 'codigo', label: 'Código', tipo: 'text' },
-  { key: 'nombre', label: 'Plan nutricional', tipo: 'text', requerido: true },
-  { key: 'descripcion', label: 'Descripción', tipo: 'text' },
-]

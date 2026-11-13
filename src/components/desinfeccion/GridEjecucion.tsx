@@ -42,7 +42,8 @@ import {
   leerEjecuciones,
   leerLotes,
   salarioMinimo,
-  siembrasDeLotes,
+  siembrasAgl,
+  type SiembraAgl,
 } from '@/lib/desinfeccion/repositorioCliente'
 import { diagnosticarLectura } from '@/lib/supabase/instalacion'
 import { hoyIso } from '@/lib/fechas'
@@ -139,16 +140,11 @@ export function GridEjecucion({
   const [lineasProducto, setLineasProducto] = useState<LineaProducto[]>([
     { ...LINEA_PRODUCTO_VACIA },
   ])
-  /** Las siembras de los lotes del turno, para el DDT de las tres fases. */
-  const [fechasSiembra, setFechasSiembra] = useState<string[]>([])
   /**
-   * Si alguna de esas fechas es del PLAN y no de una siembra capturada.
-   *
-   * La desinfección se aplica ~70 días antes de trasplantar, así que lo
-   * normal es que TODAS lo sean. Hay que decirlo en la pantalla: un plan
-   * y un hecho no se leen igual, y el plan todavía se puede mover.
+   * La siembra del turno, publicada por AGL (migración 104), para el DDT de
+   * las fases. `null` = el turno no tiene fecha de siembra en AGL.
    */
-  const [siembraPrevista, setSiembraPrevista] = useState(false)
+  const [siembraTurno, setSiembraTurno] = useState<SiembraAgl | null>(null)
   /**
    * Los lotes con sus manzanas, recalculados para el turno abierto.
    *
@@ -641,11 +637,9 @@ export function GridEjecucion({
     setBuscando(false)
   }
 
-  /* ---------------- Las siembras, para el DDT de cada fase -------------- */
-  // Se piden TODAS las del turno y se pasan enteras: un turno riega varios
-  // lotes y pueden no haberse sembrado el mismo día, así que quedarse con
-  // una sola sería enseñar un número que no vale para los demás lotes. Con
-  // todas, la pantalla puede decir un rango.
+  /* ---------------- La siembra, para el DDT de cada fase ---------------- */
+  // Desde la 104 sale del TURNO tal como lo publicó AGL (temporada + ciclo),
+  // no de los lotes: Trasplante vive en AGL.
   const ejecucionAbierta = entrada?.id ?? ''
   // El ciclo de la cabecera. Va ANTES del efecto porque el efecto lo
   // lleva en sus dependencias: declararlo después lo dejaría en la zona
@@ -682,36 +676,42 @@ export function GridEjecucion({
     }
   }, [temporadaId, ejecucionAbierta, cicloActual, lotes])
 
-  const lotesDelTurno = useMemo(
-    () =>
-      lineasLote
-        .map((l) => l.loteTemporadaId)
-        .filter(Boolean)
-        .sort()
-        .join(','),
-    [lineasLote],
-  )
+  const temporadaActual = entrada?.temporadaId || temporadaId
+  const turnoActual = entrada?.turnoId ?? ''
+  // La referencia para elegir entre varias siembras del mismo turno: la
+  // fecha de la aplicación, o la del preriego (ver _desinf_siembra_turno).
+  const referenciaSiembra = entrada?.fechaAplicacion || entrada?.fechaPreriego || ''
 
   useEffect(() => {
     let vivo = true
     async function cargar() {
-      const ids = lotesDelTurno ? lotesDelTurno.split(',') : []
-      if (ids.length === 0) {
-        setFechasSiembra([])
-        setSiembraPrevista(false)
+      if (!temporadaActual || !turnoActual) {
+        setSiembraTurno(null)
         return
       }
-      const mapa = await siembrasDeLotes(ids, Number(cicloActual) || null)
+      const mapa = await siembrasAgl(
+        temporadaActual,
+        Number(cicloActual) || null,
+        [turnoActual],
+        referenciaSiembra || null,
+      )
       if (!vivo) return
-      const datos = [...mapa.values()]
-      setFechasSiembra(datos.map((v) => v.fecha).sort())
-      setSiembraPrevista(datos.some((v) => v.origen === 'plan'))
+      setSiembraTurno(mapa.get(turnoActual) ?? null)
     }
     void cargar()
     return () => {
       vivo = false
     }
-  }, [lotesDelTurno, cicloActual])
+  }, [temporadaActual, turnoActual, cicloActual, referenciaSiembra])
+
+  const fechasSiembra = useMemo(() => (siembraTurno ? [siembraTurno.fecha] : []), [siembraTurno])
+  const codigoTurno = catalogos.turnos.find((t) => t.id === turnoActual)?.codigo ?? 'este turno'
+  const notaSiembra = siembraTurno
+    ? `Contra la siembra que AGL publicó para ${siembraTurno.turnoCodigo} (${siembraTurno.fecha}). Negativo = faltan días para trasplantar.` +
+      (siembraTurno.candidatos > 1
+        ? ` AGL tiene ${siembraTurno.candidatos} registros del turno en el ciclo: se tomó el más próximo a la aplicación.`
+        : '')
+    : `El turno ${codigoTurno} no tiene fecha de siembra publicada desde AGL para la temporada y el ciclo ${cicloActual || '1'}. Pide en AGL «Publicar a campo» (Turnos de riego con su fecha de siembra) y el DDT se calcula solo.`
 
   /* ------------------------- El salario mínimo ------------------------- */
   /**
@@ -923,7 +923,7 @@ export function GridEjecucion({
           turnosDisponibles={turnos}
           estacionesDisponibles={estaciones}
           fechasSiembra={fechasSiembra}
-          siembraPrevista={siembraPrevista}
+          notaSiembra={notaSiembra}
           seccionesGuardadas={seccionesGuardadas}
           errorGuardado={errorGuardado}
           objetivos={objetivos}

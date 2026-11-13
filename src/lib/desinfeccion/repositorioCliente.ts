@@ -161,6 +161,8 @@ export async function guardarPlan(e: EntradaPlan): Promise<Resultado> {
     lote_temporada_id: e.loteTemporadaId,
     ciclo: Math.trunc(aNumeroCero(e.ciclo)) || 1,
     fecha_siembra_congelada: e.fechaSiembraCongelada,
+    // El turno de AGL del que salió la siembra (104). Vacío = escrita a mano.
+    turno_id: e.turnoId || null,
     dias_aplicacion: Math.trunc(aNumeroCero(e.diasAplicacion)),
     // Vacío en NULO y no en cero (migración 75): «no se ha planificado el
     // preriego» y «se preriega el mismo día que se aplica» son dos cosas
@@ -207,7 +209,7 @@ export async function eliminarPlanes(ids: string[]): Promise<Resultado> {
 }
 
 /**
- * Vuelve a copiar la fecha de siembra REAL sobre el plan.
+ * Vuelve a copiar la fecha de siembra de AGL sobre el plan.
  *
  * La `fecha_siembra_congelada` se copia a propósito al planificar (ver la
  * migración 59): si la siembra se mueve, el plan no se mueve solo, porque
@@ -216,18 +218,17 @@ export async function eliminarPlanes(ids: string[]): Promise<Resultado> {
  * DECISIÓN, no un automatismo. Este botón es esa decisión, tomada a mano
  * sobre las líneas que se eligen.
  *
- * La siembra real sale de `fn_siembras_de_lotes` (migración 60), que es
- * `security definer` y comprueba el permiso dentro: antes esto leía
- * `siembras` directamente y se quedaba corto para quien no tuviera
- * permiso sobre Trasplante. Si un lote no tiene siembra capturada se
- * dice cuántos: lo que no puede pasar es que el botón diga «listo» sin
- * haber cambiado nada.
+ * Desde la 104 la siembra vive en AGL (Trasplante se retiró de aquí) y se
+ * lee del TURNO con el que se planificó la línea (`turno_id`). Las líneas
+ * sin turno, o cuyo turno no tiene fecha publicada, se cuentan y se dicen:
+ * lo que no puede pasar es que el botón diga «listo» sin haber cambiado nada.
  */
 export async function sincronizarSiembra(
   filas: {
     id: string
-    lote_temporada_id: string
+    temporada_id: string
     ciclo: number
+    turno_id: string | null
     fecha_siembra_congelada: string
   }[],
 ): Promise<Resultado & { cambiadas: number; sinSiembra: number }> {
@@ -237,41 +238,40 @@ export async function sincronizarSiembra(
 
   const cliente = createClient()
 
-  // La siembra se pide por CICLO, porque la primera siembra del ciclo 1 y
-  // la del ciclo 2 son fechas distintas y mezclarlas movería el plan al
-  // día equivocado. Se agrupa para preguntar una vez por ciclo en vez de
-  // una por línea.
-  const porCiclo = new Map<number, string[]>()
+  // Una consulta por temporada y ciclo: la siembra del ciclo 1 y la del 2
+  // son fechas distintas y mezclarlas movería el plan al día equivocado.
+  const grupos = new Map<string, { temporada: string; ciclo: number; turnos: Set<string> }>()
   for (const f of filas) {
-    porCiclo.set(f.ciclo, [...(porCiclo.get(f.ciclo) ?? []), f.lote_temporada_id])
+    if (!f.turno_id) continue
+    const k = `${f.temporada_id}|${f.ciclo}`
+    const g = grupos.get(k) ?? { temporada: f.temporada_id, ciclo: f.ciclo, turnos: new Set<string>() }
+    g.turnos.add(f.turno_id)
+    grupos.set(k, g)
   }
-
-  // Sólo la siembra REAL. Desde la 63 `siembrasDeLotes` también devuelve
-  // la prevista del plan —que es lo que salva al DDT—, pero re-planificar
-  // una desinfección contra un plan sería perseguir una fecha que todavía
-  // puede moverse: este botón existe para cuando la siembra ya ocurrió en
-  // otro día del que se había congelado.
-  const primera = new Map<string, string>()
-  for (const [ciclo, lotes] of porCiclo) {
-    const mapa = await siembrasDeLotes([...new Set(lotes)], ciclo)
-    for (const [lote, dato] of mapa) {
-      if (dato.origen === 'real') primera.set(`${lote}|${ciclo}`, dato.fecha)
-    }
+  const fechas = new Map<string, string>()
+  for (const [k, g] of grupos) {
+    const mapa = await siembrasAgl(g.temporada, g.ciclo, [...g.turnos])
+    for (const [turno, dato] of mapa) fechas.set(`${k}|${turno}`, dato.fecha)
   }
 
   let cambiadas = 0
   let sinSiembra = 0
+  let sinTurno = 0
   for (const f of filas) {
-    const real = primera.get(`${f.lote_temporada_id}|${f.ciclo}`)
-    if (!real) {
+    if (!f.turno_id) {
+      sinTurno++
+      continue
+    }
+    const agl = fechas.get(`${f.temporada_id}|${f.ciclo}|${f.turno_id}`)
+    if (!agl) {
       sinSiembra++
       continue
     }
-    if (real === f.fecha_siembra_congelada) continue
+    if (agl === f.fecha_siembra_congelada) continue
 
     const { error: e } = await cliente
       .from('desinfeccion_plan')
-      .update({ fecha_siembra_congelada: real })
+      .update({ fecha_siembra_congelada: agl })
       .eq('id', f.id)
     if (e) {
       return {
@@ -285,8 +285,9 @@ export async function sincronizarSiembra(
   }
 
   const partes = [`${cambiadas} línea(s) actualizadas`]
-  if (sinSiembra > 0) partes.push(`${sinSiembra} sin siembra registrada en Trasplante`)
-  return { ok: true, mensaje: `${partes.join('; ')}.`, cambiadas, sinSiembra }
+  if (sinTurno > 0) partes.push(`${sinTurno} sin turno (edítalas y elige el turno de AGL)`)
+  if (sinSiembra > 0) partes.push(`${sinSiembra} cuyo turno no tiene fecha de siembra publicada desde AGL`)
+  return { ok: true, mensaje: `${partes.join('; ')}.`, cambiadas, sinSiembra: sinSiembra + sinTurno }
 }
 
 /* ================================================================== */
@@ -404,56 +405,63 @@ export async function buscarEjecucion(
 }
 
 /**
- * La siembra de unos lotes: la capturada si existe, la PREVISTA si no.
+ * La siembra de los turnos, tal como la publicó AGL (migración 104).
  *
- * Va por `fn_siembras_de_lotes` y no con un `select` a `siembras` porque
- * esa tabla se lee con el permiso de Trasplante, que quien planifica una
- * desinfección no tiene por qué tener. La función es `security definer` y
- * comprueba el permiso ella misma (migración 60).
+ * Trasplante y Turnos de riego viven en AGL; «Publicar a campo» sube cada
+ * turno de la temporada con su ciclo y su fecha de siembra a
+ * `turnos_ciclo`. Se lee por `fn_desinfeccion_siembras_agl` porque esa tabla
+ * sólo la ven estacioneros y AGL: la función exige un permiso de
+ * Desinfección.
  *
- * Desde la **63** también mira `planes_siembra`, y ahí estaba el fallo
- * del DDT: la desinfección se aplica ~70 días ANTES de trasplantar, así
- * que en el momento de capturarla la siembra real todavía no existe y
- * nunca iba a existir. Leer sólo lo ya sembrado dejaba el DDT en blanco
- * justo en el único momento en que hace falta.
- *
- * `origen` viaja con la fecha para que la pantalla pueda decir
- * «previsto»: un plan y un hecho no se enseñan igual.
+ * Si un turno tiene varias fechas en la misma temporada y ciclo, la base
+ * elige la primera en o después de `referencia` (la desinfección va ANTES
+ * de trasplantar) y, si todas son anteriores, la última; `candidatos` dice
+ * cuántas había. Un turno sin fecha publicada simplemente no viene en el
+ * mapa: la pantalla lo dice.
  */
-export type SiembraDeLote = {
+export type SiembraAgl = {
+  turnoId: string
+  turnoCodigo: string
   fecha: string
-  variedadId: string | null
-  variedad: string | null
-  origen: 'real' | 'plan'
+  aglId: string | null
+  areaMz: number | null
+  candidatos: number
 }
 
-export async function siembrasDeLotes(
-  lotes: string[],
+export async function siembrasAgl(
+  temporadaId: string,
   ciclo: number | null,
-): Promise<Map<string, SiembraDeLote>> {
-  const salida = new Map<string, SiembraDeLote>()
-  if (lotes.length === 0) return salida
+  turnos: string[] | null = null,
+  referencia: string | null = null,
+): Promise<Map<string, SiembraAgl>> {
+  const salida = new Map<string, SiembraAgl>()
+  if (!temporadaId || (turnos !== null && turnos.length === 0)) return salida
 
-  const { data, error } = await createClient().rpc('fn_siembras_de_lotes', {
-    p_lotes: lotes,
+  const { data, error } = await createClient().rpc('fn_desinfeccion_siembras_agl', {
+    p_temporada_id: temporadaId,
     p_ciclo: ciclo,
+    p_turnos: turnos,
+    p_referencia: referencia || null,
   })
   if (error) return salida
 
   type Cruda = {
-    lote_temporada_id: string
-    fecha_siembra: string
-    variedad_id: string | null
-    variedad_nombre: string | null
-    origen: string | null
+    turno_id: string
+    turno_codigo: string
+    fecha_siembra: string | null
+    agl_id: string | null
+    area_mz: number | null
+    candidatos: number | null
   }
   for (const f of (data as Cruda[] | null) ?? []) {
     if (!f.fecha_siembra) continue
-    salida.set(f.lote_temporada_id, {
+    salida.set(f.turno_id, {
+      turnoId: f.turno_id,
+      turnoCodigo: f.turno_codigo,
       fecha: f.fecha_siembra,
-      variedadId: f.variedad_id,
-      variedad: f.variedad_nombre,
-      origen: f.origen === 'plan' ? 'plan' : 'real',
+      aglId: f.agl_id,
+      areaMz: f.area_mz === null ? null : Number(f.area_mz),
+      candidatos: Number(f.candidatos ?? 1),
     })
   }
   return salida
