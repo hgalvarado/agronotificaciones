@@ -53,7 +53,7 @@ const MARGEN = 46
 const UTIL = ANCHO - MARGEN * 2
 
 const EMPRESA = 'Agropecuaria Montelíbano'
-const LEMA = 'Control operativo de maquinaria agrícola'
+const LEMA = 'Monitoreo agrícola integral'
 
 const num = (v: number | null | undefined) => (v === null || v === undefined ? '—' : n2(v))
 const fecha = (v: string | null | undefined) => v || '—'

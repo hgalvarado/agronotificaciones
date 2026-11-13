@@ -17,4 +17,4 @@ export const VERSION: string = paquete.version
 export const CREADOR = 'Henry Geovanny Alvarado Hernandez'
 
 /** Lo que el sistema hace, en una línea. */
-export const LEMA = 'Control operativo de maquinaria agrícola'
+export const LEMA = 'Monitoreo agrícola integral'

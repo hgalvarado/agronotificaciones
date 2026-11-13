@@ -8,7 +8,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: 'AgroNotificaciones',
     short_name: 'AgroNotif',
-    description: 'Control operativo de maquinaria agrícola y fertirriego',
+    description: 'Monitoreo agrícola integral',
     start_url: '/',
     scope: '/',
     display: 'standalone',

@@ -32,7 +32,7 @@ export default async function LoginPage({
           <h1 className="mt-4 text-2xl font-bold tracking-tight text-slate-900">
             AgroNotificaciones
           </h1>
-          <p className="mt-1 text-sm text-slate-500">Control operativo de maquinaria agrícola</p>
+          <p className="mt-1 text-sm text-slate-500">Monitoreo agrícola integral</p>
         </div>
 
         <FormularioLogin sesionExpirada={sesion === 'expirada'} />

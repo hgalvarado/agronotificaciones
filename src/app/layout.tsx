@@ -11,7 +11,7 @@ import { CLAVE_TEMA, GUION_TEMA, temaDeCookies } from '@/lib/tema/tema'
 
 export const metadata: Metadata = {
   title: 'AgroNotificaciones',
-  description: 'Control operativo de maquinaria agrícola',
+  description: 'Monitoreo agrícola integral',
   // La misma ruta que usa el componente `Logo`: un solo archivo para la
   // pestaña del navegador, el icono de la pantalla de inicio y la
   // cabecera. Si todavía no está, el navegador cae a /favicon.ico.
