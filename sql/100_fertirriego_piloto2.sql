@@ -23,6 +23,16 @@ begin
 end $$;
 
 revoke execute on function public._fert_estado_campo_base(date) from public, anon, authenticated;
+
+-- ¿AGL ve esta estación? Por defecto solo las reales; fn_fert_exportar_pruebas (sql/101) la cambia dentro de su
+-- llamada. Va también aquí para que correr la 100 otra vez (antes o después de la 101) no deje fuera lo de prueba.
+create or replace function public._fert_agl_ve(p_prueba_de uuid)
+returns boolean
+language sql stable as $$
+    select case when coalesce(current_setting('fert.agl_pruebas', true), '') = 'on'
+                then p_prueba_de is not null
+                else p_prueba_de is null end
+$$;
 revoke execute on function public._fert_exportar_base(bigint, integer) from public, anon, authenticated;
 
 /** Datos de la operación que trajo un documento (para el detalle). */
@@ -112,7 +122,7 @@ returns jsonb
 language plpgsql stable security definer set search_path = public, pg_temp as $$
 declare
     v_res jsonb := public._fert_exportar_base(p_cursor, p_limite);   -- valida sesión y permisos
-    v_reales uuid[] := array(select id from public.estaciones_riego where prueba_de is null);
+    v_reales uuid[] := array(select id from public.estaciones_riego where public._fert_agl_ve(prueba_de));
 begin
     return v_res || jsonb_build_object(
         'recepciones', coalesce((
