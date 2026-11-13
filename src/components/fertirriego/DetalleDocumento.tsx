@@ -28,7 +28,12 @@ const NOMBRE_DOC: Record<string, string> = {
   devolucion: 'Devolución',
 }
 
-const NOMBRE_OTRO: Record<string, string> = { relevo: 'Relevo de estación', traslado: 'Traslado' }
+const NOMBRE_OTRO: Record<string, string> = {
+  relevo: 'Relevo de estación',
+  traslado: 'Traslado',
+  // 102: lo que aplicó un turno terminado, en un solo renglón (el detalle quedó en AGL)
+  archivo_turno: 'Turno terminado (archivado en AGL)',
+}
 
 /** Una fila «etiqueta: valor» del detalle (no se muestra si no hay valor). */
 function Dato({ etiqueta, children, data }: { etiqueta: string; children: ReactNode; data?: string }) {
