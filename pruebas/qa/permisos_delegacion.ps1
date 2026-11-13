@@ -68,7 +68,10 @@ try {
 
     $tm = -1; for ($i = 0; $i -lt 5 -and $tm -lt 0; $i++) { Clic 'Nuevo' | Out-Null; $tm = Esperar "!!document.querySelector('[data-lista=roles]')" 3000 }
     $rolesOfrecidos = JS "[...document.querySelectorAll('[data-rol-opcion]')].map(b => b.dataset.rolOpcion).join(',')"
-    OK ($rolesOfrecidos -eq "QA_DELE_$s") 'Jefe: solo le ofrece roles delegables' $rolesOfrecidos
+    # Desde la 97: se ofrecen los roles delegables de la base (en desarrollo también Estacionero), nunca otros
+    $delegables = @((Lista 'roles?select=codigo&delegable=eq.true') | ForEach-Object { $_.codigo })
+    $ofrecidos = @($rolesOfrecidos -split ',' | Where-Object { $_ })
+    OK (($ofrecidos -contains "QA_DELE_$s") -and -not ($ofrecidos | Where-Object { $delegables -notcontains $_ })) 'Jefe: solo le ofrece roles delegables' $rolesOfrecidos
     OK ((JS "!!document.querySelector('[data-todas-las-zonas]')") -eq $false -and (JS "!!document.querySelector('[data-delegado]')") -eq $true) 'Jefe: sin «Todas las zonas», con aviso de delegación'
     $zonasOfrecidas = JS "[...document.querySelectorAll('[data-lista=zonas] [data-opcion]')].map(b => b.dataset.opcion).join(',')"
     OK ($zonasOfrecidas -eq $z1.nombre) 'Jefe: solo le ofrece su zona' $zonasOfrecidas
@@ -100,10 +103,15 @@ try {
     OK ($r4 -eq 403) 'Jefe: no puede editar a alguien con rol no delegable' $r4
 
     # Ficha: historial visible para el jefe en alguien de su zona
-    ClicEn "document.querySelector('[aria-label=""Editar QA Alta Jefe $s""]')" | Out-Null
+    # Desde la 97 la lista va agrupada: buscar a la persona primero
+    Teclear "document.querySelector('[data-buscar-usuario]')" "QA Alta Jefe $s"
+    Esperar "!!document.querySelector('[data-usuario^=""qa.altajefe.$s@""]')" 8000 | Out-Null
+    # Vista agrupada (97): la fila de la persona abre su ficha
+    ClicEn "document.querySelector('[data-usuario^=""qa.altajefe.$s@""]') || document.querySelector('[aria-label=""Editar QA Alta Jefe $s""]')" | Out-Null
     Esperar "!!document.querySelector('[data-ver-historial]')" 10000 | Out-Null
     ClicEn "document.querySelector('[data-ver-historial]')" | Out-Null
     $t = Esperar "!!document.querySelector('[data-historial] li')" 10000
+    if ($t -lt 0) { $script:Resultados.Add("DIAG historial: editar=$(JS "!!document.querySelector('[aria-label=`"Editar QA Alta Jefe $s`"]')") boton=$(JS "!!document.querySelector('[data-ver-historial]')") lista=$((JS "(document.querySelector('[data-grupos-usuarios]')?.innerText || 'SIN LISTA: ' + location.pathname + ' ' + document.body.innerText.slice(0,200)).slice(0,500)") -replace "`n", ' / ')") }
     OK ($t -ge 0) 'Ficha: «Historial de sus accesos»' ((JS "document.querySelector('[data-historial] li')?.innerText") -replace "`n", ' · ')
     Captura 'permisos_delegacion_jefe.png'
 
