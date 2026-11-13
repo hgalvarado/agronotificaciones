@@ -96,6 +96,8 @@ export type TipoMovimiento =
   | 'TRASLADO_ENTRADA'
   | 'TRASLADO_DEVUELTO'
   | 'ANULACION'
+  /** 102: consolidado de un turno cuyo ciclo terminó y se archivó en AGL (mismo saldo, un solo renglón). */
+  | 'ARCHIVO_TURNO'
 
 export type Movimiento = {
   id: string

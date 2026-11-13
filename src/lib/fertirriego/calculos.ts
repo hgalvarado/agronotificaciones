@@ -154,6 +154,7 @@ export const NOMBRE_MOVIMIENTO: Record<TipoMovimiento, string> = {
   TRASLADO_ENTRADA: 'Traslado recibido',
   TRASLADO_DEVUELTO: 'Traslado devuelto',
   ANULACION: 'Anulación',
+  ARCHIVO_TURNO: 'Turno terminado (archivado en AGL)',
 }
 
 /** El kardex de una estación (y un material, si se da): del servidor + lo pendiente, con saldo acumulado. */

@@ -113,6 +113,14 @@
   sus vistas, 20 funciones, 2 tipos y las pantallas trasplante_plan/trasplante_diario/turnos_riego. Respaldo en la
   base opcional (bandera `v_respaldar`, por defecto true) + script a archivos. Réplica: 104 limpia sobre prod101
   (dos veces, y con la bandera apagada); pruebas `pruebas/sql/104_*.sql` 45/45. QA con clics escrita, sin correr (`desinfeccion_desde_agl.ps1`).
+- **2026-11-13 · Terminar ciclo de un turno = Supabase solo intermediario** (`sql/102`, doc `docs/fertirriego-archivo-turnos.md`;
+  pedido: «al cerrar el ciclo bajar la información y si lo reactivo que se vuelva a subir»). AGL /TR02 «Terminar ciclo»:
+  baja el paquete (huella sha256 del jsonb), lo guarda en `data/fertirriego_archivo`, la base borra lo del turno y deja un
+  consolidado `ARCHIVO_TURNO` por estación × producto (saldo igual). «Reactivar» restaura las mismas filas (ids y
+  cursores). El libro ahora tiene disparador inalterable (`fert.libro_permitir` solo dentro de estas funciones; lo de
+  prueba se puede borrar). Lo que llega del teléfono para un turno archivado se rechaza con mensaje y queda en Envíos.
+  Pruebas: réplica 55/55 (órdenes 102>102 y 101>102), AGL unitaria 31/31 y clics /TR02 18/18. AGL `04a4687`.
+  **Pendiente del usuario**: correr `sql/102` en desarrollo. Ojo QA PowerShell: `$ID` pisa `$script:Id` del arnés CDP.
 
 - **2026-11-12 (tarde-noche) · Prueba piloto 1: 10 observaciones** (contrato `docs/fertirriego-piloto1.md`, `sql/99`
   corrida en DESARROLLO; producción pendiente). Recibir con turnos/comentario/envases; guardado en segundo plano
