@@ -149,9 +149,10 @@ export function VistaTurnos({
                               </table>
                             )}
                             {hayPendiente && <p className="mt-1 text-[10px] text-sky-700">Hay aplicaciones por enviar (cuentan en lo real).</p>}
-                            {horas && (horas.horas_riego !== null || horas.horas_fertilizacion !== null || horas.ppm_cloro_cabezal != null || horas.ppm_cloro_campo != null) && (
+                            {horas && (horas.horas_riego !== null || horas.horas_fertilizacion !== null || horas.ppm_cloro_cabezal != null || horas.ppm_cloro_campo != null || horas.pct_fertilizacion != null) && (
                               <p className="mt-1 text-[11px] text-slate-500">
                                 Horas: fertilización {horas.horas_fertilizacion ?? '—'} · riego {horas.horas_riego ?? '—'}
+                                {horas.pct_fertilizacion != null && <> · fertilización {horas.pct_fertilizacion} %</>}
                                 {(horas.ppm_cloro_cabezal != null || horas.ppm_cloro_campo != null) && (
                                   <> · cloro ppm cabezal {horas.ppm_cloro_cabezal ?? '—'} · campo {horas.ppm_cloro_campo ?? '—'}</>
                                 )}

@@ -87,7 +87,7 @@ set nombre = excluded.nombre, descripcion = excluded.descripcion, orden = exclud
 
 insert into public.pantallas (codigo, nombre, descripcion, ruta, orden, acciones) values
     ('agrometricas', 'AgroMétricas · Parámetros de riego',
-     'Parámetros de riego por turno y día (tensiómetros, riego, agua y solución, suelo) y clima por estación. Alcance «propietario» = sus estaciones asignadas; «zonal» = las de sus zonas.',
+     'Parámetros de riego por turno y día (tensiómetros, agua y solución, suelo, calicata) y clima por zona. Alcance «zonal» = los turnos de sus zonas; «propietario» = los de las zonas de sus estaciones asignadas.',
      '/agrometricas', 130,
      array['ver','exportar','registrar_parametros','corregir_parametros','configurar_rangos'])
 on conflict (codigo) do update

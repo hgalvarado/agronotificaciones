@@ -208,6 +208,8 @@ export type BitacoraRiego = {
   /** sql/99 */
   ppm_cloro_cabezal?: number | null
   ppm_cloro_campo?: number | null
+  /** sql/112: % de fertilización del turno en el día (0 a 100) */
+  pct_fertilizacion?: number | null
 }
 
 export type EstadoNovedad = 'EN_APLICACION' | 'PREPARADO' | 'PENDIENTE' | 'TERMINADO'

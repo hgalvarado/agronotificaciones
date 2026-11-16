@@ -1,7 +1,8 @@
 'use client'
 
 /**
- * Bitácora de riego de un turno en un día: horas de fertilización y horas de riego (son cosas distintas), quién
+ * Bitácora de riego de un turno en un día: horas de fertilización y horas de riego (son cosas distintas), % de
+ * fertilización (sql/112: sale de aquí y no de AgroMétricas › Parámetros), quién
  * lo ejecutó y, si se quiere, la hora de inicio y fin. NO toca la bodega: la completa después quien sea
  * (el mismo estacionero, el del relevo o el jefe). Lo vacío no borra lo que ya estaba.
  */
@@ -46,6 +47,7 @@ export function FormBitacora({
     ejecutor2: string
     ppmCabezal?: string
     ppmCampo?: string
+    pct?: string
   }>(claveBorrador('bitacora', yo.id, estacion.id, `${turno.id}@${fecha}`))
   const b = borrador.inicial
   const [hf, setHf] = useState(b?.hf ?? actual?.horas_fertilizacion?.toString() ?? '')
@@ -57,7 +59,9 @@ export function FormBitacora({
   // Piloto 1, punto 8 (sql/99): ppm de cloro en el cabezal de riego y en el campo (cinta)
   const [ppmCabezal, setPpmCabezal] = useState(b?.ppmCabezal ?? actual?.ppm_cloro_cabezal?.toString() ?? '')
   const [ppmCampo, setPpmCampo] = useState(b?.ppmCampo ?? actual?.ppm_cloro_campo?.toString() ?? '')
-  useAutoguardado(borrador, { hf, hr, inicio, fin, ejecutor, ejecutor2, ppmCabezal, ppmCampo })
+  // sql/112: % de fertilización del turno en el día
+  const [pct, setPct] = useState(b?.pct ?? actual?.pct_fertilizacion?.toString() ?? '')
+  useAutoguardado(borrador, { hf, hr, inicio, fin, ejecutor, ejecutor2, ppmCabezal, ppmCampo, pct })
 
   const personas = [{ id: yo.id, titulo: `${yo.nombre} (yo)` }, ...estacion.personas.filter((p) => p.id !== yo.id).map((p) => ({ id: p.id, titulo: p.nombre }))]
 
@@ -83,10 +87,12 @@ export function FormBitacora({
         for (const [n, v] of [['del cabezal', vCab], ['del campo', vCampo]] as const) {
           if (v !== null && (!Number.isFinite(v) || v < 0 || v > 1000)) return `Las ppm de cloro ${n} deben estar entre 0 y 1000.`
         }
+        const vPct = horas(pct)
+        if (vPct !== null && (!Number.isFinite(vPct) || vPct < 0 || vPct > 100)) return 'El % de fertilización debe estar entre 0 y 100.'
         const ini = inicio ? deEntradaLocal(inicio) : null
         const fi = fin ? deEntradaLocal(fin) : null
         if (ini && fi && fi < ini) return 'La hora final no puede ser anterior a la inicial.'
-        if (vhf === null && vhr === null && !ini && !fi && vCab === null && vCampo === null) {
+        if (vhf === null && vhr === null && !ini && !fi && vCab === null && vCampo === null && vPct === null) {
           return 'Escribe al menos las horas de fertilización o de riego.'
         }
         const datos: Record<string, unknown> = {
@@ -103,6 +109,7 @@ export function FormBitacora({
         // Solo si se escribieron (lo vacío no borra lo que ya estaba; la base sin la 99 no los conoce)
         if (vCab !== null) datos.ppm_cloro_cabezal = vCab
         if (vCampo !== null) datos.ppm_cloro_campo = vCampo
+        if (vPct !== null) datos.pct_fertilizacion = vPct
         return [
           crearOperacion(
             'bitacora',
@@ -119,6 +126,11 @@ export function FormBitacora({
         </Campo>
         <Campo etiqueta="Horas de riego">
           <Entrada inputMode="decimal" value={hr} onChange={(e) => setHr(e.target.value.replace(/[^\d.,]/g, ''))} placeholder="0" data-horas-riego />
+        </Campo>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Campo etiqueta="% de fertilización">
+          <Entrada inputMode="decimal" value={pct} onChange={(e) => setPct(e.target.value.replace(/[^\d.,]/g, ''))} placeholder="0 a 100" data-pct-fert />
         </Campo>
       </div>
       <div className="grid grid-cols-2 gap-3">

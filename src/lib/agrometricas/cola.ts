@@ -56,6 +56,17 @@ export function descartarRechazado(usuario: string, id: string) {
   escribir(k(usuario, 'rechazados'), rechazados(usuario).filter((x) => x.id !== id))
 }
 
+/**
+ * Errores que NO se arreglan reintentando: permiso, dato inválido o fuera de tamaño (p. ej. un número enorme por un dedo
+ * de más), fecha mal escrita o un mensaje de la propia base. Esos pasan a «rechazados» para no trabar la cola.
+ */
+const DEFINITIVOS = ['42501', '22023', '22P02', '23503', '22003', '22007', '22008', 'P0001']
+/** La foto la rechazó Storage (permiso, tamaño, tipo): 4xx que no es de espera. Sin red no hay `status`. */
+const fotoRechazada = (e: unknown) => {
+  const s = Number((e as { status?: number; statusCode?: string | number } | null)?.status ?? (e as { statusCode?: string })?.statusCode)
+  return s >= 400 && s < 500 && s !== 408 && s !== 429
+}
+
 let enviando: Promise<number> | null = null
 
 /** Envía la cola en orden. Se detiene al primer error de red (se reintenta luego). -> cuántos se enviaron */
@@ -65,13 +76,25 @@ export function enviar(usuario: string): Promise<number> {
     let enviados = 0
     for (const p of pendientes(usuario)) {
       let error: { code?: string; message: string } | null = null
+      let datos = p.datos
+      if (p.foto) {
+        try {
+          datos = { ...p.datos, foto_calicata: await subirFoto(supabase, p) }
+        } catch (e) {
+          if (!fotoRechazada(e)) break   // sin red: luego
+          // La foto no entra (permiso, tamaño…): los números se guardan igual y la foto queda avisada
+          const { foto: _foto, ...sinFoto } = p
+          void _foto
+          escribir(k(usuario, 'rechazados'), [...rechazados(usuario),
+            { ...sinFoto, id: `${p.id}-foto`, resumen: `la foto de ${p.resumen}`, mensaje: (e as Error)?.message || 'la base no aceptó la foto.' }])
+        }
+      }
       try {
-        const datos = p.foto ? { ...p.datos, foto_calicata: await subirFoto(supabase, p) } : p.datos
         ;({ error } = await supabase.rpc(FUNCIONES[p.tipo], { p: datos }))
       } catch {
         break   // sin red
       }
-      if (error && !['42501', '22023', '22P02', '23503'].includes(error.code ?? '')) break   // red / servidor: luego
+      if (error && !DEFINITIVOS.includes(error.code ?? '')) break   // red / servidor: luego
       escribir(k(usuario, 'cola'), pendientes(usuario).filter((x) => x.id !== p.id))
       if (error) escribir(k(usuario, 'rechazados'), [...rechazados(usuario), { ...p, mensaje: error.message }])
       else enviados++

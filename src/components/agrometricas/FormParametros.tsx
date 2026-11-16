@@ -39,6 +39,7 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
   const [valores, setValores] = useState<Record<string, string>>({})
   const [guardados, setGuardados] = useState<Record<string, string>>({})   // lo que ya está en la base ese día
   const [comentario, setComentario] = useState('')
+  const [comentarioGuardado, setComentarioGuardado] = useState('')
   const [abiertas, setAbiertas] = useState<Record<string, boolean>>(() => Object.fromEntries(SECCIONES.map((s) => [s.clave, s.abierta])))
   const [cola, setCola] = useState(0)
   const [rechazados, setRechazados] = useState<Cola.Rechazado[]>([])
@@ -97,6 +98,7 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
       setGuardados(previos)
       setValores(previos)
       setComentario(texto(fila.comentario))
+      setComentarioGuardado(texto(fila.comentario))
       setFotoGuardada(Boolean(fila.foto_calicata))
       setCalicata((k.data as Calicata | null) ?? null)
     }, () => {})   // sin señal: se trabaja con lo que hay; la base completa sin borrar
@@ -104,9 +106,9 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
   }, [turno, fecha])
 
   const elegirTurno = (id: string) => {
-    setTurnoId(id); setValores({}); setGuardados({}); setComentario(''); setFoto(null); setFotoGuardada(false); setCalicata(null)
+    setTurnoId(id); setValores({}); setGuardados({}); setComentario(''); setComentarioGuardado(''); setFoto(null); setFotoGuardada(false); setCalicata(null)
   }
-  const cambiarFecha = (f: string) => { setFecha(f); setValores({}); setGuardados({}); setComentario(''); setFoto(null); setFotoGuardada(false) }
+  const cambiarFecha = (f: string) => { setFecha(f); setValores({}); setGuardados({}); setComentario(''); setComentarioGuardado(''); setFoto(null); setFotoGuardada(false) }
 
   const rangos = useMemo(() => new Map((datos?.rangos ?? []).map((r) => [r.parametro, r])), [datos])
   const opciones = useMemo(() => (datos?.turnos ?? []).map((t) => ({
@@ -153,7 +155,8 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
       .filter(([k, v]) => v != null && String(v) !== guardados[k]))
     const numeros = cambiados(false)
     const clima = cambiados(true)
-    const nota = comentario.trim()
+    // El comentario solo viaja si cambió (el ya guardado se carga en el campo: no es un cambio)
+    const nota = comentario.trim() === comentarioGuardado.trim() ? '' : comentario.trim()
     if (!Object.keys(numeros).length && !Object.keys(clima).length && !foto && !nota) {
       mostrar('No hay cambios para guardar.', 'info')
       return
@@ -175,6 +178,7 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
     }
     // Lo guardado queda en pantalla para seguir editando: no se limpia nada
     setGuardados((g) => ({ ...g, ...Object.fromEntries(Object.entries({ ...numeros, ...clima }).map(([k, v]) => [k, String(v)])) }))
+    if (nota) setComentarioGuardado(nota)
     if (foto) { setFoto(null); setFotoGuardada(true) }
     mostrar(navigator.onLine ? `Registrado: ${turno.turno} · ${fecha}` : 'Registrado en el teléfono. Se enviará al volver la señal.')
     refrescarCola()
