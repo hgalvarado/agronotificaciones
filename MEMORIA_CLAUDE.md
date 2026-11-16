@@ -96,6 +96,13 @@
 
 ## 6. Historial (lo hecho y por qué)
 
+- **2026-11-15 · Trabajo con 4 subagentes en paralelo** (líder = Claude): Comparativo v2 (AGL `d0d3d94`, /FA02),
+  Seguridad AGL capas 1–3 (AGL `6a6b925`, /SE04, respaldo en `TORRE DE CONTROL\AGL_Respaldos`), Catálogos Fase A
+  (`sql/105` + AGL /FR01 › Catálogos `52483db`; equivalencia 0 diferencias tras publicar, 81/81 en 4 órdenes) y
+  AgroMétricas 111/112. AGL integrado en `main` = `f444c3f` vía worktree `integracion-1115` (pruebas 14/14, 8/8,
+  63/63, 34/34). **Lección**: agentes paralelos NO deben compartir arneses en el scratchpad (uno pisó `agl_cdp.ps1`
+  y pegó al servidor del otro): cada uno con subcarpeta y puertos propios. Preguntas abiertas: `proyecto-seguimiento.md` §8.
+
 - **2026-11-15 · AgroMétricas parte 1 cerrada**: `sql/111` (menú: en_menu, ícono chart, módulo «AgroMétricas»,
   alcances por zona; reemplaza el update a mano de desarrollo) y `sql/112` (% de fertilización en Fertirriego › Horas:
   `fert_bitacora_riego.pct_fertilizacion` 0–100, `_fert_op_bitacora` redefinida, parches por texto al teléfono, AGL y
