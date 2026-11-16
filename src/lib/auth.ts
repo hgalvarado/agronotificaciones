@@ -31,18 +31,31 @@ export const getUsuarioActual = cache(async () => {
 export const getPerfilActual = cache(async (): Promise<{
   perfil: Perfil | null
   rol: Rol | null
+  /** true = la consulta FALLÓ (red, tiempo, base ocupada): no significa que la cuenta no tenga perfil. */
+  error?: boolean
 }> => {
   const user = await getUsuarioActual()
   if (!user) return { perfil: null, rol: null }
 
   const supabase = await createClient()
-  const { data } = await supabase
-    .from('perfiles')
-    // La relación se nombra (perfiles.rol_id): si algún día hay otro camino entre perfiles y roles,
-    // un `roles(*)` a secas se vuelve ambiguo, la consulta falla y nadie puede entrar.
-    .select('*, roles!perfiles_rol_id_fkey(*)')
-    .eq('id', user.id)
-    .maybeSingle()
+  const consultar = () =>
+    supabase
+      .from('perfiles')
+      // La relación se nombra (perfiles.rol_id): si algún día hay otro camino entre perfiles y roles,
+      // un `roles(*)` a secas se vuelve ambiguo, la consulta falla y nadie puede entrar.
+      .select('*, roles!perfiles_rol_id_fkey(*)')
+      .eq('id', user.id)
+      .maybeSingle()
+
+  // Antes se ignoraba el error: una falla momentánea (red, base ocupada) se leía como «sin perfil» y salía
+  // «Cuenta pendiente de activación» a quien SÍ tiene perfil. Ahora se reintenta una vez y, si sigue fallando,
+  // se avisa como falla temporal (no como cuenta sin perfil).
+  let { data, error } = await consultar()
+  if (error) {
+    await new Promise((r) => setTimeout(r, 400))
+    ;({ data, error } = await consultar())
+  }
+  if (error) return { perfil: null, rol: null, error: true }
 
   if (!data) return { perfil: null, rol: null }
 
