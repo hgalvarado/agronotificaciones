@@ -96,6 +96,37 @@
 
 ## 6. Historial (lo hecho y por qué)
 
+- **2026-11-15 · Trabajo con 4 subagentes en paralelo** (líder = Claude): Comparativo v2 (AGL `d0d3d94`, /FA02),
+  Seguridad AGL capas 1–3 (AGL `6a6b925`, /SE04, respaldo en `TORRE DE CONTROL\AGL_Respaldos`), Catálogos Fase A
+  (`sql/105` + AGL /FR01 › Catálogos `52483db`; equivalencia 0 diferencias tras publicar, 81/81 en 4 órdenes) y
+  AgroMétricas 111/112. AGL integrado en `main` = `f444c3f` vía worktree `integracion-1115` (pruebas 14/14, 8/8,
+  63/63, 34/34). **Lección**: agentes paralelos NO deben compartir arneses en el scratchpad (uno pisó `agl_cdp.ps1`
+  y pegó al servidor del otro): cada uno con subcarpeta y puertos propios. Preguntas abiertas: `proyecto-seguimiento.md` §8.
+
+- **2026-11-15 · AgroMétricas parte 1 cerrada**: `sql/111` (menú: en_menu, ícono chart, módulo «AgroMétricas»,
+  alcances por zona; reemplaza el update a mano de desarrollo) y `sql/112` (% de fertilización en Fertirriego › Horas:
+  `fert_bitacora_riego.pct_fertilizacion` 0–100, `_fert_op_bitacora` redefinida, parches por texto al teléfono, AGL y
+  Terminar ciclo). **Ojo huella**: un turno archivado antes de una columna nueva en `fert_bitacora_riego` ya no se
+  podría reactivar (to_jsonb trae la clave nueva en null); la 112 deja fuera de la huella el % vacío. Toda columna
+  nueva en tablas que archiva la 102 necesita lo mismo. Si se vuelve a correr la 99 o la 102, correr la 112 después.
+  Defectos arreglados en Parámetros: la cola se trababa para siempre con un error definitivo que no estaba en la
+  lista (número enorme = 22003, P0001, foto rechazada por Storage); número enorme ahora se avisa antes de encolar;
+  el comentario ya guardado se reenviaba en cada Guardar. Pruebas: réplica 111 6/6, 112 4+18 (órdenes 112>102>112,
+  109/110/111 repetidas, clon de producción), 109 7/7, 110 5/5; QA con clics `pruebas/qa/agrometricas_parametros.ps1`
+  43/43 a 412 px (crea y borra su propio usuario QA). En desarrollo falta correr 111 y 112.
+
+- **2026-11-13 (tarde-noche) · AgroMétricas parte 1: Parámetros de riego** (migración desde AppSheet, que sigue en
+  producción y NO se toca). Docs `docs/agrometricas-migracion.md` (32 hojas mapeadas, decisiones) y
+  `docs/agrometricas-parametros-riego.md` (respuestas del usuario). `sql/109` (parámetros por turno y día, clima por
+  zona, rangos de AGL, permisos POR ZONA del turno) y `sql/110` (calicata fija por ciclo con precisión GPS; fotos en
+  bucket privado), corridas en desarrollo. Pantallas `/agrometricas` y `/agrometricas/parametros`, cola sin señal en
+  localStorage (`lib/agrometricas/cola.ts`), `components/ui/AvisoFlotante.tsx`. Réplica 7/7 y 5/5, unitaria 7/7.
+  **Lección**: la primera pantalla tenía estilo propio y el usuario la rechazó: siempre los componentes del proyecto.
+  Falta QA con clics.
+- **2026-11-13 · AGL Mi Día** (`afc400c`): Alt+M ventana emergente, editar tareas, @usuario comparte, nota del Cerebro
+  en ventana. QA 27/27. Diseño del Comparativo de Fertirriego v2 en `AGLGestion_App/docs/fertirriego-comparativo-v2.md`
+  (se construye el domingo 2026-11-15 tras renovarse el límite semanal).
+
 - **2026-11-13 · Prueba piloto 2** (`docs/fertirriego-piloto2.md`): teléfono (`2c54888`: botones grandes por DDT,
   detalle primero en bitácora, filtros y quién, «Envases» sin producto, grupos, calculadora), `sql/100` (todo el detalle
   al teléfono y a AGL; funciones de la 99 quedan como `_base` y la pública agrega), `sql/101` (`fn_fert_exportar_pruebas`

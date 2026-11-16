@@ -13,13 +13,24 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const user = await getUsuarioActual()
   if (!user) redirect('/login')
 
-  const [{ perfil, rol }, permisos, navegacion, pantallasMenu, menusRol] = await Promise.all([
+  const [{ perfil, rol, error: errorPerfil }, permisos, navegacion, pantallasMenu, menusRol] = await Promise.all([
     getPerfilActual(),
     getPermisos(),
     getNavegacion(),
     getPantallasMenu(),
     getMenusRol(),
   ])
+
+  // La consulta del perfil falló (no es que falte el perfil): se pide volver a intentar.
+  if (!perfil && errorPerfil) {
+    return (
+      <AvisoCuenta
+        titulo="No pudimos cargar tu perfil"
+        mensaje="Hubo una falla momentánea de conexión. Recarga la página en unos segundos; tu cuenta no tiene ningún problema."
+        recargar
+      />
+    )
+  }
 
   if (!perfil) {
     return (
@@ -64,7 +75,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   )
 }
 
-function AvisoCuenta({ titulo, mensaje }: { titulo: string; mensaje: string }) {
+function AvisoCuenta({ titulo, mensaje, recargar }: { titulo: string; mensaje: string; recargar?: boolean }) {
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center gap-4 px-6 text-center">
       <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-100 text-xl">
@@ -72,6 +83,14 @@ function AvisoCuenta({ titulo, mensaje }: { titulo: string; mensaje: string }) {
       </div>
       <h1 className="text-lg font-semibold text-slate-900">{titulo}</h1>
       <p className="max-w-sm text-sm text-slate-500">{mensaje}</p>
+      {recargar && (
+        <a
+          href=""
+          className="inline-flex min-h-11 items-center rounded-xl bg-slate-900 px-5 text-sm font-medium text-white"
+        >
+          Reintentar
+        </a>
+      )}
       <LogoutButton />
     </div>
   )
