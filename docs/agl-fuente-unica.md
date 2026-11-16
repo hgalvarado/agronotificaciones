@@ -280,7 +280,7 @@ en producción **después** de publicar el código que las necesita.
    - Período SAP: `15` (2026-2027 es 16).
 3. **Guardar**. Revisar que en la lista solo 2026-2027 diga «Activa».
 
-### 4.2 Dejar solo las 4 estaciones
+### 4.2 (ANULADO 2026-11-16: las 17 estaciones de AGL son correctas) Dejar solo las 4 estaciones
 
 Hacerlo **antes** de que Fertirriego tenga movimientos en producción (hoy tiene 0).
 
@@ -343,3 +343,14 @@ Hacerlo **antes** de que Fertirriego tenga movimientos en producción (hoy tiene
   Inteligente, «Publicar catálogos» con confirmación, historial).
 - Pruebas: `pruebas/sql/105_agl_catalogos.sql` (81/81, órdenes 105>105, 109>110>105, 105>109>110, 105>102>104>105),
   `pruebas/sql/105_equivalencia.sql` (antes→migrada: 40 diferencias, todas de la pantalla nueva; migrada→publicada: 0).
+
+## Corrección del usuario (2026-11-16)
+
+- Las **17 estaciones** de AGL son las correctas; NO se reducen a 4. Lo que se reduce son las **zonas** (de 7 a 4):
+  Zona 1 → Zona 1; Zona 2A → Zona 2A; **Zona 2B → Zona 3A**; **Zona 2C → Zona 2A**; Zona 3A → Zona 3A; Zona 3B → Zona 3B;
+  **Zona 3C → Zona 3B**.
+- Por tanto la vista previa de /FR01 › Catálogos se puede publicar cuando el usuario quiera (ya no espera el paso 4.2).
+- Al publicar: 2B/2C/3C quedan inactivas. `perfiles_zonas` NO se toca en la 105: quien tenga 2B, 2C o 3C debe quedar con su zona nueva
+  (2B→3A, 2C→2A, 3C→3B) en la fase C; antes de la fase C revisar a quién afecta.
+- PENDIENTES no urgentes (el usuario los dejó para después): A2 materiales, variedades, procesos y tareas; A3 lotes; B pantallas
+  de solo lectura; C retirar duplicados. Números de SQL desde la 114.
