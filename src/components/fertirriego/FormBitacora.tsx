@@ -88,7 +88,7 @@ export function FormBitacora({
           if (v !== null && (!Number.isFinite(v) || v < 0 || v > 1000)) return `Las ppm de cloro ${n} deben estar entre 0 y 1000.`
         }
         const vPct = horas(pct)
-        if (vPct !== null && (!Number.isFinite(vPct) || vPct < 0 || vPct > 100)) return 'El % de fertilización debe estar entre 0 y 100.'
+        if (vPct !== null && (!Number.isFinite(vPct) || vPct < 0)) return 'El % de fertilización debe ser un número igual o mayor que 0.'
         const ini = inicio ? deEntradaLocal(inicio) : null
         const fi = fin ? deEntradaLocal(fin) : null
         if (ini && fi && fi < ini) return 'La hora final no puede ser anterior a la inicial.'
@@ -130,7 +130,7 @@ export function FormBitacora({
       </div>
       <div className="grid grid-cols-2 gap-3">
         <Campo etiqueta="% de fertilización">
-          <Entrada inputMode="decimal" value={pct} onChange={(e) => setPct(e.target.value.replace(/[^\d.,]/g, ''))} placeholder="0 a 100" data-pct-fert />
+          <Entrada inputMode="decimal" value={pct} onChange={(e) => setPct(e.target.value.replace(/[^\d.,]/g, ''))} placeholder="Ej. 100, 120" data-pct-fert />
         </Campo>
       </div>
       <div className="grid grid-cols-2 gap-3">

@@ -235,10 +235,6 @@ try {
     }
     ClicHasta "document.querySelector('[data-turno=""$T1""] [data-horas-dia]')" "!!document.querySelector('[data-pct-fert]')" | Out-Null
     OK ((JS "!!document.querySelector('[data-pct-fert]')") -and (JS "document.querySelector('[data-pct-fert]').closest('label, div').textContent.includes('% de fertilización')")) 'Horas: tiene el campo «% de fertilización»'
-    Teclear "document.querySelector('[data-pct-fert]')" '150'
-    ClicEn "document.querySelector('[data-guardar-registro]')" | Out-Null
-    $t = Esperar "document.body.textContent.includes('El % de fertilización debe estar entre 0 y 100.')" 5000
-    OK ($t -ge 0 -and (JS "!!document.querySelector('[data-pct-fert]')")) 'Horas: 150 % no se guarda («debe estar entre 0 y 100»)'
     Teclear "document.querySelector('[data-pct-fert]')" '85,5'
     Teclear "document.querySelector('[data-horas-fert]')" '2'
     Captura 'agm_horas_pct.png'
