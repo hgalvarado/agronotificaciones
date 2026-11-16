@@ -326,3 +326,20 @@ Hacerlo **antes** de que Fertirriego tenga movimientos en producción (hoy tiene
   AgroNotificaciones por nombre normalizado (y similitud si cambió un poco); la de AgroNotificaciones conserva su id
   e historial y toma el nombre de AGL; las que AGL ya no tiene se desactivan (no se borran) si no tienen saldo ni
   custodio. Mostrar el emparejamiento en la vista previa para que el usuario lo confirme antes de aplicar.
+
+## Fase A · primer bloque construido (2026-11-15)
+
+- **`sql/105_agl_catalogos_publicar.sql`**: `agl_id` en zonas, temporadas, estaciones_riego y turnos; respaldo
+  `respaldo.*_m105`; bitácora `seguridad.agl_publicaciones` (con «antes» de cada fila); pantalla de permisos
+  `catalogos_agl` (ver, publicar; la reciben los roles que ya tienen lo mismo en `fertirriego_agl`);
+  `fn_agl_publicar_catalogos(p)` con vista previa (`simular`, por defecto) y huella obligatoria para publicar;
+  parche a `fn_fert_publicar` (estaciones por `agl_id`, conserva el de la 102); « 100019» → «100019» solo si no hay otro.
+- Emparejamiento de estaciones: id de AGL → elegida por el usuario → nombre normalizado → parecido (trigramas ≥ 0.5,
+  ganando por 0.1; números distintos = 0) → si empata, «dudosa» y no se publica hasta que el usuario elija.
+- No se desactiva: estación con saldo, custodio, turnos publicados o traslados pendientes; turno con turnos de
+  Fertirriego vivos o en el plan de Desinfección de la temporada activa; zona con estaciones/turnos activos, lotes en la
+  temporada activa o personas que solo tienen esa zona. `perfiles_zonas` NO se toca (eso es la fase C).
+- AGL: `backend/catalogos_campo.py` + pestaña **/FR01 › Catálogos** (vista previa, elegir estación con el Selector
+  Inteligente, «Publicar catálogos» con confirmación, historial).
+- Pruebas: `pruebas/sql/105_agl_catalogos.sql` (81/81, órdenes 105>105, 109>110>105, 105>109>110, 105>102>104>105),
+  `pruebas/sql/105_equivalencia.sql` (antes→migrada: 40 diferencias, todas de la pantalla nueva; migrada→publicada: 0).
