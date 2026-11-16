@@ -67,6 +67,15 @@ const fotoRechazada = (e: unknown) => {
   return s >= 400 && s < 500 && s !== 408 && s !== 429
 }
 
+/** Los errores de Postgres que no traen mensaje propio (los de la 109/110 ya vienen en español). */
+const MENSAJES: Record<string, string> = {
+  '22003': 'un número es demasiado grande para guardarse. Revisa la lectura.',
+  '22P02': 'un dato no es válido. Revisa lo escrito.',
+  '22007': 'la fecha no es válida.',
+  '22008': 'la fecha no es válida.',
+  '23503': 'el turno o la zona ya no existe. Actualiza la pantalla.',
+}
+
 let enviando: Promise<number> | null = null
 
 /** Envía la cola en orden. Se detiene al primer error de red (se reintenta luego). -> cuántos se enviaron */
@@ -96,7 +105,7 @@ export function enviar(usuario: string): Promise<number> {
       }
       if (error && !DEFINITIVOS.includes(error.code ?? '')) break   // red / servidor: luego
       escribir(k(usuario, 'cola'), pendientes(usuario).filter((x) => x.id !== p.id))
-      if (error) escribir(k(usuario, 'rechazados'), [...rechazados(usuario), { ...p, mensaje: error.message }])
+      if (error) escribir(k(usuario, 'rechazados'), [...rechazados(usuario), { ...p, mensaje: MENSAJES[error.code ?? ''] ?? error.message }])
       else enviados++
     }
     return enviados

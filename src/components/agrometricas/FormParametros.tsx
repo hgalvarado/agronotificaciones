@@ -30,6 +30,8 @@ type Datos = { turnos: Turno[]; rangos: Rango[]; bajado: string }
 type Calicata = { latitud: number; longitud: number; precision_m: number; lecturas: number; medido_en?: string }
 
 const uuid = () => crypto.randomUUID()
+/** Lo más grande que cabe en las columnas de agm_parametros / agm_clima (numeric(10,3)). */
+const LIMITE = 10_000_000
 const texto = (v: unknown) => (v == null ? '' : String(v))
 
 export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: string; puedeRegistrar: boolean }) {
@@ -155,6 +157,12 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
       .filter(([k, v]) => v != null && String(v) !== guardados[k]))
     const numeros = cambiados(false)
     const clima = cambiados(true)
+    // Un dedo de más (123456789012) no cabe en la base: se avisa aquí, en español, antes de guardarlo en el teléfono
+    const enorme = CAMPOS.find((c) => Math.abs(Number({ ...numeros, ...clima }[c.clave] ?? 0)) >= LIMITE)
+    if (enorme) {
+      setError(`${enorme.etiqueta}: ${valores[enorme.clave]} es demasiado grande. Revisa la lectura.`)
+      return
+    }
     // El comentario solo viaja si cambió (el ya guardado se carga en el campo: no es un cambio)
     const nota = comentario.trim() === comentarioGuardado.trim() ? '' : comentario.trim()
     if (!Object.keys(numeros).length && !Object.keys(clima).length && !foto && !nota) {

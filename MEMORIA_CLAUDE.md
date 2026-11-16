@@ -96,6 +96,18 @@
 
 ## 6. Historial (lo hecho y por qué)
 
+- **2026-11-15 · AgroMétricas parte 1 cerrada**: `sql/111` (menú: en_menu, ícono chart, módulo «AgroMétricas»,
+  alcances por zona; reemplaza el update a mano de desarrollo) y `sql/112` (% de fertilización en Fertirriego › Horas:
+  `fert_bitacora_riego.pct_fertilizacion` 0–100, `_fert_op_bitacora` redefinida, parches por texto al teléfono, AGL y
+  Terminar ciclo). **Ojo huella**: un turno archivado antes de una columna nueva en `fert_bitacora_riego` ya no se
+  podría reactivar (to_jsonb trae la clave nueva en null); la 112 deja fuera de la huella el % vacío. Toda columna
+  nueva en tablas que archiva la 102 necesita lo mismo. Si se vuelve a correr la 99 o la 102, correr la 112 después.
+  Defectos arreglados en Parámetros: la cola se trababa para siempre con un error definitivo que no estaba en la
+  lista (número enorme = 22003, P0001, foto rechazada por Storage); número enorme ahora se avisa antes de encolar;
+  el comentario ya guardado se reenviaba en cada Guardar. Pruebas: réplica 111 6/6, 112 4+18 (órdenes 112>102>112,
+  109/110/111 repetidas, clon de producción), 109 7/7, 110 5/5; QA con clics `pruebas/qa/agrometricas_parametros.ps1`
+  43/43 a 412 px (crea y borra su propio usuario QA). En desarrollo falta correr 111 y 112.
+
 - **2026-11-13 (tarde-noche) · AgroMétricas parte 1: Parámetros de riego** (migración desde AppSheet, que sigue en
   producción y NO se toca). Docs `docs/agrometricas-migracion.md` (32 hojas mapeadas, decisiones) y
   `docs/agrometricas-parametros-riego.md` (respuestas del usuario). `sql/109` (parámetros por turno y día, clima por
