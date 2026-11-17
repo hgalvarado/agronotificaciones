@@ -85,7 +85,8 @@ export function FormAplicacion({
   const [editadas, setEditadas] = useState<LineaEditable[] | null>(b?.editadas ?? null)
   const [elegida, setElegida] = useState<string | null>(b?.eleccion ?? eleccionInicial ?? null)
   const [verTodos, setVerTodos] = useState(false)
-  const [aceptaNegativo, setAceptaNegativo] = useState(false)
+  // La casilla vale SOLO para el faltante exacto que se marcó: si cambia un producto o una cantidad, hay que marcarla otra vez
+  const [aceptada, setAceptada] = useState<string | null>(null)
   const productos = useCrearProducto(estado.materiales, b?.productosNuevos, con99 && estacion.permisos.recibir)
   useAutoguardado(borrador, { turno, fecha, ejecutor2, editadas, eleccion: elegida, productosNuevos: productos.nuevos })
 
@@ -113,6 +114,8 @@ export function FormAplicacion({
   const lineas = editadas ?? propuestas
 
   const faltante = lineas.filter((l) => l.material_id && Number(l.cantidad.replace(',', '.')) > (saldos.get(l.material_id) ?? 0))
+  const firmaFaltante = faltante.map((l) => `${l.material_id}:${l.cantidad.trim()}`).join('|')
+  const aceptaNegativo = faltante.length > 0 && aceptada === firmaFaltante
 
   // Chips: los cercanos y sin aplicar primero; «Ver más» = todos por fecha
   const ordenados = ordenarDdtsParaElegir(ddts, aplicadas, fecha)
@@ -149,7 +152,7 @@ export function FormAplicacion({
         const r = leerLineas(lineas)
         if ('error' in r) return r.error
         if (faltante.length && !aceptaNegativo) {
-          return 'No alcanza lo que hay en bodega para algún producto. Revisa la cantidad, o marca la casilla para registrarlo de todos modos.'
+          return 'No hay inventario suficiente para algún producto. Marca la casilla roja de arriba para confirmar que de verdad se aplicó, o corrige la cantidad.'
         }
         const datos: Record<string, unknown> = {
           estacion_id: estacion.id,
@@ -174,6 +177,32 @@ export function FormAplicacion({
         ]
       }}
     >
+      {faltante.length > 0 && (
+        <label
+          className="sticky top-0 z-10 flex items-start gap-3 rounded-xl bg-red-50 p-3 text-sm text-red-900 shadow-md ring-2 ring-inset ring-red-400"
+          role="alert"
+          data-alerta-sin-inventario
+        >
+          <input
+            type="checkbox"
+            checked={aceptaNegativo}
+            onChange={(e) => setAceptada(e.target.checked ? firmaFaltante : null)}
+            className="mt-1 h-5 w-5 shrink-0"
+            data-acepta-negativo
+          />
+          <span>
+            <strong className="block">⚠ No hay inventario suficiente en la estación</strong>
+            {faltante
+              .map((l) => `${productos.materiales.find((m) => m.id === l.material_id)?.descripcion ?? 'producto'} (hay ${cantidad(saldos.get(l.material_id) ?? 0)}, aplicas ${l.cantidad})`)
+              .join(' · ')}
+            .<span className="mt-1 block font-semibold">
+              Para guardar tienes que marcar esta casilla: confirmas que de verdad se aplicó aunque no haya inventario. Quedará marcado para revisar.
+            </span>
+            <span className="mt-1 block text-xs">¿Se te olvidó registrar una entrega o un conteo? Avisa a tu jefe antes de seguir.</span>
+          </span>
+        </label>
+      )}
+
       {turnos.length === 0 ? (
         <Alerta tono="ambar">Esta estación no tiene turnos activos publicados desde AGL.</Alerta>
       ) : (
@@ -309,19 +338,6 @@ export function FormAplicacion({
           crearProducto={productos.crearProducto}
         />
       </Campo>
-
-      {faltante.length > 0 && (
-        <label className="flex items-start gap-2 rounded-xl bg-red-50 p-3 text-sm text-red-800 ring-1 ring-inset ring-red-200">
-          <input type="checkbox" checked={aceptaNegativo} onChange={(e) => setAceptaNegativo(e.target.checked)} className="mt-1" data-acepta-negativo />
-          <span>
-            No alcanza en bodega:{' '}
-            {faltante
-              .map((l) => `${productos.materiales.find((m) => m.id === l.material_id)?.descripcion ?? 'producto'} (hay ${cantidad(saldos.get(l.material_id) ?? 0)})`)
-              .join(', ')}
-            . ¿Falta registrar una entrega? Si de verdad se aplicó, márcalo: quedará marcado para revisar.
-          </span>
-        </label>
-      )}
 
       {estacion.personas.length > 1 && (
         <Campo etiqueta="Otro estacionero que participó (opcional)">

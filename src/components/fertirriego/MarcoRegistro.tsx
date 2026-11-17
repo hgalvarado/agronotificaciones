@@ -111,6 +111,11 @@ export function MarcoRegistro({
   const [porQuien, setPorQuien] = useState<string>(regla.porOtro ? (estacion.custodio_id ?? '') : yo.id)
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // El aviso sale ARRIBA y fijo, y la pantalla sube hasta él (antes quedaba al final y nadie lo veía)
+  const refError = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (error) refError.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [error])
 
   // La ubicación se empieza a pedir al ABRIR el formulario (piloto 1, punto 2): al tocar Guardar ya suele estar
   const ubicacionPedida = useRef<Promise<ResultadoUbicacion> | null>(null)
@@ -255,8 +260,12 @@ export function MarcoRegistro({
             />
           </div>
         )}
+        {error && (
+          <div ref={refError} className="sticky top-0 z-20" role="alert" data-error-registro>
+            <Alerta>{error}</Alerta>
+          </div>
+        )}
         {children}
-        {error && <Alerta>{error}</Alerta>}
       </div>
     </Modal>
   )
