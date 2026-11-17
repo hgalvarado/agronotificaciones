@@ -174,6 +174,13 @@ try {
     foreach ($x in $ops) { $script:Resultados.Add("INFO op $($x.tipo) $($x.resultado) $($x.mensaje)") }
     $sal = JS "document.querySelector('[data-saldo=""$SOL""]')?.innerText"
     $script:Resultados.Add("INFO saldo SOL en pantalla: $($sal -replace "`n", ' ')")
+    $solId = (Lista "materiales?select=id&codigo=eq.$SOL")[0].id
+    $saldoBase = [double](Lista "fert_saldos?select=disponible&estacion_id=eq.$estId&material_id=eq.$solId")[0].disponible
+    OK ($saldoBase -eq -115) 'Caso 2: el saldo de SOL en la base queda negativo (5 - 120 = -115)' "$saldoBase"
+    $opAp = @(Lista "fert_operaciones?select=resultado,observaciones&perfil_id=eq.$qaId&tipo=eq.aplicacion&order=recibido_en.desc&limit=1")[0]
+    OK ($opAp.resultado -like 'ACEPTADO*' -and ("$($opAp.observaciones)" -match 'SALDO_NEGATIVO')) 'Caso 2: operacion ACEPTADA con la observacion SALDO_NEGATIVO' "$($opAp.resultado) / $($opAp.observaciones)"
+    $rech = (Lista "fert_operaciones?select=id&perfil_id=eq.$qaId&resultado=eq.RECHAZADO").Count
+    OK ($rech -eq 0) 'Ninguna operacion rechazada' "rechazadas $rech"
 
     $ancho = JS "document.documentElement.scrollWidth"
     OK ($ancho -le 420) 'Telefono: sin desplazamiento lateral' "scrollWidth $ancho"
