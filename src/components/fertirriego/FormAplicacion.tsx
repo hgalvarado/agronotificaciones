@@ -162,6 +162,7 @@ export function FormAplicacion({
           ejecutor2_id: ejecutor2 || null,
           lineas: r.lineas,
         }
+        if (faltante.length) datos.acepta_negativo = true
         if (ddtElegido) {
           datos.ddt_plan = ddtElegido.ddt
           datos.fecha_plan = ddtElegido.fecha

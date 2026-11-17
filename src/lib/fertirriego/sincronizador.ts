@@ -41,7 +41,8 @@ export function sobreDe(op: Operacion, ahora = new Date()) {
     tipo: op.tipo,
     creado_en: op.creado_en,
     enviado_en: ahoraIso(ahora),
-    inmediato: ahora.getTime() - Date.parse(op.creado_en) < INMEDIATO_MS,
+    // Con la casilla «aplicar sin inventario» marcada la base no rechaza: registra y deja la observación SALDO_NEGATIVO
+    inmediato: op.datos.acepta_negativo === true ? false : ahora.getTime() - Date.parse(op.creado_en) < INMEDIATO_MS,
     dispositivo: op.dispositivo,
     ubicacion: op.ubicacion,
     en_nombre_de: op.en_nombre_de,
