@@ -1,6 +1,8 @@
 import { redirect } from 'next/navigation'
-import { getPermisos, puede } from '@/lib/auth'
+import { getPermisos, getUsuarioActual, puede } from '@/lib/auth'
 import { AdminNav } from '@/components/admin/AdminNav'
+import { ContextoAdmin } from '@/components/admin/ContextoAdmin'
+import { arbolDeclarado } from '@/lib/catalogos/grupos'
 import { SECCIONES_ADMIN } from '@/lib/navegacion/adminSecciones'
 
 /**
@@ -19,10 +21,20 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   if (secciones.length === 0) redirect('/')
 
+  const usuario = await getUsuarioActual()
+  // Los catálogos que se ven en el árbol: los mismos bloques que la matriz deja ver en la página.
+  const catalogos = arbolDeclarado((pantalla) => puede(permisos, pantalla, 'ver'))
+
   return (
-    <div className="flex flex-col xl:flex-row xl:items-start">
-      <AdminNav secciones={secciones.map(({ href, etiqueta, grupo }) => ({ href, etiqueta, grupo }))} />
-      <div className="min-w-0 flex-1">{children}</div>
-    </div>
+    <ContextoAdmin>
+      <div className="flex flex-col xl:flex-row xl:items-start">
+        <AdminNav
+          secciones={secciones.map(({ href, etiqueta, grupo }) => ({ href, etiqueta, grupo }))}
+          catalogos={catalogos}
+          usuarioId={usuario?.id ?? 'anonimo'}
+        />
+        <div className="min-w-0 flex-1">{children}</div>
+      </div>
+    </ContextoAdmin>
   )
 }
