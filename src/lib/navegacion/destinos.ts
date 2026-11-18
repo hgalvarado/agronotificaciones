@@ -160,6 +160,14 @@ export function catalogoDestinos(pantallasMenu: PantallaDeMenu[], pantallasCatal
       seccion: adm,
     },
     {
+      clave: 'admin_errores',
+      href: '/admin/errores',
+      etiqueta: 'Bitácora de errores',
+      icono: 'campana',
+      requiere: ['errores:ver'],
+      seccion: adm,
+    },
+    {
       clave: 'admin_fert_catalogos',
       href: '/admin/fertirriego-catalogos',
       etiqueta: 'Choferes y catálogos de campo',
