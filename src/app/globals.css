@@ -432,6 +432,7 @@ html[data-tema='oscuro'] .text-red-800 { color: #fb8b8b; }
 html[data-tema='oscuro'] .text-emerald-700,
 html[data-tema='oscuro'] .text-emerald-800 { color: #56dda6; }
 html[data-tema='oscuro'] .text-sky-800 { color: #78c4f0; }
+html[data-tema='oscuro'] .text-sky-900 { color: #a9d9f5; }
 html[data-tema='oscuro'] .text-violet-600,
 html[data-tema='oscuro'] .text-violet-800 { color: #b79bf5; }
 
