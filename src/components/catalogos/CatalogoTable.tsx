@@ -100,7 +100,7 @@ function SelectorArray({
         {valores.map((v) => (
           <span
             key={v}
-            className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold text-slate-600"
+            className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-semibold text-slate-600"
           >
             {opciones.find((o) => o.value === v)?.label ?? v}
           </span>
@@ -228,7 +228,7 @@ export function CatalogoTable({
                     {puestas.map((v) => (
                       <span
                         key={v}
-                        className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold text-slate-600"
+                        className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-semibold text-slate-600"
                       >
                         {v}
                       </span>
@@ -290,8 +290,10 @@ export function CatalogoTable({
         filas={filas as FilaTabla[]}
         permisos={efectivos}
         vacio={{
-          titulo: 'Sin registros',
-          descripcion: 'Agrega el primero, o cárgalos todos desde Excel.',
+          titulo: 'Este catálogo está vacío',
+          descripcion: soloLectura
+            ? 'Todavía no hay registros que consultar.'
+            : 'Usa «Agregar» para crear el primero, o «Importar» para cargarlos todos desde Excel.',
         }}
         onEditarCelda={efectivos.editar ? editarCelda : undefined}
         onEditarMasivo={efectivos.editar ? editarMasivo : undefined}
@@ -311,15 +313,17 @@ export function CatalogoTable({
         }
         acciones={
           !soloLectura && (
-            <>
-              <Boton variante="secundario" tamano="sm" onClick={() => setAbrirImportar(true)}>
-                Importar
-              </Boton>
-              <Boton tamano="sm" onClick={() => setAbrirNuevo(true)}>
-                <IconPlus className="h-4 w-4" />
-                Agregar
-              </Boton>
-            </>
+            <Boton variante="secundario" onClick={() => setAbrirImportar(true)}>
+              Importar
+            </Boton>
+          )
+        }
+        accionPrincipal={
+          !soloLectura && (
+            <Boton onClick={() => setAbrirNuevo(true)}>
+              <IconPlus className="h-4 w-4" />
+              Agregar
+            </Boton>
           )
         }
       />

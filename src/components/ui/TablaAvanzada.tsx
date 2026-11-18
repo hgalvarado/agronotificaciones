@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useMemo, useState, type ReactNode } from 'react'
+import { Fragment, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { SelectorCelda } from './SelectorCelda'
 import { Modal } from './Modal'
 import { Alerta, Boton, Campo, Entrada, EstadoVacio, Selector } from './Primitivos'
@@ -156,6 +156,7 @@ export function TablaAvanzada({
   minAncho = '640px',
   vacio,
   acciones,
+  accionPrincipal,
   accionFila,
   onEditarCelda,
   onEditarMasivo,
@@ -170,6 +171,8 @@ export function TablaAvanzada({
   minAncho?: string
   vacio?: { titulo: string; descripcion?: string }
   acciones?: ReactNode
+  /** La acción que se espera de esta pantalla (Agregar): va al final, con jerarquía visual propia. */
+  accionPrincipal?: ReactNode
   accionFila?: (fila: FilaTabla) => ReactNode
   onEditarCelda?: (id: string, key: string, valor: unknown) => Promise<void> | void
   onEditarMasivo?: (ids: string[], cambios: Record<string, unknown>) => Promise<void>
@@ -319,14 +322,14 @@ export function TablaAvanzada({
     <div className="flex flex-col gap-3">
       {/* -------------------- Barra de herramientas -------------------- */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[160px] flex-1">
+        <div className="relative min-w-[12rem] flex-1 sm:max-w-md">
           <IconSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-300" />
           <input
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
             placeholder="Buscar en toda la tabla…"
             inputMode="search"
-            className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm placeholder:text-slate-300 focus:border-brand-600 focus:outline-none focus:ring-4 focus:ring-brand-600/10"
+            className="min-h-11 w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm placeholder:text-slate-400 focus:border-brand-600 focus:outline-none focus:ring-4 focus:ring-brand-600/10"
           />
         </div>
 
@@ -337,7 +340,7 @@ export function TablaAvanzada({
               setOrden(null)
               setBusqueda('')
             }}
-            className="rounded-lg px-2.5 py-2 text-xs font-semibold text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
+            className="min-h-11 rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
           >
             Limpiar filtros
           </button>
@@ -354,7 +357,7 @@ export function TablaAvanzada({
             const [key, dir] = v.split('|')
             setOrden({ key, asc: dir === 'asc' })
           }}
-          className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm font-medium focus:border-brand-600 focus:outline-none sm:hidden"
+          className="min-h-11 rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm font-medium focus:border-brand-600 focus:outline-none md:hidden"
           aria-label="Ordenar"
         >
           <option value="">Sin orden</option>
@@ -366,19 +369,19 @@ export function TablaAvanzada({
           ))}
         </select>
 
-        {acciones}
+        {/* Importar · Exportar (secundarias) y, al final, la acción principal. */}
+        <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+          {acciones}
 
-        {puedeDescargar && (
-          <Boton
-            variante="secundario"
-            tamano="sm"
-            onClick={exportar}
-            disabled={visibles.length === 0}
-          >
-            <IconSend className="h-4 w-4" />
-            Exportar
-          </Boton>
-        )}
+          {puedeDescargar && (
+            <Boton variante="secundario" onClick={exportar} disabled={visibles.length === 0}>
+              <IconSend className="h-4 w-4" />
+              Exportar
+            </Boton>
+          )}
+
+          {accionPrincipal}
+        </div>
       </div>
 
       {/* --------------------- Barra de selección --------------------- */}
@@ -428,7 +431,7 @@ export function TablaAvanzada({
         ) : (
           <>
             {/* -------------------- Celular: tarjetas -------------------- */}
-            <div className="flex flex-col divide-y divide-slate-100 sm:hidden">
+            <div className="flex flex-col divide-y divide-slate-100 md:hidden">
               {visibles.map((fila) => {
                 const marcada = marcados.has(fila.id)
                 const [principal, ...resto] = columnas
@@ -460,10 +463,10 @@ export function TablaAvanzada({
                       {accionFila && <span className="shrink-0">{accionFila(fila)}</span>}
                     </div>
 
-                    <dl className="mt-2 grid grid-cols-[minmax(0,7rem)_1fr] items-center gap-x-3 gap-y-1.5">
+                    <dl className="mt-2 grid grid-cols-[minmax(0,8rem)_1fr] items-start gap-x-3 gap-y-2">
                       {resto.map((c) => (
                         <Fragment key={c.key}>
-                          <dt className="truncate text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                          <dt className="break-words py-1.5 text-xs font-semibold text-slate-500">
                             {c.label}
                           </dt>
                           <dd className="min-w-0">
@@ -483,18 +486,19 @@ export function TablaAvanzada({
             </div>
 
             {/* ------------------ Escritorio: tabla ---------------------- */}
-            <div className="scroll-suave hidden max-h-[70svh] overflow-auto sm:block">
+            <div className="scroll-suave hidden max-h-[calc(100dvh-10rem)] min-h-[12rem] overflow-auto md:block">
               <table className="w-full text-sm" style={{ minWidth: minAncho }}>
                 <thead className="sticky top-0 z-10 bg-slate-50">
                   <tr className="border-b border-slate-200 text-left">
                     {seleccionable && (
-                      <th className="w-10 px-2 py-2">
+                      <th className="sticky left-0 z-20 w-10 bg-slate-50 px-2 py-2">
                         <Casilla marcada={todosMarcados} onClick={alternarTodos} etiqueta="Todos" />
                       </th>
                     )}
-                    {columnas.map((c) => (
+                    {columnas.map((c, indice) => (
                       <Encabezado
                         key={c.key}
+                        pegajosa={indice === 0 ? (seleccionable ? 'left-10' : 'left-0') : undefined}
                         columna={c}
                         orden={orden}
                         onOrdenar={() => alternarOrden(c.key)}
@@ -520,12 +524,16 @@ export function TablaAvanzada({
                     return (
                       <tr
                         key={fila.id}
-                        className={`border-b border-slate-50 transition-colors last:border-0 ${
-                          marcada ? 'bg-brand-50/50' : 'hover:bg-slate-50/60'
+                        className={`group border-b border-slate-100 transition-colors last:border-0 ${
+                          marcada ? 'bg-brand-50' : 'hover:bg-slate-50'
                         }`}
                       >
                         {seleccionable && (
-                          <td className="px-2 py-1.5">
+                          <td
+                            className={`sticky left-0 z-[1] px-2 py-2 ${
+                              marcada ? 'bg-brand-50' : 'bg-white group-hover:bg-slate-50'
+                            }`}
+                          >
                             <Casilla
                               marcada={marcada}
                               onClick={() => alternarFila(fila.id)}
@@ -534,11 +542,17 @@ export function TablaAvanzada({
                           </td>
                         )}
   
-                        {columnas.map((c) => (
+                        {columnas.map((c, indice) => (
                           <td
                             key={c.key}
-                            className={`px-3 py-1.5 ${
+                            className={`px-3 py-2 align-top ${
                               c.alinear === 'derecha' ? 'text-right' : ''
+                            } ${
+                              indice === 0
+                                ? `sticky z-[1] ${seleccionable ? 'left-10' : 'left-0'} ${
+                                    marcada ? 'bg-brand-50' : 'bg-white group-hover:bg-slate-50'
+                                  }`
+                                : ''
                             }`}
                           >
                             <Celda
@@ -550,7 +564,7 @@ export function TablaAvanzada({
                           </td>
                         ))}
   
-                        {accionFila && <td className="px-2 py-1.5">{accionFila(fila)}</td>}
+                        {accionFila && <td className="px-2 py-2 align-top">{accionFila(fila)}</td>}
                       </tr>
                     )
                   })}
@@ -683,6 +697,7 @@ export function pasaFiltro(fila: FilaTabla, col: ColumnaTabla, f: Filtro): boole
 
 function Encabezado({
   columna,
+  pegajosa,
   orden,
   onOrdenar,
   filtro,
@@ -690,6 +705,8 @@ function Encabezado({
   onFiltrar,
 }: {
   columna: ColumnaTabla
+  /** Primera columna: se queda a la vista si hay scroll horizontal. */
+  pegajosa?: string
   orden: { key: string; asc: boolean } | null
   onOrdenar: () => void
   filtro: Filtro
@@ -701,7 +718,9 @@ function Encabezado({
 
   return (
     <th
-      className="whitespace-nowrap px-3 py-2 align-top text-[11px] font-bold uppercase tracking-wide text-slate-500"
+      className={`px-3 py-2.5 align-top text-xs font-bold text-slate-600 ${
+        pegajosa ? `sticky z-20 bg-slate-50 ${pegajosa}` : ''
+      }`}
       style={columna.ancho ? { width: columna.ancho } : undefined}
     >
       <span
@@ -732,7 +751,7 @@ function Encabezado({
           type="button"
           onClick={() => onFiltrar(filtroVacio(tipoFiltroDe(columna)))}
           title="Limpiar este filtro"
-          className={`mt-1 flex max-w-full items-center gap-1 rounded bg-brand-50 px-1.5 py-0.5 text-[10px] font-semibold normal-case text-brand-800 hover:bg-brand-100 ${
+          className={`mt-1 flex max-w-full items-center gap-1 rounded bg-brand-50 px-1.5 py-0.5 text-xs font-semibold normal-case text-brand-800 hover:bg-brand-100 ${
             columna.alinear === 'derecha' ? 'ml-auto' : ''
           }`}
         >
@@ -852,27 +871,96 @@ function CeldaEditable({
     onGuardar(borrador === '' ? null : borrador)
   }
 
+  const clases = `w-full min-w-[6rem] rounded-md border border-transparent px-1.5 py-1 transition-colors hover:border-slate-200 focus:border-brand-600 focus:bg-white focus:outline-none focus:ring-4 focus:ring-brand-600/10 ${
+    columna.alinear === 'derecha' || columna.tipo === 'numero' ? 'text-right tabular-nums' : ''
+  }`
+
+  function teclas(e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) {
+    const el = e.target as HTMLElement
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      confirmar()
+      el.blur()
+    }
+    if (e.key === 'Escape') {
+      setBorrador(inicial)
+      el.blur()
+    }
+  }
+
+  // El texto se edita en un cuadro que CRECE con lo escrito y baja de
+  // línea: un `<input>` de una línea cortaba «CAT-120G Pi…» y obligaba a
+  // ensanchar la tabla. Enter sigue confirmando (no inserta salto).
+  if (columna.tipo === 'texto') {
+    return (
+      <TextoAjustable
+        value={borrador}
+        onChange={setBorrador}
+        onKeyDown={teclas}
+        onBlur={confirmar}
+        className={clases}
+        etiqueta={columna.label}
+      />
+    )
+  }
+
   return (
     <input
       value={borrador}
       type={columna.tipo === 'fecha' ? 'date' : 'text'}
       inputMode={columna.tipo === 'numero' ? 'decimal' : undefined}
       onChange={(e) => setBorrador(e.target.value)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault()
-          confirmar()
-          ;(e.target as HTMLInputElement).blur()
-        }
-        if (e.key === 'Escape') {
-          setBorrador(inicial)
-          ;(e.target as HTMLInputElement).blur()
-        }
-      }}
+      onKeyDown={teclas}
       onBlur={confirmar}
-      className={`w-full min-w-[90px] rounded-md border border-transparent px-1.5 py-1 transition-colors hover:border-slate-200 focus:border-brand-600 focus:bg-white focus:outline-none focus:ring-4 focus:ring-brand-600/10 ${
-        columna.alinear === 'derecha' || columna.tipo === 'numero' ? 'text-right tabular-nums' : ''
-      }`}
+      aria-label={columna.label}
+      className={clases}
+    />
+  )
+}
+
+function TextoAjustable({
+  value,
+  onChange,
+  onKeyDown,
+  onBlur,
+  className,
+  etiqueta,
+}: {
+  value: string
+  onChange: (v: string) => void
+  onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void
+  onBlur: () => void
+  className: string
+  etiqueta: string
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null)
+
+  // Ajusta el alto al contenido; se repite al cambiar el ancho de la celda.
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const ajustar = () => {
+      el.style.height = 'auto'
+      el.style.height = `${el.scrollHeight}px`
+    }
+    ajustar()
+    const obs = new ResizeObserver(() => {
+      if (el.offsetParent) ajustar()
+    })
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [value])
+
+  return (
+    <textarea
+      ref={ref}
+      rows={1}
+      value={value}
+      onChange={(e) => onChange(e.target.value.replace(/[\r\n]+/g, ' '))}
+      onKeyDown={onKeyDown}
+      onBlur={onBlur}
+      aria-label={etiqueta}
+      className={`${className} block resize-none overflow-hidden break-words leading-snug`}
     />
   )
 }
