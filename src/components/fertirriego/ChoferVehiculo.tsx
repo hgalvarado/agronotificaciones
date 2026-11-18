@@ -153,7 +153,7 @@ export function BloqueEnvases({
 
   const campo = (t: EnvaseTipo, c: 'recibidos' | 'entregados') => (
     <label key={c} className="flex flex-col items-center gap-0.5">
-      <span className="max-w-28 text-center text-[10px] font-semibold uppercase leading-tight text-slate-500">{c === 'recibidos' ? etiquetaRecibidos : etiquetaEntregados}</span>
+      <span className="max-w-28 text-center text-xs font-semibold uppercase leading-tight text-slate-500">{c === 'recibidos' ? etiquetaRecibidos : etiquetaEntregados}</span>
       <input
         inputMode="numeric"
         value={valores[t.id]?.[c] ?? ''}
@@ -171,8 +171,8 @@ export function BloqueEnvases({
         {tipos.map((t) => (
           <div key={t.id} className="flex flex-wrap items-center gap-2 px-3 py-2.5" data-envase={t.nombre}>
             <div className="min-w-0 flex-1 basis-28">
-              <p className="truncate text-sm font-semibold text-slate-800">{t.nombre}</p>
-              <p className="text-[11px] text-slate-500">
+              <p className="break-words text-sm font-semibold text-slate-800">{t.nombre}</p>
+              <p className="text-xs text-slate-500">
                 {t.validado ? '' : 'por validar · '}En la estación: {saldos?.get(t.id) ?? 0}
               </p>
             </div>

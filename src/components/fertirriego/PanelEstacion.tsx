@@ -18,7 +18,7 @@ import { puedeRegistrar } from './MarcoRegistro'
 function MarcaBorrador({ si }: { si: boolean }) {
   if (!si) return null
   return (
-    <span className="mt-0.5 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-sky-800" data-marca-borrador>
+    <span className="mt-0.5 rounded-full bg-sky-100 px-2 py-0.5 text-xs font-bold uppercase tracking-wide text-sky-800" data-marca-borrador>
       Borrador
     </span>
   )
@@ -162,7 +162,7 @@ export function PanelEstacion({
       {/* ---- Plan de hoy ---- */}
       {planHoy.length > 0 && (
         <div>
-          <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">Plan de hoy</p>
+          <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-slate-400">Plan de hoy</p>
           <div className="flex flex-col gap-2">
             {planHoy.map(({ t, plan }) => (
               <button
@@ -185,7 +185,7 @@ export function PanelEstacion({
 
       {/* ---- Bodega ---- */}
       <div>
-        <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">En bodega</p>
+        <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-slate-400">En bodega</p>
         {productos.length === 0 ? (
           <p className="rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-500 ring-1 ring-inset ring-slate-200">
             Sin saldo registrado. Empieza con un <strong>Conteo</strong> (saldo inicial) o una <strong>Recepción</strong>.
@@ -198,7 +198,7 @@ export function PanelEstacion({
                 data-grupo-bodega={g.clase}
                 className={g.fertilizantes ? 'rounded-2xl bg-brand-50/60 p-2 ring-1 ring-inset ring-brand-200' : ''}
               >
-                <p className={`mb-1 px-1 text-[11px] font-bold uppercase tracking-wide ${g.fertilizantes ? 'text-brand-800' : 'text-slate-400'}`}>
+                <p className={`mb-1 px-1 text-xs font-bold uppercase tracking-wide ${g.fertilizantes ? 'text-brand-800' : 'text-slate-400'}`}>
                   {g.fertilizantes ? '★ ' : ''}
                   {g.clase}
                 </p>
@@ -212,8 +212,8 @@ export function PanelEstacion({
                       className="flex min-h-14 items-center justify-between gap-2 rounded-xl bg-white p-3 text-left ring-1 ring-inset ring-slate-200 hover:ring-brand-300"
                     >
                       <span className="min-w-0">
-                        <span className="block truncate text-sm font-semibold text-slate-800">{material(id)?.descripcion ?? '—'}</span>
-                        <span className="text-[11px] text-slate-400">{material(id)?.codigo}</span>
+                        <span className="block break-words text-sm font-semibold text-slate-800">{material(id)?.descripcion ?? '—'}</span>
+                        <span className="text-xs text-slate-400">{material(id)?.codigo}</span>
                       </span>
                       <span className={`shrink-0 text-lg font-bold tabular-nums ${v < 0 ? 'text-red-600' : 'text-slate-900'}`}>
                         {cantidad(v)} <span className="text-xs font-semibold text-slate-500">{material(id)?.unidad}</span>
@@ -235,7 +235,7 @@ export function PanelEstacion({
       {/* ---- Envases (sql/99; sin la 99 no se muestra) ---- */}
       {(estado.envases_tipos?.length ?? 0) > 0 && (
         <div data-envases-estacion>
-          <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">Envases en la estación</p>
+          <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-slate-400">Envases en la estación</p>
           {envases.length === 0 ? (
             <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500 ring-1 ring-inset ring-slate-200">
               Sin envases registrados. Se cuentan al recibir producto, con «Envases» (cuando el camión solo lleva o trae envases) y en el conteo.

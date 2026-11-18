@@ -220,8 +220,8 @@ export function FormRecibirRelevo({
               return (
                 <div key={id} className="flex flex-wrap items-center gap-2 px-3 py-2" data-cuadre-material={material(id)?.codigo}>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-semibold text-slate-800">{material(id)?.descripcion}</span>
-                    <span className="text-[11px] text-slate-500">
+                    <span className="block break-words text-sm font-semibold text-slate-800">{material(id)?.descripcion}</span>
+                    <span className="text-xs text-slate-500">
                       Sistema: {cantidad(v)} {material(id)?.unidad}
                     </span>
                   </span>

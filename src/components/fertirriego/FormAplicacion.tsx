@@ -323,7 +323,7 @@ export function FormAplicacion({
                   }`}
                 >
                   <span>DDT {textoDdt(d.ddt)}</span>
-                  <span className={`text-[10px] font-semibold ${marcado ? 'text-white/80' : 'text-slate-400'}`}>
+                  <span className={`text-xs font-semibold ${marcado ? 'text-white/80' : 'text-slate-400'}`}>
                     {diaCorto(d.fecha)}
                     {d.aplicado ? ' · aplicado' : ''}
                   </span>

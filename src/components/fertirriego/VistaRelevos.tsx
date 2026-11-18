@@ -75,7 +75,7 @@ export function VistaRelevos({
               {r.revisar && <Insignia tono="ambar">Revisar</Insignia>}
             </span>
           </div>
-          <p className="text-[11px] text-slate-500">
+          <p className="text-xs text-slate-500">
             {r.entregado_at ? `Entregó ${formatearFechaHora(r.entregado_at)}` : ''}
             {r.recibido_at ? ` · recibió ${formatearFechaHora(r.recibido_at)}` : ''}
             {r.metodo === 'CODIGO' ? ' · con código' : r.metodo === 'SESION' ? ' · con sesión' : ''}

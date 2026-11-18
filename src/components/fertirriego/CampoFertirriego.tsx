@@ -339,14 +339,14 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
                 MODO PRUEBA · Lo que registres aquí es de práctica: no cuenta y se borrará.
               </div>
             )}
-            <div className="flex items-baseline justify-between gap-2">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-2">
               <h1 className="text-xl font-bold tracking-tight text-slate-900" data-estacion={estacion.nombre}>
                 {estacion.nombre}
               </h1>
-              <span className="text-xs text-slate-400">{estacion.zona}</span>
+              <span className="text-xs text-slate-600">{estacion.zona}</span>
             </div>
 
-            <div className="flex gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1" role="tablist">
+            <div className="flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1" role="tablist">
               {PESTANAS.map((p) => (
                 <button
                   key={p.clave}
@@ -355,7 +355,7 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
                   aria-selected={pestana === p.clave}
                   data-pestana={p.clave}
                   onClick={() => setPestana(p.clave)}
-                  className={`flex-1 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
+                  className={`min-h-11 flex-1 basis-24 rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
                     pestana === p.clave ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
                   }`}
                 >

@@ -108,7 +108,7 @@ export function FormConteo({
         {lista.length === 0 && <p className="rounded-xl px-3 py-3 text-sm text-slate-400 ring-1 ring-inset ring-slate-200">Agrega los productos que vas a contar.</p>}
         {agruparPorClase(lista, (m) => m).map((g) => (
           <div key={g.clase} data-grupo-conteo={g.clase}>
-            <p className={`mb-1 text-[11px] font-bold uppercase tracking-wide ${g.fertilizantes ? 'text-brand-800' : 'text-slate-400'}`}>
+            <p className={`mb-1 text-xs font-bold uppercase tracking-wide ${g.fertilizantes ? 'text-brand-800' : 'text-slate-400'}`}>
               {g.fertilizantes ? '★ ' : ''}
               {g.clase}
             </p>
@@ -119,9 +119,9 @@ export function FormConteo({
                 const dif = v.trim() ? Number(v.replace(',', '.')) - (sistema ?? 0) : null
                 return (
                   <div key={m.id} className="flex flex-wrap items-center gap-2 px-3 py-2.5" data-conteo-material={m.codigo}>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-slate-800">{m.descripcion ?? m.codigo}</p>
-                      <p className="text-[11px] text-slate-500">
+                    <div className="min-w-0 basis-full">
+                      <p className="break-words text-sm font-semibold text-slate-800">{m.descripcion ?? m.codigo}</p>
+                      <p className="text-xs text-slate-500">
                         Sistema: {sistema === undefined ? 'sin registros (será el saldo inicial)' : `${cantidad(sistema)} ${m.unidad ?? ''}`}
                         {dif !== null && Number.isFinite(dif) && dif !== 0 && (
                           <span className={dif < 0 ? ' text-red-600' : ' text-brand-700'}> · diferencia {dif > 0 ? '+' : ''}{cantidad(dif)}</span>
@@ -133,9 +133,9 @@ export function FormConteo({
                       value={v}
                       onChange={(e) => setContado({ ...contado, [m.id]: e.target.value.replace(/[^\d.,]/g, '') })}
                       placeholder="Contado"
-                      className="w-28 rounded-lg border border-slate-200 bg-white px-3 py-2 text-right text-base font-semibold tabular-nums focus:border-brand-600 focus:outline-none"
+                      className="w-28 min-w-0 max-w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-right text-base font-semibold tabular-nums focus:border-brand-600 focus:outline-none"
                     />
-                    <span className="w-8 text-xs text-slate-500">{m.unidad}</span>
+                    <span className="min-w-8 whitespace-nowrap text-xs text-slate-500">{m.unidad}</span>
                     <BotonCalculadora unidad={m.unidad} onUsar={(valor) => setContado((c) => ({ ...c, [m.id]: valor }))} />
                   </div>
                 )
@@ -164,9 +164,9 @@ export function FormConteo({
               const dif = v.trim() ? Number(v) - sistema : null
               return (
                 <div key={t.id} className="flex flex-wrap items-center gap-2 px-3 py-2.5" data-conteo-envase={t.nombre}>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-slate-800">{t.nombre}</p>
-                    <p className="text-[11px] text-slate-500">
+                  <div className="min-w-0 basis-full">
+                    <p className="break-words text-sm font-semibold text-slate-800">{t.nombre}</p>
+                    <p className="text-xs text-slate-500">
                       Sistema: {sistema}
                       {dif !== null && Number.isFinite(dif) && dif !== 0 && (
                         <span className={dif < 0 ? ' text-red-600' : ' text-brand-700'}> · diferencia {dif > 0 ? '+' : ''}{dif}</span>
@@ -178,7 +178,7 @@ export function FormConteo({
                     value={v}
                     onChange={(e) => setEnvases({ ...envases, [t.id]: e.target.value.replace(/\D/g, '').slice(0, 6) })}
                     placeholder="Contado"
-                    className="w-28 rounded-lg border border-slate-200 bg-white px-3 py-2 text-right text-base font-semibold tabular-nums focus:border-brand-600 focus:outline-none"
+                    className="w-28 min-w-0 max-w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-right text-base font-semibold tabular-nums focus:border-brand-600 focus:outline-none"
                   />
                 </div>
               )

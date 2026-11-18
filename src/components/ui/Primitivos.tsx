@@ -27,13 +27,13 @@ const variantes: Record<Variante, string> = {
 }
 
 const tamanos: Record<Tamano, string> = {
-  sm: 'h-9 px-3 text-sm gap-1.5 rounded-lg',
-  md: 'h-11 px-4 text-sm gap-2 rounded-xl',
-  lg: 'h-13 px-5 text-base gap-2 rounded-xl',
+  sm: 'min-h-9 px-3 text-sm gap-1.5 rounded-lg',
+  md: 'min-h-11 px-4 text-sm gap-2 rounded-xl',
+  lg: 'min-h-13 px-5 text-base gap-2 rounded-xl',
 }
 
 const baseBoton =
-  'inline-flex items-center justify-center font-semibold transition-all duration-150 ' +
+  'inline-flex items-center justify-center text-center font-semibold transition-all duration-150 ' +
   'active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 ' +
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2'
 

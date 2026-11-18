@@ -61,7 +61,7 @@ export function VistaTraslados({
           </li>
         ))}
       </ul>
-      <p className="mt-1 text-[11px] text-slate-500">
+      <p className="mt-1 text-xs text-slate-500">
         {formatearFechaHora(t.creado_at)} · pidió {t.creador ?? '—'} · autoriza {t.autorizador ?? '—'}
         {t.nota_autorizacion ? ` · «${t.nota_autorizacion}»` : ''}
         {t.nota_resolucion ? ` · «${t.nota_resolucion}»` : ''}
@@ -97,7 +97,7 @@ export function VistaTraslados({
       ))}
       {porAutorizar.length > 0 && (
         <div>
-          <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">Te toca autorizar</p>
+          <p className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-400">Te toca autorizar</p>
           <div className="flex flex-col gap-2" data-por-autorizar>
             {porAutorizar.map((t) => tarjeta(t, [{ a: 'autorizar', texto: 'Autorizar' }, { a: 'no_autorizar', texto: 'No autorizar', tono: 'text-red-700' }]))}
           </div>
@@ -105,14 +105,14 @@ export function VistaTraslados({
       )}
       {llegando.length > 0 && (
         <div>
-          <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">Viene en camino a esta estación</p>
+          <p className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-400">Viene en camino a esta estación</p>
           <div className="flex flex-col gap-2" data-llegando>
             {llegando.map((t) => tarjeta(t, estacion.permisos.trasladar ? [{ a: 'aceptar', texto: 'Recibir' }, { a: 'rechazar', texto: 'Rechazar', tono: 'text-red-700' }] : []))}
           </div>
         </div>
       )}
       <div>
-        <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">Historial</p>
+        <p className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-400">Historial</p>
         {resto.length === 0 ? (
           <p className="py-4 text-center text-sm text-slate-400">Sin traslados.</p>
         ) : (

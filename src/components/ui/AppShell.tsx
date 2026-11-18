@@ -227,8 +227,8 @@ export function AppShell({
               {iniciales}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-slate-800">{nombre}</p>
-              <p className="truncate text-xs text-slate-400">{rolNombre}</p>
+              <p className="break-words text-sm font-semibold text-slate-800">{nombre}</p>
+              <p className="break-words text-xs text-slate-600">{rolNombre}</p>
             </div>
             {verAvisos && <CampanaNotificaciones />}
             <button
@@ -251,8 +251,8 @@ export function AppShell({
           <Link href="/" className="flex min-w-0 items-center gap-2.5" aria-label="Ir al inicio">
             <Logo tamano={32} className="rounded-lg" />
             <div className="min-w-0">
-              <p className="truncate text-sm font-bold leading-tight text-slate-900">{nombre}</p>
-              <p className="truncate text-[11px] text-slate-400">{rolNombre}</p>
+              <p className="break-words text-sm font-bold leading-tight text-slate-900">{nombre}</p>
+              <p className="break-words text-xs text-slate-600">{rolNombre}</p>
             </div>
           </Link>
           <div className="flex items-center gap-0.5">
