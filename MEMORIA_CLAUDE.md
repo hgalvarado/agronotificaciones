@@ -30,7 +30,11 @@
 - Mobile-first (capturadores en el teléfono). Funciones homogéneas en todos los módulos. Operable con teclado.
 - Respuestas al usuario en español, claras, sin jerga innecesaria.
 
-## 3. Estado actual (2026-11-12)
+## 3. Estado actual (2026-11-18)
+
+- **Producción** `main` = `aa84e8f` (2026-11-18): aplicar sin inventario con casilla obligatoria, PWA (manifiesto público + iconos PNG), anular diferencia de relevo (`sql/115`: falta correrla en PRODUCCIÓN; en desarrollo ya). Siguiente a construir: **Registros históricos** (ver `proyecto-seguimiento.md` §4 «De Claude»). Próximo número de SQL: 116.
+
+## (estado anterior 2026-11-12)
 
 - `desarrollo` adelante de `main` con Permisos v2 (92, 93) y Fertirriego A–D. SQL 91–96 corridas en desarrollo
   (la 96 el 2026-11-12; QA relevo/traslado 27/27). Nada pasa a producción hasta que el usuario lo diga (decisión 2026-11-11).
@@ -95,6 +99,8 @@
 5. No usar `npm run build` en la carpeta del usuario (el `prebuild` borra `.next` de su servidor de desarrollo).
 
 ## 6. Historial (lo hecho y por qué)
+
+- **2026-11-18 · Aplicar sin inventario, PWA, anular diferencia de relevo** (`aa84e8f`; detalle en `proyecto-seguimiento.md` §8). Lecciones: (a) un estado local de «acepto» debe atarse a lo que se aceptó (firma del faltante) o queda pegajoso; (b) una confirmación del cliente que la base no conoce se rechaza si la operación va «inmediata»: mandar la señal en `datos` y quitar `inmediato`; (c) el proxy de auth debe dejar públicos `manifest.webmanifest` y `sw.js` (sin sesión el teléfono recibía el login y no instalaba) y el SVG solo no basta como icono (Android pide PNG 192/512, iPhone `apple-touch-icon`); (d) el avisos de error de un modal van arriba y fijos, no al final; (e) pruebas con clics delegadas a Sonnet funcionan bien si el brief trae la receta y la limpieza; en PowerShell `@(Lista).Count` siempre da 1.
 
 - **2026-11-15 · Trabajo con 4 subagentes en paralelo** (líder = Claude): Comparativo v2 (AGL `d0d3d94`, /FA02),
   Seguridad AGL capas 1–3 (AGL `6a6b925`, /SE04, respaldo en `TORRE DE CONTROL\AGL_Respaldos`), Catálogos Fase A
