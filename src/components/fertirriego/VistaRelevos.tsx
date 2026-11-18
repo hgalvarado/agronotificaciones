@@ -5,7 +5,7 @@
  * (marcadas para revisar). Así nadie se perjudica entre turnos: queda escrito cómo se recibió la estación.
  */
 
-import { Insignia } from '@/components/ui/Primitivos'
+import { Boton, Insignia } from '@/components/ui/Primitivos'
 import { formatearFechaHora } from '@/lib/estados'
 import { cantidad } from '@/lib/fertirriego/calculos'
 import type { EstadoCampo, Estacion, Operacion, Persona, Relevo } from '@/lib/fertirriego/tipos'
@@ -27,6 +27,7 @@ export function VistaRelevos({
   onRecibir,
   onRechazar,
   onMostrarCodigo,
+  onAnularDiferencia,
 }: {
   estado: EstadoCampo
   cola: Operacion[]
@@ -35,10 +36,15 @@ export function VistaRelevos({
   onRecibir: (r: Relevo) => void
   onRechazar: (r: Relevo) => void
   onMostrarCodigo: () => void
+  /** 115: anular la diferencia de un producto (solo con «Anular» en la estación) */
+  onAnularDiferencia: (r: Relevo, materialId: string) => void
 }) {
   const relevos = (estado.relevos ?? []).filter((r) => r.estacion_id === estacion.id)
   const pendientesLocales = cola.filter((o) => o.estado_local === 'PENDIENTE' && o.tipo.startsWith('relevo_') && o.datos.estacion_id === estacion.id)
   const material = (id: string) => estado.materiales.find((m) => m.id === id)
+  const pendientesAnulacion = cola.filter(
+    (o) => o.estado_local === 'PENDIENTE' && o.tipo === 'anulacion' && o.datos.documento_tipo === 'relevo' && o.datos.estacion_id === estacion.id
+  )
 
   return (
     <div className="flex flex-col gap-3">
@@ -88,13 +94,36 @@ export function VistaRelevos({
           {r.nota_recibe && <p className="text-xs text-slate-600">Recibe: {r.nota_recibe}</p>}
           {r.motivo && <p className="text-xs text-slate-600">Motivo: {r.motivo}</p>}
           {r.diferencias.length > 0 && (
-            <ul className="mt-1 text-xs text-red-700" data-diferencias>
-              {r.diferencias.map((d) => (
-                <li key={d.material_id}>
-                  {material(d.material_id)?.descripcion}: sistema {cantidad(d.saldo_sistema)}, había {cantidad(d.cantidad_real)} ({d.diferencia > 0 ? '+' : ''}
-                  {cantidad(d.diferencia)})
-                </li>
-              ))}
+            <ul className="mt-1 flex flex-col gap-1.5 text-xs" data-diferencias>
+              {r.diferencias.map((d) => {
+                const anulada = Boolean(d.anulado_at)
+                const porEnviar = pendientesAnulacion.some((o) => o.datos.documento_id === r.id && o.datos.material_id === d.material_id)
+                return (
+                  <li key={d.material_id} data-diferencia-material={d.material_id} data-diferencia-anulada={anulada ? 'si' : 'no'}>
+                    <p className={anulada ? 'text-slate-400 line-through' : 'text-red-700'}>
+                      {material(d.material_id)?.descripcion}: sistema {cantidad(d.saldo_sistema)}, había {cantidad(d.cantidad_real)} ({d.diferencia > 0 ? '+' : ''}
+                      {cantidad(d.diferencia)})
+                    </p>
+                    {anulada && (
+                      <p className="mt-0.5 text-slate-600" data-diferencia-motivo>
+                        <Insignia tono="gris">Anulada</Insignia> {d.anulado_por_nombre ? `por ${d.anulado_por_nombre}` : ''}
+                        {d.anulado_at ? ` · ${formatearFechaHora(d.anulado_at)}` : ''}
+                        {d.motivo_anulacion ? ` — ${d.motivo_anulacion}` : ''}
+                      </p>
+                    )}
+                    {!anulada && porEnviar && (
+                      <p className="mt-0.5 text-amber-800" data-diferencia-por-enviar>
+                        Anulación guardada en el teléfono, por enviar.
+                      </p>
+                    )}
+                    {!anulada && !porEnviar && estacion.permisos.anular && r.estado === 'RECIBIDO' && d.diferencia !== 0 && (
+                      <Boton variante="peligro" className="mt-1" onClick={() => onAnularDiferencia(r, d.material_id)} data-anular-diferencia>
+                        Anular esta diferencia
+                      </Boton>
+                    )}
+                  </li>
+                )
+              })}
             </ul>
           )}
           {r.estado === 'EN_ENTREGA' && r.entrega_id !== yo.id && estacion.permisos.relevo && (
