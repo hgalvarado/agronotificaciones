@@ -120,7 +120,7 @@ export function EditorLineas({
               </button>
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <label className="flex items-center gap-2">
+              <label className="flex flex-wrap items-center gap-2">
                 <span className="text-xs font-semibold text-slate-500">{etiquetaCantidad}</span>
                 <input
                   inputMode="decimal"
@@ -128,7 +128,7 @@ export function EditorLineas({
                   onChange={(e) => cambiar(l.clave, { cantidad: e.target.value.replace(/[^\d.,]/g, '') })}
                   placeholder="0"
                   data-cantidad={i}
-                  className="w-28 rounded-lg border border-slate-200 bg-white px-3 py-2 text-right text-base font-semibold tabular-nums focus:border-brand-600 focus:outline-none"
+                  className="w-28 min-w-0 max-w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-right text-base font-semibold tabular-nums focus:border-brand-600 focus:outline-none"
                 />
                 <span className="text-xs text-slate-500">{unidad(l.material_id)}</span>
               </label>

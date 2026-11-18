@@ -40,9 +40,9 @@ const NOMBRE_OTRO: Record<string, string> = {
 function Dato({ etiqueta, children, data }: { etiqueta: string; children: ReactNode; data?: string }) {
   if (children === null || children === undefined || children === '' || children === false) return null
   return (
-    <div className="flex gap-2 py-1" data-dato={data}>
+    <div className="flex flex-wrap gap-x-2 py-1" data-dato={data}>
       <dt className="w-28 shrink-0 text-xs font-semibold text-slate-500">{etiqueta}</dt>
-      <dd className="min-w-0 flex-1 text-sm text-slate-800">{children}</dd>
+      <dd className="min-w-0 flex-1 basis-40 break-words text-sm text-slate-800">{children}</dd>
     </div>
   )
 }
@@ -259,29 +259,21 @@ export function DetalleDocumento({
 
         {conteo?.lineas?.length ? (
           <Seccion titulo="Lo contado" data="conteo">
-            <table className="w-full table-auto text-xs" data-detalle-conteo>
-              <thead>
-                <tr className="text-xs uppercase tracking-wide text-slate-400">
-                  <th className="py-0.5 text-left font-semibold">Producto</th>
-                  <th className="w-16 py-0.5 text-right font-semibold">Sistema</th>
-                  <th className="w-16 py-0.5 text-right font-semibold">Real</th>
-                  <th className="w-16 py-0.5 text-right font-semibold">Dif.</th>
-                </tr>
-              </thead>
-              <tbody>
-                {conteo.lineas.map((l) => (
-                  <tr key={l.material_id} className="border-t border-slate-100">
-                    <td className="break-words py-1 pr-1">{material(l.material_id)?.descripcion ?? '—'}</td>
-                    <td className="whitespace-nowrap py-1 text-right tabular-nums text-slate-500">{cantidad(Number(l.saldo_sistema))}</td>
-                    <td className="whitespace-nowrap py-1 text-right font-semibold tabular-nums">{cantidad(Number(l.cantidad_real))}</td>
-                    <td className={`whitespace-nowrap py-1 text-right font-bold tabular-nums ${Number(l.diferencia) < 0 ? 'text-red-700' : Number(l.diferencia) > 0 ? 'text-brand-700' : 'text-slate-400'}`}>
-                      {Number(l.diferencia) > 0 ? '+' : ''}
+            <ul className="flex flex-col text-xs" data-detalle-conteo>
+              {conteo.lineas.map((l) => (
+                <li key={l.material_id} className="border-t border-slate-100 py-1.5">
+                  <p className="break-words font-semibold text-slate-800">{material(l.material_id)?.descripcion ?? '—'}</p>
+                  <p className="flex flex-wrap gap-x-3 gap-y-0.5 tabular-nums">
+                    <span className="text-slate-500">Sistema <strong>{cantidad(Number(l.saldo_sistema))}</strong></span>
+                    <span className="text-slate-800">Real <strong>{cantidad(Number(l.cantidad_real))}</strong></span>
+                    <span className={`font-bold ${Number(l.diferencia) < 0 ? 'text-red-700' : Number(l.diferencia) > 0 ? 'text-brand-700' : 'text-slate-500'}`}>
+                      Dif. {Number(l.diferencia) > 0 ? '+' : ''}
                       {cantidad(Number(l.diferencia))}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </span>
+                  </p>
+                </li>
+              ))}
+            </ul>
           </Seccion>
         ) : null}
 

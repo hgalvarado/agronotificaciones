@@ -133,7 +133,7 @@ export function FormConteo({
                       value={v}
                       onChange={(e) => setContado({ ...contado, [m.id]: e.target.value.replace(/[^\d.,]/g, '') })}
                       placeholder="Contado"
-                      className="w-28 rounded-lg border border-slate-200 bg-white px-3 py-2 text-right text-base font-semibold tabular-nums focus:border-brand-600 focus:outline-none"
+                      className="w-28 min-w-0 max-w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-right text-base font-semibold tabular-nums focus:border-brand-600 focus:outline-none"
                     />
                     <span className="min-w-8 whitespace-nowrap text-xs text-slate-500">{m.unidad}</span>
                     <BotonCalculadora unidad={m.unidad} onUsar={(valor) => setContado((c) => ({ ...c, [m.id]: valor }))} />
@@ -178,7 +178,7 @@ export function FormConteo({
                     value={v}
                     onChange={(e) => setEnvases({ ...envases, [t.id]: e.target.value.replace(/\D/g, '').slice(0, 6) })}
                     placeholder="Contado"
-                    className="w-28 rounded-lg border border-slate-200 bg-white px-3 py-2 text-right text-base font-semibold tabular-nums focus:border-brand-600 focus:outline-none"
+                    className="w-28 min-w-0 max-w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-right text-base font-semibold tabular-nums focus:border-brand-600 focus:outline-none"
                   />
                 </div>
               )

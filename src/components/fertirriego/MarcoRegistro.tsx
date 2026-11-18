@@ -227,11 +227,11 @@ export function MarcoRegistro({
         ) : (
         <div className="flex flex-col gap-2">
         {avisoPie}
-        <div className="flex gap-2">
-          <Boton variante="secundario" className="flex-1" onClick={onCancelar ?? onCerrar} disabled={guardando} data-cancelar-registro>
+        <div className="flex flex-wrap gap-2">
+          <Boton variante="secundario" className="flex-1 basis-32" onClick={onCancelar ?? onCerrar} disabled={guardando} data-cancelar-registro>
             {textoCancelar}
           </Boton>
-          <Boton className="flex-1" onClick={() => void guardar()} disabled={guardando || !regla.si} data-guardar-registro>
+          <Boton className="flex-1 basis-32" onClick={() => void guardar()} disabled={guardando || !regla.si} data-guardar-registro>
             {guardando ? 'Guardando…' : textoGuardar}
           </Boton>
         </div>
@@ -241,8 +241,8 @@ export function MarcoRegistro({
     >
       <div className="flex flex-col gap-4">
         {borrador?.recuperado && (
-          <div className="flex items-center gap-2 rounded-xl bg-sky-50 px-3 py-2 text-sm text-sky-900 ring-1 ring-inset ring-sky-200" data-borrador-recuperado>
-            <span className="flex-1">
+          <div className="flex flex-wrap items-center gap-2 rounded-xl bg-sky-50 px-3 py-2 text-sm text-sky-900 ring-1 ring-inset ring-sky-200" data-borrador-recuperado>
+            <span className="min-w-0 flex-1 basis-48 break-words">
               Continuando tu borrador de {horaBorrador(borrador.recuperado)}. Nada se ha registrado todavía.
             </span>
             <button

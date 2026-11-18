@@ -122,31 +122,26 @@ export function VistaTurnos({
                             </div>
 
                             {c.productos.length > 0 && (
-                              <table className="mt-1.5 w-full table-auto text-xs">
-                                <thead>
-                                  <tr className="text-xs uppercase tracking-wide text-slate-400">
-                                    <th className="py-0.5 text-left font-semibold">Producto</th>
-                                    <th className="w-14 py-0.5 text-right font-semibold">Plan</th>
-                                    <th className="w-14 py-0.5 text-right font-semibold">Real</th>
-                                    <th className="w-14 py-0.5 text-right font-semibold">Var.</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {ordenarProductos(c.productos).map((p) => (
-                                    <tr key={p.material_id} className="border-t border-slate-100" data-producto-tarjeta={material(p.material_id)?.codigo}>
-                                      <td className="break-words py-1 pr-1 text-slate-700">{material(p.material_id)?.descripcion ?? '—'}</td>
-                                      <td className="whitespace-nowrap py-1 text-right tabular-nums text-slate-500">{c.tipo === 'plan' ? cantidad(p.plan) : '—'}</td>
-                                      <td className="whitespace-nowrap py-1 text-right font-semibold tabular-nums text-slate-800">
-                                        {cantidad(p.real + p.pendiente)}
-                                        {p.pendiente > 0 && <span className="block text-[0.7rem] font-normal text-sky-700">{cantidad(p.pendiente)} por enviar</span>}
-                                      </td>
-                                      <td className={`whitespace-nowrap py-1 text-right font-bold tabular-nums ${tonoVariacion(p)}`}>
-                                        {c.tipo === 'plan' ? `${p.variacion > 0 ? '+' : ''}${cantidad(p.variacion)}` : '—'}
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
+                              <ul className="mt-1.5 flex flex-col text-xs">
+                                {ordenarProductos(c.productos).map((p) => (
+                                  <li key={p.material_id} className="border-t border-slate-100 py-1.5" data-producto-tarjeta={material(p.material_id)?.codigo}>
+                                    <p className="break-words font-semibold text-slate-700">{material(p.material_id)?.descripcion ?? '—'}</p>
+                                    <p className="flex flex-wrap gap-x-3 gap-y-0.5 tabular-nums">
+                                      {c.tipo === 'plan' && <span className="text-slate-500">Plan <strong>{cantidad(p.plan)}</strong></span>}
+                                      <span className="text-slate-800">
+                                        Real <strong>{cantidad(p.real + p.pendiente)}</strong>
+                                        {p.pendiente > 0 && <span className="ml-1 text-[0.7rem] font-normal text-sky-700">({cantidad(p.pendiente)} por enviar)</span>}
+                                      </span>
+                                      {c.tipo === 'plan' && (
+                                        <span className={`font-bold ${tonoVariacion(p)}`}>
+                                          Var. {p.variacion > 0 ? '+' : ''}
+                                          {cantidad(p.variacion)}
+                                        </span>
+                                      )}
+                                    </p>
+                                  </li>
+                                ))}
+                              </ul>
                             )}
                             {hayPendiente && <p className="mt-1 text-xs text-sky-700">Hay aplicaciones por enviar (cuentan en lo real).</p>}
                             {horas && (horas.horas_riego !== null || horas.horas_fertilizacion !== null || horas.ppm_cloro_cabezal != null || horas.ppm_cloro_campo != null || horas.pct_fertilizacion != null) && (
