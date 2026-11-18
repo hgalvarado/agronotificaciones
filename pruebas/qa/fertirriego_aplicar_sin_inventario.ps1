@@ -165,8 +165,8 @@ try {
     # Dos productos en falta: ACI 50 > 10
     Teclear (Cant $ACI) '50'
     Start-Sleep -Milliseconds 400
-    $txt = JS "document.querySelector('[data-alerta-sin-inventario]')?.innerText || ''"
-    OK ($txt -match 'ACIDO' -and $txt -match 'SOLUCION') 'Caso 3: con A y B en falta la alerta lista los dos' (($txt -split "`n")[1])
+    $txt = JS "(() => { const a=document.querySelector('[data-alerta-sin-inventario]'); return a ? a.innerText + ' || ' + (a.querySelector('[title]')?.title || '') : '' })()"
+    OK ($txt -match 'en 2 productos' -and $txt -match 'ACIDO' -and $txt -match 'SOLUCION') 'Caso 3: con A y B en falta la barra dice 2 productos y el title detalla los dos' $txt
     ClicEn "document.querySelector('[data-acepta-negativo]')" | Out-Null; Start-Sleep -Milliseconds 300
     OK ((Casilla) -eq $true) 'Caso 3: casilla marcada con A y B en falta'
     Teclear (Cant $ACI) '51'
