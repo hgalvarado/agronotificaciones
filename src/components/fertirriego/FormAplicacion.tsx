@@ -144,6 +144,30 @@ export function FormAplicacion({
     setEditadas(null)
   }
 
+  // Aviso compacto FIJO abajo (sobre «Guardar»): no tapa el formulario; solo pide marcar la casilla para guardar
+  const nombreFalta = (l: LineaEditable) => productos.materiales.find((m) => m.id === l.material_id)?.descripcion ?? 'producto'
+  const avisoSinInventario =
+    faltante.length > 0 ? (
+      <label
+        className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-900 ring-1 ring-inset ring-red-300"
+        role="alert"
+        data-alerta-sin-inventario
+      >
+        <input
+          type="checkbox"
+          checked={aceptaNegativo}
+          onChange={(e) => setAceptada(e.target.checked ? firmaFaltante : null)}
+          className="h-6 w-6 shrink-0"
+          data-acepta-negativo
+        />
+        <span className="max-h-20 min-w-0 flex-1 overflow-y-auto break-words">
+          <strong>Sin inventario:</strong>{' '}
+          {faltante.map((l) => `${nombreFalta(l)} (hay ${cantidad(saldos.get(l.material_id) ?? 0)}, aplicas ${l.cantidad})`).join(' · ')}.{' '}
+          <span className="font-semibold">Marca para confirmar que sí se aplicó (queda para revisar).</span>
+        </span>
+      </label>
+    ) : null
+
   return (
     <MarcoRegistro
       titulo={historico ? 'Registro histórico · aplicación' : 'Preparar / aplicar turno'}
@@ -155,6 +179,7 @@ export function FormAplicacion({
       onGuardado={onGuardado}
       borrador={borrador}
       rapido
+      avisoPie={avisoSinInventario}
       construir={({ ubicacion, enNombreDe, ejecutor }) => {
         if (!turno) return 'Elige el turno.'
         if (!fecha || fecha > ultimoDia) {
@@ -164,7 +189,7 @@ export function FormAplicacion({
         const r = leerLineas(lineas)
         if ('error' in r) return r.error
         if (faltante.length && !aceptaNegativo) {
-          return 'No hay inventario suficiente para algún producto. Marca la casilla roja de arriba para confirmar que de verdad se aplicó, o corrige la cantidad.'
+          return 'No hay inventario suficiente para algún producto. Marca la casilla roja de abajo (sobre el botón Guardar) para confirmar que de verdad se aplicó, o corrige la cantidad.'
         }
         const datos: Record<string, unknown> = {
           estacion_id: estacion.id,
@@ -205,32 +230,6 @@ export function FormAplicacion({
           </span>
         </div>
       )}
-      {faltante.length > 0 && (
-        <label
-          className="sticky top-0 z-10 flex items-start gap-3 rounded-xl bg-red-50 p-3 text-sm text-red-900 shadow-md ring-2 ring-inset ring-red-400"
-          role="alert"
-          data-alerta-sin-inventario
-        >
-          <input
-            type="checkbox"
-            checked={aceptaNegativo}
-            onChange={(e) => setAceptada(e.target.checked ? firmaFaltante : null)}
-            className="mt-1 h-5 w-5 shrink-0"
-            data-acepta-negativo
-          />
-          <span>
-            <strong className="block">⚠ No hay inventario suficiente en la estación</strong>
-            {faltante
-              .map((l) => `${productos.materiales.find((m) => m.id === l.material_id)?.descripcion ?? 'producto'} (hay ${cantidad(saldos.get(l.material_id) ?? 0)}, aplicas ${l.cantidad})`)
-              .join(' · ')}
-            .<span className="mt-1 block font-semibold">
-              Para guardar tienes que marcar esta casilla: confirmas que de verdad se aplicó aunque no haya inventario. Quedará marcado para revisar.
-            </span>
-            <span className="mt-1 block text-xs">¿Se te olvidó registrar una entrega o un conteo? Avisa a tu jefe antes de seguir.</span>
-          </span>
-        </label>
-      )}
-
       {turnos.length === 0 ? (
         <Alerta tono="ambar">Esta estación no tiene turnos activos publicados desde AGL.</Alerta>
       ) : (

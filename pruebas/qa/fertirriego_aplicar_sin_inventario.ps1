@@ -1,4 +1,4 @@
-# QA - Fertirriego: aplicar sin inventario (commit abe85ba). Servidor en :3101 + base de DESARROLLO.
+﻿# QA - Fertirriego: aplicar sin inventario (commit abe85ba). Servidor en :3101 + base de DESARROLLO.
 # Crea un usuario QA temporal, una estacion de prueba con turno, plan y dos productos; al final borra todo.
 # Casos: (4) dentro del saldo no hay alerta y guarda sin casilla; (1) mayor al saldo: alerta roja arriba, guardar sin casilla
 # no cierra y muestra el error arriba; (3) la casilla se desmarca sola si cambia una cantidad; (2) con la casilla se registra.
@@ -117,13 +117,15 @@ try {
     OK ($ok5 -and (JS "document.querySelector('[data-linea-codigo=""$SOL""] [data-cantidad]')?.value") -eq '120') 'Caso 1: DDT 5 propone SOL 120 (saldo 5)' (JS "document.querySelector('[data-linea-codigo=""$SOL""] [data-cantidad]')?.value")
     OK ((Alerta) -eq $true) 'Caso 1: aparece la alerta roja de sin inventario'
     $info = (JS "(() => { const a=document.querySelector('[data-alerta-sin-inventario]'); if(!a) return ''; const p=a.parentElement; const ch=[...p.children]; const r=a.getBoundingClientRect(); return JSON.stringify({top:r.top,bottom:r.bottom,vh:innerHeight,idx:ch.indexOf(a),antes:ch.slice(0,ch.indexOf(a)).map(x=>x.getAttributeNames().join(',')).join('|')}) })()") | ConvertFrom-Json
-    OK ($info.idx -eq 0 -and $info.top -ge 0 -and $info.bottom -le $info.vh) 'Caso 1: la alerta es el primer elemento del cuerpo y se ve sin scroll' "idx $($info.idx), top $([int]$info.top), bottom $([int]$info.bottom), alto $($info.vh)"
+    $alto = JS "Math.round(document.querySelector('[data-alerta-sin-inventario]').getBoundingClientRect().height)"
+    $enPie = JS "(() => { const a=document.querySelector('[data-alerta-sin-inventario]'); const g=document.querySelector('[data-guardar-registro]'); return !!g && a.getBoundingClientRect().bottom <= g.getBoundingClientRect().top + 2 && g.getBoundingClientRect().top - a.getBoundingClientRect().bottom < 40 })()"
+    OK ($info.top -ge 0 -and $info.bottom -le $info.vh -and $enPie -eq $true -and [int]$alto -le 130) 'Caso 1: la alerta es compacta (<= 130 px), fija sobre el botón Guardar y visible sin scroll' "alto $alto px, en el pie $enPie"
     Captura 'fert_aplicar_sin_inventario_412.png'
     # Sticky: bajar el contenido y la alerta sigue a la vista
     JS "(() => { const a=document.querySelector('[data-alerta-sin-inventario]'); let p=a.parentElement; while(p && p.scrollHeight <= p.clientHeight+2) p=p.parentElement; if(p) p.scrollTop = p.scrollHeight; return true })()" | Out-Null
     Start-Sleep -Milliseconds 400
     $vis = JS "(() => { const r=document.querySelector('[data-alerta-sin-inventario]').getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight })()"
-    OK ($vis -eq $true) 'Caso 1: tras bajar al final del formulario la alerta sigue visible (fija arriba)'
+    OK ($vis -eq $true) 'Caso 1: tras bajar al final del formulario la alerta sigue visible (fija abajo)'
     OK ((Casilla) -eq $false) 'Caso 1: la casilla empieza sin marcar'
     Guardar
     $abierto = FormAbierto
