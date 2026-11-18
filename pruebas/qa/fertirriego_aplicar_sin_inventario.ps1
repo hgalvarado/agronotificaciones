@@ -1,4 +1,4 @@
-# QA - Fertirriego: aplicar sin inventario (commit abe85ba). Servidor en :3101 + base de DESARROLLO.
+﻿# QA - Fertirriego: aplicar sin inventario (commit abe85ba). Servidor en :3101 + base de DESARROLLO.
 # Crea un usuario QA temporal, una estacion de prueba con turno, plan y dos productos; al final borra todo.
 # Casos: (4) dentro del saldo no hay alerta y guarda sin casilla; (1) mayor al saldo: alerta roja arriba, guardar sin casilla
 # no cierra y muestra el error arriba; (3) la casilla se desmarca sola si cambia una cantidad; (2) con la casilla se registra.
@@ -53,7 +53,7 @@ try {
     $pub = Rest 'rpc/fn_fert_publicar' 'Post' @{ p = @{
         temporada = "QA $s"
         estaciones = @(@{ nombre = $EST; zona = $z1.nombre })
-        materiales = @(@{ codigo = $SOL; descripcion = "SOLUCION QA $s"; unidad = 'L'; grupo = '1800' }, @{ codigo = $ACI; descripcion = "ACIDO QA $s"; unidad = 'L'; grupo = '1800' })
+        materiales = @(@{ codigo = $SOL; descripcion = "SOLUCION QA $s NITRATO DE CALCIO GRANULAR ESTANDAR CON MICRONUTRIENTES QUELATADOS SACO 25 KG"; unidad = 'L'; grupo = '1800' }, @{ codigo = $ACI; descripcion = "ACIDO QA $s"; unidad = 'L'; grupo = '1800' })
         turnos = @(@{ agl_id = "TR-QA-$s"; turno = $TURNO; temporada = "QA $s"; ciclo = 'Ciclo QA'; fecha_siembra = (Get-Date).AddDays(-5).ToString('yyyy-MM-dd'); estacion = $EST; zona = $z1.nombre; area_mz = 10; estado = 'Creado' })
         plan = @(@{ agl_id = "TR-QA-$s"; filas = @(
             @{ fecha = $hoy; ddt = 5; material = $SOL; cantidad = 120 }, @{ fecha = $hoy; ddt = 5; material = $ACI; cantidad = 4 },
@@ -117,14 +117,35 @@ try {
     OK ($ok5 -and (JS "document.querySelector('[data-linea-codigo=""$SOL""] [data-cantidad]')?.value") -eq '120') 'Caso 1: DDT 5 propone SOL 120 (saldo 5)' (JS "document.querySelector('[data-linea-codigo=""$SOL""] [data-cantidad]')?.value")
     OK ((Alerta) -eq $true) 'Caso 1: aparece la alerta roja de sin inventario'
     $info = (JS "(() => { const a=document.querySelector('[data-alerta-sin-inventario]'); if(!a) return ''; const p=a.parentElement; const ch=[...p.children]; const r=a.getBoundingClientRect(); return JSON.stringify({top:r.top,bottom:r.bottom,vh:innerHeight,idx:ch.indexOf(a),antes:ch.slice(0,ch.indexOf(a)).map(x=>x.getAttributeNames().join(',')).join('|')}) })()") | ConvertFrom-Json
-    OK ($info.idx -eq 0 -and $info.top -ge 0 -and $info.bottom -le $info.vh) 'Caso 1: la alerta es el primer elemento del cuerpo y se ve sin scroll' "idx $($info.idx), top $([int]$info.top), bottom $([int]$info.bottom), alto $($info.vh)"
+    $alto = JS "Math.round(document.querySelector('[data-alerta-sin-inventario]').getBoundingClientRect().height)"
+    $enPie = JS "(() => { const a=document.querySelector('[data-alerta-sin-inventario]'); const g=document.querySelector('[data-guardar-registro]'); return !!g && a.getBoundingClientRect().bottom <= g.getBoundingClientRect().top + 2 && g.getBoundingClientRect().top - a.getBoundingClientRect().bottom < 40 })()"
+    OK ($info.top -ge 0 -and $info.bottom -le $info.vh -and $enPie -eq $true -and [int]$alto -le 130) 'Caso 1: la alerta es compacta (<= 130 px), fija sobre el botón Guardar y visible sin scroll' "alto $alto px, en el pie $enPie"
     Captura 'fert_aplicar_sin_inventario_412.png'
     # Sticky: bajar el contenido y la alerta sigue a la vista
     JS "(() => { const a=document.querySelector('[data-alerta-sin-inventario]'); let p=a.parentElement; while(p && p.scrollHeight <= p.clientHeight+2) p=p.parentElement; if(p) p.scrollTop = p.scrollHeight; return true })()" | Out-Null
     Start-Sleep -Milliseconds 400
     $vis = JS "(() => { const r=document.querySelector('[data-alerta-sin-inventario]').getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight })()"
-    OK ($vis -eq $true) 'Caso 1: tras bajar al final del formulario la alerta sigue visible (fija arriba)'
+    OK ($vis -eq $true) 'Caso 1: tras bajar al final del formulario la alerta sigue visible (fija abajo)'
     OK ((Casilla) -eq $false) 'Caso 1: la casilla empieza sin marcar'
+    # --- Texto grande (fuente raiz 24 px): nombre largo completo y area de scroll suficiente ---
+    $jsScroll = "(() => { let p=document.querySelector('[data-selector-turno]'); while(p && !(/(auto|scroll)/.test(getComputedStyle(p).overflowY) && p.scrollHeight > p.clientHeight + 2)) p=p.parentElement; return p ? Math.round(p.getBoundingClientRect().height) : -1 })()"
+    $hScroll1 = [int](JS $jsScroll)
+    OK ($hScroll1 -ge [int](915 * 0.5)) 'Aviso: con letra normal el area de scroll visible del formulario es >= 50 % de la pantalla' "$hScroll1 de 915 px"
+    JS "document.documentElement.style.fontSize='24px'; true" | Out-Null
+    Start-Sleep -Milliseconds 600
+    $nom = (JS "(() => { const b=document.querySelector('[data-linea-codigo=""$SOL""] button'); const t=b.querySelector('span.break-words'); let ell=false; for (let e=t; e && e!==b.parentElement; e=e.parentElement) if (getComputedStyle(e).textOverflow==='ellipsis') ell=true; const lh=parseFloat(getComputedStyle(t).lineHeight)||parseFloat(getComputedStyle(t).fontSize)*1.4; return JSON.stringify({ell, sw:t.scrollWidth, cw:t.clientWidth, h:t.getBoundingClientRect().height, lh, lineas:Math.round(t.getBoundingClientRect().height/lh), txt:t.textContent, fs:getComputedStyle(document.documentElement).fontSize}) })()") | ConvertFrom-Json
+    OK ($nom.fs -eq '24px' -and -not $nom.ell -and $nom.sw -le $nom.cw -and $nom.lineas -ge 2 -and $nom.txt -match 'QUELATADOS SACO 25 KG') 'Texto grande 24 px a 412 px: el nombre largo del producto se ve completo (sin ellipsis) y baja a 2+ lineas' "lineas $($nom.lineas), scrollW $($nom.sw) / clientW $($nom.cw)"
+    $hScroll2 = [int](JS $jsScroll)
+    $alto2 = [int](JS "Math.round(document.querySelector('[data-alerta-sin-inventario]').getBoundingClientRect().height)")
+    OK ($hScroll2 -ge [int](915 * 0.5)) 'Aviso: con texto grande el area de scroll visible del formulario sigue >= 50 % de la pantalla' "$hScroll2 de 915 px, barra $alto2 px"
+    $enPie2 = JS "(() => { const a=document.querySelector('[data-alerta-sin-inventario]'); const g=document.querySelector('[data-guardar-registro]'); const ra=a.getBoundingClientRect(); return ra.top>=0 && !!g && ra.bottom <= g.getBoundingClientRect().top + 2 && g.getBoundingClientRect().bottom <= innerHeight })()"
+    OK ($enPie2 -eq $true) 'Texto grande: la barra del aviso sigue sobre Guardar y a la vista'
+    Captura 'fert_aplicar_sin_inventario_textogrande_412.png'
+    JS "(() => { const a=document.querySelector('[data-alerta-sin-inventario]'); let p=a.parentElement; while(p && !/(auto|scroll)/.test(getComputedStyle(p).overflowY)) p=p.parentElement; if(p) p.scrollTop = 0; return true })()" | Out-Null
+    Start-Sleep -Milliseconds 300
+    Captura 'fert_aplicar_sin_inventario_textogrande_arriba_412.png'
+    JS "document.documentElement.style.fontSize=''; true" | Out-Null
+    Start-Sleep -Milliseconds 500
     Guardar
     $abierto = FormAbierto
     $err = JS "document.querySelector('[data-error-registro]')?.innerText || ''"

@@ -619,12 +619,12 @@ function FilaTicket({
       <div className="flex items-start justify-between gap-2">
         {/* Quién y qué día: el código largo va pequeño (se usa para buscar y en SAP) */}
         <p
-          className={`truncate text-sm font-semibold ${
+          className={`break-words text-sm font-semibold ${
             seleccionado ? 'text-brand-900' : 'text-slate-900'
           }`}
         >
           {ticket.usuario_nombre ?? formatearFecha(ticket.fecha)}
-          <span className="block truncate text-[11px] font-normal text-slate-400">{ticket.codigo}</span>
+          <span className="block break-words text-[11px] font-normal text-slate-600">{ticket.codigo}</span>
         </p>
         <span
           className={`mt-1 h-2 w-2 shrink-0 rounded-full ${
@@ -634,12 +634,12 @@ function FilaTicket({
         />
       </div>
 
-      <div className="mt-1.5 flex items-center gap-2 text-xs text-slate-400">
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-2 text-xs text-slate-600">
         <span>{formatearFecha(ticket.fecha)}</span>
         {ticket.departamento && (
           <>
             <span className="text-slate-200">·</span>
-            <span className="truncate">{ticket.departamento}</span>
+            <span className="break-words">{ticket.departamento}</span>
           </>
         )}
       </div>

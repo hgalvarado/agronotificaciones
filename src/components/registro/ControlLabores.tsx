@@ -366,6 +366,16 @@ export function ControlLabores({
         tipo: 'texto',
         valor: (f) => f.zona_nombre ?? '',
       },
+      // El NOMBRE del lote primero (es lo que la gente reconoce); la UT va a su lado, en negrita.
+      {
+        campo: 'lote_nombre',
+        label: 'Lote',
+        tipo: 'seleccion',
+        valor: (f) => f.lote_nombre,
+        render: (f) => (
+          <span className="block break-words font-semibold text-slate-900">{f.lote_nombre ?? f.ut}</span>
+        ),
+      },
       {
         campo: 'ut',
         label: 'UT',
@@ -381,9 +391,8 @@ export function ControlLabores({
           value: l.lote_temporada_id,
           label: l.nomenclatura,
         })),
-        render: (f) => <span className="font-semibold text-slate-800">{f.ut}</span>,
+        render: (f) => <span className="break-words text-xs font-bold text-slate-700">{f.ut}</span>,
       },
-      { campo: 'lote_nombre', label: 'Lote', tipo: 'seleccion', valor: (f) => f.lote_nombre },
       {
         campo: 'tarea_codigo',
         label: 'Tarea',
@@ -543,7 +552,7 @@ export function ControlLabores({
         valor: (f) => f.operador_nombre,
         etiqueta: (f) => [f.operador_codigo, f.operador_nombre].filter(Boolean).join(' '),
         render: (f) => (
-          <span className="block max-w-[170px] truncate">
+          <span className="block max-w-[220px] break-words">
             {[f.operador_codigo, f.operador_nombre].filter(Boolean).join(' ') || '—'}
           </span>
         ),
@@ -678,7 +687,7 @@ export function ControlLabores({
         tipo: 'seleccion',
         valor: (f) => f.usuario_nombre,
         render: (f) => (
-          <span className="block max-w-[140px] truncate text-xs text-slate-400">
+          <span className="block max-w-[180px] break-words text-xs text-slate-600">
             {f.usuario_nombre ?? '—'}
           </span>
         ),

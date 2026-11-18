@@ -148,6 +148,29 @@ dice «no me aparece el módulo», revisa en este orden:
 
 ---
 
+## 7 bis. Registro histórico (estaciones que ya operaban antes del sistema)
+
+Cuando una estación ya trabajaba antes de usar Fertirriego, alguien necesita dejar anotado **lo que ya se aplicó**, pero
+**sin mover el inventario** (no hubo entregas registradas que lo respalden). Para eso está el permiso temporal
+**Registro histórico**. Lo da **solo el administrador** (quien tiene «Configurar» en Fertirriego).
+
+**Dónde:** Administración › **Registro histórico**.
+
+1. Elige la **persona**, marca la o las **estaciones** y escribe la **fecha límite** (inclusive, máximo 90 días). Toca **Guardar permiso**.
+2. La persona toca **Actualizar** en Fertirriego (con señal): en su estación aparece **Registrar histórico**, con los días que le quedan.
+3. Ella registra cada aplicación de un **día pasado** (nunca hoy ni futuro; **sí puede ser anterior a la siembra** del turno: hay aplicaciones del plan con DDT negativo, y el DDT real sale con signo menos, p. ej. «−3»). No pide custodia ni inventario.
+4. Para cortar antes de la fecha, toca **Revocar** en la lista. Vencido o revocado, la persona vuelve al proceso normal.
+
+Lo que debes saber:
+
+- Esos registros salen en la **Bitácora** con la insignia **Histórico** y el detalle dice «No movió el inventario». No tocan saldos, ni envases, ni el libro.
+- Si ya existía una aplicación igual (mismo turno, DDT y productos), se guarda pero queda marcada «posible duplicado» para que la revises.
+- Se pueden **anular** con motivo (quien tenga «Anular»). Una histórica no admite devoluciones.
+- Lo registrado sin señal se envía al volver la conexión aunque el permiso venza en el camino (hasta 7 días de gracia).
+- AGL recibe estos registros en una lista aparte y **no** los cuenta como «Real» en el Comparativo.
+
+---
+
 ## 8. Buenas prácticas
 
 - Un usuario por persona. Nunca compartir.

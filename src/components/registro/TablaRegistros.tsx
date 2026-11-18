@@ -4,7 +4,8 @@ import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { EstadoVacio } from '@/components/ui/Primitivos'
-import { IconCopy, IconGauge, IconMapPin, IconPencil, IconSearch, IconTrash } from '@/components/ui/Icons'
+import { IconCopy, IconGauge, IconPencil, IconSearch, IconTrash } from '@/components/ui/Icons'
+import { ChipLoteGuardado } from './DatosLote'
 import type { Registro, RegistroDetalle } from '@/lib/types'
 
 export type FilaRegistro = Registro & {
@@ -44,7 +45,8 @@ export function TablaRegistros({
         (r.tareas_sap?.codigo ?? '').toLowerCase().includes(q) ||
         (r.equipoCodigo ?? '').toLowerCase().includes(q) ||
         r.detalle.some((d) =>
-          (d.lotes_temporada?.lotes?.nomenclatura ?? '').toLowerCase().includes(q)
+          (d.lotes_temporada?.lotes?.nomenclatura ?? '').toLowerCase().includes(q) ||
+          (d.lotes_temporada?.lotes?.nombre ?? '').toLowerCase().includes(q)
         )
     )
   }, [registros, busqueda])
@@ -268,7 +270,7 @@ function FilaCompacta({
           {mz > 0 && <span className="text-xs font-bold text-brand-700">{mz} mz</span>}
         </div>
 
-        <p className="truncate text-xs text-slate-400">
+        <p className="break-words text-xs text-slate-500">
           {r.tareas_sap?.codigo ? `${r.tareas_sap.codigo} · ` : ''}
           {r.tareas_sap?.nombre ?? 'Sin tarea SAP'}
           {r.implementos?.nombre ? ` · ${r.implementos.nombre}` : ''}
@@ -277,16 +279,7 @@ function FilaCompacta({
         {r.detalle.length > 0 && (
           <div className="mt-1 flex flex-wrap gap-1">
             {r.detalle.map((d) => (
-              <span
-                key={d.id}
-                className="inline-flex items-center gap-1 rounded-md bg-slate-50 px-1.5 py-0.5 text-[11px] text-slate-600 ring-1 ring-inset ring-slate-200/70"
-              >
-                <IconMapPin className="h-3 w-3 text-slate-400" />
-                {d.lotes_temporada?.lotes?.nomenclatura ?? '—'}
-                {d.avance_mz != null && (
-                  <span className="font-bold text-brand-700">{d.avance_mz}</span>
-                )}
-              </span>
+              <ChipLoteGuardado key={d.id} d={d} />
             ))}
           </div>
         )}
@@ -327,26 +320,18 @@ function FilaTabla({
       )}
       <td className="px-3 py-2 font-semibold text-slate-900">{r.labores?.nombre ?? '—'}</td>
       <td className="max-w-[200px] px-3 py-2 text-slate-600">
-        <span className="block truncate">
+        <span className="block">
           {r.tareas_sap?.codigo ? `${r.tareas_sap.codigo} · ` : ''}
           {r.tareas_sap?.nombre ?? '—'}
         </span>
       </td>
-      <td className="max-w-[140px] truncate px-3 py-2 text-slate-500">
+      <td className="max-w-[160px] px-3 py-2 text-slate-500">
         {r.implementos?.nombre ?? '—'}
       </td>
       <td className="px-3 py-2">
         <div className="flex flex-wrap gap-1">
           {r.detalle.map((d) => (
-            <span
-              key={d.id}
-              className="inline-flex items-center gap-1 rounded-md bg-slate-50 px-1.5 py-0.5 text-[11px] text-slate-600 ring-1 ring-inset ring-slate-200/70"
-            >
-              {d.lotes_temporada?.lotes?.nomenclatura ?? '—'}
-              {d.avance_mz != null && (
-                <span className="font-bold text-brand-700">{d.avance_mz}</span>
-              )}
-            </span>
+            <ChipLoteGuardado key={d.id} d={d} />
           ))}
         </div>
       </td>

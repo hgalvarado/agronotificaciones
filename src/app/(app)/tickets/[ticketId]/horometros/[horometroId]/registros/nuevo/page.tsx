@@ -1,10 +1,9 @@
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { RegistroForm } from '@/components/registro/RegistroForm'
 import { cargarCatalogosRegistro } from '@/lib/datosRegistro'
 import { IconChevronLeft } from '@/components/ui/Icons'
-import { Alerta } from '@/components/ui/Primitivos'
+import { Alerta, BotonLink } from '@/components/ui/Primitivos'
 
 export default async function NuevoRegistroPage({
   params,
@@ -14,7 +13,7 @@ export default async function NuevoRegistroPage({
   const { ticketId, horometroId } = await params
   const supabase = await createClient()
 
-  const [{ data: horometro }, { data: hermanos }, catalogos] = await Promise.all([
+  const [{ data: horometro }, { data: hermanos }, catalogos, { data: tk }] = await Promise.all([
     supabase
       .from('horometros')
       .select('id, fecha, horas_maquina, equipos(codigo)')
@@ -24,6 +23,7 @@ export default async function NuevoRegistroPage({
     // formulario propone el saldo, no el dia completo.
     supabase.from('registros').select('horas_notificadas').eq('horometro_id', horometroId),
     cargarCatalogosRegistro(),
+    supabase.from('tickets').select('codigo').eq('id', ticketId).maybeSingle(),
   ])
 
   if (!horometro) notFound()
@@ -41,13 +41,12 @@ export default async function NuevoRegistroPage({
 
   return (
     <div className="anim-aparecer flex flex-col gap-4 p-4 lg:p-6">
-      <Link
-        href={`/tickets/${ticketId}/horometros/${horometroId}`}
-        className="inline-flex items-center gap-1 text-sm font-medium text-slate-500 transition-colors hover:text-slate-800"
-      >
-        <IconChevronLeft className="h-4 w-4" />
-        Volver al horómetro
-      </Link>
+      <div className="flex flex-wrap gap-2">
+        <BotonLink href={`/tickets/${ticketId}/horometros/${horometroId}`} variante="secundario">
+          <IconChevronLeft className="h-4 w-4" />
+          Volver al horómetro
+        </BotonLink>
+      </div>
 
       <div>
         <h1 className="text-xl font-bold tracking-tight text-slate-900">
@@ -80,6 +79,7 @@ export default async function NuevoRegistroPage({
         vinculosFisicos={catalogos.vinculosFisicos}
         horasMaquina={horasMaquina}
         horasRepartidas={horasRepartidas}
+        ticketCodigo={(tk as { codigo: string } | null)?.codigo}
       />
     </div>
   )

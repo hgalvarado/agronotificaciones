@@ -1,9 +1,9 @@
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { RegistroForm } from '@/components/registro/RegistroForm'
 import { cargarCatalogosRegistro } from '@/lib/datosRegistro'
 import { IconChevronLeft } from '@/components/ui/Icons'
+import { BotonLink } from '@/components/ui/Primitivos'
 
 export default async function EditarRegistroPage({
   params,
@@ -45,13 +45,12 @@ export default async function EditarRegistroPage({
 
   return (
     <div className="anim-aparecer flex flex-col gap-4 p-4 lg:p-6">
-      <Link
-        href={`/tickets/${ticketId}/horometros/${horometroId}`}
-        className="inline-flex items-center gap-1 text-sm font-medium text-slate-500 transition-colors hover:text-slate-800"
-      >
-        <IconChevronLeft className="h-4 w-4" />
-        Volver al horómetro
-      </Link>
+      <div className="flex flex-wrap gap-2">
+        <BotonLink href={`/tickets/${ticketId}/horometros/${horometroId}`} variante="secundario">
+          <IconChevronLeft className="h-4 w-4" />
+          Volver al horómetro
+        </BotonLink>
+      </div>
 
       <div>
         <h1 className="text-xl font-bold tracking-tight text-slate-900">Editar labor</h1>

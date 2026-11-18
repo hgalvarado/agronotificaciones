@@ -10,7 +10,8 @@ import type { FilaKardex } from './calculos'
 import type { EstadoCampo, LineaEnvase, Operacion, TipoMovimiento } from './tipos'
 
 /** Tipo de fila de la bitácora: los del kardex + los movimientos de envases. */
-export type TipoFila = TipoMovimiento | 'ENVASE'
+/** HISTORICO (sql/116): aplicación del registro inicial del proceso; NO movió el inventario. */
+export type TipoFila = TipoMovimiento | 'ENVASE' | 'HISTORICO'
 
 export type FilaBitacora = {
   clave: string
@@ -32,6 +33,8 @@ export type FilaBitacora = {
   registrado_por: string | null
   /** Solo envases: motivo de la base (RECEPCION, ENTREGA, CONTEO, ANULACION). */
   motivo?: string | null
+  /** Solo históricas: cantidad aplicada (entrada y salida van en 0: no tocan el saldo). */
+  cantidad?: number
 }
 
 const entero = (v: unknown) => Math.trunc(Number(v ?? 0) || 0)
@@ -148,6 +151,51 @@ export function filasEnvases(
   return filas
 }
 
+/**
+ * Aplicaciones del registro histórico (sql/116) como filas de la bitácora: una por producto, sin entrada ni salida ni
+ * saldo (NO movieron el inventario). Más las que están pendientes de enviar.
+ */
+export function filasHistoricas(estado: Pick<EstadoCampo, 'aplicaciones' | 'yo'>, cola: Operacion[], estacionId: string): FilaBitacora[] {
+  const filas: FilaBitacora[] = []
+  const base = (x: { clave: string; fecha_hora: string; turno: string; material_id: string; cant: number; doc: string; pendiente: boolean; anulado: boolean; por: string | null }): FilaBitacora => ({
+    clave: x.clave,
+    fecha_hora: x.fecha_hora,
+    dia: isoDe(new Date(x.fecha_hora)),
+    tipo: 'HISTORICO',
+    material_id: x.material_id,
+    envase_id: null,
+    entrada: 0,
+    salida: 0,
+    saldo: null,
+    turnos: [x.turno],
+    documento_tipo: 'aplicacion',
+    documento_id: x.doc,
+    pendiente: x.pendiente,
+    anulado: x.anulado,
+    registrado_por: x.por,
+    cantidad: x.cant,
+  })
+  for (const a of estado.aplicaciones ?? []) {
+    if (!a.historica || a.estacion_id !== estacionId) continue
+    for (const l of a.lineas ?? []) {
+      filas.push(
+        base({ clave: `his-${a.id}-${l.material_id}`, fecha_hora: a.fecha_hora, turno: a.turno_ciclo_id, material_id: l.material_id, cant: Number(l.cantidad), doc: a.id, pendiente: false, anulado: Boolean(a.anulado_at), por: a.registrado_por })
+      )
+    }
+  }
+  for (const op of cola) {
+    if (op.estado_local !== 'PENDIENTE' || op.tipo !== 'aplicacion_historica' || op.datos.estacion_id !== estacionId) continue
+    const dia = String(op.datos.fecha ?? '').slice(0, 10)
+    const fecha_hora = dia ? `${dia}T18:00:00.000Z` : op.creado_en // 12:00 de Honduras
+    for (const l of (op.datos.lineas as { material_id: string; cantidad: number | string }[] | undefined) ?? []) {
+      filas.push(
+        base({ clave: `his-${op.id}-${l.material_id}`, fecha_hora, turno: String(op.datos.turno_ciclo_id ?? ''), material_id: l.material_id, cant: Number(l.cantidad), doc: op.id, pendiente: true, anulado: false, por: op.en_nombre_de ?? estado.yo?.id ?? null })
+      )
+    }
+  }
+  return filas
+}
+
 export type FiltrosBitacora = {
   turnos: string[]
   productos: string[]
@@ -189,7 +237,7 @@ export function filtrarBitacora(filas: FilaBitacora[], f: FiltrosBitacora): Fila
     if (f.tipos.length && !f.tipos.includes(x.tipo)) return false
     if (f.desde && x.dia < f.desde) return false
     if (f.hasta && x.dia > f.hasta) return false
-    const c = x.entrada || x.salida
+    const c = x.entrada || x.salida || x.cantidad || 0
     if (min !== null && c < min - 1e-9) return false
     if (max !== null && c > max + 1e-9) return false
     return true

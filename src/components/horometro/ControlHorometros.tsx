@@ -340,7 +340,16 @@ export function ControlHorometros({
         editor: 'seleccion',
         valorEdicion: (f) => f.equipo_id,
         opciones: equipos.map((e) => ({ value: e.id, label: e.codigo })),
-        render: (f) => <span className="font-bold text-slate-900">{f.equipo_codigo}</span>,
+        render: (f) => (
+          <span className="block">
+            <span className="block break-words font-bold text-slate-900">{f.equipo_codigo}</span>
+            {f.equipo_nombre && (
+              <span data-equipo-nombre className="block break-words text-xs text-slate-600">
+                {f.equipo_nombre}
+              </span>
+            )}
+          </span>
+        ),
       },
       { campo: 'familia', label: 'Familia', tipo: 'seleccion', valor: (f) => f.familia },
       {
@@ -416,7 +425,7 @@ export function ControlHorometros({
           label: [o.codigo, o.nombre].filter(Boolean).join(' '),
         })),
         render: (f) => (
-          <span className="block max-w-[180px] truncate">
+          <span className="block max-w-[220px] break-words">
             {[f.operador_codigo, f.operador_nombre].filter(Boolean).join(' ') || '—'}
           </span>
         ),
@@ -478,7 +487,7 @@ export function ControlHorometros({
         tipo: 'seleccion',
         valor: (f) => f.usuario_nombre ?? null,
         render: (f) => (
-          <span className="block max-w-[150px] truncate text-xs text-slate-400">
+          <span className="block max-w-[180px] break-words text-xs text-slate-600">
             {f.usuario_nombre ?? '—'}
           </span>
         ),

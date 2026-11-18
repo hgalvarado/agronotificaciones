@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import { AvisoGuardado, BotonVolverTicket } from '@/components/ticket/VolverAlTicket'
 import { puedeEnTicket } from '@/lib/permisos/captura'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
@@ -6,7 +6,6 @@ import { getReglas } from '@/lib/auth'
 import { PanelLaboresHorometro } from '@/components/registro/PanelLaboresHorometro'
 import { BotonLink, Insignia, Tarjeta } from '@/components/ui/Primitivos'
 import {
-  IconChevronLeft,
   IconMoon,
   IconPencil,
   IconPlus,
@@ -19,10 +18,13 @@ import type { Horometro, Registro, RegistroDetalle, Ticket } from '@/lib/types'
 
 export default async function HorometroDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ ticketId: string; horometroId: string }>
+  searchParams: Promise<{ guardado?: string }>
 }) {
   const { ticketId, horometroId } = await params
+  const { guardado } = await searchParams
   const supabase = await createClient()
   const [{ data: ticketData }, { data: horometroData }] = await Promise.all([
     supabase.from('tickets').select('*').eq('id', ticketId).single(),
@@ -68,26 +70,30 @@ export default async function HorometroDetailPage({
 
   return (
     <div className="anim-aparecer flex flex-col gap-4 p-4 lg:p-6">
-      <Link
-        href={`/tickets/${ticketId}`}
-        className="inline-flex items-center gap-1 text-sm font-medium text-slate-500 transition-colors hover:text-slate-800"
-      >
-        <IconChevronLeft className="h-4 w-4" />
-        {ticket.codigo}
-      </Link>
+      <BotonVolverTicket ticketId={ticketId} codigo={ticket.codigo} pista />
+
+      {(guardado === 'labor' || guardado === 'horometro') && (
+        <AvisoGuardado
+          tipo={guardado}
+          ticketId={ticketId}
+          horometroId={horometroId}
+          codigo={ticket.codigo}
+          puedeAgregarLabor={puedeAgregarLabores}
+        />
+      )}
 
       {/* Encabezado del horómetro */}
       <Tarjeta className="p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-700">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-brand-50 text-brand-700">
               <IconTractor className="h-6 w-6" />
             </div>
-            <div>
-              <h1 className="text-xl font-bold tracking-tight text-slate-900">
+            <div className="min-w-0">
+              <h1 className="break-words text-xl font-bold tracking-tight text-slate-900">
                 {h.equipos?.codigo ?? '—'}
               </h1>
-              <p className="text-sm text-slate-400">{h.equipos?.nombre}</p>
+              <p data-equipo-nombre className="break-words text-sm text-slate-600">{h.equipos?.nombre}</p>
             </div>
           </div>
 
@@ -161,6 +167,8 @@ export default async function HorometroDetailPage({
           }))}
         />
       </Tarjeta>
+
+      {registros.length > 0 && <BotonVolverTicket ticketId={ticketId} codigo={ticket.codigo} pista />}
     </div>
   )
 }

@@ -20,6 +20,7 @@ type LoteTemporadaRow = {
   temporada_id: string
   zona_id: string | null
   area_neta: number
+  area_bruta: number | null
   ciclo: number | null
   lotes:
     | { nomenclatura: string; nombre: string | null }
@@ -81,7 +82,7 @@ export async function cargarCatalogosRegistro() {
         // recortar el selector cuando el alcance de «crear» es zonal:
         // ofrecer una zona ajena es dejar llenar el formulario entero
         // para que la base lo rechace al guardar.
-        .select('id, temporada_id, zona_id, area_neta, ciclo, lotes(nomenclatura, nombre)')
+        .select('id, temporada_id, zona_id, area_neta, area_bruta, ciclo, lotes(nomenclatura, nombre)')
         .eq('activo', true),
       // Los proveedores sólo existen a partir de la migración 12. Si no
       // está corrida, la consulta falla y el formulario simplemente no
@@ -112,6 +113,7 @@ export async function cargarCatalogosRegistro() {
         nomenclatura: lote?.nomenclatura ?? '—',
         nombre: lote?.nombre ?? null,
         area_neta: lt.area_neta,
+        area_bruta: lt.area_bruta ?? null,
         ciclo: lt.ciclo ?? 1,
       }
     })

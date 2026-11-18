@@ -167,6 +167,18 @@ export type Aplicacion = {
   ddt_real?: number | null
   /** sql/100 */
   operacion?: InfoOperacion | null
+  /** sql/116: registro inicial del proceso (antes de usar el sistema). NO movió el inventario. */
+  historica?: boolean
+}
+
+/** sql/116: permiso temporal «Registro histórico» de quien llama, por estación. */
+export type PermisoHistorico = {
+  id: string
+  estacion_id: string
+  /** Último día (inclusive, hora de Honduras). */
+  hasta: string
+  dias_restantes: number
+  nota: string | null
 }
 
 /** sql/100: conteo físico con sus líneas. */
@@ -304,11 +316,14 @@ export type EstadoCampo = {
   nombres?: Record<string, string>
   envases_movimientos?: MovimientoEnvase[]
   conteos?: Conteo[]
+  /** sql/116 (puede faltar si la base aún no tiene la 116) */
+  historico_permisos?: PermisoHistorico[]
 }
 
 export type TipoOperacion =
   | 'recepcion'
   | 'aplicacion'
+  | 'aplicacion_historica'
   | 'bitacora'
   | 'conteo'
   | 'devolucion'

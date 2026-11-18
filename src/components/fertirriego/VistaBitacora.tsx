@@ -18,6 +18,7 @@ import {
   SIN_FILTROS,
   filasDeKardex,
   filasEnvases,
+  filasHistoricas,
   filtrarBitacora,
   filtrosActivos,
   nombrePersona,
@@ -31,7 +32,7 @@ import type { EstadoCampo, Operacion } from '@/lib/fertirriego/tipos'
 const RELOJ = new Intl.DateTimeFormat('es-HN', { timeZone: 'America/Tegucigalpa', hour: '2-digit', minute: '2-digit' })
 const DIA = new Intl.DateTimeFormat('es-HN', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long' })
 
-const NOMBRE_TIPO: Record<TipoFila, string> = { ...NOMBRE_MOVIMIENTO, ENVASE: 'Envases' }
+const NOMBRE_TIPO: Record<TipoFila, string> = { ...NOMBRE_MOVIMIENTO, ENVASE: 'Envases', HISTORICO: 'Aplicación histórica' }
 const NOMBRE_MOTIVO_ENVASE: Record<string, string> = {
   RECEPCION: 'Envases recibidos',
   ENTREGA: 'Envases entregados',
@@ -62,7 +63,12 @@ export function VistaBitacora({
   const [modoFecha, setModoFecha] = useState<'dia' | 'rango'>('dia')
   const [modoCantidad, setModoCantidad] = useState<'exacta' | 'entre'>('entre')
   const todos = useMemo(
-    () => ordenarRecientes([...filasDeKardex(estado, kardex(estado, cola, estacionId)), ...filasEnvases(estado, cola, estacionId)]),
+    () =>
+      ordenarRecientes([
+        ...filasDeKardex(estado, kardex(estado, cola, estacionId)),
+        ...filasEnvases(estado, cola, estacionId),
+        ...filasHistoricas(estado, cola, estacionId),
+      ]),
     [estado, cola, estacionId]
   )
   const f: FiltrosBitacora = { ...filtros, productos }
@@ -219,7 +225,12 @@ export function VistaBitacora({
           <div className="divide-y divide-slate-100 overflow-hidden rounded-xl bg-white ring-1 ring-inset ring-slate-200">
             {lista.map((x) => {
               const esEnvase = x.tipo === 'ENVASE'
-              const titulo = esEnvase ? (NOMBRE_MOTIVO_ENVASE[x.motivo ?? ''] ?? 'Envases') : NOMBRE_MOVIMIENTO[x.tipo as keyof typeof NOMBRE_MOVIMIENTO]
+              const esHistorico = x.tipo === 'HISTORICO'
+              const titulo = esEnvase
+                ? (NOMBRE_MOTIVO_ENVASE[x.motivo ?? ''] ?? 'Envases')
+                : esHistorico
+                  ? 'Aplicación histórica'
+                  : NOMBRE_MOVIMIENTO[x.tipo as keyof typeof NOMBRE_MOVIMIENTO]
               const turnos = x.turnos.map(turno).filter(Boolean).join(', ')
               const quien = nombrePersona(estado, x.registrado_por)
               const articulo = esEnvase ? envase(x.envase_id) : material(x.material_id)?.descripcion
@@ -230,6 +241,7 @@ export function VistaBitacora({
                   disabled={x.pendiente}
                   onClick={() => onAbrir(x.documento_tipo, x.documento_id)}
                   data-movimiento={x.tipo}
+                  data-historico={esHistorico ? '' : undefined}
                   data-quien={quien ?? ''}
                   className={`grid min-h-14 w-full grid-cols-[3rem_1fr_auto] items-center gap-2 px-3 py-2 text-left ${x.anulado ? 'opacity-50' : ''} ${x.pendiente ? 'bg-amber-50/60' : 'hover:bg-slate-50'}`}
                 >
@@ -243,13 +255,27 @@ export function VistaBitacora({
                     <span className="block truncate text-[11px] text-slate-400" data-quien-movimiento>
                       {quien ?? 'Persona sin nombre en este teléfono'}
                     </span>
+                    {esHistorico && (
+                      <span className="mr-1 inline-block" data-insignia-historico>
+                        <Insignia tono="azul">Histórico</Insignia>
+                      </span>
+                    )}
                     {x.pendiente && <Insignia tono="ambar">por enviar</Insignia>}
                   </span>
                   <span className="text-right tabular-nums">
-                    <span className={`block text-sm font-bold ${x.entrada ? 'text-brand-700' : 'text-red-700'}`}>
-                      {x.entrada ? `+${cantidad(x.entrada)}` : `−${cantidad(x.salida)}`}
-                    </span>
-                    {x.saldo !== null && <span className="block text-[11px] text-slate-500">saldo {cantidad(x.saldo)}</span>}
+                    {esHistorico ? (
+                      <>
+                        <span className="block text-sm font-bold text-slate-500">{cantidad(x.cantidad ?? 0)}</span>
+                        <span className="block text-[11px] text-slate-400">sin mover inventario</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className={`block text-sm font-bold ${x.entrada ? 'text-brand-700' : 'text-red-700'}`}>
+                          {x.entrada ? `+${cantidad(x.entrada)}` : `−${cantidad(x.salida)}`}
+                        </span>
+                        {x.saldo !== null && <span className="block text-[11px] text-slate-500">saldo {cantidad(x.saldo)}</span>}
+                      </>
+                    )}
                   </span>
                 </button>
               )

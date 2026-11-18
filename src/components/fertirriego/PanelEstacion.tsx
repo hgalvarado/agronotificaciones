@@ -9,7 +9,7 @@ import { Boton, Insignia } from '@/components/ui/Primitivos'
 import { formatearFechaHora } from '@/lib/estados'
 import { hoyIso } from '@/lib/fechas/zona'
 import { cantidad, planDelDia } from '@/lib/fertirriego/calculos'
-import type { EstadoCampo, Estacion, Persona } from '@/lib/fertirriego/tipos'
+import type { EstadoCampo, Estacion, Persona, PermisoHistorico } from '@/lib/fertirriego/tipos'
 import { NOMBRE_BORRADOR, useBorradoresEstacion } from '@/lib/fertirriego/borrador'
 import { agruparPorClase } from '@/lib/fertirriego/productos'
 import { puedeRegistrar } from './MarcoRegistro'
@@ -24,7 +24,7 @@ function MarcaBorrador({ si }: { si: boolean }) {
   )
 }
 
-export type Accion = 'recibir' | 'envases' | 'aplicar' | 'contar' | 'custodia' | 'entregar' | 'recibir_relevo' | 'codigo'
+export type Accion = 'recibir' | 'envases' | 'aplicar' | 'historico' | 'contar' | 'custodia' | 'entregar' | 'recibir_relevo' | 'codigo'
 
 export function PanelEstacion({
   estado,
@@ -34,6 +34,7 @@ export function PanelEstacion({
   saldosEnvases,
   enLinea,
   tieneEntregaPendiente = false,
+  permisoHistorico = null,
   onAccion,
   onAplicarTurno,
   onVerProducto,
@@ -47,6 +48,8 @@ export function PanelEstacion({
   enLinea: boolean
   /** Otra persona ya entregó la estación (está en la base): se ofrece recibirla. */
   tieneEntregaPendiente?: boolean
+  /** sql/116: permiso vigente de «Registro histórico» en esta estación (null = sin permiso: no hay botón). */
+  permisoHistorico?: PermisoHistorico | null
   onAccion: (a: Accion) => void
   onAplicarTurno: (turnoId: string) => void
   onVerProducto: (materialId: string) => void
@@ -137,6 +140,18 @@ export function PanelEstacion({
           </Boton>
         )}
       </div>
+      {permisoHistorico && (
+        <div className="rounded-xl bg-sky-50 p-3 ring-1 ring-inset ring-sky-200" data-registro-historico-panel>
+          <p className="text-xs text-sky-900">
+            <strong>Registro histórico</strong> para lo que ya se aplicó antes de usar el sistema (no mueve el inventario).{' '}
+            {permisoHistorico.dias_restantes <= 0 ? 'Vence hoy.' : `Te quedan ${permisoHistorico.dias_restantes} día(s) (hasta el ${permisoHistorico.hasta}).`}
+          </p>
+          <Boton tamano="sm" variante="secundario" className="mt-2" onClick={() => onAccion('historico')} data-accion="historico">
+            Registrar histórico
+            {borradores.has('aplicacion_historica') ? ' (borrador)' : ''}
+          </Boton>
+        </div>
+      )}
       {borradores.size > 0 && (
         <p className="-mt-2 text-xs text-sky-800" data-hay-borradores>
           Tienes {borradores.size === 1 ? 'un registro a medias' : `${borradores.size} registros a medias`} (

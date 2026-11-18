@@ -213,7 +213,7 @@ export function ArbolTickets({
                   mesAbierto ? '' : '-rotate-90'
                 }`}
               />
-              <span className="min-w-0 flex-1 truncate text-sm font-bold text-slate-900">
+              <span className="min-w-0 flex-1 break-words text-sm font-bold text-slate-900">
                 {m.nombre}
               </span>
               <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">
