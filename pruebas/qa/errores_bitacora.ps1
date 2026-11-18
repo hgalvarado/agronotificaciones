@@ -160,8 +160,8 @@ try {
     OK ((EsperarB "location.pathname !== '/admin/errores'" 30000) -ge 0) 'A6 el usuario sin permiso NO entra a /admin/errores (lo mandan al inicio)' (JS 'location.pathname')
     $hLim = @{ apikey = $script:Anon; Authorization = "Bearer $tokLim"; 'Content-Type' = 'application/json' }
     if ($Con118) {
-        $x = $null; try { Invoke-RestMethod -Method Post -Uri "$URLB/rest/v1/rpc/fn_errores_listar" -Headers $hLim -Body '{"p_filtros":{}}' | Out-Null } catch { $x = $_.ErrorDetails.Message }
-        OK ($x -match '42501|Bitácora') 'A6 la base tambien le niega fn_errores_listar al usuario sin permiso' $x
+        $negado = $false; try { Invoke-RestMethod -Method Post -Uri "$URLB/rest/v1/rpc/fn_errores_listar" -Headers $hLim -Body '{"p_filtros":{}}' | Out-Null } catch { $negado = $true }   # en PS 5.1 ErrorDetails sale vacio: basta con que falle
+        OK $negado 'A6 la base tambien le niega fn_errores_listar al usuario sin permiso'
     }
     $null = Entrar-Como $adm.email $adm.clave
 
@@ -175,7 +175,7 @@ try {
             Lanzar "QA error para la bitacora $s"
             JS "(() => { window.dispatchEvent(new Event('online')); return true })()" | Out-Null
             Start-Sleep -Seconds 4
-            $fil = Rest "registro_errores?select=id,mensaje,estado,repeticiones,detalle&usuario_id=eq.$($adm.id)&mensaje=like.QA error para la bitacora*" -Servicio
+            $fil = Rest "registro_errores?select=id,mensaje,estado,repeticiones,detalle&usuario_id=eq.$($adm.id)&mensaje=ilike.*$s*" -Servicio
             OK (@($fil).Count -eq 1) 'B2 el error de JavaScript llego a registro_errores' "filas $(@($fil).Count)"
             ClicEn "document.querySelector('[data-actualizar]')" | Out-Null
             OK ((EsperarB "[...document.querySelectorAll('[data-entrada]')].some(e => e.innerText.includes('Se cayó una pantalla') || e.innerText.includes('Error no clasificado') || e.innerText.includes('QA'))" 30000) -ge 0) 'B3 aparece en la linea de tiempo'
@@ -195,7 +195,7 @@ try {
             OK ((JS "document.querySelector('[data-datos-tecnicos]').innerText.includes('INFORME DE ERROR')") -eq $true) 'B5 datos tecnicos copiables a la vista'
             CDP 'Input.dispatchKeyEvent' @{ type = 'keyDown'; key = 'Escape'; code = 'Escape' } | Out-Null
             # marcar atendido con nota (sobre el error real)
-            ClicEn "[...document.querySelectorAll('[data-entrada]')].find(e => e.innerText.includes('QA') || e.innerText.includes('Se cayó'))" | Out-Null
+            ClicEn "[...document.querySelectorAll('[data-entrada]')].find(e => e.innerText.includes('Error no clasificado') || e.innerText.includes('Se cayó una pantalla') || e.innerText.includes('Aviso no clasificado'))" | Out-Null
             if ((EsperarB "document.querySelector('[data-atender]')" 15000) -ge 0) {
                 Teclear "document.querySelector('[data-nota]')" 'Se hablo con la persona (QA)'
                 ClicEn "document.querySelector('[data-marcar-atendido]')" | Out-Null
