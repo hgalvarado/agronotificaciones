@@ -100,7 +100,7 @@ const REGLAS: { clave: string; cuando: (e: EntradaDiagnostico) => boolean; caso:
   {
     clave: 'duplicado',
     cuando: (e) => /ya_existia|ya exist[ií]a|posible_duplicado|duplicate key|23505|ya existe/.test(t(e)) || (e.observaciones ?? []).includes('POSIBLE_DUPLICADO'),
-    caso: (e) => ({
+    caso: () => ({
       titulo: 'Registro repetido',
       quePaso: 'El servidor ya tenía este registro (o uno igual el mismo día). No se duplicó.',
       causa: 'Se reenvió porque la señal se cortó a mitad del envío, o la persona lo capturó dos veces.',

@@ -8,7 +8,9 @@
  * a Tickets, que es a donde va a querer ir quien se quedó atascado.
  */
 
+import { useEffect } from 'react'
 import { Alerta, Boton, BotonLink, Tarjeta } from '@/components/ui/Primitivos'
+import { registrarError } from '@/lib/errores/registrador'
 import { mensajeDeError } from '@/lib/errores'
 
 export default function ErrorPantalla({
@@ -18,6 +20,11 @@ export default function ErrorPantalla({
   error: Error & { digest?: string }
   reset: () => void
 }) {
+  // Bitácora de errores (118): una pantalla que no cargó queda anotada para el administrador
+  useEffect(() => {
+    registrarError(error, { origen: 'pantalla', severidad: 'error', detalle: { digest: error.digest } })
+  }, [error])
+
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-4 p-4 lg:p-6">
       <Tarjeta className="flex flex-col gap-4 p-5">

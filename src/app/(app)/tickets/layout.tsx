@@ -3,6 +3,7 @@ import { getPerfilActual, getPermisos, getReglas, puede } from '@/lib/auth'
 import { aplanarReglas } from '@/lib/permisos/clientABAC'
 import { TicketsSplit } from '@/components/ticket/TicketsSplit'
 import { ListaTickets } from '@/components/ticket/ListaTickets'
+import { LimiteError } from '@/components/errores/LimiteError'
 import type { BloqueTickets, Capturador } from '@/lib/tickets/tipos'
 
 // La lista vive en el LAYOUT (no en la página) para que Next.js la
@@ -68,6 +69,7 @@ export default async function TicketsLayout({ children }: { children: React.Reac
   return (
     <TicketsSplit
       lista={
+        <LimiteError modulo="tickets">
         <ListaTickets
           resumenInicial={(resumen as BloqueTickets[] | null) ?? []}
           capturadoresIniciales={(capturadores as Capturador[] | null) ?? []}
@@ -83,9 +85,10 @@ export default async function TicketsLayout({ children }: { children: React.Reac
           }
           reglas={aplanarReglas(reglas)}
         />
+        </LimiteError>
       }
     >
-      {children}
+      <LimiteError modulo="tickets">{children}</LimiteError>
     </TicketsSplit>
   )
 }
