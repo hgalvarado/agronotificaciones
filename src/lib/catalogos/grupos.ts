@@ -173,6 +173,8 @@ export type ItemMenu<T extends PestanaMinima> = {
 
 export type GrupoMenu<T extends PestanaMinima> = {
   key: string
+  /** Pantalla de la matriz que gobierna el bloque (los huérfanos no la traen). */
+  pantalla?: string
   titulo: string
   descripcion: string
   items: ItemMenu<T>[]
