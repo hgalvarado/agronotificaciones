@@ -12,6 +12,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { ahoraIso } from '@/lib/fechas/zona'
 import type { AlmacenLocal } from './almacenLocal'
+import { registrarFallaSync } from '@/lib/errores/registrador'
 import { importarLlave, type LlavePersona } from './codigo'
 import type { EstadoCampo, Operacion } from './tipos'
 
@@ -62,7 +63,10 @@ async function sincronizarUnaVez(almacen: AlmacenLocal, supabase: SupabaseClient
   const r: ResultadoSincronizacion = { enviados: 0, rechazados: 0, estado: null, sinRed: false, error: null }
 
   const { data: sesion } = await supabase.auth.getSession()
-  if (!sesion.session) return { ...r, error: 'Tu sesión venció. Vuelve a entrar: lo registrado sigue guardado en el teléfono.' }
+  if (!sesion.session) {
+    registrarFallaSync('Sesión vencida: no se pudo sincronizar', { fase: 'sesion' }, 'aviso')
+    return { ...r, error: 'Tu sesión venció. Vuelve a entrar: lo registrado sigue guardado en el teléfono.' }
+  }
 
   // 1 · Enviar lo pendiente, en el orden en que se registró
   const pendientes = (await almacen.listarCola()).filter((o) => o.estado_local === 'PENDIENTE')
@@ -71,7 +75,12 @@ async function sincronizarUnaVez(almacen: AlmacenLocal, supabase: SupabaseClient
     const { data, error } = await supabase.rpc('fn_fert_sincronizar', { p_ops: lote.map((o) => sobreDe(o)) })
     if (error) {
       for (const o of lote) await almacen.guardarOperacion({ ...o, intentos: o.intentos + 1 })
-      if (esFallaDeRed(error.message)) return { ...r, sinRed: true }
+      const detalle = { fase: 'enviar', lote: lote.length, tipos: [...new Set(lote.map((o) => o.tipo))], intentos_max: Math.max(...lote.map((o) => o.intentos + 1)), mas_viejo: lote[0]?.creado_en }
+      if (esFallaDeRed(error.message)) {
+        registrarFallaSync(`Sin conexión al enviar ${lote.length} registro(s)`, detalle, 'info')
+        return { ...r, sinRed: true }
+      }
+      registrarFallaSync(error, detalle)
       return { ...r, error: error.message }
     }
     const porId = new Map(((data as Respuesta[]) ?? []).map((x) => [x.id, x]))
@@ -96,6 +105,7 @@ async function sincronizarUnaVez(almacen: AlmacenLocal, supabase: SupabaseClient
   const { data: estado, error: e2 } = await supabase.rpc('fn_fert_estado_campo', {})
   if (e2) {
     if (esFallaDeRed(e2.message)) return { ...r, sinRed: true }
+    registrarFallaSync(e2, { fase: 'bajar_estado' })
     return { ...r, error: e2.message }
   }
   await almacen.guardarEstado(estado as EstadoCampo, ahoraIso())
@@ -134,6 +144,7 @@ export function sincronizar(almacen: AlmacenLocal, supabase: SupabaseClient): Pr
     enCurso = sincronizarUnaVez(almacen, supabase)
       .catch((e: unknown) => {
         const mensaje = e instanceof Error ? e.message : String(e)
+        if (!esFallaDeRed(mensaje)) registrarFallaSync(e, { fase: 'inesperado' })
         return { enviados: 0, rechazados: 0, estado: null, sinRed: esFallaDeRed(mensaje), error: esFallaDeRed(mensaje) ? null : mensaje }
       })
       .finally(() => {

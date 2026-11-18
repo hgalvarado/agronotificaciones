@@ -32,7 +32,7 @@
 
 ## 3. Estado actual (2026-11-18)
 
-- **Producción** `main` = `aa84e8f` (2026-11-18): aplicar sin inventario con casilla obligatoria, PWA (manifiesto público + iconos PNG), anular diferencia de relevo (`sql/115`: falta correrla en PRODUCCIÓN; en desarrollo ya). Siguiente a construir: **Registros históricos** (ver `proyecto-seguimiento.md` §4 «De Claude»). Próximo número de SQL: 116.
+- **Producción** `main` = `55c25f1` (2026-11-18 noche; incluye registro histórico, tickets con letra grande, letra grande en Fertirriego y GPS opcional; 115–117 corridas en producción). Antes `aa84e8f` (2026-11-18): aplicar sin inventario con casilla obligatoria, PWA (manifiesto público + iconos PNG), anular diferencia de relevo (`sql/115`: falta correrla en PRODUCCIÓN; en desarrollo ya). Siguiente a construir: **Registros históricos** (ver `proyecto-seguimiento.md` §4 «De Claude»). Próximo número de SQL: 116.
 
 ## (estado anterior 2026-11-12)
 
@@ -99,6 +99,8 @@
 5. No usar `npm run build` en la carpeta del usuario (el `prebuild` borra `.next` de su servidor de desarrollo).
 
 ## 6. Historial (lo hecho y por qué)
+
+- **2026-11-18 (noche) · GPS opcional** (`55c25f1`): la ubicación dejó de ser obligatoria en Fertirriego (`MarcoRegistro`): sin permiso o sin GPS se guarda igual con la observación `SIN_UBICACION`. Lección: una regla del usuario («obligatoria») puede cambiar; el código que la imponía (`permisoDenegado`, `MENSAJE_UBICACION_DENEGADA`) quedó sin usos. En QA con CDP, `Browser.setPermission` y `Emulation.setGeolocationOverride` simulan el GPS. Siguiente: bitácora de errores por usuario (`docs/bitacora-errores.md`, SQL 118).
 
 - **2026-11-18 · Registro histórico de Fertirriego** (`sql/116`, doc `docs/fertirriego-historico.md`; pedido: estaciones que ya
   operaban antes del sistema). Permiso temporal por persona y estación (lo da quien tiene «Configurar» o es admin), operación

@@ -13,6 +13,9 @@
  * de estilos, las clases no servirían de nada.
  */
 
+import { useEffect } from 'react'
+import { registrarError } from '@/lib/errores/registrador'
+
 export default function GlobalError({
   error,
   reset,
@@ -20,6 +23,10 @@ export default function GlobalError({
   error: Error & { digest?: string }
   reset: () => void
 }) {
+  useEffect(() => {
+    registrarError(error, { origen: 'pantalla', severidad: 'critico', detalle: { digest: error.digest, global: true } })
+  }, [error])
+
   return (
     <html lang="es">
       <body

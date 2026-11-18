@@ -3,6 +3,7 @@ import path from 'node:path'
 import { redirect } from 'next/navigation'
 import { getPerfilActual, getPermisos, puede } from '@/lib/auth'
 import { CampoFertirriego } from '@/components/fertirriego/CampoFertirriego'
+import { LimiteError } from '@/components/errores/LimiteError'
 
 /** El Manual del estacionero (docs/manuales). next.config lo incluye en el despliegue; si faltara, no hay botón. */
 async function leerManual(): Promise<string | null> {
@@ -23,7 +24,9 @@ export default async function FertirriegoPage() {
 
   return (
     <div className="anim-aparecer mx-auto flex max-w-2xl flex-col gap-3 p-4 lg:p-6">
-      <CampoFertirriego usuarioId={perfil.id} manual={manual} />
+      <LimiteError modulo="fertirriego">
+        <CampoFertirriego usuarioId={perfil.id} manual={manual} />
+      </LimiteError>
     </div>
   )
 }

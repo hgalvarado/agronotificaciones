@@ -7,6 +7,8 @@
  * los formularios.
  */
 
+import { registrarError } from '@/lib/errores/registrador'
+
 /** Se dispara (sincrónico) al tocar Guardar, con el formulario todavía abierto: la pantalla anota cuál era. */
 export const EVENTO_GUARDADO_INICIADO = 'fert:guardado-iniciado'
 /** El guardado en segundo plano falló. */
@@ -20,6 +22,13 @@ export function avisarIniciado(detalle: GuardadoIniciado) {
 }
 
 export function avisarFallido(detalle: GuardadoFallido) {
+  // Bitácora de errores (118): el administrador se entera de que un registro pudo NO guardarse
+  registrarError(detalle.error, {
+    origen: 'guardado',
+    modulo: 'fertirriego',
+    severidad: 'critico',
+    detalle: { formulario: detalle.formulario, hora: detalle.hora },
+  })
   window.dispatchEvent(new CustomEvent<GuardadoFallido>(EVENTO_GUARDADO_FALLIDO, { detail: detalle }))
 }
 

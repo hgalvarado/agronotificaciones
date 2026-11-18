@@ -158,6 +158,48 @@ export const GRUPOS: GrupoDeclarado[] = [
   },
 ]
 
+/**
+ * Los nombres de los catálogos que NO traen `etiqueta` propia: son los mismos
+ * que la página pone a cada pestaña. Sirven al árbol de Administración, que
+ * se arma en el layout (antes de que la página traiga los datos).
+ */
+const ETIQUETA_BASE: Record<string, string> = {
+  equipos: 'Equipos',
+  implementos: 'Implementos',
+  labores: 'Labores',
+  categorias_labor: 'Categorías de labor',
+  operadores: 'Personal',
+  zonas: 'Zonas',
+  variedades: 'Variedades',
+  materiales: 'Materiales',
+  objetivos_control: 'Objetivos de control',
+  estaciones_riego: 'Estaciones de riego',
+  tareas_sap: 'Tareas SAP',
+  procesos: 'Procesos SAP',
+  departamentos: 'Departamentos',
+  proveedores: 'Proveedores',
+  temporadas: 'Temporadas',
+}
+
+export type BloqueArbol = {
+  key: string
+  titulo: string
+  items: { key: string; etiqueta: string; href: string }[]
+}
+
+/** Bloques y catálogos que esta persona puede ver, sin datos (para el árbol del riel). */
+export function arbolDeclarado(puedeVer: (pantalla: string) => boolean): BloqueArbol[] {
+  return GRUPOS.filter((g) => puedeVer(g.pantalla)).map((g) => ({
+    key: g.key,
+    titulo: g.titulo,
+    items: g.items.map((d) => ({
+      key: d.key,
+      etiqueta: d.etiqueta ?? ETIQUETA_BASE[d.key] ?? d.key,
+      href: d.href ?? `/admin/catalogos?catalogo=${encodeURIComponent(d.key)}`,
+    })),
+  }))
+}
+
 /** Lo mínimo que `organizar` necesita saber de una pestaña. */
 export type PestanaMinima = { key: string; label: string; filas: unknown[] }
 
@@ -173,6 +215,8 @@ export type ItemMenu<T extends PestanaMinima> = {
 
 export type GrupoMenu<T extends PestanaMinima> = {
   key: string
+  /** Pantalla de la matriz que gobierna el bloque (los huérfanos no la traen). */
+  pantalla?: string
   titulo: string
   descripcion: string
   items: ItemMenu<T>[]

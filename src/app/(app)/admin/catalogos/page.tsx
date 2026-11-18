@@ -632,28 +632,21 @@ export default async function CatalogosPage() {
   ]
 
   return (
-    <div className="anim-aparecer mx-auto flex max-w-6xl flex-col gap-4 p-4 lg:p-6">
-      <div>
-        <h1 className="text-xl font-bold tracking-tight text-slate-900">Catálogos</h1>
-        <p className="text-sm text-slate-400">
-          Datos maestros, agrupados por lo que configuran. Cada catálogo se puede ordenar, filtrar,
-          cambiar en masa y cargar desde Excel; la plantilla de cada uno trae las{' '}
-          <strong>listas desplegables</strong> ya puestas. En <strong>Labores</strong> el archivo
-          también carga las tareas SAP y los implementos de cada labor, y con qué proveedores
-          trabaja.
-        </p>
-      </div>
-
-      {soloLectura && (
-        <Alerta tono="ambar">
-          Tu rol permite crear algunos registros de catálogo, pero no editar los existentes.
-        </Alerta>
-      )}
-
+    <div className="anim-aparecer mx-auto flex w-full max-w-[110rem] flex-col gap-4 p-4 lg:p-6">
       <MenuCatalogos
         pestanas={pestanas}
         soloLectura={soloLectura}
         bloquesVisibles={GRUPOS.filter((g) => puedeVerBloque(g.pantalla)).map((g) => g.pantalla)}
+        bloquesEditables={GRUPOS.filter(
+          (g) => puede(permisos, g.pantalla, 'editar') || puede(permisos, g.pantalla, 'crear')
+        ).map((g) => g.pantalla)}
+        aviso={
+          soloLectura ? (
+            <Alerta tono="ambar">
+              Tu rol permite crear algunos registros de catálogo, pero no editar los existentes.
+            </Alerta>
+          ) : undefined
+        }
       />
     </div>
   )

@@ -33,8 +33,25 @@ const EXPLICACIONES: Record<string, string> = {
   PGRST204: 'La base no reconoce una de las columnas: seguramente hay una migración sin ejecutar.',
 }
 
+/**
+ * Gancho de la bitácora de errores (118): el registrador lo fija al arrancar. Así todo error que la app le muestra a
+ * alguien («No se pudo guardar…») queda también anotado para el administrador, sin tocar los 100 sitios que lo llaman.
+ */
+let alMostrar: ((e: unknown) => void) | null = null
+export function alMostrarError(fn: ((e: unknown) => void) | null) {
+  alMostrar = fn
+}
+
 export function mensajeDeError(e: unknown, respaldo = 'No se pudo guardar.'): string {
   if (!e) return respaldo
+  // Solo objetos y Error (los textos sueltos son validaciones de la propia pantalla, no fallas)
+  if (alMostrar && typeof e === 'object') {
+    try {
+      alMostrar(e)
+    } catch {
+      /* el registro nunca rompe el mensaje */
+    }
+  }
 
   if (typeof e === 'string') return e
 

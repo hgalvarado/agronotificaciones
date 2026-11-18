@@ -255,3 +255,18 @@ export const IconPlan = ({ className }: IconProps) => (
     <path d="M8 13h3M8 16h6" />
   </Svg>
 )
+
+export const IconMenu = ({ className }: IconProps) => (
+  <Svg className={className}>
+    <path d="M4 7h16M4 12h16M4 17h16" />
+  </Svg>
+)
+
+export const IconStar = ({ className, relleno = false }: IconProps & { relleno?: boolean }) => (
+  <Svg className={className}>
+    <path
+      d="m12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.8l-5.2 2.8 1-5.8-4.3-4.1 5.9-.9L12 3.5Z"
+      fill={relleno ? 'currentColor' : 'none'}
+    />
+  </Svg>
+)
