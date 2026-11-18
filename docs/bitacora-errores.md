@@ -94,4 +94,13 @@ usuario sus rechazos con el «Qué hacer» del diagnóstico y avisa si un pendie
 ## Pruebas
 - `pruebas/sql/118_bitacora_errores.sql` (réplica con 91–117; incluye 118>118 y equivalencia de permisos).
 - `node --test pruebas/unit/errores_diagnostico.test.mjs errores_saneo.test.mjs errores_cola.test.mjs`.
-- `pruebas/qa/errores_bitacora.ps1` (clics reales).
+- `pruebas/qa/errores_bitacora.ps1` (clics reales). Parte A (sin la 118) 21/21: error JS inyectado, cola saneada y con contador,
+  anti-bucle, sin la 118 la app no se rompe ni insiste cada minuto, pantalla caida con «Reintentar» y «Avisar», usuario sin
+  permiso no entra, letra grande 24 px. Parte B (`-Con118`, despues de correr la 118 en desarrollo): el error llega a la base, el
+  admin lo ve y lo marca atendido, rechazo del servidor y pendiente de 30 h en «Lo que NO se registro», letra grande en admin.
+- `pruebas/qa/errores_bitacora_ui_simulada.ps1` (22/22): la pantalla de administracion con la salida REAL de las funciones de la 118
+  (generada en la replica con `pruebas/sql/118_seed_bitacora_ui.sql`) inyectada como fetch simulado; sirve para revisar la pantalla antes de
+  correr la 118 en desarrollo.
+- Trampas de QA descubiertas: (1) `Esperar` necesita una condicion booleana (un elemento DOM no sale por CDP: usar `!!`);
+  (2) sin `CDP 'Page.enable'` esta version de Edge ignora `addScriptToEvaluateOnNewDocument` (la letra grande y `__err` no se aplicaban:
+  agregar `CDP 'Page.enable'` tras `Iniciar-QA` en las pruebas que lo usan).
