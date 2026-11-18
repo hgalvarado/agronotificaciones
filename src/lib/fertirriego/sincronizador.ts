@@ -30,6 +30,14 @@ type Respuesta = { id: string; estado: string; mensaje: string | null; observaci
 
 let enCurso: Promise<ResultadoSincronizacion> | null = null
 
+/** 115: si la base aún no tiene «anular diferencia de relevo», el mensaje técnico se cambia por uno que se entienda. */
+function mensajeComprensible(o: { tipo: string; datos: Record<string, unknown> }, mensaje: string | null): string | null {
+  if (o.tipo === 'anulacion' && o.datos.documento_tipo === 'relevo' && /No se puede anular ese tipo/i.test(mensaje ?? '')) {
+    return 'El servidor todavía no está actualizado para anular la diferencia de un relevo. Avisa al administrador y vuelve a intentarlo más tarde.'
+  }
+  return mensaje
+}
+
 function esFallaDeRed(mensaje: string | undefined): boolean {
   return (typeof navigator !== 'undefined' && !navigator.onLine) || /fetch|network|Failed|NetworkError|Load failed/i.test(mensaje ?? '')
 }
@@ -41,7 +49,8 @@ export function sobreDe(op: Operacion, ahora = new Date()) {
     tipo: op.tipo,
     creado_en: op.creado_en,
     enviado_en: ahoraIso(ahora),
-    inmediato: ahora.getTime() - Date.parse(op.creado_en) < INMEDIATO_MS,
+    // Con la casilla «aplicar sin inventario» marcada la base no rechaza: registra y deja la observación SALDO_NEGATIVO
+    inmediato: op.datos.acepta_negativo === true ? false : ahora.getTime() - Date.parse(op.creado_en) < INMEDIATO_MS,
     dispositivo: op.dispositivo,
     ubicacion: op.ubicacion,
     en_nombre_de: op.en_nombre_de,
@@ -75,7 +84,7 @@ async function sincronizarUnaVez(almacen: AlmacenLocal, supabase: SupabaseClient
         ...o,
         intentos: o.intentos + 1,
         estado_local: rechazado ? 'RECHAZADO' : observaciones.length ? 'OBSERVADO' : 'ACEPTADO',
-        mensaje: x.mensaje,
+        mensaje: mensajeComprensible(o, x.mensaje),
         observaciones,
       })
       if (rechazado) r.rechazados++

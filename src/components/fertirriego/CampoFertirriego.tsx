@@ -29,6 +29,7 @@ import { useCampo } from '@/lib/fertirriego/useCampo'
 import { AsignarCustodia } from './AsignarCustodia'
 import { AyudaFertirriego } from './AyudaFertirriego'
 import { DetalleDocumento } from './DetalleDocumento'
+import { FormAnularDiferencia } from './FormAnularDiferencia'
 import { FormAplicacion } from './FormAplicacion'
 import { FormBitacora } from './FormBitacora'
 import { FormConteo } from './FormConteo'
@@ -63,6 +64,7 @@ type Ventana =
   | { tipo: 'codigo' }
   | { tipo: 'rechazar_relevo'; relevo: Relevo }
   | { tipo: 'traslado' }
+  | { tipo: 'anular_diferencia'; relevo: Relevo; materialId: string }
   | { tipo: 'resolver_traslado'; traslado: Traslado; accion: AccionTraslado }
   | null
 
@@ -95,6 +97,8 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
   const [pestana, setPestana] = useState<Pestana>('estacion')
   const [ventana, setVentana] = useState<Ventana>(null)
   const [aviso, setAviso] = useState<string | null>(null)
+  // 115: tras anular la diferencia de un relevo se ofrece registrar la aplicación olvidada
+  const [olvidada, setOlvidada] = useState(false)
   const [productosBitacora, setProductosBitacora] = useState<string[]>([])
 
   // Guardado en segundo plano (MarcoRegistro rápido): qué ventana se estaba guardando, y los que fallaron
@@ -237,6 +241,26 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
       {aviso && (
         <div role="status" data-aviso className="rounded-xl bg-brand-700 px-3 py-2 text-sm font-semibold text-white">
           {aviso}
+        </div>
+      )}
+      {olvidada && !ventana && (
+        <div role="status" data-aviso-aplicacion-olvidada className="flex flex-col gap-2 rounded-xl bg-amber-50 p-3 text-sm text-amber-900 ring-1 ring-inset ring-amber-300">
+          <p className="font-semibold">La diferencia quedó anulada y el producto volvió al inventario. Ahora registra la aplicación que se olvidó.</p>
+          <div className="flex gap-2">
+            <Boton
+              className="flex-1"
+              onClick={() => {
+                setOlvidada(false)
+                setVentana({ tipo: 'aplicar' })
+              }}
+              data-registrar-aplicacion-olvidada
+            >
+              Registrar la aplicación olvidada
+            </Boton>
+            <Boton variante="secundario" onClick={() => setOlvidada(false)} data-cerrar-aviso-olvidada>
+              Ahora no
+            </Boton>
+          </div>
         </div>
       )}
       {fallos.map((f) => (
@@ -394,6 +418,7 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
                 onRecibir={(r) => setVentana({ tipo: 'recibir_relevo', pendiente: r })}
                 onRechazar={(r) => setVentana({ tipo: 'rechazar_relevo', relevo: r })}
                 onMostrarCodigo={() => setVentana({ tipo: 'codigo' })}
+                onAnularDiferencia={(r, materialId) => setVentana({ tipo: 'anular_diferencia', relevo: r, materialId })}
               />
             )}
             {pestana === 'traslados' && (
@@ -486,6 +511,21 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
                 registrar={campo.registrar}
                 onCerrar={() => setVentana(null)}
                 onGuardado={guardado}
+              />
+            )}
+            {ventana?.tipo === 'anular_diferencia' && (
+              <FormAnularDiferencia
+                estado={estado}
+                estacion={estacion}
+                yo={estado.yo}
+                relevo={ventana.relevo}
+                materialId={ventana.materialId}
+                registrar={campo.registrar}
+                onCerrar={() => setVentana(null)}
+                onGuardado={(m) => {
+                  guardado(m)
+                  setOlvidada(true)
+                }}
               />
             )}
             {ventana?.tipo === 'entregar' && (

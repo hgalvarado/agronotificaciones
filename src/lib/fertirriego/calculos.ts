@@ -73,8 +73,11 @@ export function efectosDe(op: Operacion, estado: EstadoCampo, saldo: (est: strin
     case 'anulacion': {
       const doc = String(d.documento_id ?? '')
       const ya = new Set(estado.movimientos.filter((m) => m.anula_id).map((m) => m.anula_id))
+      // 115: la diferencia de UN producto de un relevo (solo repone esa diferencia, no el resto del relevo)
+      const soloDiferencia = d.documento_tipo === 'relevo' ? String(d.material_id ?? '') : null
       return estado.movimientos
         .filter((m) => m.documento_id === doc && !m.anula_id && m.tipo !== 'ANULACION' && !ya.has(m.id))
+        .filter((m) => soloDiferencia === null || (m.material_id === soloDiferencia && m.tipo === 'DIFERENCIA_RELEVO'))
         .map((m) => ({ estacion_id: m.estacion_id, material_id: m.material_id, cantidad: -num(m.cantidad), tipo: 'ANULACION' }))
     }
     default:

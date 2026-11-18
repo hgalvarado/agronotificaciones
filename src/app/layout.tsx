@@ -16,9 +16,13 @@ export const metadata: Metadata = {
   // pestaña del navegador, el icono de la pantalla de inicio y la
   // cabecera. Si todavía no está, el navegador cae a /favicon.ico.
   icons: {
-    icon: '/marca/logo.svg',
-    shortcut: '/marca/logo.svg',
-    apple: '/marca/logo.svg',
+    icon: [
+      { url: '/marca/icono-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/marca/logo.svg', type: 'image/svg+xml' },
+    ],
+    shortcut: '/marca/icono-192.png',
+    // iPhone ignora el manifiesto y el SVG: sin este PNG el acceso directo sale sin logo
+    apple: [{ url: '/marca/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
   },
 }
 

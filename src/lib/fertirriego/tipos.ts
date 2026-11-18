@@ -231,7 +231,16 @@ export type Relevo = {
   nota_recibe: string | null
   motivo: string | null
   revisar: boolean
-  diferencias: { material_id: string; saldo_sistema: number; cantidad_real: number; diferencia: number }[]
+  diferencias: {
+    material_id: string
+    saldo_sistema: number
+    cantidad_real: number
+    diferencia: number
+    /** 115: la diferencia anulada (quién, cuándo y por qué); el producto volvió al inventario */
+    anulado_at?: string | null
+    motivo_anulacion?: string | null
+    anulado_por_nombre?: string | null
+  }[]
 }
 
 export type Traslado = {
