@@ -336,7 +336,11 @@ begin
     if v_n <> 1 then
         raise exception '116: en % se esperaba 1 aparición de «%» y hay %', p_fn, p_viejo, v_n;
     end if;
-    execute replace(v_def, p_viejo, p_nuevo);
+    begin
+        execute replace(v_def, p_viejo, p_nuevo);
+    exception when others then
+        raise exception '116: falló el parche de % -> % (%)', p_fn, sqlerrm, sqlstate;
+    end;
 end $$;
 
 -- Despachador: tipo válido y a qué función va
@@ -356,15 +360,130 @@ select pg_temp.parchar('public._fert_exigir_turno_vivo(text, jsonb)',
     'p_tipo in (''aplicacion'', ''aplicacion_historica'', ''bitacora'')',
     '''aplicacion_historica''');
 
--- Anulación: una histórica la anula solo quien tiene «Anular» (la excepción de «tus registros de tu jornada» no aplica)
-select pg_temp.parchar('public._fert_op_anulacion(uuid, jsonb, timestamptz, boolean)',
-    E'    if not public.fn_fert_puede(v_estacion, ''anular'') then\n        select * into v_custodia',
-    E'    if v_tipo = ''aplicacion'' and exists (select 1 from public.fert_aplicaciones h where h.id = v_doc and coalesce(h.historica, false)) then   -- 116\n'
-    || E'        if not public.fn_fert_puede(v_estacion, ''anular'') then\n'
-    || E'            raise exception ''Solo quien tenga «Anular» en esta estación puede anular un registro histórico.'' using errcode = ''42501'';\n'
-    || E'        end if;\n'
-    || E'    elsif not public.fn_fert_puede(v_estacion, ''anular'') then\n        select * into v_custodia',
-    'registro histórico.');
+-- Anulación (redefinición completa a partir de la versión de la 115, sin depender del texto que tenga la base)
+create or replace function public._fert_op_anulacion(
+    p_id uuid, d jsonb, p_creado timestamptz, p_inmediato boolean
+) returns text[]
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+    v_tipo     text := d->>'documento_tipo';
+    v_doc      uuid := public._fert_uuid(d->>'documento_id');
+    v_motivo   text := nullif(btrim(d->>'motivo'), '');
+    v_estacion uuid;
+    v_autor    uuid;
+    v_anulado  timestamptz;
+    v_registro timestamptz;
+    v_custodia public.fert_custodia%rowtype;
+    v_obs      text[] := '{}';
+    v_mat      uuid;
+    m          record;
+begin
+    if v_motivo is null then
+        raise exception 'Indica el motivo de la anulación.';
+    end if;
+
+    -- Diferencia de un producto en un relevo: permiso propio y motivo detallado
+    if v_tipo = 'relevo' then
+        v_mat := public._fert_uuid(d->>'material_id');
+        if v_mat is null then
+            raise exception 'Indica el producto cuya diferencia se anula.';
+        end if;
+        select r.estacion_id into v_estacion from public.fert_relevos r where r.id = v_doc;
+        if v_estacion is null then
+            raise exception 'El relevo no existe.';
+        end if;
+        select x.anulado_at into v_anulado from public.fert_relevos_diferencias x
+         where x.relevo_id = v_doc and x.material_id = v_mat for update;
+        if not found then
+            raise exception 'Ese relevo no tiene diferencia de ese producto.';
+        end if;
+        if v_anulado is not null then
+            raise exception 'Esa diferencia ya estaba anulada.';
+        end if;
+        if not public.fn_fert_puede(v_estacion, 'anular') then
+            raise exception 'Solo quien tenga «Anular» en esta estación puede anular la diferencia de un relevo.'
+                using errcode = '42501';
+        end if;
+        if char_length(v_motivo) < 25 then
+            raise exception 'Explica con detalle por qué se anula (mínimo 25 letras): qué producto se aplicó, cuándo y quién no lo registró.';
+        end if;
+
+        for m in select * from public.fert_movimientos mv
+                 where mv.documento_tipo = 'relevo' and mv.documento_id = v_doc and mv.material_id = v_mat
+                   and mv.tipo = 'DIFERENCIA_RELEVO' and mv.anula_id is null
+                   and not exists (select 1 from public.fert_movimientos a where a.anula_id = mv.id)
+                 order by mv.cursor loop
+            v_obs := public._fert_obs(v_obs, public._fert_mover(p_id, m.estacion_id, m.material_id, 'ANULACION',
+                         -m.cantidad, p_creado, m.turno_ciclo_id, 'relevo', v_doc, p_inmediato, m.id));
+        end loop;
+
+        update public.fert_relevos_diferencias
+           set anulado_at = now(), anulado_por = (select auth.uid()), motivo_anulacion = v_motivo
+         where relevo_id = v_doc and material_id = v_mat;
+        if not exists (select 1 from public.fert_relevos_diferencias where relevo_id = v_doc and anulado_at is null) then
+            update public.fert_relevos set revisar = false where id = v_doc;
+        end if;
+        return v_obs;
+    end if;
+
+    case v_tipo
+        when 'recepcion' then
+            select estacion_id, registrado_por, anulado_at into v_estacion, v_autor, v_anulado from public.fert_recepciones where id = v_doc;
+        when 'aplicacion' then
+            select estacion_id, registrado_por, anulado_at into v_estacion, v_autor, v_anulado from public.fert_aplicaciones where id = v_doc;
+            if exists (select 1 from public.fert_devoluciones where aplicacion_id = v_doc and anulado_at is null) then
+                raise exception 'Esa aplicación tiene devoluciones: anúlalas primero.';
+            end if;
+        when 'conteo' then
+            select estacion_id, registrado_por, anulado_at into v_estacion, v_autor, v_anulado from public.fert_conteos where id = v_doc;
+        when 'devolucion' then
+            select estacion_id, registrado_por, anulado_at into v_estacion, v_autor, v_anulado from public.fert_devoluciones where id = v_doc;
+        else
+            raise exception 'No se puede anular ese tipo de registro.';
+    end case;
+
+    if v_estacion is null then
+        raise exception 'El registro a anular no existe.';
+    end if;
+    if v_anulado is not null then
+        raise exception 'Ese registro ya estaba anulado.';
+    end if;
+
+    -- Cuándo se REGISTRÓ (el id del documento es el de su operación)
+    select coalesce(o.creado_en, o.recibido_en) into v_registro from public.fert_operaciones o where o.id = v_doc;
+
+    if v_tipo = 'aplicacion' and exists (select 1 from public.fert_aplicaciones h where h.id = v_doc and coalesce(h.historica, false)) then   -- 116
+        -- Una histórica la anula solo quien tiene «Anular» (la excepción de «tus registros de tu jornada» no aplica)
+        if not public.fn_fert_puede(v_estacion, 'anular') then
+            raise exception 'Solo quien tenga «Anular» en esta estación puede anular un registro histórico.' using errcode = '42501';
+        end if;
+    elsif not public.fn_fert_puede(v_estacion, 'anular') then
+        select * into v_custodia from public.fert_custodia where estacion_id = v_estacion;
+        if not (v_autor = (select auth.uid())
+                and v_custodia.custodio_id = (select auth.uid())
+                and v_custodia.estado = 'ACTIVA'
+                and v_custodia.desde <= coalesce(v_registro, now())) then
+            raise exception 'Solo puedes anular tus registros de tu jornada actual. Para otros, pide a quien tenga «Anular».'
+                using errcode = '42501';
+        end if;
+    end if;
+
+    for m in select * from public.fert_movimientos mv
+             where mv.documento_id = v_doc and mv.anula_id is null and mv.tipo <> 'ANULACION'
+             order by mv.cursor loop
+        v_obs := public._fert_obs(v_obs, public._fert_mover(p_id, m.estacion_id, m.material_id, 'ANULACION',
+                     -m.cantidad, p_creado, m.turno_ciclo_id, v_tipo, v_doc, p_inmediato, m.id));
+    end loop;
+
+    execute format('update public.%I set anulado_at = now(), anulado_por = $1, motivo_anulacion = $2 where id = $3',
+                   case v_tipo when 'recepcion' then 'fert_recepciones' when 'aplicacion' then 'fert_aplicaciones'
+                               when 'conteo' then 'fert_conteos' else 'fert_devoluciones' end)
+        using (select auth.uid()), v_motivo, v_doc;
+    return v_obs;
+end;
+$$;
+
+revoke all on function public._fert_op_anulacion(uuid, jsonb, timestamptz, boolean) from public, anon, authenticated;
 
 -- Teléfono: cada aplicación dice si es histórica
 select pg_temp.parchar('public._fert_estado_campo_base(date)',
