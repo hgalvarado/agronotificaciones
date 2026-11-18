@@ -11,7 +11,7 @@ import { useState } from 'react'
 import { Boton } from '@/components/ui/Primitivos'
 import { hoyIso, sumarDias } from '@/lib/fechas/zona'
 import { cantidad } from '@/lib/fertirriego/calculos'
-import { aplicacionesDelTurno, ddtsDelTurno, tarjetasDelTurno, type ProductoTarjeta, type TarjetaDdt } from '@/lib/fertirriego/ddt'
+import { aplicacionesDelTurno, ddtsDelTurno, tarjetasDelTurno, textoDdt, type ProductoTarjeta, type TarjetaDdt } from '@/lib/fertirriego/ddt'
 import type { EstadoCampo, Estacion, Material, Operacion } from '@/lib/fertirriego/tipos'
 
 const DIA = new Intl.DateTimeFormat('es-HN', { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short' })
@@ -105,13 +105,13 @@ export function VistaTurnos({
                               <div className="min-w-0">
                                 {c.tipo === 'plan' ? (
                                   <p className="text-sm font-bold text-slate-800">
-                                    DDT plan {c.ddtPlan}
-                                    <span className="font-semibold text-slate-500"> · DDT real {c.ddtsReales.length ? c.ddtsReales.join(', ') : '—'}</span>
+                                    DDT plan {textoDdt(c.ddtPlan)}
+                                    <span className="font-semibold text-slate-500"> · DDT real {c.ddtsReales.length ? c.ddtsReales.map(textoDdt).join(', ') : '—'}</span>
                                   </p>
                                 ) : (
                                   <p className="text-sm font-bold text-amber-800">
                                     {c.declarada ? 'Extra' : 'Sin DDT del plan'}
-                                    <span className="font-semibold text-slate-500"> · DDT real {c.ddtsReales.length ? c.ddtsReales.join(', ') : '—'}</span>
+                                    <span className="font-semibold text-slate-500"> · DDT real {c.ddtsReales.length ? c.ddtsReales.map(textoDdt).join(', ') : '—'}</span>
                                   </p>
                                 )}
                                 <p className="text-[11px] text-slate-500">

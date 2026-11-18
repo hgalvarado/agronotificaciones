@@ -26,6 +26,12 @@ export function ddtReal(fechaSiembra: string | null | undefined, dia: string): n
   return Number.isFinite(n) ? n : null
 }
 
+/** Un DDT para mostrar: con el signo menos de verdad cuando es anterior a la siembra («−3»). */
+export function textoDdt(n: number | null | undefined): string {
+  if (n === null || n === undefined || !Number.isFinite(n)) return '—'
+  return n < 0 ? `−${Math.abs(n)}` : String(n)
+}
+
 export type DdtPlan = { fecha: string; ddt: number; productos: Map<string, number> }
 
 /** Los DDT del plan de un turno (una entrada por fecha del plan), del primero al último. */

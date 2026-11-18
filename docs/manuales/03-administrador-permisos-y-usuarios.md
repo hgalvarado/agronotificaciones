@@ -158,7 +158,7 @@ Cuando una estación ya trabajaba antes de usar Fertirriego, alguien necesita de
 
 1. Elige la **persona**, marca la o las **estaciones** y escribe la **fecha límite** (inclusive, máximo 90 días). Toca **Guardar permiso**.
 2. La persona toca **Actualizar** en Fertirriego (con señal): en su estación aparece **Registrar histórico**, con los días que le quedan.
-3. Ella registra cada aplicación de un **día pasado** (nunca hoy ni futuro, ni antes de la siembra del turno). No pide custodia ni inventario.
+3. Ella registra cada aplicación de un **día pasado** (nunca hoy ni futuro; **sí puede ser anterior a la siembra** del turno: hay aplicaciones del plan con DDT negativo, y el DDT real sale con signo menos, p. ej. «−3»). No pide custodia ni inventario.
 4. Para cortar antes de la fecha, toca **Revocar** en la lista. Vencido o revocado, la persona vuelve al proceso normal.
 
 Lo que debes saber:

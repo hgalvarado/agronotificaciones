@@ -152,7 +152,7 @@ select pg_temp.ok((select r->>'estado' = 'ACEPTADO' or (r->>'estado' like 'ACEPT
 -- 7 · Fechas
 select pg_temp.ok((select r->>'estado' = 'RECHAZADO' and r::text like '%días pasados%' from (select pg_temp.hist(pg_temp.uid(21), pg_temp.hoy()) r) x), 'hoy: rechazado (solo días pasados)');
 select pg_temp.ok((select r->>'estado' = 'RECHAZADO' and r::text like '%días pasados%' from (select pg_temp.hist(pg_temp.uid(22), pg_temp.hoy() + 1) r) x), 'futura: rechazada');
-select pg_temp.ok((select r->>'estado' = 'RECHAZADO' and r::text like '%anterior a la siembra%' from (select pg_temp.hist(pg_temp.uid(23), date '2026-10-20') r) x), 'anterior a la siembra del turno: rechazada');
+-- (el caso «anterior a la siembra» pasó a pruebas/sql/117_*.sql: desde la 117 se acepta)
 select pg_temp.ok((select r->>'estado' = 'RECHAZADO' from (select pg_temp.op(pg_temp.uid(24), 'aplicacion_historica', jsonb_build_object(
         'estacion_id', (select est from k), 'turno_ciclo_id', (select tc from k), 'fecha', '2026-11-05')) r) x), 'sin productos: rechazado');
 select pg_temp.ok(pg_temp.inv() = (select x from i0), 'los rechazos no movieron nada');

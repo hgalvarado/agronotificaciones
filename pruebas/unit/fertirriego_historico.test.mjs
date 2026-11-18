@@ -58,3 +58,21 @@ test('el filtro de cantidad también mira la cantidad de las históricas', () =>
   assert.equal(filtrarBitacora(f, { ...SIN_FILTROS, cantidadMin: '5', cantidadMax: '5' }).length, 1)
   assert.equal(filtrarBitacora(f, { ...SIN_FILTROS, tipos: ['HISTORICO'] }).length, 2)
 })
+
+// 117: aplicaciones anteriores a la siembra (DDT negativo)
+const { ddtReal, textoDdt, ordenarDdtsParaElegir, diasEntre } = await import(pathToFileURL(resolve('src/lib/fertirriego/ddt.ts')).href)
+test('117: ddtReal es negativo antes de la siembra y se muestra con signo menos', () => {
+  assert.equal(ddtReal('2026-10-29', '2026-10-20'), -9)
+  assert.equal(ddtReal('2026-10-29', '2026-10-29'), 0)
+  assert.equal(ddtReal('2026-10-29', '2026-11-05'), 7)
+  assert.equal(ddtReal(null, '2026-10-20'), null)
+  assert.equal(textoDdt(-3), '−3')
+  assert.equal(textoDdt(0), '0')
+  assert.equal(textoDdt(null), '—')
+})
+test('117: los chips con DDT negativo se pueden ordenar y elegir', () => {
+  const ddts = [{ fecha: '2026-10-24', ddt: -5, productos: new Map() }, { fecha: '2026-11-01', ddt: 3, productos: new Map() }]
+  const o = ordenarDdtsParaElegir(ddts, new Set(), '2026-10-25')
+  assert.equal(o[0].ddt, -5)
+  assert.equal(diasEntre('2026-10-24', '2026-10-25'), 1)
+})

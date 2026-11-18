@@ -13,6 +13,7 @@
 
 import { useState, type ReactNode } from 'react'
 import { Alerta, AreaTexto, Boton, Campo } from '@/components/ui/Primitivos'
+import { textoDdt } from '@/lib/fertirriego/ddt'
 import { formatearFechaHora } from '@/lib/estados'
 import { nombrePersona } from '@/lib/fertirriego/bitacora'
 import { NOMBRE_MOVIMIENTO, cantidad } from '@/lib/fertirriego/calculos'
@@ -216,9 +217,9 @@ export function DetalleDocumento({
                   {aplicacion.extra
                     ? 'Extra (fuera del plan)'
                     : aplicacion.ddt_plan != null
-                      ? `Plan ${aplicacion.ddt_plan}${aplicacion.fecha_plan ? ` (${aplicacion.fecha_plan})` : ''}`
+                      ? `Plan ${textoDdt(aplicacion.ddt_plan)}${aplicacion.fecha_plan ? ` (${aplicacion.fecha_plan})` : ''}`
                       : 'Sin DDT del plan'}
-                  {aplicacion.ddt_real != null ? ` · real ${aplicacion.ddt_real}` : ''}
+                  {aplicacion.ddt_real != null ? ` · real ${textoDdt(aplicacion.ddt_real)}` : ''}
                 </span>
               </Dato>
               <Dato etiqueta="Ejecutó" data="ejecutor">

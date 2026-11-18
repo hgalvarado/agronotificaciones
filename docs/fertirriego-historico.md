@@ -9,7 +9,7 @@ que ya operaban, **sin mover el inventario** y sin inventar entregas. Pedido del
 - **A quién y dónde:** una **persona** y una **estación** por permiso (se pueden dar varias estaciones de una vez), con **fecha límite** inclusive en UTC-6 (máximo 90 días). Se puede **revocar** antes. Tabla `public.fert_historico_permisos` (RLS: solo lectura; se escribe con `fn_fert_historico_otorgar/revocar`).
 - **Vigente** = sin revocar y `hasta >=` día de captura. Lo capturado sin señal se juzga por el día de captura (teléfono) y la base da 7 días de gracia para sincronizar.
 - **Qué se registra:** SOLO aplicaciones (operación `aplicacion_historica`): turno, día, DDT del plan o Extra, productos y ejecutor.
-  - Día **pasado** (< hoy UTC-6) y no anterior a la siembra del turno.
+  - Día **pasado** (< hoy UTC-6). Puede ser **anterior a la siembra** del turno (aplicaciones del plan con DDT negativo; `ddt_real` = día − siembra, negativo; sql/117 quitó la restricción de la 116). La aplicación normal nunca tuvo esa restricción.
   - Exige el permiso vigente en ESA estación (+ «Ver» en ella). **No exige custodia.**
   - **No crea movimientos** (ni saldos, ni libro, ni envases). Se guarda en `fert_aplicaciones` con `historica = true` y el texto «Registro inicial del proceso».
   - Idempotente por UUID. Si ya hay una aplicación (normal o histórica) del mismo turno + DDT/fecha + mismos productos: observación `POSIBLE_DUPLICADO` (no rechaza).
@@ -30,4 +30,4 @@ que ya operaban, **sin mover el inventario** y sin inventar entregas. Pedido del
 - El permiso es por estación real (no de prueba).
 
 ## Orden de corrida
-`sql/116` va **después de la 115**. Si luego se vuelve a correr la 95, 99, 100, 102 o 115, correr la 116 otra vez (parches por texto con marca; son idempotentes). Probado: 116>116, 115>116, 100>101>116>116, 102>116 y un turno archivado antes de la 116 que se reactiva después.
+`sql/116` va **después de la 115** y `sql/117` **después de la 116** (la 117 parcha la función de la 116: si se vuelve a correr la 116, correr la 117 otra vez). Si luego se vuelve a correr la 95, 99, 100, 102 o 115, correr la 116 otra vez (parches por texto con marca; son idempotentes). Probado: 116>116, 115>116, 100>101>116>116, 102>116 y un turno archivado antes de la 116 que se reactiva después.

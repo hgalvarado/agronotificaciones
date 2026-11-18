@@ -21,7 +21,7 @@ import { Alerta, Campo, Entrada } from '@/components/ui/Primitivos'
 import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
 import { ayerIso, hoyIso } from '@/lib/fechas/zona'
 import { cantidad, planDelDia } from '@/lib/fertirriego/calculos'
-import { aplicacionesDelTurno, ddtReal, ddtsDelTurno, fechasPlanAplicadas, ordenarDdtsParaElegir } from '@/lib/fertirriego/ddt'
+import { aplicacionesDelTurno, ddtReal, ddtsDelTurno, fechasPlanAplicadas, ordenarDdtsParaElegir, textoDdt } from '@/lib/fertirriego/ddt'
 import { crearOperacion, nuevoId } from '@/lib/fertirriego/operaciones'
 import { productosUsados } from '@/lib/fertirriego/productos'
 import type { EstadoCampo, Estacion, Operacion, Persona, PermisoHistorico } from '@/lib/fertirriego/tipos'
@@ -160,7 +160,6 @@ export function FormAplicacion({
         if (!fecha || fecha > ultimoDia) {
           return historico ? 'El registro histórico es solo de días pasados: elige un día anterior a hoy.' : 'El día de aplicación no puede ser futuro.'
         }
-        if (historico && t?.fecha_siembra && fecha < t.fecha_siembra) return 'El día no puede ser anterior a la siembra del turno.'
         if (!eleccion) return 'Elige el DDT del plan que estás aplicando, o «Extra» si no es del plan.'
         const r = leerLineas(lineas)
         if ('error' in r) return r.error
@@ -289,11 +288,11 @@ export function FormAplicacion({
         </div>
         {real !== null && (
           <p className="mt-1.5 text-xs text-slate-600" data-ddt-real={real}>
-            DDT real <strong>{real}</strong>
+            DDT real <strong>{textoDdt(real)}</strong>
             {diferencia !== null && (
               <span className={diferencia === 0 ? ' text-brand-700' : ' text-amber-700'}>
                 {' · '}
-                {diferencia === 0 ? 'igual al plan' : `${diferencia > 0 ? '+' : ''}${diferencia} día(s) respecto del plan (DDT ${ddtElegido?.ddt})`}
+                {diferencia === 0 ? 'igual al plan' : `${diferencia > 0 ? '+' : ''}${diferencia} día(s) respecto del plan (DDT ${textoDdt(ddtElegido?.ddt)})`}
               </span>
             )}
           </p>
@@ -322,7 +321,7 @@ export function FormAplicacion({
                         : 'bg-white text-slate-800 ring-slate-300'
                   }`}
                 >
-                  <span>DDT {d.ddt}</span>
+                  <span>DDT {textoDdt(d.ddt)}</span>
                   <span className={`text-[10px] font-semibold ${marcado ? 'text-white/80' : 'text-slate-400'}`}>
                     {diaCorto(d.fecha)}
                     {d.aplicado ? ' · aplicado' : ''}
