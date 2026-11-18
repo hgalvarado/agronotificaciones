@@ -133,7 +133,7 @@ export function EditorLineas({
                 <span className="text-xs text-slate-500">{unidad(l.material_id)}</span>
               </label>
               <BotonCalculadora unidad={unidad(l.material_id)} onUsar={(v) => cambiar(l.clave, { cantidad: v })} />
-              <span className="ml-auto flex flex-wrap gap-x-3 text-[11px] text-slate-500">
+              <span className="ml-auto flex flex-wrap gap-x-3 text-xs text-slate-500">
                 {planificado !== undefined && (
                   <span data-plan-linea>
                     {etiquetaPlan}: <strong>{cantidad(planificado)}</strong>

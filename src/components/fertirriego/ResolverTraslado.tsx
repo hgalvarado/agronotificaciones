@@ -105,8 +105,8 @@ export function ResolverTraslado({
             {(traslado.lineas ?? []).map((l, i) => (
               <div key={l.material_id} className="flex flex-wrap items-center gap-2 px-3 py-2">
                 <span className="min-w-0 flex-1 text-sm">
-                  <span className="block truncate font-semibold text-slate-800">{material(l.material_id)?.descripcion}</span>
-                  <span className="text-[11px] text-slate-500">
+                  <span className="block break-words font-semibold text-slate-800">{material(l.material_id)?.descripcion}</span>
+                  <span className="text-xs text-slate-500">
                     Enviado: {cantidad(l.cantidad_enviada)} {material(l.material_id)?.unidad}
                   </span>
                 </span>

@@ -168,7 +168,7 @@ export function RegistroHistoricoAdmin({
             {visibles.map((p) => (
               <li key={p.id} className="flex flex-wrap items-center gap-2 py-2" data-permiso-historico={p.estado} data-persona={p.persona}>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-slate-800">
+                  <p className="break-words text-sm font-semibold text-slate-800">
                     {p.persona} · {p.estacion}
                   </p>
                   <p className="text-xs text-slate-500">

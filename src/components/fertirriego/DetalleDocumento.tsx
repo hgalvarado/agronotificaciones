@@ -50,7 +50,7 @@ function Dato({ etiqueta, children, data }: { etiqueta: string; children: ReactN
 function Seccion({ titulo, children, data }: { titulo: string; children: ReactNode; data?: string }) {
   return (
     <div className="border-t border-slate-200 pt-2" data-seccion-detalle={data}>
-      <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">{titulo}</p>
+      <p className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-400">{titulo}</p>
       {children}
     </div>
   )
@@ -246,7 +246,7 @@ export function DetalleDocumento({
                 <li key={l.material_id} className="flex justify-between gap-2 py-0.5">
                   <span className="min-w-0">
                     {material(l.material_id)?.descripcion ?? '—'}
-                    {l.en_plan === false && !aplicacion.extra && <span className="ml-1 text-[11px] font-semibold text-amber-700">fuera del plan</span>}
+                    {l.en_plan === false && !aplicacion.extra && <span className="ml-1 text-xs font-semibold text-amber-700">fuera del plan</span>}
                   </span>
                   <strong className="shrink-0 tabular-nums">
                     {cantidad(Number(l.cantidad))} {material(l.material_id)?.unidad ?? ''}
@@ -259,9 +259,9 @@ export function DetalleDocumento({
 
         {conteo?.lineas?.length ? (
           <Seccion titulo="Lo contado" data="conteo">
-            <table className="w-full table-fixed text-xs" data-detalle-conteo>
+            <table className="w-full table-auto text-xs" data-detalle-conteo>
               <thead>
-                <tr className="text-[10px] uppercase tracking-wide text-slate-400">
+                <tr className="text-xs uppercase tracking-wide text-slate-400">
                   <th className="py-0.5 text-left font-semibold">Producto</th>
                   <th className="w-16 py-0.5 text-right font-semibold">Sistema</th>
                   <th className="w-16 py-0.5 text-right font-semibold">Real</th>
@@ -271,10 +271,10 @@ export function DetalleDocumento({
               <tbody>
                 {conteo.lineas.map((l) => (
                   <tr key={l.material_id} className="border-t border-slate-100">
-                    <td className="truncate py-1 pr-1">{material(l.material_id)?.descripcion ?? '—'}</td>
-                    <td className="py-1 text-right tabular-nums text-slate-500">{cantidad(Number(l.saldo_sistema))}</td>
-                    <td className="py-1 text-right font-semibold tabular-nums">{cantidad(Number(l.cantidad_real))}</td>
-                    <td className={`py-1 text-right font-bold tabular-nums ${Number(l.diferencia) < 0 ? 'text-red-700' : Number(l.diferencia) > 0 ? 'text-brand-700' : 'text-slate-400'}`}>
+                    <td className="break-words py-1 pr-1">{material(l.material_id)?.descripcion ?? '—'}</td>
+                    <td className="whitespace-nowrap py-1 text-right tabular-nums text-slate-500">{cantidad(Number(l.saldo_sistema))}</td>
+                    <td className="whitespace-nowrap py-1 text-right font-semibold tabular-nums">{cantidad(Number(l.cantidad_real))}</td>
+                    <td className={`whitespace-nowrap py-1 text-right font-bold tabular-nums ${Number(l.diferencia) < 0 ? 'text-red-700' : Number(l.diferencia) > 0 ? 'text-brand-700' : 'text-slate-400'}`}>
                       {Number(l.diferencia) > 0 ? '+' : ''}
                       {cantidad(Number(l.diferencia))}
                     </td>

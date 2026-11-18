@@ -67,8 +67,8 @@ export function VistaEnvios({
           {pendientes.map((o) => (
             <li key={o.id} className="flex items-center justify-between gap-2 px-3 py-2">
               <span className="min-w-0">
-                <span className="block truncate text-sm font-semibold text-slate-800">{o.resumen}</span>
-                <span className="text-[11px] text-slate-500">
+                <span className="block break-words text-sm font-semibold text-slate-800">{o.resumen}</span>
+                <span className="text-xs text-slate-500">
                   {formatearFechaHora(o.creado_en)}
                   {o.intentos ? ` · ${o.intentos} intento(s)` : ''}
                 </span>
@@ -103,7 +103,7 @@ export function VistaEnvios({
 
       {observados.length > 0 && (
         <div>
-          <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">Llegaron con observaciones</p>
+          <p className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-400">Llegaron con observaciones</p>
           <ul className="divide-y divide-slate-100 rounded-xl bg-white ring-1 ring-inset ring-slate-200" data-observados>
             {observados.map((o) => (
               <li key={o.id} className="px-3 py-2">

@@ -70,7 +70,7 @@ export function VistaTurnos({
     <div className="flex flex-col gap-4">
       {[...grupos.entries()].map(([grupo, lista]) => (
         <div key={grupo}>
-          <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">{grupo}</p>
+          <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-slate-400">{grupo}</p>
           <div className="flex flex-col gap-2">
             {lista.map((t) => {
               const tarjetas = tarjetasDelTurno(ddtsDelTurno(estado.plan, t.id), aplicacionesDelTurno(estado.aplicaciones, cola, t.id, t.fecha_siembra)).filter(enVentana)
@@ -80,7 +80,7 @@ export function VistaTurnos({
                   <button type="button" onClick={() => setAbierto(abierto === t.id ? null : t.id)} aria-expanded={abierto === t.id} className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left">
                     <span className="min-w-0">
                       <span className="block text-sm font-bold text-slate-800">{t.turno}</span>
-                      <span className="block truncate text-[11px] text-slate-500">
+                      <span className="block break-words text-xs text-slate-500">
                         Siembra {t.fecha_siembra ?? '—'} {t.area_mz ? `· ${cantidad(t.area_mz)} mz` : ''} {t.orden_sap ? `· orden ${t.orden_sap}` : ''}
                       </span>
                     </span>
@@ -114,7 +114,7 @@ export function VistaTurnos({
                                     <span className="font-semibold text-slate-500"> · DDT real {c.ddtsReales.length ? c.ddtsReales.map(textoDdt).join(', ') : '—'}</span>
                                   </p>
                                 )}
-                                <p className="text-[11px] text-slate-500">
+                                <p className="text-xs text-slate-500">
                                   {c.fechaPlan && <>Fecha plan {dia(c.fechaPlan)} · </>}
                                   Fecha real {c.fechasReales.length ? c.fechasReales.map(dia).join(', ') : 'sin aplicar'}
                                 </p>
@@ -122,9 +122,9 @@ export function VistaTurnos({
                             </div>
 
                             {c.productos.length > 0 && (
-                              <table className="mt-1.5 w-full table-fixed text-xs">
+                              <table className="mt-1.5 w-full table-auto text-xs">
                                 <thead>
-                                  <tr className="text-[10px] uppercase tracking-wide text-slate-400">
+                                  <tr className="text-xs uppercase tracking-wide text-slate-400">
                                     <th className="py-0.5 text-left font-semibold">Producto</th>
                                     <th className="w-14 py-0.5 text-right font-semibold">Plan</th>
                                     <th className="w-14 py-0.5 text-right font-semibold">Real</th>
@@ -134,13 +134,13 @@ export function VistaTurnos({
                                 <tbody>
                                   {ordenarProductos(c.productos).map((p) => (
                                     <tr key={p.material_id} className="border-t border-slate-100" data-producto-tarjeta={material(p.material_id)?.codigo}>
-                                      <td className="truncate py-1 pr-1 text-slate-700">{material(p.material_id)?.descripcion ?? '—'}</td>
-                                      <td className="py-1 text-right tabular-nums text-slate-500">{c.tipo === 'plan' ? cantidad(p.plan) : '—'}</td>
-                                      <td className="py-1 text-right font-semibold tabular-nums text-slate-800">
+                                      <td className="break-words py-1 pr-1 text-slate-700">{material(p.material_id)?.descripcion ?? '—'}</td>
+                                      <td className="whitespace-nowrap py-1 text-right tabular-nums text-slate-500">{c.tipo === 'plan' ? cantidad(p.plan) : '—'}</td>
+                                      <td className="whitespace-nowrap py-1 text-right font-semibold tabular-nums text-slate-800">
                                         {cantidad(p.real + p.pendiente)}
-                                        {p.pendiente > 0 && <span className="block text-[9px] font-normal text-sky-700">{cantidad(p.pendiente)} por enviar</span>}
+                                        {p.pendiente > 0 && <span className="block text-[0.7rem] font-normal text-sky-700">{cantidad(p.pendiente)} por enviar</span>}
                                       </td>
-                                      <td className={`py-1 text-right font-bold tabular-nums ${tonoVariacion(p)}`}>
+                                      <td className={`whitespace-nowrap py-1 text-right font-bold tabular-nums ${tonoVariacion(p)}`}>
                                         {c.tipo === 'plan' ? `${p.variacion > 0 ? '+' : ''}${cantidad(p.variacion)}` : '—'}
                                       </td>
                                     </tr>
@@ -148,9 +148,9 @@ export function VistaTurnos({
                                 </tbody>
                               </table>
                             )}
-                            {hayPendiente && <p className="mt-1 text-[10px] text-sky-700">Hay aplicaciones por enviar (cuentan en lo real).</p>}
+                            {hayPendiente && <p className="mt-1 text-xs text-sky-700">Hay aplicaciones por enviar (cuentan en lo real).</p>}
                             {horas && (horas.horas_riego !== null || horas.horas_fertilizacion !== null || horas.ppm_cloro_cabezal != null || horas.ppm_cloro_campo != null || horas.pct_fertilizacion != null) && (
-                              <p className="mt-1 text-[11px] text-slate-500">
+                              <p className="mt-1 text-xs text-slate-500">
                                 Horas: fertilización {horas.horas_fertilizacion ?? '—'} · riego {horas.horas_riego ?? '—'}
                                 {horas.pct_fertilizacion != null && <> · fertilización {horas.pct_fertilizacion} %</>}
                                 {(horas.ppm_cloro_cabezal != null || horas.ppm_cloro_campo != null) && (

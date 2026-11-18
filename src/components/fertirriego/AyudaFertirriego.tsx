@@ -28,7 +28,7 @@ export function AyudaFertirriego({ manual }: { manual: string }) {
                   key={s.id}
                   type="button"
                   onClick={() => document.getElementById(s.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                  className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-200"
+                  className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-200"
                 >
                   {s.titulo.replace(/^\d+\.\s*/, '')}
                 </button>

@@ -221,7 +221,7 @@ export function VistaBitacora({
       )}
       {[...porDia.entries()].map(([dia, lista]) => (
         <div key={dia} data-dia={dia}>
-          <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">{DIA.format(new Date(`${dia}T12:00:00Z`))}</p>
+          <p className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-400">{DIA.format(new Date(`${dia}T12:00:00Z`))}</p>
           <div className="divide-y divide-slate-100 overflow-hidden rounded-xl bg-white ring-1 ring-inset ring-slate-200">
             {lista.map((x) => {
               const esEnvase = x.tipo === 'ENVASE'
@@ -247,12 +247,12 @@ export function VistaBitacora({
                 >
                   <span className="text-xs tabular-nums text-slate-500">{RELOJ.format(new Date(x.fecha_hora))}</span>
                   <span className="min-w-0">
-                    <span className={`block truncate text-sm font-semibold text-slate-800 ${x.anulado ? 'line-through' : ''}`}>
+                    <span className={`block break-words text-sm font-semibold text-slate-800 ${x.anulado ? 'line-through' : ''}`}>
                       {titulo}
                       {turnos ? ` · ${turnos}` : ''}
                     </span>
-                    {(productos.length !== 1 || esEnvase) && <span className="block truncate text-[11px] text-slate-500">{articulo}</span>}
-                    <span className="block truncate text-[11px] text-slate-400" data-quien-movimiento>
+                    {(productos.length !== 1 || esEnvase) && <span className="block break-words text-xs text-slate-500">{articulo}</span>}
+                    <span className="block break-words text-xs text-slate-400" data-quien-movimiento>
                       {quien ?? 'Persona sin nombre en este teléfono'}
                     </span>
                     {esHistorico && (
@@ -266,14 +266,14 @@ export function VistaBitacora({
                     {esHistorico ? (
                       <>
                         <span className="block text-sm font-bold text-slate-500">{cantidad(x.cantidad ?? 0)}</span>
-                        <span className="block text-[11px] text-slate-400">sin mover inventario</span>
+                        <span className="block text-xs text-slate-400">sin mover inventario</span>
                       </>
                     ) : (
                       <>
                         <span className={`block text-sm font-bold ${x.entrada ? 'text-brand-700' : 'text-red-700'}`}>
                           {x.entrada ? `+${cantidad(x.entrada)}` : `−${cantidad(x.salida)}`}
                         </span>
-                        {x.saldo !== null && <span className="block text-[11px] text-slate-500">saldo {cantidad(x.saldo)}</span>}
+                        {x.saldo !== null && <span className="block text-xs text-slate-500">saldo {cantidad(x.saldo)}</span>}
                       </>
                     )}
                   </span>
