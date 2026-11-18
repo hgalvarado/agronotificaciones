@@ -157,6 +157,7 @@ export function TablaAvanzada({
   vacio,
   acciones,
   accionPrincipal,
+  encabezado,
   accionFila,
   onEditarCelda,
   onEditarMasivo,
@@ -173,6 +174,8 @@ export function TablaAvanzada({
   acciones?: ReactNode
   /** La acción que se espera de esta pantalla (Agregar): va al final, con jerarquía visual propia. */
   accionPrincipal?: ReactNode
+  /** Título de la pantalla: se pone a la izquierda de la barra (una sola fila en pantallas muy anchas). */
+  encabezado?: ReactNode
   accionFila?: (fila: FilaTabla) => ReactNode
   onEditarCelda?: (id: string, key: string, valor: unknown) => Promise<void> | void
   onEditarMasivo?: (ids: string[], cambios: Record<string, unknown>) => Promise<void>
@@ -322,7 +325,8 @@ export function TablaAvanzada({
     <div className="flex flex-col gap-3">
       {/* -------------------- Barra de herramientas -------------------- */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[12rem] flex-1 sm:max-w-md">
+        {encabezado && <div className="min-w-0 basis-full 2xl:flex-1 2xl:basis-0">{encabezado}</div>}
+        <div className={`relative min-w-[12rem] flex-1 sm:max-w-md ${encabezado ? '2xl:flex-none 2xl:basis-72' : ''}`}>
           <IconSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-300" />
           <input
             value={busqueda}
@@ -370,7 +374,7 @@ export function TablaAvanzada({
         </select>
 
         {/* Importar · Exportar (secundarias) y, al final, la acción principal. */}
-        <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+        <div className={`flex flex-wrap items-center gap-2 ${encabezado ? 'sm:ml-auto 2xl:ml-0' : 'sm:ml-auto'}`}>
           {acciones}
 
           {puedeDescargar && (

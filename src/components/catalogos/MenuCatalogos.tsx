@@ -23,8 +23,9 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { CatalogoTable } from './CatalogoTable'
+import { useConteosAdmin } from '@/components/admin/ContextoAdmin'
 import type { PestanaCatalogo } from './tipos'
-import { Boton, EstadoVacio, Insignia, Selector, Tarjeta } from '@/components/ui/Primitivos'
+import { Boton, EstadoVacio, Insignia, Tarjeta } from '@/components/ui/Primitivos'
 import {
   IconChevronLeft,
   IconChevronRight,
@@ -67,6 +68,7 @@ export function MenuCatalogos({
 }) {
   const router = useRouter()
   const params = useSearchParams()
+  const { registrar } = useConteosAdmin()
   const [busqueda, setBusqueda] = useState('')
   const buscador = useRef<HTMLInputElement>(null)
 
@@ -99,26 +101,10 @@ export function MenuCatalogos({
     window.scrollTo({ top: 0 })
   }
 
-  // «/» enfoca el buscador del hub, como en el resto de herramientas.
+  // El árbol del riel (en el layout) muestra cuántos registros tiene cada catálogo.
   useEffect(() => {
-    if (ubicacion) return
-    function onKey(e: KeyboardEvent) {
-      if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return
-      const t = e.target as HTMLElement | null
-      if (
-        t &&
-        (t.tagName === 'INPUT' ||
-          t.tagName === 'TEXTAREA' ||
-          t.tagName === 'SELECT' ||
-          t.isContentEditable)
-      )
-        return
-      e.preventDefault()
-      buscador.current?.focus()
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [ubicacion])
+    registrar(Object.fromEntries(pestanas.map((x) => [x.key, x.filas.length])))
+  }, [pestanas, registrar])
 
   const editable = (g: GrupoMenu<PestanaCatalogo>) =>
     bloquesEditables && g.pantalla ? bloquesEditables.includes(g.pantalla) : !soloLectura
@@ -129,81 +115,53 @@ export function MenuCatalogos({
     const pestana = item.pestana!
     const soloConsulta = !editable(grupo)
     return (
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-3">
-          <nav
-            aria-label="Ruta"
-            className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm text-slate-600"
-          >
-            <Link
-              href={RUTA}
-              onClick={(e) => {
-                if (e.metaKey || e.ctrlKey || e.shiftKey) return
-                e.preventDefault()
-                volver()
-              }}
-              className="rounded font-medium text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
+      <CatalogoTable
+        key={pestana.key}
+        tabla={pestana.tabla}
+        titulo={pestana.label}
+        campos={pestana.campos}
+        filas={pestana.filas}
+        clave={pestana.clave}
+        relaciones={pestana.relaciones}
+        detalle={pestana.detalle}
+        soloLectura={soloConsulta}
+        encabezado={
+          <div className="flex flex-col gap-1">
+            <nav
+              aria-label="Ruta"
+              className="hidden flex-wrap items-center gap-x-1 gap-y-0.5 text-xs text-slate-600 xl:flex"
             >
-              Catálogos
-            </Link>
-            <IconChevronRight className="h-3.5 w-3.5 text-slate-400" />
-            <span>{grupo.titulo}</span>
-            <IconChevronRight className="h-3.5 w-3.5 text-slate-400" />
-            <span aria-current="page" className="font-semibold text-slate-900">
-              {item.etiqueta}
-            </span>
-          </nav>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <Boton variante="secundario" onClick={volver}>
-              <IconChevronLeft className="h-4 w-4" />
-              Catálogos
-            </Boton>
-            <div className="min-w-0 flex-1 basis-56">
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="break-words text-xl font-bold tracking-tight text-slate-900">
-                  {item.etiqueta}
-                </h1>
-                <Insignia tono="gris">
-                  {pestana.filas.length} registro{pestana.filas.length === 1 ? '' : 's'}
-                </Insignia>
-                {soloConsulta && <Insignia tono="ambar">Solo lectura</Insignia>}
-              </div>
-              <p className="mt-0.5 max-w-3xl text-sm text-slate-600">{item.descripcion}</p>
+              <Link
+                href={RUTA}
+                onClick={(e) => {
+                  if (e.metaKey || e.ctrlKey || e.shiftKey) return
+                  e.preventDefault()
+                  volver()
+                }}
+                className="rounded font-medium text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
+              >
+                Catálogos
+              </Link>
+              <IconChevronRight className="h-3 w-3 text-slate-400" />
+              <span>{grupo.titulo}</span>
+            </nav>
+            <div className="flex flex-wrap items-center gap-2">
+              {/* En pantalla ancha ya está el árbol a la izquierda; el botón es para teléfono y tableta. */}
+              <Boton variante="secundario" className="xl:hidden" onClick={volver}>
+                <IconChevronLeft className="h-4 w-4" />
+                Catálogos
+              </Boton>
+              <h1 className="break-words text-xl font-bold tracking-tight text-slate-900">
+                {item.etiqueta}
+              </h1>
+              <Insignia tono="gris">
+                {pestana.filas.length} registro{pestana.filas.length === 1 ? '' : 's'}
+              </Insignia>
+              {soloConsulta && <Insignia tono="ambar">Solo lectura</Insignia>}
             </div>
-            {grupo.items.length > 1 && (
-              <label className="flex w-full flex-col gap-1 text-sm font-medium text-slate-600 sm:w-72">
-                Ir a otro catálogo de este bloque
-                <Selector
-                  value={item.key}
-                  onChange={(e) => {
-                    const otro = grupo.items.find((i) => i.key === e.target.value)
-                    if (otro) abrir(otro)
-                  }}
-                >
-                  {grupo.items.map((i) => (
-                    <option key={i.key} value={i.key}>
-                      {i.etiqueta}
-                    </option>
-                  ))}
-                </Selector>
-              </label>
-            )}
           </div>
-        </div>
-
-        <CatalogoTable
-          key={pestana.key}
-          tabla={pestana.tabla}
-          titulo={pestana.label}
-          campos={pestana.campos}
-          filas={pestana.filas}
-          clave={pestana.clave}
-          relaciones={pestana.relaciones}
-          detalle={pestana.detalle}
-          soloLectura={soloConsulta}
-        />
-      </div>
+        }
+      />
     )
   }
 
@@ -225,6 +183,7 @@ export function MenuCatalogos({
         <span className="sr-only">Buscar catálogo</span>
         <IconSearch className="pointer-events-none absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
         <input
+          id="hub-buscar"
           ref={buscador}
           type="search"
           value={busqueda}
@@ -236,9 +195,9 @@ export function MenuCatalogos({
             }
           }}
           placeholder="Buscar un catálogo por nombre o descripción"
-          className="min-h-12 w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-11 pr-14 text-base text-slate-900 shadow-[var(--shadow-card)] placeholder:text-slate-400 focus:border-brand-600 focus:outline-none focus:ring-4 focus:ring-brand-600/10 [&::-webkit-search-cancel-button]:hidden"
+          className="min-h-12 w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-11 pr-12 text-base text-slate-900 shadow-[var(--shadow-card)] placeholder:text-slate-400 focus:border-brand-600 focus:outline-none focus:ring-4 focus:ring-brand-600/10 [&::-webkit-search-cancel-button]:hidden"
         />
-        {busqueda ? (
+        {busqueda && (
           <button
             type="button"
             onClick={() => {
@@ -250,13 +209,6 @@ export function MenuCatalogos({
           >
             <IconX className="h-4 w-4" />
           </button>
-        ) : (
-          <kbd
-            aria-hidden="true"
-            className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-500 sm:block"
-          >
-            /
-          </kbd>
         )}
       </label>
 

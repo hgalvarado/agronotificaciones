@@ -130,6 +130,7 @@ export function CatalogoTable({
   permisos,
   relaciones,
   detalle,
+  encabezado,
 }: {
   tabla: string
   /** Nombre visible del catálogo; se usa en la plantilla y el importador. */
@@ -157,6 +158,8 @@ export function CatalogoTable({
    * En vez de inventar una pantalla aparte, la fila abre su detalle.
    */
   detalle?: DetalleCatalogo
+  /** Título y migas de la pantalla, a la izquierda de la barra de la tabla. */
+  encabezado?: React.ReactNode
 }) {
   const supabase = createClient()
   const router = useRouter()
@@ -285,6 +288,7 @@ export function CatalogoTable({
   return (
     <>
       <TablaAvanzada
+        encabezado={encabezado}
         titulo={titulo}
         columnas={columnas}
         filas={filas as FilaTabla[]}
