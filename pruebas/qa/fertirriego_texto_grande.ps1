@@ -46,10 +46,11 @@ $JS_REVISAR = @'
 (() => {
   const dl = [...document.querySelectorAll('[role=dialog]')]; const dlg = dl[dl.length - 1];
   const raiz = dlg || document.querySelector('main') || document.body;
+  const zonas = dlg ? [dlg] : [raiz, ...document.querySelectorAll('header, nav')];
   const prob = []; const add = (m) => { if (prob.length < 6 && !prob.includes(m)) prob.push(m) };
   const desc = (e) => e.tagName + '.' + String(e.className).slice(0, 50) + '[' + (e.textContent || '').trim().slice(0, 28) + ']';
   const vis = (e) => { const r = e.getBoundingClientRect(); return r.width > 1 && r.height > 1 && getComputedStyle(e).visibility !== 'hidden' };
-  for (const e of [...raiz.querySelectorAll('*')].filter(vis)) {
+  for (const e of zonas.flatMap(z => [z, ...z.querySelectorAll('*')]).filter(vis)) {
     if (!['INPUT', 'SELECT', 'TEXTAREA'].includes(e.tagName) && ![...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())) continue;
     const cs = getComputedStyle(e);
     if (cs.textOverflow === 'ellipsis' && cs.overflowX !== 'visible') add('ellipsis ' + desc(e));
@@ -58,7 +59,7 @@ $JS_REVISAR = @'
       if (['hidden', 'clip'].includes(c.overflowX) && n.scrollWidth > n.clientWidth + 1) add('recorte-H ' + desc(n) + ' sw' + n.scrollWidth + '>cw' + n.clientWidth);
       if (['hidden', 'clip'].includes(c.overflowY) && n.scrollHeight > n.clientHeight + 1) add('recorte-V ' + desc(n) + ' sh' + n.scrollHeight + '>ch' + n.clientHeight);
       if (['auto', 'scroll'].includes(c.overflowX) && n.scrollWidth > n.clientWidth + 1) add('scroll-H-interno ' + desc(n));
-      if (n === raiz || n.tagName === 'MAIN' || n.tagName === 'BODY') break;
+      if (n === raiz || n === dlg || ['MAIN', 'BODY', 'HEADER', 'NAV'].includes(n.tagName)) break;
     }
     const r = e.getBoundingClientRect();
     if (r.right > innerWidth + 1 || r.left < -1) add('fuera-de-pantalla ' + desc(e) + ' l' + Math.round(r.left) + ' r' + Math.round(r.right));
