@@ -172,7 +172,7 @@ Estaciones que ya operaban antes de poner el módulo en marcha. Diseño aprobado
 - Estos registros **NO mueven el inventario** (tipo de movimiento aparte que ni suma ni resta; etiqueta «Registro inicial del proceso» + quién lo capturó).
 - El inventario real arranca después con un conteo de apertura en una fecha de corte que elige el usuario; AGL analiza el histórico por separado.
 - Requiere SQL nuevo (número libre: **116**), réplica, QA con clics y dos pasos en Supabase (desarrollo y luego producción). Antes de construir, repasar con el usuario los detalles.
-**Decisión pendiente en AGL:** el export de Fertirriego ahora trae las diferencias de relevo anuladas con `anulado_at`; decidir si el análisis/Comparativo las excluye (no se tocó AGL).
+**Hecho en AGL (2026-11-18, falta publicar):** las diferencias de relevo anuladas salen en /FR01 › Relevos marcadas «ANULADA» con su motivo y no cuentan en el valor; Pérdidas ya excluía las anuladas.
 **Hecho 2026-11-15 (4 subagentes, integrado):** Comparativo v2 (AGL `d0d3d94`, /FA02 Rangos de Fase), AgroMétricas
 111/112 (`04f5c66`, QA 43/43), Catálogos Fase A (`sql/105` + AGL /FR01 › Catálogos `52483db`), Seguridad AGL capas 1–3
 (AGL `6a6b925`, /SE04; respaldo en `TORRE DE CONTROL\AGL_Respaldos`, ya creada). AGL `main` = `f444c3f` (merge de las 3).
