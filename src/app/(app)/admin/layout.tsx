@@ -20,7 +20,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   if (secciones.length === 0) redirect('/')
 
   return (
-    <div className="flex flex-col lg:flex-row lg:items-start">
+    <div className="flex flex-col xl:flex-row xl:items-start">
       <AdminNav secciones={secciones.map(({ href, etiqueta, grupo }) => ({ href, etiqueta, grupo }))} />
       <div className="min-w-0 flex-1">{children}</div>
     </div>
