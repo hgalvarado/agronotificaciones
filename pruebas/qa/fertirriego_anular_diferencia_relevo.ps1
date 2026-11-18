@@ -48,11 +48,8 @@ $MOTIVO_LARGO = 'Se aplico el lunes en el turno de prueba y el companero de la t
 try {
     # ============ Preparacion ============
     $estId = (Rest 'estaciones_riego' 'Post' @{ nombre = $EST; zona_id = $zona.id } -Servicio)[0].id
-    $null = Rest 'rpc/fn_fert_publicar' 'Post' @{ p = @{
-        temporada = "QA $s"
-        estaciones = @(@{ nombre = $EST; zona = $zona.nombre })
-        materiales = @(@{ codigo = $A; descripcion = "PRODUCTO A QA $s"; unidad = 'L'; grupo = '1800' }, @{ codigo = $B; descripcion = "PRODUCTO B QA $s"; unidad = 'L'; grupo = '1800' })
-    } } -Servicio
+    # Los productos se crean directo (fn_fert_publicar pide una sesion de usuario, no la llave de servicio)
+    Rest 'materiales' 'Post' @(@{ codigo = $A; descripcion = "PRODUCTO A QA $s"; unidad = 'L'; grupo = '1800'; fertirriego = $true; fert_analisis = $true; activo = $true }, @{ codigo = $B; descripcion = "PRODUCTO B QA $s"; unidad = 'L'; grupo = '1800'; fertirriego = $true; fert_analisis = $true; activo = $true }) -Servicio | Out-Null
     $matA = (Lista "materiales?select=id&codigo=eq.$A")[0].id; $matB = (Lista "materiales?select=id&codigo=eq.$B")[0].id
     Rest 'perfiles_estaciones' 'Post' @{ perfil_id = $qaId; estacion_id = $estId } -Servicio | Out-Null
 
@@ -130,8 +127,10 @@ try {
     Captura 'fert_anular_diferencia_relevo_anulada_412.png'
 
     # ============ Caso 5: registrar la aplicacion olvidada ============
-    $ok = ClicHasta "document.querySelector('[data-registrar-aplicacion-olvidada]')" "!!document.querySelector('[data-selector-turno]')"
+    # La estacion de prueba no tiene turnos: el formulario de aplicar abre igual (con su aviso de «sin turnos»)
+    $ok = ClicHasta "document.querySelector('[data-registrar-aplicacion-olvidada]')" "!!document.querySelector('[data-selector-turno]') || /no tiene turnos activos/.test(($ULTIMO_DIALOGO)?.textContent || '')"
     OK ($ok) 'Caso 5: «Registrar la aplicacion olvidada» abre el formulario de aplicar'
+    Captura 'fert_anular_diferencia_relevo_aplicar_412.png'
     ClicEn "document.querySelector('[data-cancelar-registro]')" | Out-Null
 
     # ============ Caso 6: sin «Anular» no hay boton ============
@@ -147,7 +146,11 @@ try {
     OK ($ancho -le 420) 'Telefono: sin desplazamiento lateral' "scrollWidth $ancho"
     $e = Errores-Pagina; OK (-not $e) 'Sin errores en la pagina' $e
 }
-catch { $script:Resultados.Add("EXCEPCION (linea $($_.InvocationInfo.ScriptLineNumber)) $($_.Exception.Message) $($_.ErrorDetails.Message)") }
+catch {
+    $cuerpoErr = ''
+    try { $cuerpoErr = (New-Object IO.StreamReader($_.Exception.Response.GetResponseStream())).ReadToEnd() } catch {}
+    $script:Resultados.Add("EXCEPCION $($_.Exception.Message) $($_.ErrorDetails.Message) $cuerpoErr :: $(($_.ScriptStackTrace -replace "`n", ' | '))")
+}
 finally {
     # ---- Limpieza por id exacto: todo lo de la estacion de prueba y el usuario QA temporal ----
     try {
@@ -164,7 +167,6 @@ finally {
             Rest "estaciones_riego?id=eq.$estId" 'Delete' -Servicio | Out-Null
         }
         foreach ($c in $A, $B) { Rest "materiales?codigo=eq.$c" 'Delete' -Servicio | Out-Null }
-        Rest "fert_publicaciones?temporada=eq.$([uri]::EscapeDataString("QA $s"))" 'Delete' -Servicio | Out-Null
     } catch { $script:Resultados.Add("LIMPIEZA datos: $($_.Exception.Message) $($_.ErrorDetails.Message)") }
     try { if ($rolSin) { Rest "permisos?rol_id=eq.$rolSin" 'Delete' -Servicio | Out-Null } } catch { $script:Resultados.Add("LIMPIEZA permisos rol: $($_.Exception.Message)") }
     try {
