@@ -149,7 +149,12 @@ try {
     $t = EsperarSync
     OK ($t -ge 0) 'Caso 5: se sincroniza'
     $apl = Lista "fert_aplicaciones?select=id,historica,comentario,fecha,anulado_at&estacion_id=eq.$estId"
+    for ($i = 0; $i -lt 12 -and $apl.Count -eq 0; $i++) { Start-Sleep -Milliseconds 1000; $apl = Lista "fert_aplicaciones?select=id,historica,comentario,fecha,anulado_at&estacion_id=eq.$estId" }   # la sincronizacion puede tardar un poco
     OK ($apl.Count -eq 1 -and $apl[0].historica -eq $true -and $apl[0].comentario -like 'Registro inicial del proceso*' -and $apl[0].fecha -eq $ayer) 'Caso 5: llego como historica, con el texto fijo y el dia de ayer' "n $($apl.Count)"
+    if ($apl.Count -eq 0) {
+        $ops = @(Lista "fert_operaciones?select=tipo,resultado,mensaje&perfil_id=eq.$qaId&order=recibido_en.desc&limit=3")
+        throw "Caso 5: la historica no llego. Operaciones: $(($ops | ConvertTo-Json -Compress))"
+    }
     $movs = (Lista "fert_movimientos?select=id&estacion_id=eq.$estId").Count
     $sal = (Lista "fert_saldos?select=disponible&estacion_id=eq.$estId").Count
     OK ($movs -eq 0 -and $sal -eq 0) 'Caso 5: NO movio el inventario (0 movimientos, 0 saldos)' "movs $movs, saldos $sal"
@@ -199,7 +204,8 @@ try {
     OK ($t -ge 0) 'Caso 7b: el formulario acepta guardar el dia anterior a la siembra y se cierra'
     $null = EsperarSync
     Start-Sleep -Milliseconds 1500
-    $neg = @(Lista "fert_aplicaciones?select=id,historica,ddt_real,ddt_plan,fecha&estacion_id=eq.$estId&fecha=eq.$pre3")
+    $neg = Lista "fert_aplicaciones?select=id,historica,ddt_real,ddt_plan,fecha&estacion_id=eq.$estId&fecha=eq.$pre3"
+    for ($i = 0; $i -lt 12 -and $neg.Count -eq 0; $i++) { Start-Sleep -Milliseconds 1000; $neg = Lista "fert_aplicaciones?select=id,historica,ddt_real,ddt_plan,fecha&estacion_id=eq.$estId&fecha=eq.$pre3" }
     if ($neg.Count -eq 1) {
         OK ($neg[0].historica -eq $true -and $neg[0].ddt_real -eq -3 -and $neg[0].ddt_plan -eq -3) 'Caso 7b: llego con ddt_real = -3 y ddt_plan = -3, historica' "ddt_real $($neg[0].ddt_real)"
         $movs = (Lista "fert_movimientos?select=id&estacion_id=eq.$estId").Count
@@ -226,6 +232,7 @@ try {
     Guardar
     $t = Esperar "!document.querySelector('[data-selector-turno]')" 8000
     $pend = Pendientes
+    for ($i = 0; $i -lt 6 -and $pend -lt 1; $i++) { Start-Sleep -Milliseconds 500; $pend = Pendientes }
     OK ($t -ge 0 -and $pend -ge 1) 'Caso 8: sin senal queda en la cola del telefono' "pendientes $pend"
     OK ((JS "!document.querySelector('[data-saldo=""$SOL""]')") -eq $true) 'Caso 8: el saldo local NO cambia (sigue sin saldo del producto)'
     CDP 'Network.emulateNetworkConditions' @{ offline = $false; latency = 0; downloadThroughput = -1; uploadThroughput = -1 } | Out-Null
@@ -239,7 +246,7 @@ try {
     ClicEn "document.querySelector('[data-revocar-historico]')" | Out-Null
     $t = Esperar "!document.querySelector('[data-permiso-historico=VIGENTE]')" 15000
     OK ($t -ge 0) 'Caso 9: revocar quita el permiso de los vigentes'
-    $p = @(Lista "fert_historico_permisos?select=revocado_at&persona_id=eq.$qaId&estacion_id=eq.$estId&order=otorgado_at.desc")[0]
+    for ($i = 0; $i -lt 10; $i++) { $p = (Lista "fert_historico_permisos?select=revocado_at&persona_id=eq.$qaId&estacion_id=eq.$estId&order=otorgado_at.desc")[0]; if ($null -ne $p.revocado_at) { break }; Start-Sleep -Milliseconds 1000 }
     OK ($null -ne $p.revocado_at) 'Caso 9: la base lo marca revocado'
     $null = AbrirEstacion
     Start-Sleep -Milliseconds 1500
