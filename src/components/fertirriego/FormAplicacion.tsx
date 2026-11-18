@@ -160,10 +160,12 @@ export function FormAplicacion({
           className="h-6 w-6 shrink-0"
           data-acepta-negativo
         />
-        <span className="max-h-20 min-w-0 flex-1 overflow-y-auto break-words">
-          <strong>Sin inventario:</strong>{' '}
-          {faltante.map((l) => `${nombreFalta(l)} (hay ${cantidad(saldos.get(l.material_id) ?? 0)}, aplicas ${l.cantidad})`).join(' · ')}.{' '}
-          <span className="font-semibold">Marca para confirmar que sí se aplicó (queda para revisar).</span>
+        <span
+          className="min-w-0 flex-1 break-words leading-snug"
+          title={faltante.map((l) => `${nombreFalta(l)}: hay ${cantidad(saldos.get(l.material_id) ?? 0)}, aplicas ${l.cantidad}`).join(' · ')}
+        >
+          <strong>Sin inventario</strong> en {faltante.length === 1 ? '1 producto' : `${faltante.length} productos`} (mira «En bodega» en cada fila).{' '}
+          <span className="font-semibold">Marca para confirmar que sí se aplicó.</span>
         </span>
       </label>
     ) : null
