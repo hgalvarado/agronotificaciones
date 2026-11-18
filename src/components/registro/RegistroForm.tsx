@@ -7,14 +7,16 @@ import {
   Alerta,
   AreaTexto,
   Boton,
+  BotonLink,
   Campo,
   Entrada,
   Selector,
   Tarjeta,
 } from '@/components/ui/Primitivos'
 import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
-import { IconCheck, IconPlus, IconSearch, IconX } from '@/components/ui/Icons'
+import { IconCheck, IconChevronLeft, IconPlus, IconSearch, IconX } from '@/components/ui/Icons'
 import { Modal } from '@/components/ui/Modal'
+import { AreasLote, NombreLote } from './DatosLote'
 import { CICLOS } from '@/lib/estados'
 import type { Implemento, TareaSap } from '@/lib/types'
 import type { ImplementoFisico, Proveedor } from '@/lib/datosRegistro'
@@ -49,6 +51,7 @@ type LoteOpcion = {
   nomenclatura: string
   nombre: string | null
   area_neta: number
+  area_bruta: number | null
   ciclo: number
 }
 
@@ -109,6 +112,8 @@ type Props = {
   /** Horas ya repartidas en las OTRAS labores de este mismo horometro. */
   horasRepartidas: number
   registroBase?: RegistroBase
+  /** Código del ticket, para el botón «Volver al ticket TK-…». */
+  ticketCodigo?: string
 }
 
 export function RegistroForm({
@@ -127,6 +132,7 @@ export function RegistroForm({
   horasMaquina,
   horasRepartidas,
   registroBase,
+  ticketCodigo,
 }: Props) {
   const supabase = createClient()
   const router = useRouter()
@@ -135,6 +141,8 @@ export function RegistroForm({
   const [guardando, setGuardando] = useState<'normal' | 'otra' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
+  // Tras «Guardar y agregar otra»: el aviso ofrece volver al ticket (la otra salida ya es el formulario).
+  const [guardadoOtra, setGuardadoOtra] = useState(false)
 
   // Las labores y sus vínculos viven en estado LOCAL, no en la prop.
   // Crear una labor desde aquí tenía que poder meterla en la lista sin
@@ -395,6 +403,7 @@ export function RegistroForm({
 
     setError(null)
     setAviso(null)
+    setGuardadoOtra(false)
     setGuardando(modo)
 
     // Una fila de detalle por LÍNEA, no por lote: así un lote con dos
@@ -456,7 +465,7 @@ export function RegistroForm({
         await ajustarHorasDelHorometro(horometroId)
 
         setGuardando(null)
-        router.push(`/tickets/${ticketId}/horometros/${horometroId}`)
+        router.push(`/tickets/${ticketId}/horometros/${horometroId}?guardado=labor`)
         router.refresh()
         return
       }
@@ -519,12 +528,13 @@ export function RegistroForm({
             .filter(Boolean)
             .join(' ')
         )
+        setGuardadoOtra(true)
         window.scrollTo({ top: 0, behavior: 'smooth' })
         router.refresh()
         return
       }
 
-      router.push(`/tickets/${ticketId}/horometros/${horometroId}`)
+      router.push(`/tickets/${ticketId}/horometros/${horometroId}?guardado=labor`)
       router.refresh()
     } catch (e) {
       setGuardando(null)
@@ -540,7 +550,17 @@ export function RegistroForm({
       }}
       className="flex flex-col gap-4"
     >
-      {aviso && <Alerta tono="azul">{aviso}</Alerta>}
+      {aviso && (
+        <div data-aviso-guardado={guardadoOtra ? '' : undefined} className="flex flex-col gap-2">
+          <Alerta tono="azul">{guardadoOtra ? <><strong>Guardado.</strong> {aviso}</> : aviso}</Alerta>
+          {guardadoOtra && (
+            <BotonLink href={`/tickets/${ticketId}`} variante="secundario" className="max-w-full !h-auto min-h-11 self-start py-2">
+              <IconChevronLeft className="h-4 w-4 shrink-0" />
+              <span className="break-words">Volver al ticket{ticketCodigo ? ` ${ticketCodigo}` : ''}</span>
+            </BotonLink>
+          )}
+        </div>
+      )}
 
       <Tarjeta className="flex flex-col gap-4 p-5">
         <Campo
@@ -745,16 +765,17 @@ export function RegistroForm({
                 {/* Cabecera del lote */}
                 <div className="flex items-center gap-2">
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-slate-800">
-                      {lote.nomenclatura}
-                    </p>
-                    <p className="truncate text-xs text-slate-400">
-                      {lote.nombre ? `${lote.nombre} · ` : ''}
-                      {lote.area_neta} mz neta
-                      {lineas.length > 1 ? ` · ${lineas.length} proveedores · ${sumaLote} mz` : ''}
+                    <NombreLote nombre={lote.nombre} codigo={lote.nomenclatura} className="text-sm" />
+                    <p className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
+                      <AreasLote neta={lote.area_neta} bruta={lote.area_bruta} />
+                      {lineas.length > 1 && (
+                        <span className="text-xs text-slate-500">
+                          {lineas.length} proveedores · {sumaLote} mz
+                        </span>
+                      )}
                     </p>
                     {temporadas.length > 1 && lote.temporada_nombre && (
-                      <p className="truncate text-[11px] font-semibold text-brand-700">
+                      <p className="break-words text-[11px] font-semibold text-brand-700">
                         {lote.temporada_nombre}
                       </p>
                     )}
@@ -1127,15 +1148,13 @@ function SelectorLotes({
                     {marcado && <IconCheck className="h-3.5 w-3.5" />}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm text-slate-800">
-                      {lote.nomenclatura}
-                    </span>
-                    <span className="block truncate text-xs text-slate-400">
-                      {lote.nombre ? `${lote.nombre} · ` : ''}
-                      {lote.area_neta} mz neta · ciclo {lote.ciclo}
-                      {!temporadaFiltro && lote.temporada_nombre
-                        ? ` · ${lote.temporada_nombre}`
-                        : ''}
+                    <NombreLote nombre={lote.nombre} codigo={lote.nomenclatura} className="text-sm" />
+                    <span className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
+                      <AreasLote neta={lote.area_neta} bruta={lote.area_bruta} />
+                      <span className="text-xs text-slate-500">
+                        ciclo {lote.ciclo}
+                        {!temporadaFiltro && lote.temporada_nombre ? ` · ${lote.temporada_nombre}` : ''}
+                      </span>
                     </span>
                   </span>
                 </button>

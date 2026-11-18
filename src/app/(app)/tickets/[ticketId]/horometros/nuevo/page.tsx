@@ -1,8 +1,7 @@
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { HorometroForm } from '@/components/horometro/HorometroForm'
-import { IconChevronLeft } from '@/components/ui/Icons'
+import { VolverAlTicket } from '@/components/ticket/VolverAlTicket'
 
 export default async function NuevoHorometroPage({
   params,
@@ -47,13 +46,7 @@ export default async function NuevoHorometroPage({
 
   return (
     <div className="anim-aparecer flex flex-col gap-4 p-4 lg:p-6">
-      <Link
-        href={`/tickets/${ticketId}`}
-        className="inline-flex items-center gap-1 text-sm font-medium text-slate-500 transition-colors hover:text-slate-800"
-      >
-        <IconChevronLeft className="h-4 w-4" />
-        Volver al ticket
-      </Link>
+      <VolverAlTicket ticketId={ticketId} />
 
       <div>
         <h1 className="text-xl font-bold tracking-tight text-slate-900">Nuevo horómetro</h1>

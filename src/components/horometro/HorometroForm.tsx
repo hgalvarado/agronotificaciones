@@ -286,7 +286,7 @@ export function HorometroForm({
 
       setGuardando(false)
       if (dbError) return setError(mensajeDeError(dbError))
-      router.push(`/tickets/${ticketId}/horometros/${horometroBase.id}`)
+      router.push(`/tickets/${ticketId}/horometros/${horometroBase.id}?guardado=horometro`)
       router.refresh()
       return
     }

@@ -131,15 +131,15 @@ export function SelectorBuscable({
         <span className="min-w-0 flex-1">
           {seleccionada ? (
             <>
-              <span className="block truncate text-slate-900">{seleccionada.titulo}</span>
+              <span className="block break-words text-slate-900">{seleccionada.titulo}</span>
               {seleccionada.subtitulo && (
-                <span className="block truncate text-xs text-slate-400">
+                <span className="block break-words text-xs text-slate-600">
                   {seleccionada.subtitulo}
                 </span>
               )}
             </>
           ) : (
-            <span className="block truncate text-slate-300">{placeholder}</span>
+            <span className="block break-words text-slate-300">{placeholder}</span>
           )}
         </span>
         <IconChevronDown className="h-5 w-5 shrink-0 text-slate-300" />
@@ -321,10 +321,10 @@ function BotonOpcion({
         {marcado && <IconCheck className="h-3 w-3" />}
       </span>
       <span className="min-w-0 flex-1">
-        <span className={`block truncate text-sm ${tenue ? 'text-slate-400' : 'text-slate-800'}`}>
+        <span className={`block break-words text-sm ${tenue ? 'text-slate-500' : 'text-slate-900'}`}>
           {titulo}
         </span>
-        {subtitulo && <span className="block truncate text-xs text-slate-400">{subtitulo}</span>}
+        {subtitulo && <span className="block break-words text-xs text-slate-600">{subtitulo}</span>}
       </span>
     </button>
   )
