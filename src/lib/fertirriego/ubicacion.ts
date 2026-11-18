@@ -1,9 +1,9 @@
 /**
- * Ubicación del registro (decisión del usuario: obligatoria).
+ * Ubicación del registro: OPCIONAL (decisión del usuario 2026-11-18; antes era obligatoria).
  *
- * - Permiso DENEGADO: no se deja registrar (se le explica cómo activarlo). Es la parte «obligatoria».
- * - Sin respuesta del GPS a tiempo (bajo techo, sin cielo): se guarda igual y la base lo marca «sin ubicación».
- *   Regla de oro: el trabajo del campo no se pierde por un GPS lento.
+ * - Se pide al abrir el formulario; si se concede, el registro lleva latitud/longitud.
+ * - Permiso DENEGADO o sin respuesta del GPS a tiempo: se guarda igual y la base lo marca «sin ubicación».
+ *   Regla de oro: el trabajo del campo no se pierde por la ubicación.
  * El GPS funciona sin internet.
  */
 
