@@ -1,5 +1,6 @@
-# QA - Fertirriego: registro historico (sql/116). Servidor en :3103 + base de DESARROLLO.
-# REQUIERE que la base de desarrollo YA tenga corrida la sql/116 (al escribir este archivo todavia NO estaba corrida: no se ha podido ejecutar).
+﻿# QA - Fertirriego: registro historico (sql/116 y 117). Servidor en :3104 + base de DESARROLLO.
+# REQUIERE la sql/116 corrida en la base. El caso 7b (aplicacion ANTES de la siembra, DDT negativo) necesita ademas la sql/117: si la base aun
+# no la tiene, la 116 rechaza con «anterior a la siembra» y el caso se SALTA con un aviso claro (no cuenta como fallo ni como exito).
 # Crea un usuario QA temporal (rol con acceso total, 412 px), una estacion de prueba con turno (siembra hace 12 dias), plan y un
 # producto; al final borra todo por id exacto.
 # Casos: (1) sin permiso no hay boton «Registrar historico»; (2) el administrador otorga el permiso (persona + estacion + fecha limite)
@@ -8,7 +9,7 @@
 # historica = true y SIN movimientos ni saldos; (6) bitacora: fila con insignia «Historico» y el detalle dice «No movio el inventario»,
 # sin «Devolver sobrante»; (7) anular con motivo: queda anulada y sigue sin movimientos; (8) sin senal: queda en la cola, el saldo local
 # no cambia y al volver la senal llega; (9) revocar: el boton desaparece y la base rechaza; (10) vencido: igual.
-param([string]$Base = 'http://localhost:3103', [int]$PuertoCdp = 9337)
+param([string]$Base = 'http://localhost:3104', [int]$PuertoCdp = 9347)
 . "$PSScriptRoot\comun.ps1"
 
 $envQa = Leer-Entorno
@@ -65,6 +66,7 @@ function SincronizarRpc($id, $fecha, $matId, $tcId) {
 $EST = "QA Estacion $s"; $TURNO = "TQA-$s"; $SOL = "QA-SOL-$s"
 $hoy = (Get-Date).ToString('yyyy-MM-dd'); $ayer = (Get-Date).AddDays(-1).ToString('yyyy-MM-dd'); $antier = (Get-Date).AddDays(-2).ToString('yyyy-MM-dd')
 $hasta7 = (Get-Date).AddDays(7).ToString('yyyy-MM-dd')
+$pre3 = (Get-Date).AddDays(-15).ToString('yyyy-MM-dd')   # siembra = hoy-12, asi que hoy-15 es DDT -3
 $z1 = (Lista 'zonas?select=id,nombre&activo=eq.true&order=nombre&limit=1')[0]
 
 try {
@@ -75,9 +77,9 @@ try {
         estaciones = @(@{ nombre = $EST; zona = $z1.nombre })
         materiales = @(@{ codigo = $SOL; descripcion = "SOLUCION QA $s"; unidad = 'L'; grupo = '1800' })
         turnos = @(@{ agl_id = "TR-QA-$s"; turno = $TURNO; temporada = "QA $s"; ciclo = 'Ciclo QA'; fecha_siembra = (Get-Date).AddDays(-12).ToString('yyyy-MM-dd'); estacion = $EST; zona = $z1.nombre; area_mz = 10; estado = 'Creado' })
-        plan = @(@{ agl_id = "TR-QA-$s"; filas = @(@{ fecha = $ayer; ddt = 11; material = $SOL; cantidad = 100 }, @{ fecha = $hoy; ddt = 12; material = $SOL; cantidad = 100 }) })
+        plan = @(@{ agl_id = "TR-QA-$s"; filas = @(@{ fecha = $pre3; ddt = -3; material = $SOL; cantidad = 50 }, @{ fecha = $ayer; ddt = 11; material = $SOL; cantidad = 100 }, @{ fecha = $hoy; ddt = 12; material = $SOL; cantidad = 100 }) })
     } }
-    OK ($pub.turnos -eq 1 -and $pub.filas_plan -eq 2) 'Preparacion: turno, plan y producto de prueba publicados' "turnos $($pub.turnos), plan $($pub.filas_plan)"
+    OK ($pub.turnos -eq 1 -and $pub.filas_plan -eq 3) 'Preparacion: turno, plan y producto de prueba publicados' "turnos $($pub.turnos), plan $($pub.filas_plan)"
     Rest 'perfiles_estaciones' 'Post' @{ perfil_id = $qaId; estacion_id = $estId } -Servicio | Out-Null
     $solId = (Lista "materiales?select=id&codigo=eq.$SOL")[0].id
     $tcId = (Lista "turnos_ciclo?select=id&agl_id=eq.TR-QA-$s")[0].id
@@ -176,6 +178,40 @@ try {
     OK ($a.anulado_at -and $a.motivo_anulacion -like 'Prueba QA*') 'Caso 7: la historica queda anulada con su motivo' "$($a.motivo_anulacion)"
     $movs = (Lista "fert_movimientos?select=id&estacion_id=eq.$estId").Count
     OK ($movs -eq 0) 'Caso 7: anular tampoco genera movimientos' "movs $movs"
+
+
+    # ============ Caso 7b: ANTES de la siembra (DDT negativo; requiere la sql/117 en la base) ============
+    ClicHasta "document.querySelector('[data-pestana=estacion]')" "!!document.querySelector('[data-accion=historico]')" | Out-Null
+    ClicHasta "document.querySelector('[data-accion=historico]')" "!!document.querySelector('[data-selector-turno]')" | Out-Null
+    Start-Sleep -Milliseconds 800
+    CampoFecha $pre3 | Out-Null
+    Start-Sleep -Milliseconds 300
+    $chipNeg = JS "document.querySelector('[data-ddt-chip=""-3""]')?.innerText || ''"
+    OK ($chipNeg -match '3') 'Caso 7b: el chip del plan con DDT negativo existe' (($chipNeg -replace "`n", ' '))
+    ClicHasta "document.querySelector('[data-ddt-chip=""-3""]')" "document.querySelector('[data-ddt-chip=""-3""]')?.getAttribute('aria-pressed') === 'true'" | Out-Null
+    Start-Sleep -Milliseconds 400
+    $txtReal = JS "document.querySelector('[data-ddt-real]')?.innerText || ''"
+    OK ((JS "document.querySelector('[data-ddt-real]')?.dataset.ddtReal") -eq '-3' -and $txtReal -match ([string][char]0x2212 + '3')) 'Caso 7b: la pantalla dice «DDT real -3» (con signo menos) e «igual al plan»' (($txtReal -replace "`n", ' '))
+    OK ((JS "!document.querySelector('[data-error-registro]')") -eq $true) 'Caso 7b: el formulario ya no avisa «anterior a la siembra»'
+    Captura 'fert_historico_ddt_negativo_412.png'
+    Guardar
+    $t = Esperar "!document.querySelector('[data-selector-turno]')" 8000
+    OK ($t -ge 0) 'Caso 7b: el formulario acepta guardar el dia anterior a la siembra y se cierra'
+    $null = EsperarSync
+    Start-Sleep -Milliseconds 1500
+    $neg = @(Lista "fert_aplicaciones?select=id,historica,ddt_real,ddt_plan,fecha&estacion_id=eq.$estId&fecha=eq.$pre3")
+    if ($neg.Count -eq 1) {
+        OK ($neg[0].historica -eq $true -and $neg[0].ddt_real -eq -3 -and $neg[0].ddt_plan -eq -3) 'Caso 7b: llego con ddt_real = -3 y ddt_plan = -3, historica' "ddt_real $($neg[0].ddt_real)"
+        $movs = (Lista "fert_movimientos?select=id&estacion_id=eq.$estId").Count
+        OK ($movs -eq 0) 'Caso 7b: tampoco movio el inventario' "movs $movs"
+        ClicHasta "document.querySelector('[data-pestana=bitacora]')" "!!document.querySelector('[data-movimiento=HISTORICO]')" | Out-Null
+        Captura 'fert_historico_bitacora_neg_412.png'
+    } else {
+        $rech = @(Lista "fert_operaciones?select=resultado,mensaje&perfil_id=eq.$qaId&tipo=eq.aplicacion_historica&order=recibido_en.desc&limit=1")
+        $msg = "$($rech[0].resultado) $($rech[0].mensaje)"
+        if ($msg -match 'anterior a la siembra') { $script:Resultados.Add("SALTADO Caso 7b (base): la 117 aun no esta corrida en esta base (la 116 rechaza: $msg). Correr la 117 y repetir.") }
+        else { $script:Resultados.Add("FALLO Caso 7b: no llego ni se rechazo por la siembra: n $($neg.Count), $msg") }
+    }
 
     # ============ Caso 8: sin senal ============
     CDP 'Network.emulateNetworkConditions' @{ offline = $true; latency = 0; downloadThroughput = -1; uploadThroughput = -1 } | Out-Null
