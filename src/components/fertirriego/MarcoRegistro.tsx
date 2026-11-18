@@ -14,7 +14,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Alerta, Boton } from '@/components/ui/Primitivos'
 import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
-import { MENSAJE_UBICACION_DENEGADA, obtenerUbicacion, permisoDenegado, type ResultadoUbicacion } from '@/lib/fertirriego/ubicacion'
+import { obtenerUbicacion, type ResultadoUbicacion } from '@/lib/fertirriego/ubicacion'
 import type { Estacion, Operacion, Persona, Ubicacion } from '@/lib/fertirriego/tipos'
 import { copiaBorrador, restaurarBorrador, type Borrador } from '@/lib/fertirriego/borrador'
 import { avisarFallido, avisarIniciado } from '@/lib/fertirriego/guardadoFondo'
@@ -149,7 +149,7 @@ export function MarcoRegistro({
   }
 
   const MENSAJE_OK = 'Guardado en el teléfono. Se envía solo cuando haya señal.'
-  const MENSAJE_SIN_GPS = 'Guardado en el teléfono (el GPS no respondió: quedará marcado «sin ubicación»).'
+  const MENSAJE_SIN_GPS = 'Guardado en el teléfono (sin ubicación: se guardó igual, marcado «sin ubicación»).'
 
   async function guardar() {
     setError(null)
@@ -157,7 +157,7 @@ export function MarcoRegistro({
     if (regla.porOtro && !porQuien) return setError('Elige a nombre de quién registras.')
     setGuardando(true)
     try {
-      if (ubicacionLista.current?.tipo === 'denegado' || (await permisoDenegado())) return setError(MENSAJE_UBICACION_DENEGADA)
+      // La ubicación es OPCIONAL: sin permiso o sin GPS se guarda igual (la base lo anota «sin ubicación»)
       // Sin la estación a cargo, el registro va SIEMPRE «por otro» (aunque elija su propio nombre): así la base
       // aplica la regla de «Registrar por otro» y no la de custodia
       const enNombreDe = regla.porOtro ? porQuien : null
@@ -165,7 +165,6 @@ export function MarcoRegistro({
 
       if (!rapido) {
         const u = await ubicacionAhora()
-        if (u.tipo === 'denegado') return setError(MENSAJE_UBICACION_DENEGADA)
         const r = await construir({ ...contexto, ubicacion: u.tipo === 'ok' ? u.ubicacion : null })
         if (typeof r === 'string') return setError(r)
         if (r.length === 0) return
@@ -198,7 +197,6 @@ export function MarcoRegistro({
   async function terminarEnFondo(id: string, ops: Operacion[], copia: string | null) {
     try {
       const u = await ubicacionAhora()
-      if (u.tipo === 'denegado') throw new Error(MENSAJE_UBICACION_DENEGADA)
       const ubicacion = u.tipo === 'ok' ? u.ubicacion : null
       await registrar(...ops.map((o) => ({ ...o, ubicacion })))
       onGuardado(u.tipo === 'ok' ? MENSAJE_OK : MENSAJE_SIN_GPS)

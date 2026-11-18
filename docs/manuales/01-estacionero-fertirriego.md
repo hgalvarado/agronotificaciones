@@ -39,7 +39,7 @@ no cuadra y aparece como faltante.
    aplicación»**. Te queda un ícono como cualquier aplicación.
 4. **Ábrela una vez con señal.** La primera vez descarga tus estaciones, los turnos, el plan, los productos y las
    «llaves» del relevo. **Después funciona sin señal.**
-5. **Permite la ubicación.** Cuando el teléfono pregunte si la aplicación puede usar tu ubicación, toca **Permitir**.
+5. **Permite la ubicación (recomendado, no obligatorio).** Cuando el teléfono pregunte si la aplicación puede usar tu ubicación, toca **Permitir**. Si no la permites, puedes registrar igual: el registro queda marcado «sin ubicación».
    Cada registro guarda dónde se hizo (si no hay GPS, se guarda igual, marcado «sin ubicación»).
 
 ---
