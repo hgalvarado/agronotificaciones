@@ -165,7 +165,15 @@ Trasplante/Riego. `105` catálogos desde AGL (Fase A) · `109–110` AgroMétric
 ## 4. Pendientes (en orden)
 
 ### De Claude
-**SIGUIENTE (acordado con el usuario 2026-11-18, después de publicar): Registros históricos de Fertirriego.**
+**CONSTRUIDO 2026-11-18 (sin publicar; `sql/116` NO corrida en ninguna base): Registro histórico de Fertirriego.** Contrato en
+`docs/fertirriego-historico.md` y manual del administrador §7 bis. Permiso temporal por persona y estación (Administración ›
+Registro histórico), operación `aplicacion_historica` (día pasado, sin custodia, **no crea movimientos**, `fert_aplicaciones.historica`),
+duplicado = observación, anulable con «Anular», export a AGL en `aplicaciones_historicas` (no cuenta como Real). Pruebas: réplica
+`pruebas/sql/116_*.sql` (todas ok, órdenes 116>116, 115>116, 100>101>116>116, 102>116 y turno archivado antes de la 116 que se
+reactiva), unitaria `fertirriego_historico.test.mjs` 6/6, build limpio; **QA con clics `pruebas/qa/fertirriego_historico.ps1` escrita,
+SIN correr** (necesita la 116 en desarrollo). Siguiente número libre de SQL: **117**. Recepciones históricas: no se hicieron (opcional).
+Lo que sigue: el usuario corre `sql/116` en desarrollo → correr la QA → producción DESPUÉS de que Vercel publique el código.
+**(Histórico del pedido, 2026-11-18) Registros históricos de Fertirriego.**
 Estaciones que ya operaban antes de poner el módulo en marcha. Diseño aprobado en lo esencial:
 - Permiso nuevo «Registro histórico», lo da SOLO el administrador, por persona y estación, **con fecha límite** (temporal); vencido, todo pasa por el proceso normal.
 - Se registran sobre todo las **APLICACIONES** (lo más importante). Las recepciones son **opcionales**: si la persona no las recuerda, no se inventan.

@@ -14,6 +14,7 @@ import type { EstadoCampo, Operacion } from '@/lib/fertirriego/tipos'
 const NOMBRE_TIPO: Record<string, string> = {
   recepcion: 'Recepción',
   aplicacion: 'Aplicación',
+  aplicacion_historica: 'Aplicación histórica (registro inicial)',
   bitacora: 'Bitácora de riego',
   conteo: 'Conteo',
   devolucion: 'Devolución',

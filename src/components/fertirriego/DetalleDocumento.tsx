@@ -99,9 +99,11 @@ export function DetalleDocumento({
   // Relevos y traslados no se anulan: tienen su propio camino (rechazar, cancelar)
   const anulable = documentoTipo in NOMBRE_DOC
   // Una recepción de solo envases no mueve producto: se anula igual (la base revierte sus envases)
-  const tieneEfecto = movs.length > 0 || soloEnvases
-  const puedeAnular = anulable && !anulado && (estacion.permisos.anular || suyo) && tieneEfecto
-  const puedeDevolver = documentoTipo === 'aplicacion' && !anulado && !!aplicacion
+  // sql/116: una aplicación histórica no tiene movimientos (no movió el inventario): se anula solo con «Anular» y no admite devolución
+  const historica = Boolean(aplicacion?.historica)
+  const tieneEfecto = movs.length > 0 || soloEnvases || historica
+  const puedeAnular = anulable && !anulado && (estacion.permisos.anular || (suyo && !historica)) && tieneEfecto
+  const puedeDevolver = documentoTipo === 'aplicacion' && !anulado && !!aplicacion && !historica
   const [lineas, setLineas] = useState<LineaEditable[]>(() =>
     (aplicacion?.lineas ?? []).map((l) => ({ clave: nuevoId(), material_id: l.material_id, cantidad: '' }))
   )
@@ -166,6 +168,12 @@ export function DetalleDocumento({
       }}
     >
       <div className="flex flex-col gap-2 rounded-xl bg-slate-50 p-3 text-sm ring-1 ring-inset ring-slate-200" data-detalle-documento={documentoTipo}>
+        {historica && (
+          <div className="rounded-lg bg-sky-50 p-2.5 text-sky-900 ring-1 ring-inset ring-sky-200" data-detalle-historico>
+            <p className="font-bold">Registro histórico · Registro inicial del proceso</p>
+            <p className="text-xs">No movió el inventario: es lo que ya se había aplicado antes de usar el sistema.</p>
+          </div>
+        )}
         {anulado && (
           <p className="font-semibold text-red-700" data-detalle-anulado>
             Anulado{motivoAnulacion ? `: ${motivoAnulacion}` : ''}
@@ -354,7 +362,11 @@ export function DetalleDocumento({
       )}
 
       {modo === 'anular' && (
-        <Alerta tono="ambar">Al anular, el registro queda visible y se asienta el movimiento contrario en la bodega.</Alerta>
+        <Alerta tono="ambar">
+          {historica
+            ? 'Al anular, el registro queda visible con tu motivo. No se asienta ningún movimiento: no había movido el inventario.'
+            : 'Al anular, el registro queda visible y se asienta el movimiento contrario en la bodega.'}
+        </Alerta>
       )}
       {modo === 'devolver' && puedeDevolver && (
         <Campo etiqueta="Lo que vuelve a la bodega">

@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alerta, Boton, ListaEsqueleto } from '@/components/ui/Primitivos'
 import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
 import { formatearFechaHora } from '@/lib/estados'
+import { hoyIso } from '@/lib/fechas/zona'
 import { conCustodiaLocal, saldosLocales } from '@/lib/fertirriego/calculos'
 import { envasesPendientes, saldosEnvasesLocales } from '@/lib/fertirriego/envases'
 import {
@@ -24,7 +25,7 @@ import {
 import { productosPendientes } from '@/lib/fertirriego/productos'
 import { crearOperacion } from '@/lib/fertirriego/operaciones'
 import { obtenerUbicacion } from '@/lib/fertirriego/ubicacion'
-import type { Chofer, Estacion, Relevo, Traslado, Vehiculo } from '@/lib/fertirriego/tipos'
+import type { Chofer, Estacion, PermisoHistorico, Relevo, Traslado, Vehiculo } from '@/lib/fertirriego/tipos'
 import { useCampo } from '@/lib/fertirriego/useCampo'
 import { AsignarCustodia } from './AsignarCustodia'
 import { AyudaFertirriego } from './AyudaFertirriego'
@@ -55,6 +56,7 @@ type Ventana =
   | { tipo: 'recibir' }
   | { tipo: 'envases' }
   | { tipo: 'aplicar'; turno?: string; fecha?: string; eleccion?: string }
+  | { tipo: 'historico' }
   | { tipo: 'contar' }
   | { tipo: 'horas'; turno: string; fecha: string }
   | { tipo: 'documento'; documentoTipo: string; documentoId: string }
@@ -141,6 +143,14 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
     () => (estacionServidor && estado ? conCustodiaLocal(estacionServidor, cola, estado.yo) : estacionServidor),
     [estacionServidor, estado, cola]
   )
+  // sql/116: permiso vigente de «Registro histórico» en esta estación. Se vuelve a calcular con la fecha de HOY en el
+  // teléfono: si venció (aunque no haya señal), el botón desaparece; la base de todos modos lo rechazaría.
+  const permisoHistorico = useMemo<PermisoHistorico | null>(() => {
+    const hoy = hoyIso()
+    const p = (estado?.historico_permisos ?? []).find((x) => x.estacion_id === estacion?.id && x.hasta >= hoy)
+    if (!p) return null
+    return { ...p, dias_restantes: Math.round((Date.parse(`${p.hasta}T12:00:00Z`) - Date.parse(`${hoy}T12:00:00Z`)) / 86400000) }
+  }, [estado?.historico_permisos, estacion?.id])
   const miLlave = campo.llaves.find((l) => l.perfil_id === estado?.yo.id) ?? null
   // Una entrega de OTRA persona que ya está en la base (para recibirla)
   const entregaPendiente = (estado?.relevos ?? []).find((r) => r.estacion_id === estacion?.id && r.estado === 'EN_ENTREGA' && r.entrega_id !== estado?.yo.id) ?? null
@@ -364,6 +374,7 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
                 saldosEnvases={saldosEnvases}
                 enLinea={enLinea}
                 tieneEntregaPendiente={Boolean(entregaPendiente)}
+                permisoHistorico={permisoHistorico}
                 onAccion={(a) =>
                   setVentana(
                     a === 'recibir'
@@ -372,6 +383,8 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
                         ? { tipo: 'envases' }
                       : a === 'aplicar'
                         ? { tipo: 'aplicar' }
+                        : a === 'historico'
+                        ? { tipo: 'historico' }
                         : a === 'contar'
                           ? { tipo: 'contar' }
                           : a === 'entregar'
@@ -481,6 +494,19 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
                 turnoInicial={ventana.turno}
                 fechaInicial={ventana.fecha}
                 eleccionInicial={ventana.eleccion}
+                registrar={campo.registrar}
+                onCerrar={() => setVentana(null)}
+                onGuardado={guardado}
+              />
+            )}
+            {ventana?.tipo === 'historico' && permisoHistorico && (
+              <FormAplicacion
+                estado={estado}
+                estacion={estacion}
+                yo={estado.yo}
+                saldos={saldos}
+                cola={cola}
+                historico={permisoHistorico}
                 registrar={campo.registrar}
                 onCerrar={() => setVentana(null)}
                 onGuardado={guardado}

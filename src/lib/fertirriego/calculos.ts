@@ -308,7 +308,7 @@ export function diasDelTurno(estado: EstadoCampo, cola: Operacion[], turnoId: st
     for (const l of a.lineas ?? []) sumar(dia(a.fecha).aplicado, l.material_id, num(l.cantidad))
   }
   for (const op of cola) {
-    if (op.estado_local !== 'PENDIENTE' || op.tipo !== 'aplicacion' || op.datos.turno_ciclo_id !== turnoId) continue
+    if (op.estado_local !== 'PENDIENTE' || (op.tipo !== 'aplicacion' && op.tipo !== 'aplicacion_historica') || op.datos.turno_ciclo_id !== turnoId) continue
     const fecha = String(op.datos.fecha ?? isoDe(new Date(op.creado_en)))
     for (const l of lineasDe(op.datos)) sumar(dia(fecha).pendiente, l.material_id, num(l.cantidad))
   }

@@ -10,6 +10,10 @@
  *     Con un DDT se cargan sus productos y cantidades (se corrigen y se pueden agregar más); con Extra, vacío.
  *   - Se muestra el «DDT real» (día de aplicación − siembra del turno) y la diferencia con el del plan.
  *   - Se manda `ddt_plan` + `fecha_plan`, o `extra: true` (la base sin la 99 los ignora).
+ *
+ * sql/116 · Registro histórico (prop `historico`): el MISMO formulario para lo que ya se aplicó antes de usar el sistema.
+ * Día solo pasado, sin alerta ni casilla de inventario, y se manda como `aplicacion_historica` (la base no mueve
+ * saldos, libro ni envases). Alerta fija arriba con la fecha límite del permiso.
  */
 
 import { useMemo, useState } from 'react'
@@ -20,7 +24,7 @@ import { cantidad, planDelDia } from '@/lib/fertirriego/calculos'
 import { aplicacionesDelTurno, ddtReal, ddtsDelTurno, fechasPlanAplicadas, ordenarDdtsParaElegir } from '@/lib/fertirriego/ddt'
 import { crearOperacion, nuevoId } from '@/lib/fertirriego/operaciones'
 import { productosUsados } from '@/lib/fertirriego/productos'
-import type { EstadoCampo, Estacion, Operacion, Persona } from '@/lib/fertirriego/tipos'
+import type { EstadoCampo, Estacion, Operacion, Persona, PermisoHistorico } from '@/lib/fertirriego/tipos'
 import { claveBorrador, useAutoguardado, useBorrador } from '@/lib/fertirriego/borrador'
 import { EditorLineas, leerLineas, useCrearProducto, type LineaEditable } from './EditorLineas'
 import { MarcoRegistro } from './MarcoRegistro'
@@ -50,6 +54,7 @@ export function FormAplicacion({
   turnoInicial,
   fechaInicial,
   eleccionInicial,
+  historico,
   registrar,
   onCerrar,
   onGuardado,
@@ -64,6 +69,8 @@ export function FormAplicacion({
   fechaInicial?: string
   /** Piloto 2: abierto desde una tarjeta de «Por turno» = ese DDT (`plan:AAAA-MM-DD`) o «extra». */
   eleccionInicial?: string
+  /** sql/116: con permiso vigente de «Registro histórico» en esta estación, el formulario es el histórico. */
+  historico?: PermisoHistorico
   registrar: (...ops: Operacion[]) => Promise<void>
   onCerrar: () => void
   onGuardado: (m: string) => void
@@ -75,11 +82,12 @@ export function FormAplicacion({
   )
   // Un borrador por turno y día cuando se abre desde uno (Por turno); si no, uno general de la estación
   const borrador = useBorrador<DatosAplicacion>(
-    claveBorrador('aplicacion', yo.id, estacion.id, [turnoInicial, fechaInicial, eleccionInicial].filter(Boolean).join('@'))
+    claveBorrador(historico ? 'aplicacion_historica' : 'aplicacion', yo.id, estacion.id, [turnoInicial, fechaInicial, eleccionInicial].filter(Boolean).join('@'))
   )
   const b = borrador.inicial
   const [turno, setTurno] = useState(b?.turno ?? turnoInicial ?? (turnos.length === 1 ? turnos[0].id : ''))
-  const [fecha, setFecha] = useState(b?.fecha ?? fechaInicial ?? hoyIso())
+  const ultimoDia = historico ? ayerIso() : hoyIso()   // histórico: solo días pasados
+  const [fecha, setFecha] = useState(b?.fecha ?? fechaInicial ?? ultimoDia)
   const [ejecutor2, setEjecutor2] = useState(b?.ejecutor2 ?? '')
   // null = todavía no escribió nada: se muestran las cantidades del DDT elegido
   const [editadas, setEditadas] = useState<LineaEditable[] | null>(b?.editadas ?? null)
@@ -113,7 +121,8 @@ export function FormAplicacion({
   )
   const lineas = editadas ?? propuestas
 
-  const faltante = lineas.filter((l) => l.material_id && Number(l.cantidad.replace(',', '.')) > (saldos.get(l.material_id) ?? 0))
+  // Histórico: no se mira el inventario (no lo mueve)
+  const faltante = historico ? [] : lineas.filter((l) => l.material_id && Number(l.cantidad.replace(',', '.')) > (saldos.get(l.material_id) ?? 0))
   const firmaFaltante = faltante.map((l) => `${l.material_id}:${l.cantidad.trim()}`).join('|')
   const aceptaNegativo = faltante.length > 0 && aceptada === firmaFaltante
 
@@ -137,7 +146,8 @@ export function FormAplicacion({
 
   return (
     <MarcoRegistro
-      titulo="Preparar / aplicar turno"
+      titulo={historico ? 'Registro histórico · aplicación' : 'Preparar / aplicar turno'}
+      permisoHistorico={Boolean(historico)}
       estacion={estacion}
       yo={yo}
       registrar={registrar}
@@ -147,7 +157,10 @@ export function FormAplicacion({
       rapido
       construir={({ ubicacion, enNombreDe, ejecutor }) => {
         if (!turno) return 'Elige el turno.'
-        if (!fecha || fecha > hoyIso()) return 'El día de aplicación no puede ser futuro.'
+        if (!fecha || fecha > ultimoDia) {
+          return historico ? 'El registro histórico es solo de días pasados: elige un día anterior a hoy.' : 'El día de aplicación no puede ser futuro.'
+        }
+        if (historico && t?.fecha_siembra && fecha < t.fecha_siembra) return 'El día no puede ser anterior a la siembra del turno.'
         if (!eleccion) return 'Elige el DDT del plan que estás aplicando, o «Extra» si no es del plan.'
         const r = leerLineas(lineas)
         if ('error' in r) return r.error
@@ -163,6 +176,7 @@ export function FormAplicacion({
           lineas: r.lineas,
         }
         if (faltante.length) datos.acepta_negativo = true
+        const tipoOp = historico ? 'aplicacion_historica' : 'aplicacion'
         if (ddtElegido) {
           datos.ddt_plan = ddtElegido.ddt
           datos.fecha_plan = ddtElegido.fecha
@@ -170,14 +184,28 @@ export function FormAplicacion({
         const etiqueta = ddtElegido ? `DDT ${ddtElegido.ddt}` : 'extra'
         return [
           ...productosUsados(productos.nuevos, r.lineas.map((l) => l.material_id)).map((o) => ({ ...o, ubicacion })),
-          crearOperacion('aplicacion', datos, {
+          crearOperacion(tipoOp, datos, {
             ubicacion,
             enNombreDe,
-            resumen: `Aplicación · ${t?.turno ?? 'turno'} · ${etiqueta} · ${r.lineas.length} producto(s)`,
+            resumen: `${historico ? 'Aplicación histórica' : 'Aplicación'} · ${t?.turno ?? 'turno'} · ${etiqueta} · ${r.lineas.length} producto(s)`,
           }),
         ]
       }}
     >
+      {historico && (
+        <div
+          className="sticky top-0 z-10 rounded-xl bg-sky-50 p-3 text-sm text-sky-900 shadow-md ring-2 ring-inset ring-sky-400"
+          role="note"
+          data-alerta-historico
+        >
+          <strong className="block">Registro inicial del proceso</strong>
+          Lo que ya se aplicó antes de usar el sistema. <strong>NO mueve el inventario.</strong>
+          <span className="mt-1 block text-xs font-semibold" data-dias-historico={historico.dias_restantes}>
+            Permiso hasta el {historico.hasta}
+            {historico.dias_restantes <= 0 ? ' (vence hoy)' : ` · te quedan ${historico.dias_restantes} día(s)`}.
+          </span>
+        </div>
+      )}
       {faltante.length > 0 && (
         <label
           className="sticky top-0 z-10 flex items-start gap-3 rounded-xl bg-red-50 p-3 text-sm text-red-900 shadow-md ring-2 ring-inset ring-red-400"
@@ -237,7 +265,7 @@ export function FormAplicacion({
           <Entrada
             type="date"
             value={fecha}
-            max={hoyIso()}
+            max={ultimoDia}
             onChange={(e) => {
               setFecha(e.target.value)
               if (elegida === null) setEditadas(null)
@@ -245,10 +273,7 @@ export function FormAplicacion({
             className="w-44"
             data-fecha
           />
-          {[
-            ['Hoy', hoyIso()],
-            ['Ayer', ayerIso()],
-          ].map(([txt, v]) => (
+          {(historico ? [['Ayer', ayerIso()]] : [['Hoy', hoyIso()], ['Ayer', ayerIso()]]).map(([txt, v]) => (
             <button
               key={txt}
               type="button"
@@ -333,7 +358,7 @@ export function FormAplicacion({
           materiales={productos.materiales}
           lineas={lineas}
           onCambiar={setEditadas}
-          saldos={saldos}
+          saldos={historico ? undefined : saldos}
           plan={fechaPlan ? plan : undefined}
           etiquetaCantidad="Aplicado"
           crearProducto={productos.crearProducto}

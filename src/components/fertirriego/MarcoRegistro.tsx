@@ -69,12 +69,18 @@ export function MarcoRegistro({
   soloLectura = false,
   textoCancelar = 'Cancelar',
   onCancelar,
+  permisoHistorico = false,
 }: {
   /**
    * Solo ver (piloto 2, punto 2: el detalle de un registro): el pie dice solo «Listo», sin avisos de custodia y sin
    * pedir la ubicación hasta que se elija una acción.
    */
   soloLectura?: boolean
+  /**
+   * sql/116 · Registro histórico: basta el permiso temporal que dio el administrador (la base lo exige y NO pide la
+   * custodia: no mueve inventario). Siempre se registra a nombre de quien lo hace.
+   */
+  permisoHistorico?: boolean
   textoCancelar?: string
   /** El botón secundario del pie (por omisión cierra). */
   onCancelar?: () => void
@@ -103,7 +109,9 @@ export function MarcoRegistro({
   children: React.ReactNode
   textoGuardar?: string
 }) {
-  const regla = sinCustodia
+  const regla = permisoHistorico
+    ? { si: true, porOtro: false, motivo: null }
+    : sinCustodia
     ? estacion.permisos[permiso]
       ? { si: true, porOtro: false, motivo: null }
       : { si: false, porOtro: false, motivo: `Tu rol no tiene «${NOMBRE_PERMISO[permiso]}» en esta estación.` }

@@ -53,4 +53,5 @@ export const NOMBRE_OBSERVACION: Record<string, string> = {
   DIFERENCIA_TRASLADO: 'llegó menos de lo enviado',
   CUSTODIA_POSTERIOR: 'el jefe asignó la estación después',
   DDT_SIN_PLAN: 'el DDT elegido no está en el plan',
+  POSIBLE_DUPLICADO: 'posible duplicado (ya había una aplicación igual ese día)',
 }

@@ -152,6 +152,14 @@ export function catalogoDestinos(pantallasMenu: PantallaDeMenu[], pantallasCatal
       seccion: adm,
     },
     {
+      clave: 'admin_fert_historico',
+      href: '/admin/fertirriego-historico',
+      etiqueta: 'Registro histórico (Fertirriego)',
+      icono: 'reloj',
+      requiere: ['fertirriego:configurar'],
+      seccion: adm,
+    },
+    {
       clave: 'admin_fert_catalogos',
       href: '/admin/fertirriego-catalogos',
       etiqueta: 'Choferes y catálogos de campo',
