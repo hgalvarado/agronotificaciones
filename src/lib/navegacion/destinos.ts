@@ -160,6 +160,14 @@ export function catalogoDestinos(pantallasMenu: PantallaDeMenu[], pantallasCatal
       seccion: adm,
     },
     {
+      clave: 'admin_fert_eliminar',
+      href: '/admin/fertirriego-eliminar',
+      etiqueta: 'Eliminar registros (Fertirriego)',
+      icono: 'candado',
+      requiere: ['fertirriego:eliminar_definitivo'],
+      seccion: adm,
+    },
+    {
       clave: 'admin_errores',
       href: '/admin/errores',
       etiqueta: 'Bitácora de errores',

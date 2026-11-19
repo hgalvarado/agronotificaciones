@@ -537,6 +537,12 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
                 registrar={campo.registrar}
                 onCerrar={() => setVentana(null)}
                 onGuardado={guardado}
+                onEliminado={(m, documentoId) => {
+                  setVentana(null)
+                  campo.quitarDocumento(documentoId)   // desaparece al instante; la sincronización trae después la verdad
+                  guardado(m)
+                  void campo.sincronizarAhora()
+                }}
               />
             )}
             {ventana?.tipo === 'anular_diferencia' && (
