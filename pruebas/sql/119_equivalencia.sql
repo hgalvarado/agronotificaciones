@@ -1,6 +1,6 @@
 -- Equivalencia de permisos de la 119: correr en una base SIN la 119 (91-118), desde la raíz del repo.
 --   psql -d <base sin 119> -v ON_ERROR_STOP=1 -f pruebas/sql/119_equivalencia.sql
--- Solo los roles que tenían «Configurar» en Fertirriego ganan «eliminar_definitivo»; nadie más cambia.
+-- NADIE gana «eliminar_definitivo» al correr la 119 (solo el administrador, por acceso total); ningún permiso existente cambia.
 \set ON_ERROR_STOP 1
 do $$ declare r1 smallint; r2 smallint; begin
     insert into roles (codigo, nombre) values ('T119E_CFG', 'con configurar'), ('T119E_NO', 'sin configurar') on conflict (codigo) do nothing;
@@ -20,16 +20,10 @@ begin
     select count(*) into n_perdidos from t119_antes a where not exists (select 1 from permisos p where p.rol_id = a.rol_id and p.recurso = a.recurso and p.accion = a.accion
         and p.permitido = a.permitido and p.alcance::text = a.alcance and p.condicion::text = a.condicion);
     if n_perdidos <> 0 then raise exception 'FALLA: % permisos existentes cambiaron o se perdieron', n_perdidos; end if;
-    select count(*) into v_malos from permisos p
-     where p.accion = 'eliminar_definitivo' and not exists (select 1 from t119_antes a where a.rol_id = p.rol_id and a.recurso = 'fertirriego' and a.accion = 'configurar' and a.permitido);
-    if v_malos <> 0 then raise exception 'FALLA: % roles ganaron el permiso sin tener Configurar', v_malos; end if;
     select count(*) into n_nuevos from permisos p where p.accion = 'eliminar_definitivo';
-    if n_nuevos <> (select count(*) from t119_antes where recurso = 'fertirriego' and accion = 'configurar' and permitido) then raise exception 'FALLA: no todos los que tenían Configurar lo recibieron'; end if;
-    if not exists (select 1 from permisos where accion = 'eliminar_definitivo' and rol_id = (select id from roles where codigo = 'T119E_CFG') and alcance::text = 'zonal') then raise exception 'FALLA: el rol con Configurar no lo recibió'; end if;
-    if exists (select 1 from permisos where accion = 'eliminar_definitivo' and rol_id = (select id from roles where codigo = 'T119E_NO')) then raise exception 'FALLA: el rol sin Configurar lo recibió'; end if;
-    -- quitárselo a un rol y volver a correr no lo repone
-    delete from permisos where accion = 'eliminar_definitivo' and rol_id = (select id from roles where codigo = 'T119E_CFG');
-    raise notice 'ok  equivalencia: % rol(es) con Configurar lo recibieron; ningún permiso existente cambió; nadie más lo ganó', n_nuevos;
+    if n_nuevos <> 0 then raise exception 'FALLA: % rol(es) recibieron el permiso (debe ser solo del administrador)', n_nuevos; end if;
+    if not exists (select 1 from acciones where codigo = 'eliminar_definitivo') or not exists (select 1 from pantallas where codigo = 'fertirriego' and 'eliminar_definitivo' = any(acciones)) then raise exception 'FALLA: la accion no quedo registrada en el catalogo'; end if;
+    raise notice 'ok  equivalencia: ningun rol lo recibe; ningun permiso existente cambio';
 end $$;
 \i sql/119_fertirriego_eliminar_registros.sql
 do $$ begin

@@ -201,6 +201,7 @@ begin
                    e.resumen, e.motivo, e.eliminado_por_nombre, e.eliminado_at, e.conteos,
                    e.snapshot_bajado_at, (e.snapshot is null) as copia_en_agl
             from public.fert_eliminaciones e
+            where public.fn_es_admin() or public.fn_fert_puede(e.estacion_id, 'eliminar_definitivo')
             order by e.eliminado_at desc
             limit least(greatest(coalesce(p_limite, 200), 1), 1000)) x), '[]'::jsonb);
 end;
@@ -214,7 +215,8 @@ returns jsonb
 language plpgsql stable security definer set search_path = public, pg_temp as $$
 begin
     perform public._fert_eliminar_exigir();
-    return (select e.snapshot from public.fert_eliminaciones e where e.id = p_id);   -- null si ya está en AGL
+    return (select e.snapshot from public.fert_eliminaciones e
+             where e.id = p_id and (public.fn_es_admin() or public.fn_fert_puede(e.estacion_id, 'eliminar_definitivo')));   -- null si ya está en AGL
 end;
 $$;
 revoke execute on function public.fn_fert_eliminacion_copia(uuid) from public, anon;

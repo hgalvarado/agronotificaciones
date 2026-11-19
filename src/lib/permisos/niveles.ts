@@ -23,6 +23,9 @@ export const NIVELES: { valor: Nivel; nombre: string; detalle: string }[] = [
 
 export type AccionNivel = { codigo: string; nivel?: number | null }
 
+/** Acciones que NO se encienden con un nivel rápido (solo con su casilla). */
+export const ACCIONES_SOLO_MANUALES = new Set(['eliminar_definitivo'])
+
 export function nivelDeAccion(a: AccionNivel): Nivel {
   const n = Number(a.nivel ?? (a.codigo === 'ver' || a.codigo === 'exportar' ? 1 : 2))
   return (n >= 1 && n <= 4 ? n : 2) as Nivel
@@ -36,7 +39,8 @@ export function nivelesDisponibles(acciones: AccionNivel[]): Nivel[] {
 
 /** Qué acciones quedan encendidas con un nivel. */
 export function accionesDelNivel(acciones: AccionNivel[], nivel: Nivel): Set<string> {
-  return new Set(acciones.filter((a) => nivel > 0 && nivelDeAccion(a) <= nivel).map((a) => a.codigo))
+  // «Eliminar por completo» (borra de verdad) nunca se enciende con un nivel rápido: solo con su propia casilla (decisión 2026-11-19: solo el administrador)
+  return new Set(acciones.filter((a) => nivel > 0 && nivelDeAccion(a) <= nivel && !ACCIONES_SOLO_MANUALES.has(a.codigo)).map((a) => a.codigo))
 }
 
 /**

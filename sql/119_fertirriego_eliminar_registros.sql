@@ -10,9 +10,9 @@
 -- ni a la huella de «Terminar ciclo» (102).
 --
 --   1. Permiso nuevo: acción `eliminar_definitivo` («Eliminar por completo», nivel «Todo») en la pantalla Fertirriego.
---      La migración se la da SOLO a los roles que hoy tienen «Configurar» en Fertirriego (se resuelve por datos, no
---      por nombre) y solo la primera vez que se crea la acción (si luego se le quita a un rol, no se repone al
---      volver a correr). Quien tiene acceso total (fn_es_admin) la tiene siempre, como las demás acciones.
+--      Decisión del usuario (2026-11-19): lo tiene SOLO el administrador. La migración NO se lo da a ningún rol: quien
+--      tiene acceso total (fn_es_admin) lo tiene siempre, como las demás acciones; si algún día se quiere dárselo a
+--      otro rol, se hace a mano en Permisos › pantalla Fertirriego.
 --   2. fn_fert_eliminar_documento(tipo, documento, motivo): aplicacion (con sus devoluciones y anulaciones),
 --      recepcion (con envases), conteo, devolucion, relevo (con sus diferencias), traslado (entre dos estaciones:
 --      hace falta el permiso en las dos) y bitacora (horas de riego; el «documento» es su operacion_id, que da el
@@ -37,7 +37,6 @@
 
 do $$
 declare
-    v_nueva boolean := not exists (select 1 from public.acciones where codigo = 'eliminar_definitivo');
 begin
     insert into public.acciones (codigo, nombre, descripcion, orden, escribe) values
         ('eliminar_definitivo', 'Eliminar por completo',
@@ -51,14 +50,7 @@ begin
     update public.pantallas set acciones = acciones || 'eliminar_definitivo'::text
      where codigo = 'fertirriego' and not ('eliminar_definitivo' = any(acciones));
 
-    -- Primera vez: solo los roles que ya tienen el permiso máximo del módulo («Configurar»), con su mismo alcance
-    if v_nueva then
-        insert into public.permisos (rol_id, recurso, accion, permitido, alcance, condicion)
-        select p.rol_id, 'fertirriego', 'eliminar_definitivo', true, p.alcance, 'sin_restriccion'
-        from public.permisos p
-        where p.recurso = 'fertirriego' and p.accion = 'configurar' and p.permitido
-        on conflict (rol_id, recurso, accion) do nothing;
-    end if;
+    -- Sin concesiones automáticas: solo el administrador (fn_es_admin) la tiene. Los roles se la dan a mano en Permisos.
 end $$;
 
 
@@ -170,7 +162,7 @@ begin
                    format('Devolución a bodega · aplicación del día %s', a.fecha)
               into v_est, v_tc, v_fecha, v_cuando, v_quien, v_resumen
               from public.fert_devoluciones d join public.fert_aplicaciones a on a.id = d.aplicacion_id
-             where d.id = p_documento for update of d;
+             where d.id = p_documento for update of d, a;
             v_docs := array[p_documento];
         when 'recepcion' then
             select r.estacion_id, r.fecha_hora, r.registrado_por,
@@ -475,6 +467,7 @@ begin
             select e.id, e.tipo, e.documento_id, e.estacion, e.estacion2, e.fecha_documento, e.registrado_por_nombre,
                    e.resumen, e.motivo, e.eliminado_por_nombre, e.eliminado_at, e.conteos
             from public.fert_eliminaciones e
+            where public.fn_es_admin() or public.fn_fert_puede(e.estacion_id, 'eliminar_definitivo')
             order by e.eliminado_at desc
             limit least(greatest(coalesce(p_limite, 200), 1), 1000)) x), '[]'::jsonb);
 end;
@@ -488,7 +481,8 @@ returns jsonb
 language plpgsql stable security definer set search_path = public, pg_temp as $$
 begin
     perform public._fert_eliminar_exigir();
-    return (select e.snapshot from public.fert_eliminaciones e where e.id = p_id);
+    return (select e.snapshot from public.fert_eliminaciones e
+             where e.id = p_id and (public.fn_es_admin() or public.fn_fert_puede(e.estacion_id, 'eliminar_definitivo')));
 end;
 $$;
 revoke execute on function public.fn_fert_eliminacion_copia(uuid) from public, anon;

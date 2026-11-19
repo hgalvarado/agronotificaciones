@@ -117,10 +117,10 @@ try {
         $e = [bool](@($pm | Where-Object { $_.rol_id -eq $r.id -and $_.accion -eq 'eliminar_definitivo' -and $_.permitido }).Count)
         $c = [bool](@($pm | Where-Object { $_.rol_id -eq $r.id -and $_.accion -eq 'configurar' -and $_.permitido }).Count)
         $filas += "$($r.id) $($r.codigo) ($($r.nombre)) eliminar=$e configurar=$c total=$($r.acceso_total)"
-        if (-not $r.acceso_total -and $e -ne $c) { $difE1 += $r.codigo }
+        if (-not $r.acceso_total -and $e) { $difE1 += $r.codigo }
     }
     foreach ($f in $filas) { $script:Resultados.Add("INFO E1 $f") }
-    OK ($difE1.Count -eq 0) 'E1 quien tiene «Eliminar por completo» coincide con quien tenia «Configurar»' ($difE1 -join ',')
+    OK ($difE1.Count -eq 0) 'E1 ningun rol (salvo acceso total) tiene «Eliminar por completo»: solo el administrador' ($difE1 -join ',')
 
     # ============ E2 visibilidad: admin ============
     # --- paso A: aplicacion A1 (SOL 30) + devolucion D1 (5) ---
