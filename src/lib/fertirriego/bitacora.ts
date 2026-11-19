@@ -246,5 +246,7 @@ export function filtrarBitacora(filas: FilaBitacora[], f: FiltrosBitacora): Fila
 
 /** Todas las filas de la estación, lo más reciente arriba. */
 export function ordenarRecientes(filas: FilaBitacora[]): FilaBitacora[] {
-  return [...filas].sort((a, b) => b.fecha_hora.localeCompare(a.fecha_hora) || Number(b.pendiente) - Number(a.pendiente))
+  // Por instante, no por texto: lo pendiente trae hora local (…-06:00) y lo del servidor UTC (…+00:00)
+  const t = (iso: string) => Date.parse(iso) || 0
+  return [...filas].sort((a, b) => t(b.fecha_hora) - t(a.fecha_hora) || Number(b.pendiente) - Number(a.pendiente))
 }

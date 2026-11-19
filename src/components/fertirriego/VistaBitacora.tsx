@@ -2,7 +2,7 @@
 
 /**
  * Bitácora (kardex) de la estación: cada movimiento con su entrada, salida y saldo, agrupado por día (lo más
- * reciente arriba), con el nombre de quien lo hizo. Lo pendiente de enviar sale marcado. Tocar una fila abre el
+ * reciente arriba; lo hecho junto en un mismo registro, p. ej. los productos de una recepción, va en un bloque con sangría), con el nombre de quien lo hizo. Lo pendiente de enviar sale marcado. Tocar una fila abre el
  * DETALLE del registro (y desde ahí, anular / devolver).
  *
  * Piloto 2 (puntos 3 y 4): filtros por turno, producto, tipo, fecha (un día o rango) y cantidad (exacta o entre), en
@@ -40,27 +40,6 @@ const NOMBRE_MOTIVO_ENVASE: Record<string, string> = {
   ANULACION: 'Envases · anulación',
 }
 
-/** Nombre de cada grupo de la bitácora (plural: «Aplicaciones», «Entregas recibidas»…) y su orden en pantalla. */
-const NOMBRE_GRUPO: Record<TipoFila, string> = {
-  SALDO_INICIAL: 'Saldo inicial',
-  RECEPCION: 'Entregas recibidas',
-  APLICACION: 'Aplicaciones',
-  HISTORICO: 'Aplicaciones históricas',
-  DEVOLUCION: 'Devoluciones a bodega',
-  AJUSTE_CONTEO: 'Ajustes por conteo',
-  DIFERENCIA_RELEVO: 'Diferencias en relevos',
-  TRASLADO_SALIDA: 'Traslados enviados',
-  TRASLADO_ENTRADA: 'Traslados recibidos',
-  TRASLADO_DEVUELTO: 'Traslados devueltos',
-  ENVASE: 'Envases',
-  ANULACION: 'Anulaciones',
-  ARCHIVO_TURNO: 'Turnos terminados (archivados en AGL)',
-}
-const ORDEN_GRUPOS: TipoFila[] = [
-  'APLICACION', 'HISTORICO', 'RECEPCION', 'DEVOLUCION', 'AJUSTE_CONTEO', 'DIFERENCIA_RELEVO', 'TRASLADO_SALIDA', 'TRASLADO_ENTRADA',
-  'TRASLADO_DEVUELTO', 'ENVASE', 'ANULACION', 'SALDO_INICIAL', 'ARCHIVO_TURNO',
-]
-
 const claseEntrada = 'h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:border-brand-600 focus:outline-none'
 
 export function VistaBitacora({
@@ -83,8 +62,8 @@ export function VistaBitacora({
   const [abiertos, setAbiertos] = useState(false)
   const [modoFecha, setModoFecha] = useState<'dia' | 'rango'>('dia')
   const [modoCantidad, setModoCantidad] = useState<'exacta' | 'entre'>('entre')
-  // Grupos contraídos: por defecto todos expandidos (se ve el detalle de entrada)
-  const [cerrados, setCerrados] = useState<Set<TipoFila>>(new Set())
+  // Bloques contraídos (varios productos hechos en un mismo registro): por defecto todos expandidos
+  const [cerrados, setCerrados] = useState<Set<string>>(new Set())
   const todos = useMemo(
     () =>
       ordenarRecientes([
@@ -105,12 +84,32 @@ export function VistaBitacora({
   const usados = useMemo(() => new Set(todos.map((x) => x.material_id).filter(Boolean) as string[]), [todos])
   const tiposUsados = useMemo(() => [...new Set(todos.map((x) => x.tipo))], [todos])
 
-  const grupos = ORDEN_GRUPOS.map((tipo) => ({ tipo, lista: filas.filter((x) => x.tipo === tipo) })).filter((g) => g.lista.length > 0)
-  const alternarGrupo = (tipo: TipoFila) =>
+  const porDia = new Map<string, typeof filas>()
+  for (const x of filas) porDia.set(x.dia, [...(porDia.get(x.dia) ?? []), x])
+  // Dentro de un día: los movimientos del MISMO registro y tipo (p. ej. los productos de una misma recepción) van juntos en un bloque.
+  // La lista queda en el mismo orden (lo más reciente arriba); el bloque ocupa el lugar de su primer movimiento.
+  const bloquesDe = (delDia: typeof filas) => {
+    const bloques: { clave: string; filas: typeof filas }[] = []
+    const porClave = new Map<string, { clave: string; filas: typeof filas }>()
+    for (const x of delDia) {
+      const k = x.documento_id ? `${x.documento_id}|${x.tipo}` : null
+      const existente = k ? porClave.get(k) : undefined
+      if (existente) existente.filas.push(x)
+      else {
+        const nuevo = { clave: k ?? x.clave, filas: [x] }
+        bloques.push(nuevo)
+        if (k) porClave.set(k, nuevo)
+      }
+    }
+    return bloques
+  }
+  const hayBloques = [...porDia.values()].some((d) => bloquesDe(d).some((b) => b.filas.length > 1))
+  const clavesBloques = [...porDia.entries()].flatMap(([dia, d]) => bloquesDe(d).filter((b) => b.filas.length > 1).map((b) => `${dia}|${b.clave}`))
+  const alternarBloque = (clave: string) =>
     setCerrados((c) => {
       const n = new Set(c)
-      if (n.has(tipo)) n.delete(tipo)
-      else n.add(tipo)
+      if (n.has(clave)) n.delete(clave)
+      else n.add(clave)
       return n
     })
 
@@ -248,54 +247,66 @@ export function VistaBitacora({
       {filas.length === 0 && (
         <p className="py-8 text-center text-sm text-slate-400">{todos.length === 0 ? 'Sin movimientos todavía.' : 'Ningún movimiento con estos filtros.'}</p>
       )}
-      {grupos.length > 1 && (
+      {hayBloques && (
         <div className="flex justify-end gap-3 text-xs font-bold text-brand-700">
           <button type="button" onClick={() => setCerrados(new Set())} data-expandir-todo className="min-h-11 px-1 underline">
-            Expandir todo
+            Expandir bloques
           </button>
-          <button type="button" onClick={() => setCerrados(new Set(grupos.map((g) => g.tipo)))} data-contraer-todo className="min-h-11 px-1 underline">
-            Contraer todo
+          <button type="button" onClick={() => setCerrados(new Set(clavesBloques))} data-contraer-todo className="min-h-11 px-1 underline">
+            Contraer bloques
           </button>
         </div>
       )}
-      {grupos.map(({ tipo, lista }) => {
-        const abierto = !cerrados.has(tipo)
-        const porDia = new Map<string, typeof lista>()
-        for (const x of lista) porDia.set(x.dia, [...(porDia.get(x.dia) ?? []), x])
-        return (
-          <section key={tipo} data-grupo={tipo} className="overflow-hidden rounded-xl bg-white ring-1 ring-inset ring-slate-200">
-            <button
-              type="button"
-              onClick={() => alternarGrupo(tipo)}
-              aria-expanded={abierto}
-              data-grupo-cabecera={tipo}
-              className="flex min-h-12 w-full items-center gap-2 bg-slate-50 px-3 py-2 text-left"
-            >
-              <span aria-hidden="true" className="text-slate-500">
-                {abierto ? '▾' : '▸'}
-              </span>
-              <span className="min-w-0 flex-1 break-words text-sm font-bold text-slate-800">{NOMBRE_GRUPO[tipo]}</span>
-              <span className="rounded-full bg-white px-2 py-0.5 text-xs font-semibold tabular-nums text-slate-600 ring-1 ring-inset ring-slate-200" data-grupo-cuenta={lista.length}>
-                {lista.length}
-              </span>
-            </button>
-            {abierto &&
-              [...porDia.entries()].map(([dia, delDia]) => (
-                <div key={dia} data-dia={dia}>
-                  <p className="border-t border-slate-100 bg-white px-3 pt-2 text-xs font-bold uppercase tracking-wide text-slate-400">
-                    {DIA.format(new Date(`${dia}T12:00:00Z`))}
-                  </p>
-                  <div className="divide-y divide-slate-100">{delDia.map((x) => filaMovimiento(x))}</div>
+      {[...porDia.entries()].map(([dia, delDia]) => (
+        <div key={dia} data-dia={dia}>
+          <p className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-400">{DIA.format(new Date(`${dia}T12:00:00Z`))}</p>
+          <div className="divide-y divide-slate-100 overflow-hidden rounded-xl bg-white ring-1 ring-inset ring-slate-200">
+            {bloquesDe(delDia).map((b) => {
+              if (b.filas.length === 1) return filaMovimiento(b.filas[0])
+              const clave = `${dia}|${b.clave}`
+              const abierto = !cerrados.has(clave)
+              const primero = b.filas[0]
+              const esEnvase = primero.tipo === 'ENVASE'
+              const titulo = esEnvase
+                ? (NOMBRE_MOTIVO_ENVASE[primero.motivo ?? ''] ?? 'Envases')
+                : primero.tipo === 'HISTORICO'
+                  ? 'Aplicación histórica'
+                  : NOMBRE_MOVIMIENTO[primero.tipo as keyof typeof NOMBRE_MOVIMIENTO]
+              const turnos = primero.turnos.map(turno).filter(Boolean).join(', ')
+              const quien = nombrePersona(estado, primero.registrado_por)
+              return (
+                <div key={clave} data-bloque={primero.tipo} data-bloque-cuenta={b.filas.length}>
+                  <button
+                    type="button"
+                    onClick={() => alternarBloque(clave)}
+                    aria-expanded={abierto}
+                    data-bloque-cabecera
+                    className="grid min-h-14 w-full grid-cols-[3rem_1fr] items-center gap-2 px-3 py-2 text-left hover:bg-slate-50"
+                  >
+                    <span className="text-xs tabular-nums text-slate-500">{RELOJ.format(new Date(primero.fecha_hora))}</span>
+                    <span className="min-w-0">
+                      <span className="block break-words text-sm font-semibold text-slate-800">
+                        {titulo}
+                        {turnos ? ` · ${turnos}` : ''}
+                      </span>
+                      <span className="block break-words text-xs text-slate-400">{quien ?? 'Persona sin nombre en este teléfono'}</span>
+                      <span className="block break-words text-xs font-semibold text-slate-500">
+                        <span aria-hidden="true">{abierto ? '▾' : '▸'}</span> {b.filas.length} {esEnvase ? 'envases' : 'productos'} · hecho junto
+                      </span>
+                    </span>
+                  </button>
+                  {abierto && <div className="ml-6 divide-y divide-slate-100 border-l-2 border-brand-200 bg-slate-50/40">{b.filas.map((x) => filaMovimiento(x, true))}</div>}
                 </div>
-              ))}
-          </section>
-        )
-      })}
+              )
+            })}
+          </div>
+        </div>
+      ))}
     </div>
   )
 
   /** Un movimiento de la lista: al tocarlo se abre su detalle. */
-  function filaMovimiento(x: (typeof filas)[number]) {
+  function filaMovimiento(x: (typeof filas)[number], enBloque = false) {
     const esEnvase = x.tipo === 'ENVASE'
     const esHistorico = x.tipo === 'HISTORICO'
     const titulo = esEnvase
@@ -315,18 +326,24 @@ export function VistaBitacora({
         data-movimiento={x.tipo}
         data-historico={esHistorico ? '' : undefined}
         data-quien={quien ?? ''}
-        className={`grid min-h-14 w-full grid-cols-[3rem_1fr_auto] items-center gap-2 px-3 py-2 text-left ${x.anulado ? 'opacity-50' : ''} ${x.pendiente ? 'bg-amber-50/60' : 'hover:bg-slate-50'}`}
+        className={`grid min-h-14 w-full ${enBloque ? 'grid-cols-[1fr_auto]' : 'grid-cols-[3rem_1fr_auto]'} items-center gap-2 px-3 py-2 text-left ${x.anulado ? 'opacity-50' : ''} ${x.pendiente ? 'bg-amber-50/60' : 'hover:bg-slate-50'}`}
       >
-        <span className="text-xs tabular-nums text-slate-500">{RELOJ.format(new Date(x.fecha_hora))}</span>
+        {!enBloque && <span className="text-xs tabular-nums text-slate-500">{RELOJ.format(new Date(x.fecha_hora))}</span>}
         <span className="min-w-0">
-          <span className={`block break-words text-sm font-semibold text-slate-800 ${x.anulado ? 'line-through' : ''}`}>
-            {titulo}
-            {turnos ? ` · ${turnos}` : ''}
-          </span>
-          {(productos.length !== 1 || esEnvase) && <span className="block break-words text-xs text-slate-500">{articulo}</span>}
-          <span className="block break-words text-xs text-slate-400" data-quien-movimiento>
-            {quien ?? 'Persona sin nombre en este teléfono'}
-          </span>
+          {enBloque ? (
+            <span className={`block break-words text-sm font-semibold text-slate-800 ${x.anulado ? 'line-through' : ''}`}>{articulo}</span>
+          ) : (
+            <>
+              <span className={`block break-words text-sm font-semibold text-slate-800 ${x.anulado ? 'line-through' : ''}`}>
+                {titulo}
+                {turnos ? ` · ${turnos}` : ''}
+              </span>
+              {(productos.length !== 1 || esEnvase) && <span className="block break-words text-xs text-slate-500">{articulo}</span>}
+              <span className="block break-words text-xs text-slate-400" data-quien-movimiento>
+                {quien ?? 'Persona sin nombre en este teléfono'}
+              </span>
+            </>
+          )}
           {esHistorico && (
             <span className="mr-1 inline-block" data-insignia-historico>
               <Insignia tono="azul">Histórico</Insignia>

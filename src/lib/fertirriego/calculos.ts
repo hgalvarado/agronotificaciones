@@ -213,7 +213,9 @@ export function kardex(estado: EstadoCampo, cola: Operacion[], estacionId: strin
     })
   }
 
-  filas.sort((a, b) => a.fecha_hora.localeCompare(b.fecha_hora) || Number(a.pendiente) - Number(b.pendiente))
+  // Por instante, no por texto (lo pendiente trae hora local y lo del servidor UTC): así el saldo acumulado sale en orden real
+  const t = (iso: string) => Date.parse(iso) || 0
+  filas.sort((a, b) => t(a.fecha_hora) - t(b.fecha_hora) || Number(a.pendiente) - Number(b.pendiente))
   const acumulado = new Map<string, number>()
   for (const p of estado.saldos_previos) if (p.estacion_id === estacionId) acumulado.set(p.material_id, num(p.saldo))
   return filas.map((f) => {

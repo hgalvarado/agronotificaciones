@@ -26,13 +26,17 @@
   una réplica local (ver §5) y el usuario los corre en el SQL Editor (primero desarrollo, luego producción,
   y en producción DESPUÉS de que Vercel publique el código que los necesita).
 - Borrados de tablas: respaldo previo en el esquema `respaldo` dentro de la misma migración, sin CASCADE.
-- **QA obligatoria con clics reales** antes de entregar (ver §5). Todo campo que registra datos debe funcionar.
+- **QA obligatoria con clics reales** antes de entregar (ver §5), ejecutada SOLO por Opus una vez por bloque. Todo campo que registra datos debe funcionar.
+- Pruebas: las ejecuta SOLO Opus, una vez por bloque funcional (ver `proyecto-seguimiento.md` §2); Haiku y Sonnet no ejecutan pruebas.
 - Mobile-first (capturadores en el teléfono). Funciones homogéneas en todos los módulos. Operable con teclado.
 - Respuestas al usuario en español, claras, sin jerga innecesaria.
 
-## 3. Estado actual (2026-11-18)
+## 3. Estado actual (2026-11-19)
 
-- **Producción** `main` = `87c0d62` (2026-11-18 noche, + menú Admin en árbol y bitácora de errores, falta `sql/118` en producción; antes `55c25f1`; incluye registro histórico, tickets con letra grande, letra grande en Fertirriego y GPS opcional; 115–117 corridas en producción). Antes `aa84e8f` (2026-11-18): aplicar sin inventario con casilla obligatoria, PWA (manifiesto público + iconos PNG), anular diferencia de relevo (`sql/115`: falta correrla en PRODUCCIÓN; en desarrollo ya). Siguiente a construir: **Registros históricos** (ver `proyecto-seguimiento.md` §4 «De Claude»). Próximo número de SQL: 116.
+- **Producción** `main` = `fa8e2ea` (publicado 2026-11-19): «Eliminar por completo» (sql/119–121) con copia de auditoría en AGL. Falta confirmar que el usuario corrió 119→120→121 en producción.
+- `desarrollo` = `296a7f2`. SQL corridas hasta la 118 en producción (115–117 el 2026-11-18). **Próximo número libre: 122.**
+- AGL `main` = `16adc8f`, **sin publicar** (falta `Publicar_Produccion.bat` y reiniciar).
+- Pendiente principal: bitácora de errores → AGL (sql/122). Detalle y pendientes en `proyecto-seguimiento.md` §4.
 
 ## (estado anterior 2026-11-12)
 
@@ -100,6 +104,7 @@
 
 ## 6. Historial (lo hecho y por qué)
 
+- **2026-11-19 · Eliminar por completo y limpieza de la documentación** (`fa8e2ea`, sql/119–121). Lecciones: (a) Edge de QA sin extensiones (`--disable-extensions --disable-sync --no-first-run`): con perfil sincronizado la pestaña de la app quedaba en segundo plano y fallaba a los 2–3 min; (b) los scripts de QA imprimen al final: vigilar el progreso en vivo y, si se cortan a la fuerza, borrar a mano su limpieza; (c) réplica SQL local (`pg_qa`, puerto 5499) se apaga con el equipo: arrancar con `pg_ctl`; las pruebas 119–121 se hacen sobre un clon (`t117`), no sobre una base usada; (d) «Supabase es solo intermediario» aplicado también a la auditoría: la copia de lo eliminado se baja a AGL, se verifica con sha256 y recién entonces se borra de Supabase.
 - **2026-11-18 (noche) · GPS opcional** (`55c25f1`): la ubicación dejó de ser obligatoria en Fertirriego (`MarcoRegistro`): sin permiso o sin GPS se guarda igual con la observación `SIN_UBICACION`. Lección: una regla del usuario («obligatoria») puede cambiar; el código que la imponía (`permisoDenegado`, `MENSAJE_UBICACION_DENEGADA`) quedó sin usos. En QA con CDP, `Browser.setPermission` y `Emulation.setGeolocationOverride` simulan el GPS. Siguiente: bitácora de errores por usuario (`docs/bitacora-errores.md`, SQL 118).
 
 - **2026-11-18 · Registro histórico de Fertirriego** (`sql/116`, doc `docs/fertirriego-historico.md`; pedido: estaciones que ya
