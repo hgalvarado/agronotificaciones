@@ -14,7 +14,7 @@
 | Para qué | Plataforma web/teléfono «**Monitoreo agrícola integral**»: tickets de maquinaria, controles, catálogos, permisos y **Fertirriego** en campo (sin señal). | Gestión de la Torre de Control: catálogos maestros, planificación, órdenes SAP (/OS01), LTP, turnos (/TR02), análisis de Fertirriego (/FR01). **AGL manda.** |
 | Carpeta / tecnología | `C:\HENRYALVARADO2022\agronotificaciones`· Next.js 16 + Supabase, Vercel | `C:\HENRYALVARADO2022\AGLGestion_App`· Python + JS, datos JSON/Parquet en OneDrive |
 | Ramas / publicar | `desarrollo` (commits); `main` = producción. Publica Claude solo con «pasa a producción» | `main` local. Publica el usuario: `Publicar_Produccion.bat` y reiniciar |
-| Estado hoy | `main` = `fa8e2ea` (publicado 2026-11-19; falta confirmar sql/119→120→121 en producción) · `desarrollo` = `296a7f2` | `main` = `16adc8f`, **sin publicar** |
+| Estado hoy | `main` = `7a17a2b` (publicado 2026-11-19; sql 118–121 corridas en producción) · `desarrollo` = `296a7f2` | `main` = `16adc8f` (publicado) |
 
 **Cómo se unen:** Supabase es **solo un intermediario** («llenar lo mínimo»). AGL publica a Supabase lo que el campo necesita
 y baja lo que el campo registra. Lo terminado se baja a AGL, se verifica (sha256) y se borra de Supabase.
@@ -84,13 +84,13 @@ y baja lo que el campo registra. Lo terminado se baja a AGL, se verifica (sha256
 
 ## 3. Qué hay hoy (lo hecho)
 
-### 3.1 AgroNotificaciones (en producción, `main` = `fa8e2ea`)
+### 3.1 AgroNotificaciones (en producción, `main` = `7a17a2b`)
 - **Tickets de maquinaria**: horómetros y labores, revisión por lotes, continuidad de horómetros, procesos del ticket (Registrando → Revisando → Pendiente aprobación → Notificado en SAP), «Mover proceso», cerrar ticket.
 - **Permisos v2** (92–93, 97): varios roles por persona, «Todas las zonas», permisos por módulo, historial de accesos, delegación (el Jefe de zona solo administra **Estacioneros**). **Menú por rol** (103): el menú nunca da permisos.
 - **Desinfección desde AGL** (104): DDT y siembra salen de `turnos_ciclo`. Tablas viejas de Trasplante y Riego retiradas (con respaldo).
 - **Eliminar por completo** (119–121, publicado): solo administrador, motivo ≥ 15 letras, solo en línea; botón en el detalle del teléfono y en Administración › Eliminar registros (`/admin/fertirriego-eliminar`). Antes de borrar en Supabase, AGL baja la copia, verifica el sha256 y la confirma (auditoría privada `fert_eliminaciones`, filas mínimas que se limpian a los 180 días). Los turnos archivados no se borran (reactivar primero).
   - Riesgos conocidos: borrar una recepción ya consumida deja saldo negativo (se avisa); borrar algo anterior a un conteo puede descuadrar; quien tenga «ver» en Conexión AGL puede leer las copias.
-- **Bitácora de Fertirriego** agrupada por tipo de movimiento, expandida por defecto, con Expandir/Contraer todo.
+- **Bitácora de Fertirriego** por día (lo más reciente arriba); los productos de un mismo registro se muestran juntos en un bloque con sangría «hecho junto», expandido por defecto, con Expandir/Contraer bloques.
 - **Bitácora de errores** (118, `/admin/errores`): publicada, pero **pendiente mover a AGL** (§4).
 
 ### 3.2 AGL (`main` = `16adc8f`)
@@ -101,7 +101,6 @@ y baja lo que el campo registra. Lo terminado se baja a AGL, se verifica (sha256
 - /TR02 **Terminar ciclo / Reactivar** y «Vista ALV por lote». /OS01 **Gestor de Órdenes SAP** (§6); Partidas con Responsable, Estado, Área, Dosis y Gasto/mz. /OS06 **Grupos de Coste**.
 - **DataGrid de toda AGL**: botón «Filtros» (varias columnas), menú rápido Alt+↓ / Shift+F10 (ordenar, filtrar, agrupar), encabezados con teclado, Enter/F2 edita.
 - Planificación de lotes y Polinización (checklist de semanas), LTP (semanas en orden; «Total Producto» con regla SINAGRO), **Mi Día** (Alt + M; @usuario comparte tareas).
-- **AGL sin publicar** (`16adc8f`): todo lo de este apartado desde `e843f1f`, incluido lo nuevo del 2026-11-19 (Cálculo por plan, Vista ALV, columnas de Partidas SAP, filtros del DataGrid, Eliminados).
 
 ### 3.3 Fertirriego (une los dos proyectos)
 El estacionero registra en el teléfono (sin señal) lo que recibe, aplica, cuenta y entrega; AGL publica turnos, plan y materiales, y baja todo para analizar.
@@ -115,7 +114,7 @@ Diseño y decisiones (no volver a preguntar): `agronotificaciones/docs/fertirrie
 
 ### 3.4 Migraciones SQL (91–121)
 - **91** base Fertirriego · **92–93** permisos v2 · **94–95** campo sin señal · **96** relevo y traslados · **97** roles que administra cada rol · **98** modo de pruebas · **99** piloto 1 · **100** detalle completo al teléfono y a AGL · **101** AGL ve lo de prueba aparte · **102** terminar ciclo / reactivar · **103** menú por rol · **104** Desinfección desde AGL y retiro de Trasplante/Riego · **105** catálogos Fase A · **109–110** AgroMétricas (parámetros y calicata) · **111** menú AgroMétricas · **112–113** % de fertilización (113 sin tope) · **114** asignar personas aun con pruebas · **115** anular diferencia de relevo · **116** registro histórico · **117** fechas anteriores a la siembra · **118** bitácora de errores (buzón) · **119** eliminar por completo · **120** purga de lo eliminado al bajar a AGL · **121** copia verificada antes de borrar.
-- **Producción:** corridas hasta la 117 (105–113 confirmadas por el usuario; 115–117 el 2026-11-18). **118:** el usuario dijo el 2026-11-19 que ya hizo todo lo pendiente, pero falta confirmarla. **119–121:** corridas en desarrollo; pendientes de confirmar en producción.
+- **Producción:** corridas hasta la 121 (verificado el 2026-11-19). **Desarrollo:** hasta la 121.
 - Si se vuelve a correr la 99, 100, 101, 102, 115 o 116, correr la **117** después. Si se vuelve a correr la 119 o la 120, correr la **121** otra vez.
 - 106–108 reservadas para catálogos. **Próximo número libre: 122.**
 
@@ -124,7 +123,7 @@ Diseño y decisiones (no volver a preguntar): `agronotificaciones/docs/fertirrie
 ## 4. Pendientes (en orden)
 
 ### De Claude
-1. **Bitácora de errores → AGL (sql/122).** Sin pantalla de bitácora en AgroNotificaciones (quitar `/admin/errores`). El teléfono sigue enviando errores y latidos al buzón de Supabase; AGL los baja con huella, los guarda y los borra (retención 30 días). En AGL: informe detallado (qué pasó, causa, por qué, cómo solucionarlo), semáforo por usuario, marcar atendido con nota, exportar a Excel. Diseño: `docs/bitacora-errores.md`.
+1. **SIGUIENTE a construir: bitácora de errores → AGL (sql/122).** Sin pantalla de bitácora en AgroNotificaciones (quitar `/admin/errores`). El teléfono sigue enviando errores y latidos al buzón de Supabase; AGL los baja con huella, los guarda y los borra (retención 30 días). En AGL: informe detallado (qué pasó, causa, por qué, cómo solucionarlo), semáforo por usuario, marcar atendido con nota, exportar a Excel. Diseño: `docs/bitacora-errores.md`.
 2. **Archivar por mes** lo que no es de un turno (recepciones, conteos, relevos, traslados, envases), como «Terminar ciclo».
 3. **Etapa E de Fertirriego:** alertas, sugerencia de envío y cierre mensual. Sin umbrales fijos: comparar contra el comportamiento normal de cada estación.
 4. **Catálogos con AGL** (`docs/agl-fuente-unica.md`): en pausa. Faltan materiales, variedades, tareas (106), lotes y limpieza de duplicados.
@@ -133,10 +132,8 @@ Diseño y decisiones (no volver a preguntar): `agronotificaciones/docs/fertirrie
 7. **Menores:** título del modal muy alto con letra grande (`Modal.tsx`); «Estacionero» partido en el encabezado; selectores de la bitácora sin alternar única/múltiple; recepciones históricas (opcional); probar Shift+F10 en Edge; decidir si la × de filtros de AGL quita también el filtro aplicado; regresión `fertirriego_campo.ps1` sin correr tras el cambio a listas.
 
 ### Del usuario
-- Confirmar que corrió **`sql/119` → `120` → `121` en PRODUCCIÓN** (y `118` si no la había corrido: sin ella la bitácora de errores no guarda nada).
-- **Publicar AGL** (`Publicar_Produccion.bat`) y reiniciar; después «Bajar de campo».
-- Dar **«Publicar» (Fertirriego · Conexión AGL)** al usuario técnico («Integración AGL») para que AGL borre de Supabase las copias.
-- Revisar que nadie salvo el administrador tenga «Eliminar por completo».
+- Dar **«Publicar» (Fertirriego · Conexión AGL)** al usuario técnico («Integración AGL») para que AGL borre de Supabase las copias (sin esto AGL guarda la copia pero no la borra de Supabase; hasta hoy `fert_eliminaciones` está vacía).
+- Verificado el 2026-11-19: ningún rol lo tiene (solo el administrador). Revisar de nuevo si se cambian permisos.
 - Pasar del modo de pruebas a uso real al terminar el piloto.
 - PWA: quien tenga el acceso directo sin logo, que lo quite y lo agregue de nuevo.
 - /OS01: pendientes de §6.2. Opcional: borrar `respaldo.*_m104` (libera espacio).
