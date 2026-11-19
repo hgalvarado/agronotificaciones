@@ -40,6 +40,27 @@ const NOMBRE_MOTIVO_ENVASE: Record<string, string> = {
   ANULACION: 'Envases · anulación',
 }
 
+/** Nombre de cada grupo de la bitácora (plural: «Aplicaciones», «Entregas recibidas»…) y su orden en pantalla. */
+const NOMBRE_GRUPO: Record<TipoFila, string> = {
+  SALDO_INICIAL: 'Saldo inicial',
+  RECEPCION: 'Entregas recibidas',
+  APLICACION: 'Aplicaciones',
+  HISTORICO: 'Aplicaciones históricas',
+  DEVOLUCION: 'Devoluciones a bodega',
+  AJUSTE_CONTEO: 'Ajustes por conteo',
+  DIFERENCIA_RELEVO: 'Diferencias en relevos',
+  TRASLADO_SALIDA: 'Traslados enviados',
+  TRASLADO_ENTRADA: 'Traslados recibidos',
+  TRASLADO_DEVUELTO: 'Traslados devueltos',
+  ENVASE: 'Envases',
+  ANULACION: 'Anulaciones',
+  ARCHIVO_TURNO: 'Turnos terminados (archivados en AGL)',
+}
+const ORDEN_GRUPOS: TipoFila[] = [
+  'APLICACION', 'HISTORICO', 'RECEPCION', 'DEVOLUCION', 'AJUSTE_CONTEO', 'DIFERENCIA_RELEVO', 'TRASLADO_SALIDA', 'TRASLADO_ENTRADA',
+  'TRASLADO_DEVUELTO', 'ENVASE', 'ANULACION', 'SALDO_INICIAL', 'ARCHIVO_TURNO',
+]
+
 const claseEntrada = 'h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:border-brand-600 focus:outline-none'
 
 export function VistaBitacora({
@@ -62,6 +83,8 @@ export function VistaBitacora({
   const [abiertos, setAbiertos] = useState(false)
   const [modoFecha, setModoFecha] = useState<'dia' | 'rango'>('dia')
   const [modoCantidad, setModoCantidad] = useState<'exacta' | 'entre'>('entre')
+  // Grupos contraídos: por defecto todos expandidos (se ve el detalle de entrada)
+  const [cerrados, setCerrados] = useState<Set<TipoFila>>(new Set())
   const todos = useMemo(
     () =>
       ordenarRecientes([
@@ -82,8 +105,14 @@ export function VistaBitacora({
   const usados = useMemo(() => new Set(todos.map((x) => x.material_id).filter(Boolean) as string[]), [todos])
   const tiposUsados = useMemo(() => [...new Set(todos.map((x) => x.tipo))], [todos])
 
-  const porDia = new Map<string, typeof filas>()
-  for (const x of filas) porDia.set(x.dia, [...(porDia.get(x.dia) ?? []), x])
+  const grupos = ORDEN_GRUPOS.map((tipo) => ({ tipo, lista: filas.filter((x) => x.tipo === tipo) })).filter((g) => g.lista.length > 0)
+  const alternarGrupo = (tipo: TipoFila) =>
+    setCerrados((c) => {
+      const n = new Set(c)
+      if (n.has(tipo)) n.delete(tipo)
+      else n.add(tipo)
+      return n
+    })
 
   const poner = (cambios: Partial<Omit<FiltrosBitacora, 'productos'>>) => setFiltros((x) => ({ ...x, ...cambios }))
 
@@ -219,72 +248,110 @@ export function VistaBitacora({
       {filas.length === 0 && (
         <p className="py-8 text-center text-sm text-slate-400">{todos.length === 0 ? 'Sin movimientos todavía.' : 'Ningún movimiento con estos filtros.'}</p>
       )}
-      {[...porDia.entries()].map(([dia, lista]) => (
-        <div key={dia} data-dia={dia}>
-          <p className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-400">{DIA.format(new Date(`${dia}T12:00:00Z`))}</p>
-          <div className="divide-y divide-slate-100 overflow-hidden rounded-xl bg-white ring-1 ring-inset ring-slate-200">
-            {lista.map((x) => {
-              const esEnvase = x.tipo === 'ENVASE'
-              const esHistorico = x.tipo === 'HISTORICO'
-              const titulo = esEnvase
-                ? (NOMBRE_MOTIVO_ENVASE[x.motivo ?? ''] ?? 'Envases')
-                : esHistorico
-                  ? 'Aplicación histórica'
-                  : NOMBRE_MOVIMIENTO[x.tipo as keyof typeof NOMBRE_MOVIMIENTO]
-              const turnos = x.turnos.map(turno).filter(Boolean).join(', ')
-              const quien = nombrePersona(estado, x.registrado_por)
-              const articulo = esEnvase ? envase(x.envase_id) : material(x.material_id)?.descripcion
-              return (
-                <button
-                  key={x.clave}
-                  type="button"
-                  disabled={x.pendiente}
-                  onClick={() => onAbrir(x.documento_tipo, x.documento_id)}
-                  data-movimiento={x.tipo}
-                  data-historico={esHistorico ? '' : undefined}
-                  data-quien={quien ?? ''}
-                  className={`grid min-h-14 w-full grid-cols-[3rem_1fr_auto] items-center gap-2 px-3 py-2 text-left ${x.anulado ? 'opacity-50' : ''} ${x.pendiente ? 'bg-amber-50/60' : 'hover:bg-slate-50'}`}
-                >
-                  <span className="text-xs tabular-nums text-slate-500">{RELOJ.format(new Date(x.fecha_hora))}</span>
-                  <span className="min-w-0">
-                    <span className={`block break-words text-sm font-semibold text-slate-800 ${x.anulado ? 'line-through' : ''}`}>
-                      {titulo}
-                      {turnos ? ` · ${turnos}` : ''}
-                    </span>
-                    {(productos.length !== 1 || esEnvase) && <span className="block break-words text-xs text-slate-500">{articulo}</span>}
-                    <span className="block break-words text-xs text-slate-400" data-quien-movimiento>
-                      {quien ?? 'Persona sin nombre en este teléfono'}
-                    </span>
-                    {esHistorico && (
-                      <span className="mr-1 inline-block" data-insignia-historico>
-                        <Insignia tono="azul">Histórico</Insignia>
-                      </span>
-                    )}
-                    {x.pendiente && <Insignia tono="ambar">por enviar</Insignia>}
-                  </span>
-                  <span className="text-right tabular-nums">
-                    {esHistorico ? (
-                      <>
-                        <span className="block text-sm font-bold text-slate-500">{cantidad(x.cantidad ?? 0)}</span>
-                        <span className="block text-xs text-slate-400">sin mover inventario</span>
-                      </>
-                    ) : (
-                      <>
-                        <span className={`block text-sm font-bold ${x.entrada ? 'text-brand-700' : 'text-red-700'}`}>
-                          {x.entrada ? `+${cantidad(x.entrada)}` : `−${cantidad(x.salida)}`}
-                        </span>
-                        {x.saldo !== null && <span className="block text-xs text-slate-500">saldo {cantidad(x.saldo)}</span>}
-                      </>
-                    )}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
+      {grupos.length > 1 && (
+        <div className="flex justify-end gap-3 text-xs font-bold text-brand-700">
+          <button type="button" onClick={() => setCerrados(new Set())} data-expandir-todo className="min-h-11 px-1 underline">
+            Expandir todo
+          </button>
+          <button type="button" onClick={() => setCerrados(new Set(grupos.map((g) => g.tipo)))} data-contraer-todo className="min-h-11 px-1 underline">
+            Contraer todo
+          </button>
         </div>
-      ))}
+      )}
+      {grupos.map(({ tipo, lista }) => {
+        const abierto = !cerrados.has(tipo)
+        const porDia = new Map<string, typeof lista>()
+        for (const x of lista) porDia.set(x.dia, [...(porDia.get(x.dia) ?? []), x])
+        return (
+          <section key={tipo} data-grupo={tipo} className="overflow-hidden rounded-xl bg-white ring-1 ring-inset ring-slate-200">
+            <button
+              type="button"
+              onClick={() => alternarGrupo(tipo)}
+              aria-expanded={abierto}
+              data-grupo-cabecera={tipo}
+              className="flex min-h-12 w-full items-center gap-2 bg-slate-50 px-3 py-2 text-left"
+            >
+              <span aria-hidden="true" className="text-slate-500">
+                {abierto ? '▾' : '▸'}
+              </span>
+              <span className="min-w-0 flex-1 break-words text-sm font-bold text-slate-800">{NOMBRE_GRUPO[tipo]}</span>
+              <span className="rounded-full bg-white px-2 py-0.5 text-xs font-semibold tabular-nums text-slate-600 ring-1 ring-inset ring-slate-200" data-grupo-cuenta={lista.length}>
+                {lista.length}
+              </span>
+            </button>
+            {abierto &&
+              [...porDia.entries()].map(([dia, delDia]) => (
+                <div key={dia} data-dia={dia}>
+                  <p className="border-t border-slate-100 bg-white px-3 pt-2 text-xs font-bold uppercase tracking-wide text-slate-400">
+                    {DIA.format(new Date(`${dia}T12:00:00Z`))}
+                  </p>
+                  <div className="divide-y divide-slate-100">{delDia.map((x) => filaMovimiento(x))}</div>
+                </div>
+              ))}
+          </section>
+        )
+      })}
     </div>
   )
+
+  /** Un movimiento de la lista: al tocarlo se abre su detalle. */
+  function filaMovimiento(x: (typeof filas)[number]) {
+    const esEnvase = x.tipo === 'ENVASE'
+    const esHistorico = x.tipo === 'HISTORICO'
+    const titulo = esEnvase
+      ? (NOMBRE_MOTIVO_ENVASE[x.motivo ?? ''] ?? 'Envases')
+      : esHistorico
+        ? 'Aplicación histórica'
+        : NOMBRE_MOVIMIENTO[x.tipo as keyof typeof NOMBRE_MOVIMIENTO]
+    const turnos = x.turnos.map(turno).filter(Boolean).join(', ')
+    const quien = nombrePersona(estado, x.registrado_por)
+    const articulo = esEnvase ? envase(x.envase_id) : material(x.material_id)?.descripcion
+    return (
+      <button
+        key={x.clave}
+        type="button"
+        disabled={x.pendiente}
+        onClick={() => onAbrir(x.documento_tipo, x.documento_id)}
+        data-movimiento={x.tipo}
+        data-historico={esHistorico ? '' : undefined}
+        data-quien={quien ?? ''}
+        className={`grid min-h-14 w-full grid-cols-[3rem_1fr_auto] items-center gap-2 px-3 py-2 text-left ${x.anulado ? 'opacity-50' : ''} ${x.pendiente ? 'bg-amber-50/60' : 'hover:bg-slate-50'}`}
+      >
+        <span className="text-xs tabular-nums text-slate-500">{RELOJ.format(new Date(x.fecha_hora))}</span>
+        <span className="min-w-0">
+          <span className={`block break-words text-sm font-semibold text-slate-800 ${x.anulado ? 'line-through' : ''}`}>
+            {titulo}
+            {turnos ? ` · ${turnos}` : ''}
+          </span>
+          {(productos.length !== 1 || esEnvase) && <span className="block break-words text-xs text-slate-500">{articulo}</span>}
+          <span className="block break-words text-xs text-slate-400" data-quien-movimiento>
+            {quien ?? 'Persona sin nombre en este teléfono'}
+          </span>
+          {esHistorico && (
+            <span className="mr-1 inline-block" data-insignia-historico>
+              <Insignia tono="azul">Histórico</Insignia>
+            </span>
+          )}
+          {x.pendiente && <Insignia tono="ambar">por enviar</Insignia>}
+        </span>
+        <span className="text-right tabular-nums">
+          {esHistorico ? (
+            <>
+              <span className="block text-sm font-bold text-slate-500">{cantidad(x.cantidad ?? 0)}</span>
+              <span className="block text-xs text-slate-400">sin mover inventario</span>
+            </>
+          ) : (
+            <>
+              <span className={`block text-sm font-bold ${x.entrada ? 'text-brand-700' : 'text-red-700'}`}>
+                {x.entrada ? `+${cantidad(x.entrada)}` : `−${cantidad(x.salida)}`}
+              </span>
+              {x.saldo !== null && <span className="block text-xs text-slate-500">saldo {cantidad(x.saldo)}</span>}
+            </>
+          )}
+        </span>
+      </button>
+    )
+  }
 }
 
 /** Dos opciones pequeñas, una marcada (Un día / Rango; Exacta / Entre). */

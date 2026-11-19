@@ -32,7 +32,7 @@
 
 ## 3. Estado actual (2026-11-18)
 
-- **Producción** `main` = `55c25f1` (2026-11-18 noche; incluye registro histórico, tickets con letra grande, letra grande en Fertirriego y GPS opcional; 115–117 corridas en producción). Antes `aa84e8f` (2026-11-18): aplicar sin inventario con casilla obligatoria, PWA (manifiesto público + iconos PNG), anular diferencia de relevo (`sql/115`: falta correrla en PRODUCCIÓN; en desarrollo ya). Siguiente a construir: **Registros históricos** (ver `proyecto-seguimiento.md` §4 «De Claude»). Próximo número de SQL: 116.
+- **Producción** `main` = `87c0d62` (2026-11-18 noche, + menú Admin en árbol y bitácora de errores, falta `sql/118` en producción; antes `55c25f1`; incluye registro histórico, tickets con letra grande, letra grande en Fertirriego y GPS opcional; 115–117 corridas en producción). Antes `aa84e8f` (2026-11-18): aplicar sin inventario con casilla obligatoria, PWA (manifiesto público + iconos PNG), anular diferencia de relevo (`sql/115`: falta correrla en PRODUCCIÓN; en desarrollo ya). Siguiente a construir: **Registros históricos** (ver `proyecto-seguimiento.md` §4 «De Claude»). Próximo número de SQL: 116.
 
 ## (estado anterior 2026-11-12)
 

@@ -14,6 +14,8 @@ export type PermisosEstacion = {
   en_nombre_de: boolean
   administrar: boolean
   gestionar_choferes: boolean
+  /** sql/119: «Eliminar por completo» (puede faltar si la base aún no tiene la 119). */
+  eliminar_definitivo?: boolean
 }
 
 export type Persona = { id: string; nombre: string }

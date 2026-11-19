@@ -19,7 +19,9 @@ import { nombrePersona } from '@/lib/fertirriego/bitacora'
 import { NOMBRE_MOVIMIENTO, cantidad } from '@/lib/fertirriego/calculos'
 import { crearOperacion, nuevoId } from '@/lib/fertirriego/operaciones'
 import type { EstadoCampo, Estacion, InfoOperacion, Operacion, Persona } from '@/lib/fertirriego/tipos'
+import { esTipoEliminable } from '@/lib/fertirriego/eliminar'
 import { EditorLineas, leerLineas, type LineaEditable } from './EditorLineas'
+import { EliminarPorCompleto } from './EliminarPorCompleto'
 import { MarcoRegistro } from './MarcoRegistro'
 
 const NOMBRE_DOC: Record<string, string> = {
@@ -65,6 +67,7 @@ export function DetalleDocumento({
   registrar,
   onCerrar,
   onGuardado,
+  onEliminado,
 }: {
   estado: EstadoCampo
   estacion: Estacion
@@ -74,7 +77,10 @@ export function DetalleDocumento({
   registrar: (...ops: Operacion[]) => Promise<void>
   onCerrar: () => void
   onGuardado: (m: string) => void
+  /** sql/119: el registro se eliminó por completo (cierra el detalle y refresca). */
+  onEliminado?: (m: string, documentoId: string) => void
 }) {
+  const [eliminando, setEliminando] = useState(false)
   // null = solo ver el detalle (el pie dice «Listo»)
   const [modo, setModo] = useState<'anular' | 'devolver' | null>(null)
   const [motivo, setMotivo] = useState('')
@@ -125,6 +131,11 @@ export function DetalleDocumento({
             }, {})
           )
         : []
+
+  const puedeEliminar = Boolean(onEliminado) && Boolean(estacion.permisos.eliminar_definitivo) && esTipoEliminable(documentoTipo)
+  if (eliminando && onEliminado) {
+    return <EliminarPorCompleto tipo={documentoTipo as never} documentoId={documentoId} descripcion={titulo} onCerrar={() => setEliminando(false)} onEliminado={onEliminado} />
+  }
 
   return (
     <MarcoRegistro
@@ -336,7 +347,7 @@ export function DetalleDocumento({
       </div>
 
       {/* ---- Acciones secundarias: sus campos aparecen solo al tocar una ---- */}
-      {modo === null && (puedeAnular || puedeDevolver) && (
+      {modo === null && (puedeAnular || puedeDevolver || puedeEliminar) && (
         <div className="flex flex-wrap gap-2" data-acciones-detalle>
           {puedeDevolver && (
             <Boton variante="secundario" className="flex-1" onClick={() => setModo('devolver')} data-modo-devolver>
@@ -346,6 +357,11 @@ export function DetalleDocumento({
           {puedeAnular && (
             <Boton variante="peligro" className="flex-1" onClick={() => setModo('anular')} data-modo-anular>
               Anular
+            </Boton>
+          )}
+          {puedeEliminar && (
+            <Boton variante="secundario" className="flex-1" onClick={() => setEliminando(true)} data-modo-eliminar>
+              Eliminar por completo
             </Boton>
           )}
         </div>

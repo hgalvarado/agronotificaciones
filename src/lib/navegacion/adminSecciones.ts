@@ -44,6 +44,8 @@ export const SECCIONES_ADMIN: SeccionAdmin[] = [
   { pantalla: 'fertirriego', accion: 'configurar', href: '/admin/fertirriego-pruebas', etiqueta: 'Pruebas Fertirriego', grupo: 'fertirriego' },
   // 116: registro histórico (permiso temporal por persona y estación)
   { pantalla: 'fertirriego', accion: 'configurar', href: '/admin/fertirriego-historico', etiqueta: 'Registro histórico', grupo: 'fertirriego' },
+  // 119: eliminar por completo registros de Fertirriego (acción propia)
+  { pantalla: 'fertirriego', accion: 'eliminar_definitivo', href: '/admin/fertirriego-eliminar', etiqueta: 'Eliminar registros', grupo: 'fertirriego' },
   // 118: bitácora de errores por usuario (acción «ver»; «atender» marca lo atendido)
   { pantalla: 'errores', href: '/admin/errores', etiqueta: 'Bitácora de errores', grupo: 'seguridad' },
   // 99: choferes, vehículos, envases y productos de campo

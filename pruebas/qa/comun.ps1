@@ -1,4 +1,4 @@
-# =====================================================================
+﻿# =====================================================================
 # Arnés de QA de AgroNotificaciones: Edge real (headless) controlado por CDP, con sesión del usuario de prueba.
 #
 # Uso (desde una prueba):   . "$PSScriptRoot\comun.ps1"; Iniciar-QA -Base http://localhost:3100
@@ -40,8 +40,10 @@ function Iniciar-QA([string]$Base = 'http://localhost:3100', [int]$Ancho = 1440,
     $cookies = @(); for ($i = 0; $i -lt $valor.Length; $i += 3180) { $cookies += @{ name = "$nombre.$([int]($i / 3180))"; value = $valor.Substring($i, [Math]::Min(3180, $valor.Length - $i)) } }
     if ($cookies.Count -eq 1) { $cookies[0].name = $nombre }
 
+    # Sin extensiones ni sincronizacion de la cuenta: con ellas, Edge abria paginas de bienvenida (Bitwarden, ColorZilla…) unos minutos despues de
+    # arrancar, la pestaña de la app quedaba en segundo plano y se frenaba su sincronizacion (fallos aleatorios a los 2-3 min).
     $script:Perfil = Join-Path $env:TEMP "edge_qa_$(Get-Random)"
-    $script:Proc = Start-Process -FilePath "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" -ArgumentList "--headless=new", "--remote-debugging-port=$Puerto", "--user-data-dir=`"$script:Perfil`"", "--disable-gpu", "--window-size=$Ancho,$Alto", "about:blank" -PassThru
+    $script:Proc = Start-Process -FilePath "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" -ArgumentList "--headless=new", "--remote-debugging-port=$Puerto", "--user-data-dir=`"$script:Perfil`"", "--disable-gpu", "--disable-extensions", "--disable-sync", "--no-first-run", "--no-default-browser-check", "--disable-background-timer-throttling", "--disable-renderer-backgrounding", "--window-size=$Ancho,$Alto", "about:blank" -PassThru
     Start-Sleep -Seconds 3
     $tab = (Invoke-RestMethod "http://127.0.0.1:$Puerto/json") | Where-Object type -eq 'page' | Select-Object -First 1
     $script:WS = New-Object System.Net.WebSockets.ClientWebSocket

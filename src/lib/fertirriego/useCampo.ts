@@ -13,6 +13,7 @@ import { createClient } from '@/lib/supabase/client'
 import { AlmacenLocal } from './almacenLocal'
 import { esperaMs } from '@/lib/errores/cola'
 import { enviarLatido, registrarError } from '@/lib/errores/registrador'
+import { quitarDocumentoDelEstado } from './eliminar'
 import { sincronizar } from './sincronizador'
 import type { LlavePersona } from './codigo'
 import type { EstadoCampo, Operacion } from './tipos'
@@ -33,6 +34,11 @@ export function useCampo(usuarioId: string) {
   // Reintento con espera creciente (118): tras una falla no se insiste cada minuto, se espera 5 s, 10 s, 20 s… (tope 5 min)
   const fallos = useRef(0)
   const proximo = useRef(0)
+
+  /** Quita al instante un documento eliminado (sql/119) del estado en pantalla; la sincronización trae después la verdad. */
+  const quitarDocumento = useCallback((documentoId: string) => {
+    setEstado((e) => (e ? quitarDocumentoDelEstado(e, documentoId) : e))
+  }, [])
 
   const recargarCola = useCallback(async () => {
     if (almacen.current) setCola(await almacen.current.listarCola())
@@ -167,6 +173,7 @@ export function useCampo(usuarioId: string) {
     registrar,
     descartar,
     sincronizarAhora,
+    quitarDocumento,
     preferencia,
     guardarPreferencia,
   }
