@@ -1,6 +1,6 @@
 # Seguimiento del proyecto · punto de partida para cualquier conversación nueva
 
-> **Actualizado: 2026-11-19.** Lo escribe y mantiene Claude. Detalle técnico e historial: `agronotificaciones/MEMORIA_CLAUDE.md`.
+> **Actualizado: 2026-11-20.** Lo escribe y mantiene Claude. Detalle técnico e historial: `agronotificaciones/MEMORIA_CLAUDE.md`.
 > Al abrir una conversación nueva: **leer este archivo primero**, después `MEMORIA_CLAUDE.md` y la memoria `agl-ordenes-sap-procesos.md`.
 > Hay una copia idéntica en `C:\HENRYALVARADO2022\AGLGestion_App\proyecto-seguimiento.md`: **actualizar las dos al terminar cada bloque.**
 > Responder siempre al usuario **en español, claro y sin jerga**.
@@ -109,7 +109,7 @@ Diseño y decisiones (no volver a preguntar): `agronotificaciones/docs/fertirrie
 - **Aplicar sin inventario** (casilla obligatoria, observación `SALDO_NEGATIVO`). **Anular diferencia de relevo** (115; permiso «Anular», motivo ≥ 25 letras). **GPS opcional** (`SIN_UBICACION`).
 - **Registro histórico** (116–117): permiso temporal por persona y estación; aplicaciones históricas que **no mueven inventario** (en AGL cuentan como Real).
 - **Modo de pruebas** (98): estaciones «PRUEBA · X», AGL no las mezcla. **Terminar ciclo** (102): AGL baja el turno, verifica la huella y lo borra de Supabase; **Reactivar** lo sube igual.
-- Estado: dos pruebas piloto con estacioneros; en producción, piloto con modo de pruebas activo.
+- Estado: dos pruebas piloto con estacioneros; **en producción ya en modo real** (2026-11-20).
 - Manuales: `agronotificaciones/docs/manuales/` y `AGLGestion_App/docs/manual_fertirriego_AGL.md`. Presentación a gerencia: `docs/presentaciones/Fertirriego_Presentacion_Gerencia.pptx`.
 
 ### 3.4 Migraciones SQL (91–121)
@@ -123,6 +123,7 @@ Diseño y decisiones (no volver a preguntar): `agronotificaciones/docs/fertirrie
 ## 4. Pendientes (en orden)
 
 ### De Claude
+0. **HECHO en rama (2026-11-20), pendiente de integrar a AGL `main`:** AGL › Fertirriego rápido y dinámico. Rama `fertirriego-rapido` (worktree en el scratchpad de la sesión; commits `4cd98f0`…`e0e5d3f`). Diseño `AGLGestion_App/docs/fertirriego-rapido-dinamico-diseno.md`, plan `docs/superpowers/plans/2026-11-20-fertirriego-rapido-dinamico.md`. Qué trae: caché en parquet (`backend/fertirriego_cache.py`), hilo de sincronización cada 2 min SOLO en la PC del dueño (`fertirriego_auto.py`, `GET /api/fertirriego/auto`), Comparativo/Análisis/vista previa leen el caché, columnas del detalle según fuentes y medida, ficha del turno con edad y lotes, aviso al bajar a mano en una PC no principal. Pruebas de Opus: 49/49 y re-prueba 20/20. **Falta:** (a) QA con clics en copia aislada (no se hizo); (b) integrar la rama a `main` de AGL y que el usuario publique con `Publicar_Produccion.bat`; (c) medir el tiempo real de apertura con los datos de producción.
 1. **SIGUIENTE a construir: bitácora de errores → AGL (sql/122).** Sin pantalla de bitácora en AgroNotificaciones (quitar `/admin/errores`). El teléfono sigue enviando errores y latidos al buzón de Supabase; AGL los baja con huella, los guarda y los borra (retención 30 días). En AGL: informe detallado (qué pasó, causa, por qué, cómo solucionarlo), semáforo por usuario, marcar atendido con nota, exportar a Excel. Diseño: `docs/bitacora-errores.md`.
 2. **Archivar por mes** lo que no es de un turno (recepciones, conteos, relevos, traslados, envases), como «Terminar ciclo».
 3. **Etapa E de Fertirriego:** alertas, sugerencia de envío y cierre mensual. Sin umbrales fijos: comparar contra el comportamiento normal de cada estación.
@@ -132,9 +133,7 @@ Diseño y decisiones (no volver a preguntar): `agronotificaciones/docs/fertirrie
 7. **Menores:** título del modal muy alto con letra grande (`Modal.tsx`); «Estacionero» partido en el encabezado; selectores de la bitácora sin alternar única/múltiple; recepciones históricas (opcional); probar Shift+F10 en Edge; decidir si la × de filtros de AGL quita también el filtro aplicado; regresión `fertirriego_campo.ps1` sin correr tras el cambio a listas.
 
 ### Del usuario
-- Dar **«Publicar» (Fertirriego · Conexión AGL)** al usuario técnico («Integración AGL») para que AGL borre de Supabase las copias (sin esto AGL guarda la copia pero no la borra de Supabase; hasta hoy `fert_eliminaciones` está vacía).
-- Verificado el 2026-11-19: ningún rol lo tiene (solo el administrador). Revisar de nuevo si se cambian permisos.
-- Pasar del modo de pruebas a uso real al terminar el piloto.
+- (Hecho 2026-11-20) El usuario técnico «Integración AGL» ya tiene «Publicar» en producción, y Fertirriego ya está en **modo real** (fuera del modo de pruebas).
 - PWA: quien tenga el acceso directo sin logo, que lo quite y lo agregue de nuevo.
 - /OS01: pendientes de §6.2. Opcional: borrar `respaldo.*_m104` (libera espacio).
 
