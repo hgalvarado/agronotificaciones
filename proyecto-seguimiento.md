@@ -197,5 +197,5 @@ SAP es la única fuente de verdad: /OS01 replica la COHV (órdenes) y la KOB1 (s
 - **«Medir en»** del Comparativo: ¿debe arrancar en Cantidad? (hoy Dinero).
 - **«Sin base»** (real sin plan): ¿gris o ámbar? (hoy gris; puede esconder alertas).
 - **Ácido fosfórico 0-54-0**: P = 104.78 en /CF06 (se esperaba 54). Revisar el dato.
-- **AGL en teléfono**: ¿debe tener layout para teléfono? (hoy min-width 720 px en `styles.css`).
+- ~~AGL en teléfono~~: **respondido 2026-11-20: AGL NO se usa en teléfono** (solo escritorio); no probar ni diseñar para móvil en AGL.
 - **Permiso «Publicar» al técnico de AGL**: confirmar cómo se asigna (§4, Del usuario).
