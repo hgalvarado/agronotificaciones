@@ -12,7 +12,8 @@ import { Boton } from '@/components/ui/Primitivos'
 import { hoyIso, sumarDias } from '@/lib/fechas/zona'
 import { cantidad } from '@/lib/fertirriego/calculos'
 import { aplicacionesDelTurno, ddtsDelTurno, tarjetasDelTurno, textoDdt, type ProductoTarjeta, type TarjetaDdt } from '@/lib/fertirriego/ddt'
-import type { EstadoCampo, Estacion, Material, Operacion } from '@/lib/fertirriego/tipos'
+import type { EstadoCampo, Estacion, Material, Operacion, Persona } from '@/lib/fertirriego/tipos'
+import { puedeRegistrar } from './MarcoRegistro'
 
 const DIA = new Intl.DateTimeFormat('es-HN', { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short' })
 const dia = (iso: string) => DIA.format(new Date(`${iso}T12:00:00Z`))
@@ -28,17 +29,21 @@ export function VistaTurnos({
   estado,
   cola,
   estacion,
+  yo,
   onAplicar,
   onHoras,
 }: {
   estado: EstadoCampo
   cola: Operacion[]
   estacion: Estacion
+  /** Quien mira: sin la estación a su cargo (ni «registrar por otro») no puede Aplicar ni registrar Horas. */
+  yo: Persona
   /** eleccion: `plan:AAAA-MM-DD` (DDT de la tarjeta) o `extra`. */
   onAplicar: (turnoId: string, fecha: string, eleccion?: string) => void
   onHoras: (turnoId: string, fecha: string) => void
 }) {
   const turnos = estado.turnos.filter((t) => t.estacion_id === estacion.id)
+  const regla = puedeRegistrar(estacion, yo)
   const [abierto, setAbierto] = useState<string | null>(turnos.length === 1 ? turnos[0].id : null)
   const [todo, setTodo] = useState(false)
   const material = (id: string): Material | undefined => estado.materiales.find((m) => m.id === id)
@@ -159,14 +164,20 @@ export function VistaTurnos({
                               <div className="mt-2 grid grid-cols-2 gap-2" data-acciones-tarjeta>
                                 <Boton
                                   tamano="lg" className="w-full"
+                                  disabled={!regla.si}
                                   onClick={() => onAplicar(t.id, c.tipo === 'plan' ? (c.fecha <= hoy ? c.fecha : hoy) : (c.fechasReales[0] ?? hoy), c.tipo === 'plan' ? `plan:${c.fecha}` : 'extra')}
                                   data-aplicar-dia
                                 >
                                   Aplicar
                                 </Boton>
-                                <Boton variante="secundario" tamano="lg" className="w-full" onClick={() => onHoras(t.id, fechaHoras <= hoy ? fechaHoras : hoy)} data-horas-dia>
+                                <Boton variante="secundario" tamano="lg" className="w-full" disabled={!regla.si} onClick={() => onHoras(t.id, fechaHoras <= hoy ? fechaHoras : hoy)} data-horas-dia>
                                   Horas
                                 </Boton>
+                                {!regla.si && (
+                                  <p className="col-span-2 text-xs text-amber-800" data-sin-estacion-asignada>
+                                    {regla.motivo}
+                                  </p>
+                                )}
                               </div>
                             )}
                           </div>

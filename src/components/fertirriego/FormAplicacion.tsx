@@ -26,6 +26,8 @@ import { crearOperacion, nuevoId } from '@/lib/fertirriego/operaciones'
 import { productosUsados } from '@/lib/fertirriego/productos'
 import type { EstadoCampo, Estacion, Operacion, Persona, PermisoHistorico } from '@/lib/fertirriego/tipos'
 import { claveBorrador, useAutoguardado, useBorrador } from '@/lib/fertirriego/borrador'
+import { armarBitacora, horasCambiadas, horasDesde, type DatosHoras } from '@/lib/fertirriego/horas'
+import { CamposHoras } from './CamposHoras'
 import { EditorLineas, leerLineas, useCrearProducto, type LineaEditable } from './EditorLineas'
 import { MarcoRegistro } from './MarcoRegistro'
 
@@ -43,6 +45,9 @@ type DatosAplicacion = {
   /** `plan:AAAA-MM-DD`, 'extra' o null (= automático: el DDT del plan de ese día) */
   eleccion?: string | null
   productosNuevos?: Operacion[]
+  /** Horas de riego escritas en este mismo formulario (null/ausente = no ha escrito nada) y si la sección está abierta */
+  horas?: DatosHoras | null
+  horasAbierto?: boolean
 }
 
 export function FormAplicacion({
@@ -96,7 +101,10 @@ export function FormAplicacion({
   // La casilla vale SOLO para el faltante exacto que se marcó: si cambia un producto o una cantidad, hay que marcarla otra vez
   const [aceptada, setAceptada] = useState<string | null>(null)
   const productos = useCrearProducto(estado.materiales, b?.productosNuevos, con99 && estacion.permisos.recibir)
-  useAutoguardado(borrador, { turno, fecha, ejecutor2, editadas, eleccion: elegida, productosNuevos: productos.nuevos })
+  // Horas de riego en el mismo formulario (no en el histórico: ahí no hay bitácora)
+  const [horasAbierto, setHorasAbierto] = useState(b?.horasAbierto ?? false)
+  const [horasEditadas, setHorasEditadas] = useState<DatosHoras | null>(b?.horas ?? null)
+  useAutoguardado(borrador, { turno, fecha, ejecutor2, editadas, eleccion: elegida, productosNuevos: productos.nuevos, horas: horasEditadas, horasAbierto })
 
   const t = turnos.find((x) => x.id === turno)
   const ddts = useMemo(() => ddtsDelTurno(estado.plan, turno), [estado.plan, turno])
@@ -135,6 +143,13 @@ export function FormAplicacion({
         const sel = ordenados.find((d) => d.fecha === fechaPlan)
         return (sel && !primeros.includes(sel) ? [...primeros, sel] : primeros).sort((a, b) => a.fecha.localeCompare(b.fecha))
       })()
+
+  // Lo ya registrado de horas ese turno y día (se muestra y se completa; lo que no se toca no se vuelve a mandar)
+  const horasBase = useMemo(
+    () => horasDesde(estado.bitacora_riego.find((x) => x.turno_ciclo_id === turno && x.fecha === fecha)),
+    [estado.bitacora_riego, turno, fecha]
+  )
+  const horas = horasEditadas ?? horasBase
 
   const real = t ? ddtReal(t.fecha_siembra, fecha) : null
   const diferencia = real !== null && ddtElegido ? real - ddtElegido.ddt : null
@@ -202,6 +217,19 @@ export function FormAplicacion({
           lineas: r.lineas,
         }
         if (faltante.length) datos.acepta_negativo = true
+        // Horas de riego del mismo turno y día, si se escribieron (se valida ANTES de guardar nada)
+        let opHoras: Operacion | null = null
+        if (!historico && horasAbierto && horasEditadas && horasCambiadas(horasEditadas, horasBase)) {
+          const h = armarBitacora(horasEditadas, {
+            estacion_id: estacion.id,
+            turno_ciclo_id: turno,
+            fecha,
+            ejecutor_id: ejecutor,
+            ejecutor2_id: ejecutor2 || null,
+          })
+          if ('error' in h) return h.error
+          if ('datos' in h) opHoras = crearOperacion('bitacora', h.datos, { ubicacion, resumen: `Bitácora de riego · ${t?.turno ?? 'turno'} · ${fecha}` })
+        }
         const tipoOp = historico ? 'aplicacion_historica' : 'aplicacion'
         if (ddtElegido) {
           datos.ddt_plan = ddtElegido.ddt
@@ -215,22 +243,19 @@ export function FormAplicacion({
             enNombreDe,
             resumen: `${historico ? 'Aplicación histórica' : 'Aplicación'} · ${t?.turno ?? 'turno'} · ${etiqueta} · ${r.lineas.length} producto(s)`,
           }),
+          ...(opHoras ? [opHoras] : []),
         ]
       }}
     >
       {historico && (
-        <div
-          className="sticky top-0 z-10 rounded-xl bg-sky-50 p-3 text-sm text-sky-900 shadow-md ring-2 ring-inset ring-sky-400"
-          role="note"
-          data-alerta-historico
-        >
-          <strong className="block">Registro inicial del proceso</strong>
-          Lo que ya se aplicó antes de usar el sistema. <strong>NO mueve el inventario.</strong>
-          <span className="mt-1 block text-xs font-semibold" data-dias-historico={historico.dias_restantes}>
+        // Nota discreta y en línea (no flota ni tapa el formulario): una línea pequeña al inicio
+        <p className="text-xs leading-snug text-slate-500" role="note" data-alerta-historico>
+          Registro inicial del proceso: lo aplicado antes de usar el sistema; no mueve el inventario.{' '}
+          <span data-dias-historico={historico.dias_restantes}>
             Permiso hasta el {historico.hasta}
             {historico.dias_restantes <= 0 ? ' (vence hoy)' : ` · te quedan ${historico.dias_restantes} día(s)`}.
           </span>
-        </div>
+        </p>
       )}
       {turnos.length === 0 ? (
         <Alerta tono="ambar">Esta estación no tiene turnos activos publicados desde AGL.</Alerta>
@@ -364,6 +389,30 @@ export function FormAplicacion({
           crearProducto={productos.crearProducto}
         />
       </Campo>
+
+      {!historico && (
+        <div className="rounded-xl ring-1 ring-inset ring-slate-200" data-seccion-horas>
+          <button
+            type="button"
+            aria-expanded={horasAbierto}
+            onClick={() => setHorasAbierto((v) => !v)}
+            className="flex min-h-11 w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm font-semibold text-slate-800"
+            data-abrir-horas
+          >
+            <span>
+              Registrar horas de riego {turno ? `· ${t?.turno ?? ''} · ${fecha}` : ''}
+              {horasEditadas && horasCambiadas(horasEditadas, horasBase) && <span className="ml-2 rounded-full bg-sky-100 px-2 py-0.5 text-xs font-bold text-sky-800">con datos</span>}
+            </span>
+            <span className="text-xs text-slate-400">{horasAbierto ? '▾' : '▸'}</span>
+          </button>
+          {horasAbierto && (
+            <div className="flex flex-col gap-3 border-t border-slate-100 p-3">
+              <p className="text-xs text-slate-500">Opcional: se guardan junto con la aplicación. Es lo mismo que el botón «Horas» (no mueve la bodega).</p>
+              <CamposHoras valor={horas} onCambiar={setHorasEditadas} />
+            </div>
+          )}
+        </div>
+      )}
 
       {estacion.personas.length > 1 && (
         <Campo etiqueta="Otro estacionero que participó (opcional)">

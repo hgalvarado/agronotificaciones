@@ -181,10 +181,9 @@ export function DetalleDocumento({
     >
       <div className="flex flex-col gap-2 rounded-xl bg-slate-50 p-3 text-sm ring-1 ring-inset ring-slate-200" data-detalle-documento={documentoTipo}>
         {historica && (
-          <div className="rounded-lg bg-sky-50 p-2.5 text-sky-900 ring-1 ring-inset ring-sky-200" data-detalle-historico>
-            <p className="font-bold">Registro histórico · Registro inicial del proceso</p>
-            <p className="text-xs">No movió el inventario: es lo que ya se había aplicado antes de usar el sistema.</p>
-          </div>
+          <p className="text-xs text-slate-500" data-detalle-historico>
+            Registro histórico (registro inicial del proceso): no movió el inventario.
+          </p>
         )}
         {anulado && (
           <p className="font-semibold text-red-700" data-detalle-anulado>

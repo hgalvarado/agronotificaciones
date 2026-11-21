@@ -183,15 +183,17 @@ export function useCrearProducto(materiales: Material[], inicial: Operacion[] | 
 /** Error de leerLineas cuando ninguna fila trae cantidad (cada formulario puede explicarlo a su manera). */
 export const SIN_LINEAS = 'Agrega al menos un producto con su cantidad.'
 
-/** Lee las líneas: número válido > 0, sin repetidos. Devuelve el error para mostrar, o las líneas. */
+/** Lee las líneas: número válido > 0 (las vacías o en 0 no se registran), sin repetidos. Devuelve el error para mostrar, o las líneas. */
 export function leerLineas(lineas: LineaEditable[]): { error: string } | { lineas: { material_id: string; cantidad: number }[] } {
   const validas: { material_id: string; cantidad: number }[] = []
   for (const l of lineas) {
     // Cantidad vacía = ese producto no va (p. ej. del plan no se aplicó el ácido, o solo sobró uno de dos)
     if (!l.cantidad.trim()) continue
-    if (!l.material_id) return { error: 'Elige el producto de cada fila (o quita la fila).' }
     const n = Number(l.cantidad.replace(',', '.'))
-    if (!Number.isFinite(n) || n <= 0) return { error: 'Cada producto necesita una cantidad mayor que cero.' }
+    // Cantidad 0 = igual que vacía: ese producto no se registra (no hace falta quitar la fila)
+    if (n === 0) continue
+    if (!l.material_id) return { error: 'Elige el producto de cada fila (o quita la fila).' }
+    if (!Number.isFinite(n) || n < 0) return { error: 'Cada producto necesita una cantidad válida (mayor que cero, o 0 / vacía si no se usó).' }
     if (n > 1_000_000) return { error: 'Una cantidad es demasiado grande. Revisa la unidad.' }
     if (validas.some((v) => v.material_id === l.material_id)) return { error: 'Un producto está repetido: súmalo en una sola fila.' }
     validas.push({ material_id: l.material_id, cantidad: Math.round(n * 10000) / 10000 })
