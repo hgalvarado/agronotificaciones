@@ -54,6 +54,11 @@ export function useConsultaViva<T>({ clave, leer, tablas = [], habilitado = true
 
   const ultima = useRef(0)
   const turno = useRef(0)
+  // Cuántos parches locales se han aplicado (para detectar lecturas que quedaron viejas)
+  const parches = useRef(0)
+  // Lectura silenciosa agendada para después (fin del silencio o repetición de una descartada)
+  const temporizador = useRef<number | undefined>(undefined)
+  const reprogramar = useRef<(ms: number) => void>(() => {})
   const leerRef = useRef(leer)
   useEffect(() => {
     leerRef.current = leer
@@ -66,9 +71,19 @@ export function useConsultaViva<T>({ clave, leer, tablas = [], habilitado = true
       const mio = ++turno.current
       ultima.current = Date.now()
       if (encender && !silencioso) setCargando(true)
+      const parches0 = parches.current
       const { datos, error: e } = await leerRef.current()
       if (mio !== turno.current) return   // llegó otra consulta más nueva (ej. cambió el rango)
-      if (!silencioso) setCargando(false)
+      // Una lectura silenciosa que empezó ANTES de un guardado de esta pantalla puede traer lo viejo y
+      // pisar el cambio: se descarta y se repite un momento después
+      // SIEMPRE se apaga (también si se descarta): si una consulta con «cargando» fue superada por una
+      // silenciosa (aviso de la base), la silenciosa no lo apagaba y la pantalla se quedaba en
+      // «Consultando…» para siempre
+      setCargando(false)
+      if (silencioso && !e && parches.current !== parches0) {
+        reprogramar.current(1500)
+        return
+      }
       if (e) {
         setError(e)
         if (!silencioso) setFilas([])
@@ -94,10 +109,48 @@ export function useConsultaViva<T>({ clave, leer, tablas = [], habilitado = true
 
   // Ponerse al día solo: al volver a la ventana y cuando la base avisa cambios (lib/datos/useAvisosCambios).
   // Nunca mientras se escribe en un campo; siempre en silencio (sin atenuar ni desmontar la tabla)
-  const refrescar = useCallback(() => void consultar(true), [consultar])
+  // Los avisos que la propia pantalla provoca al guardar (eco) se ignoran un momento: ya se parchó lo suyo
+  const silencioHasta = useRef(0)
+  useEffect(() => {
+    reprogramar.current = (ms: number) => {
+      window.clearTimeout(temporizador.current)
+      temporizador.current = window.setTimeout(() => void consultar(true), ms)
+    }
+    return () => window.clearTimeout(temporizador.current)
+  }, [consultar])
+  const refrescar = useCallback(() => {
+    const falta = silencioHasta.current - Date.now()
+    // Durante el silencio NO se descarta el aviso (podría ser de otra persona): se atiende al terminar
+    if (falta > 0) {
+      reprogramar.current(falta + 100)
+      return
+    }
+    void consultar(true)
+  }, [consultar])
   const ultimaVez = useCallback(() => ultima.current, [])
   useAvisosCambios({ tablas, alCambiar: refrescar, habilitado, ultima: ultimaVez })
+
+  /** Cambia las filas en memoria AL INSTANTE (y en la caché), sin ir a la base. */
+  const parchar = useCallback(
+    (fn: (previas: T[]) => T[]) => {
+      parches.current++
+      setFilas((prev) => {
+        const nuevas = fn(prev ?? [])
+        cache.set(clave, { filas: nuevas, en: Date.now() })
+        return nuevas
+      })
+    },
+    [clave]
+  )
+
+  /** Ignora los avisos de la base durante `ms` (el eco de lo que esta pantalla acaba de guardar). */
+  const silenciarAvisos = useCallback((ms: number) => {
+    silencioHasta.current = Date.now() + ms
+  }, [])
+
   return {
+    parchar,
+    silenciarAvisos,
     filas,
     cargando,
     error,

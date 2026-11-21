@@ -15,7 +15,7 @@
  */
 
 import Link from 'next/link'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { leerTodo } from '@/lib/supabase/paginar'
 import { armarReglas, canExecuteAction, type ReglasPlanas } from '@/lib/permisos/clientABAC'
@@ -272,7 +272,14 @@ export function ControlLabores({
   // Consulta viva (lib/datos/useConsultaViva): al volver se ve al instante lo último traído y se actualiza sola
   // —al regresar a la ventana o cuando cambian labores, horómetros o tickets—. Espera a `memoriaLista` para pedir
   // directamente el rango y las temporadas recordadas.
-  const { filas, cargando, error: errorConsulta, recargar } = useConsultaViva<FilaLabor>({
+  const {
+    filas,
+    cargando,
+    error: errorConsulta,
+    recargar,
+    parchar,
+    silenciarAvisos,
+  } = useConsultaViva<FilaLabor>({
     clave: `labores:${consulta.desde}:${consulta.hasta}:${temporadas_.join('|')}`,
     leer,
     tablas: ['registro_detalle', 'registros', 'horometros', 'tickets'],
@@ -723,7 +730,144 @@ export function ControlLabores({
     detalle_comentarios: 'comentarios',
   }
 
-  async function editarCelda(fila: Fila, campo: string, valor: unknown) {
+  /**
+   * Lo que se ve de inmediato al guardar, con lo que ya se sabe en el navegador (los catálogos).
+   * Lo derivado por la base (horas prorrateadas, categoría, «lleva etapa») llega después, por
+   * `refrescarHorometros`, sin que nadie espere.
+   */
+  function parcheLocal(cual: CampoLinea, valor: unknown): Partial<FilaLabor> {
+    const vacio = valor === null || valor === ''
+    const id = vacio ? null : String(valor)
+    switch (cual) {
+      case 'etapa':
+        return { etapa: vacio ? null : Number(valor) }
+      case 'comentarios':
+        return { detalle_comentarios: vacio ? null : String(valor) }
+      case 'avance_mz':
+        return { avance_mz: vacio ? null : Number(valor) }
+      case 'proveedor_plastico_id':
+        return {
+          proveedor_plastico_id: id,
+          proveedor_plastico: catalogosEdicion.proveedores.find((p) => p.id === id)?.nombre ?? null,
+        }
+      case 'proveedor_manguera_id':
+        return {
+          proveedor_manguera_id: id,
+          proveedor_manguera: catalogosEdicion.proveedores.find((p) => p.id === id)?.nombre ?? null,
+        }
+      case 'labor_id': {
+        const l = catalogosEdicion.labores.find((x) => x.id === id)
+        return l ? { labor_id: l.id, labor_nombre: l.nombre } : {}
+      }
+      case 'tarea_id': {
+        const t = catalogosEdicion.tareasSap.find((x) => x.id === id)
+        return t ? { tarea_id: t.id, tarea_codigo: t.codigo, tarea_nombre: t.nombre } : {}
+      }
+      case 'implemento_fisico_id': {
+        const i = catalogosEdicion.implementosFisicos.find((x) => x.id === id)
+        return { implemento_fisico_id: id, codigo_implemento: i?.codigo ?? null }
+      }
+      case 'lote_temporada_id': {
+        const l = catalogosEdicion.lotes.find((x) => x.lote_temporada_id === id)
+        return l ? { lote_temporada_id: l.lote_temporada_id, ut: l.nomenclatura } : {}
+      }
+      default:
+        return {}
+    }
+  }
+
+  const secuenciaHorometro = useRef(new Map<string, number>())
+  const firmaVista = useRef('')
+  const firmaActual = `${consulta.desde}|${consulta.hasta}|${temporadas_.join(',')}`
+  useEffect(() => {
+    firmaVista.current = firmaActual
+  }, [firmaActual])
+
+  /**
+   * Trae de nuevo SOLO las líneas de los horómetros tocados (lo que cambia al guardar: horas
+   * prorrateadas, separación del registro…), en segundo plano. Antes se volvía a leer el rango
+   * entero —miles de filas, tramo por tramo— y la pantalla se quedaba en «Consultando…».
+   */
+  function refrescarHorometros(horometroIds: (string | undefined | null)[]) {
+    const ids = [...new Set(horometroIds.filter((h): h is string => Boolean(h)))]
+    if (ids.length === 0) return
+    // Cada horómetro lleva su número de pedido: si dos lecturas del mismo llegan en desorden,
+    // la vieja se descarta. Y si mientras tanto cambió el rango o la temporada, también.
+    const mios = new Map<string, number>()
+    for (const h of ids) {
+      const n = (secuenciaHorometro.current.get(h) ?? 0) + 1
+      secuenciaHorometro.current.set(h, n)
+      mios.set(h, n)
+    }
+    const firmaPedida = firmaVista.current
+    void (async () => {
+      const pedir = () => {
+        let q = supabase.from('v_labores_control').select('*').in('horometro_id', ids)
+        // Lo mismo que la lectura completa: respeta el filtro de temporada
+        if (temporadas_.length > 0) q = q.in('temporada_id', temporadas_)
+        return q
+      }
+      let { data, error: e } = await pedir()
+      if (e || !data) {
+        // Base ocupada o corte breve: un reintento a los 1.5 s; si vuelve a fallar, la lectura
+        // silenciosa del rango (aviso de la base o al volver a la ventana) lo concilia
+        await new Promise((r) => window.setTimeout(r, 1500))
+        ;({ data, error: e } = await pedir())
+        if (e || !data) {
+          silenciarAvisos(0)
+          void recargar(true)
+          return
+        }
+      }
+      if (firmaPedida !== firmaVista.current) return
+      const vigentes = new Set(ids.filter((h) => secuenciaHorometro.current.get(h) === mios.get(h)))
+      if (vigentes.size === 0) return
+      const nuevas = new Map(
+        (data as FilaLabor[]).filter((f) => vigentes.has(f.horometro_id)).map((f) => [f.detalle_id, f])
+      )
+      parchar((previas) => {
+        const ya = new Set<string>()
+        const resultado: FilaLabor[] = []
+        for (const p of previas) {
+          const n = nuevas.get(p.detalle_id)
+          if (n) {
+            ya.add(p.detalle_id)
+            resultado.push(n)
+          } else if (!vigentes.has(p.horometro_id)) {
+            resultado.push(p)
+          }
+          // Las de un horómetro releído que ya no vienen (borradas por otro, o fuera de tu zona/temporada) se quitan
+        }
+        // Lo que no estaba (línea que nació al separar): se agrega
+        for (const [k, n] of nuevas) if (!ya.has(k)) resultado.push(n)
+        return resultado
+      })
+    })()
+  }
+
+  /** Aplica un cambio guardado: se ve al instante y se concilia detrás. */
+  function aplicarGuardado(
+    detalleIds: string[],
+    horometroIds: (string | undefined | null)[],
+    parche: Partial<FilaLabor>
+  ) {
+    const ids = new Set(detalleIds)
+    parchar((previas) => previas.map((f) => (ids.has(f.detalle_id) ? { ...f, ...parche } : f)))
+    // El eco que la base manda por este mismo cambio no debe disparar otra lectura completa
+    silenciarAvisos(4000)
+    refrescarHorometros(horometroIds)
+  }
+
+  // Los guardados salen UNO A LA VEZ, en el orden en que se hicieron: varias ediciones seguidas
+  // (en el mismo horómetro) mandadas juntas se hacían fila en la base y una se cancelaba por tiempo
+  const colaGuardado = useRef<Promise<unknown>>(Promise.resolve())
+  function editarCelda(fila: Fila, campo: string, valor: unknown): Promise<void> {
+    const mia = colaGuardado.current.then(() => guardarCelda(fila, campo, valor))
+    colaGuardado.current = mia.catch(() => undefined)
+    return mia
+  }
+
+  async function guardarCelda(fila: Fila, campo: string, valor: unknown) {
     // Las horas notificadas no son un campo más de la línea: marcarlas a
     // mano obliga a repartir de nuevo el resto del horómetro, y eso lo
     // hace su propia función en una sola transacción.
@@ -732,19 +876,24 @@ export function ControlLabores({
       const horas = valor === null || valor === '' ? null : Number(valor)
       const { error: e } = await editarHorasDeLinea(fila.detalle_id, horas)
       if (e) {
-        return setError(
-          mensajeDeError(
-            e,
-            'No se pudieron guardar las horas. Si dice que no existe «fn_horas_de_linea», falta correr la migración 42.'
-          )
+        const m = mensajeDeError(
+          e,
+          'No se pudieron guardar las horas. Si dice que no existe «fn_horas_de_linea», falta correr la migración 42.'
         )
+        setError(m)
+        // Se lanza para que la celda vuelva a su valor y el pegado cuente la rechazada
+        throw new Error(m)
       }
       setAviso(
         horas === null
           ? 'Esa línea volvió al reparto automático.'
           : 'Horas puestas a mano: el reparto ya no las toca y el resto se repartió entre los demás lotes.'
       )
-      return recargar()
+      aplicarGuardado([fila.detalle_id], [fila.horometro_id], {
+        ...(horas !== null ? { horas_linea: horas } : {}),
+        horas_manual: horas !== null,
+      })
+      return
     }
 
     const cual = CAMPOS[campo]
@@ -753,19 +902,19 @@ export function ControlLabores({
     setError(null)
     const { error: e } = await editarLinea(fila.detalle_id, cual, valor)
     if (e) {
-      return setError(
-        mensajeDeError(
-          e,
-          'No se pudo guardar el cambio. Si dice que no existe «fn_editar_linea_labor», falta correr la migración 31.'
-        )
+      const m = mensajeDeError(
+        e,
+        'No se pudo guardar el cambio. Si dice que no existe «fn_editar_linea_labor», falta correr la migración 31.'
       )
+      setError(m)
+      throw new Error(m)
     }
     if (Number(fila.lotes_del_registro ?? 1) > 1 && cual !== 'avance_mz' && cual !== 'lote_temporada_id') {
       setAviso(
         `Esa línea se separó del ticket ${fila.ticket_codigo}: los demás lotes se quedaron como estaban.`
       )
     }
-    await recargar()
+    aplicarGuardado([fila.detalle_id], [fila.horometro_id], parcheLocal(cual, valor))
   }
 
   async function eliminar(aBorrar: Fila[], limpiar: () => void) {
@@ -808,7 +957,11 @@ export function ControlLabores({
     if (e) return setError(mensajeDeError(e, 'No se pudieron eliminar las líneas.'))
     limpiar()
     setAviso(`${n} ${n === 1 ? 'línea eliminada' : 'líneas eliminadas'}.`)
-    await recargar()
+    // Desaparecen al instante; la base reparte las horas de lo que quedó y eso llega por detrás
+    const fuera = new Set(aBorrar.map((f) => f.detalle_id))
+    parchar((previas) => previas.filter((f) => !fuera.has(f.detalle_id)))
+    silenciarAvisos(4000)
+    refrescarHorometros(aBorrar.map((f) => f.horometro_id))
   }
 
   async function editarEnMasa(ids: string[], limpiar: () => void, campo: CampoLinea, valor: unknown) {
@@ -826,7 +979,12 @@ export function ControlLabores({
     setOcupado(false)
     limpiar()
     setAviso(`${ids.length} ${ids.length === 1 ? 'línea actualizada' : 'líneas actualizadas'}.`)
-    await recargar()
+    const tocadas = new Set(ids)
+    aplicarGuardado(
+      ids,
+      cargadas.filter((f) => tocadas.has(f.detalle_id)).map((f) => f.horometro_id),
+      parcheLocal(campo, valor)
+    )
   }
 
   async function reasignarTemporada(detalleIds: string[], temporadaId: string) {
@@ -843,7 +1001,8 @@ export function ControlLabores({
       )
     }
     const fila = (data as { movidos: number; sin_cambio: number; faltantes: string[] }[] | null)?.[0]
-    await recargar()
+    silenciarAvisos(4000)
+    void recargar(true)
     return fila ?? { movidos: 0, sin_cambio: 0, faltantes: [] }
   }
 
@@ -1110,9 +1269,12 @@ export function ControlLabores({
         fila={editando as FilaEditable | null}
         catalogos={catalogosEdicion}
         onCerrar={() => setEditando(null)}
-        onGuardado={async () => {
-          await recargar()
+        onGuardado={() => {
+          // Sin esperar la lectura completa: el modal se cierra y la tabla se pone al día por detrás
           setAviso('Labor actualizada.')
+          silenciarAvisos(4000)
+          if (editando) refrescarHorometros([editando.horometro_id])
+          void recargar(true)
         }}
       />
 
@@ -1121,9 +1283,8 @@ export function ControlLabores({
         temporadas={temporadas}
         onCerrar={() => setEnTemporada(null)}
         onAplicar={async (temporadaId) => {
-          const r = await reasignarTemporada(enTemporada ?? [], temporadaId)
-          setEnTemporada(null)
-          return r
+          // El modal queda abierto para mostrar el resumen («N líneas movidas…»); se cierra con su botón
+          return reasignarTemporada(enTemporada ?? [], temporadaId)
         }}
       />
 
