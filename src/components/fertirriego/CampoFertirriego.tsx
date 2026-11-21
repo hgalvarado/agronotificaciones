@@ -408,6 +408,7 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
                 estado={estado}
                 cola={cola}
                 estacion={estacion}
+                yo={estado.yo}
                 onAplicar={(turno, fecha, eleccion) => setVentana({ tipo: 'aplicar', turno, fecha, eleccion })}
                 onHoras={(turno, fecha) => setVentana({ tipo: 'horas', turno, fecha })}
               />
