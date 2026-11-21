@@ -976,7 +976,7 @@ function Celda<T extends { id: string }>({
 }: {
   fila: T
   columna: ColumnaGrid<T>
-  onGuardar: (valor: unknown) => void
+  onGuardar: (valor: unknown) => Promise<void> | void
 }) {
   const inicial = columna.valorEdicion
     ? columna.valorEdicion(fila)
@@ -997,6 +997,13 @@ function Celda<T extends { id: string }>({
   if (inicial !== servidor) {
     setServidor(inicial)
     if (!editando) setBorrador(inicial)
+  }
+
+  // Si el guardado falla (la pantalla lanza el error), la celda vuelve a lo que SÍ está en la base:
+  // no se queda mostrando un valor que no se guardó
+  const guardar = (valor: unknown) => {
+    const previo = inicial
+    void Promise.resolve(onGuardar(valor)).catch(() => setBorrador(previo))
   }
 
   // Al entrar a editar, el control recibe el foco; el selector, además,
@@ -1076,7 +1083,7 @@ function Celda<T extends { id: string }>({
             e.preventDefault()
             if (inicial !== '') {
               setBorrador('')
-              onGuardar(null)
+              guardar(null)
             }
           } else if (e.key === 'ArrowDown') {
             e.preventDefault()
@@ -1130,7 +1137,7 @@ function Celda<T extends { id: string }>({
           onCerrar={() => salir(true)}
           onElegir={(v) => {
             setBorrador(v)
-            if (v !== inicial) onGuardar(v || null)
+            if (v !== inicial) guardar(v || null)
             salir(true)
           }}
         />
@@ -1145,9 +1152,9 @@ function Celda<T extends { id: string }>({
         setBorrador(inicial)
         return
       }
-      return onGuardar(borrador === '' ? null : Number(borrador))
+      return guardar(borrador === '' ? null : Number(borrador))
     }
-    onGuardar(borrador === '' ? null : borrador)
+    guardar(borrador === '' ? null : borrador)
   }
 
   return (

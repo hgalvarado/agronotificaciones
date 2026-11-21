@@ -549,7 +549,7 @@ export function ControlHorometros({
       const revisado = validarHorasHombre(valor === null || valor === undefined ? '' : String(valor))
       if (!revisado.ok) {
         setError(revisado.error)
-        await recargar()
+        void recargar(true)
         return
       }
       valor = revisado.valor
@@ -559,8 +559,14 @@ export function ControlHorometros({
       .update({ [columna]: valor })
       .eq('id', fila.id)
 
-    if (e) return setError(mensajeDeError(e, 'No se pudo guardar el cambio.'))
-    await recargar()
+    if (e) {
+      const m = mensajeDeError(e, 'No se pudo guardar el cambio.')
+      setError(m)
+      // Se lanza para que la celda vuelva a su valor y no se quede mostrando algo que no se guardó
+      throw new Error(m)
+    }
+    // Silenciosa: la tabla no se atenúa ni muestra «Consultando…» mientras se pone al día
+    void recargar(true)
   }
 
   async function editarEnMasa(ids: string[], limpiar: () => void, campos: Record<string, unknown>) {
@@ -571,7 +577,7 @@ export function ControlHorometros({
     if (e) return setError(mensajeDeError(e, 'No se pudieron guardar los cambios.'))
     limpiar()
     setAviso(`${ids.length} ${ids.length === 1 ? 'horómetro actualizado' : 'horómetros actualizados'}.`)
-    await recargar()
+    void recargar(true)
   }
 
   async function eliminar(ids: string[], limpiar: () => void) {
@@ -592,7 +598,7 @@ export function ControlHorometros({
     if (e) return setError(mensajeDeError(e, 'No se pudieron eliminar los horómetros.'))
     limpiar()
     setAviso(`${ids.length} ${ids.length === 1 ? 'horómetro eliminado' : 'horómetros eliminados'}.`)
-    await recargar()
+    void recargar(true)
   }
 
   /* -------------------------------- Vista ------------------------------ */

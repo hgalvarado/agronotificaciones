@@ -33,10 +33,10 @@
 
 ## 3. Estado actual (2026-11-19)
 
-- **Producción** `main` = `fa8e2ea` (publicado 2026-11-19): «Eliminar por completo» (sql/119–121) con copia de auditoría en AGL. Falta confirmar que el usuario corrió 119→120→121 en producción.
-- `desarrollo` = `296a7f2`. SQL corridas hasta la 118 en producción (115–117 el 2026-11-18). **Próximo número libre: 122.**
-- AGL `main` = `16adc8f`, **sin publicar** (falta `Publicar_Produccion.bat` y reiniciar).
-- Pendiente principal: bitácora de errores → AGL (sql/122). Detalle y pendientes en `proyecto-seguimiento.md` §4.
+- **Producción** `main` = `7a17a2b` (publicado 2026-11-19): «Eliminar por completo» (sql/119–121) con copia de auditoría en AGL; bitácora de Fertirriego por día con bloques «hecho junto».
+- SQL corridas en producción hasta la 121 (verificado 2026-11-19); `desarrollo` = `296a7f2`. **Próximo número libre: 122.**
+- AGL `main` = `16adc8f`, publicado por el usuario (2026-11-19).
+- SIGUIENTE a construir: bitácora de errores → AGL (sql/122). Detalle en `proyecto-seguimiento.md` §4.
 
 ## (estado anterior 2026-11-12)
 
