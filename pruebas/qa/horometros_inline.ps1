@@ -14,9 +14,9 @@ function ClicEn($expr) {
     foreach ($t in 'mousePressed', 'mouseReleased') { CDP 'Input.dispatchMouseEvent' @{ type = $t; x = $r[0]; y = $r[1]; button = 'left'; clickCount = 1 } | Out-Null }
     return $true
 }
-# Celda «Comentario» de la fila cuyo texto contiene window.__fila. OJO PowerShell: "${CEL}?." (con "$CEL?." el ? se pega al nombre)
-$CEL = "(() => { const b = document.querySelector('button[title=""Ordenar por Comentario""]'); if (!b) return null; const th = b.closest('th'); const cols = [...th.parentElement.children].filter(x => !x.querySelector('[aria-label=""Seleccionar todas""],[aria-label=""Limpiar selección""]')); const i = cols.indexOf(th); const tr = [...document.querySelectorAll('tbody tr')].find(t => t.textContent.includes(window.__fila)); return tr?.querySelector('td[data-col=""' + i + '""]') })()"
-$FILA = "[...document.querySelectorAll('tbody tr')].find(t => t.textContent.includes(window.__fila))"
+# Celda «Comentario» de la fila cuyo texto (o el valor de su editor abierto) contiene window.__fila. OJO PowerShell: "${CEL}?." (con "$CEL?." el ? se pega al nombre)
+$CEL = "(() => { const b = document.querySelector('button[title=""Ordenar por Comentario""]'); if (!b) return null; const th = b.closest('th'); const cols = [...th.parentElement.children].filter(x => !x.querySelector('[aria-label=""Seleccionar todas""],[aria-label=""Limpiar selección""]')); const i = cols.indexOf(th); const tr = [...document.querySelectorAll('tbody tr')].find(t => (t.textContent + ' ' + [...t.querySelectorAll('input')].map(x => x.value).join(' ')).includes(window.__fila)); return tr?.querySelector('td[data-col=""' + i + '""]') })()"
+$FILA = "[...document.querySelectorAll('tbody tr')].find(t => (t.textContent + ' ' + [...t.querySelectorAll('input')].map(x => x.value).join(' ')).includes(window.__fila))"
 function Editar($v) {
     JS "document.activeElement?.blur(); true" | Out-Null
     if (-not (ClicEn "${CEL}?.querySelector('[data-vista]')")) { return $false }
