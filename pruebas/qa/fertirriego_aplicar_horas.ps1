@@ -122,6 +122,15 @@ try {
     $null = Abrir 'c'
     Esperar "document.querySelector('[data-estacion]')?.dataset.estacion === '$EST'" 30000 | Out-Null
     PorTurno
+    # Tras cambiar el rol el estado del teléfono puede traer permisos viejos: se espera a que lleguen los botones
+    # y, si no, se pide actualizar (con señal) y se vuelve a mirar
+    if (-not (Esperar "!!document.querySelector('[data-aplicar-dia]')" 15000)) {
+        ClicEn "document.querySelector('[data-actualizar]')" | Out-Null
+        Start-Sleep -Seconds 3
+        Esperar "!document.querySelector('[data-actualizar]')?.disabled" 30000 | Out-Null
+        PorTurno
+        Esperar "!!document.querySelector('[data-aplicar-dia]')" 15000 | Out-Null
+    }
     $b = EstadoBotones
     OK ($b.apl.Count -ge 2 -and -not ($b.apl -contains $true) -and -not ($b.hrs -contains $true) -and -not $b.txt) 'C: con «Registrar por otro» Aplicar y Horas habilitados, sin aviso' "apl $($b.apl -join ','), txt '$($b.txt)'"
     # Aviso del historico: una linea en el flujo, no fija
@@ -134,7 +143,7 @@ try {
     OK ($av.tag -eq 'P' -and $av.pos -eq 'static' -and -not $av.fijo -and $av.z -eq 'auto') 'C: aviso historico es una linea P sin sticky/fixed (ni sus contenedores dentro del modal)' "tag $($av.tag), pos $($av.pos), z $($av.z)"
     OK ((-not $av.hayScroll -or $av.t1 -lt $av.t0) -and $av.alto -le 60) 'C: al bajar, el aviso se va con el contenido (no queda fijo) y es discreto' "top $([int]$av.t0) -> $([int]$av.t1), alto $([int]$av.alto)"
     OK ($av.txt -match 'Registro inicial del proceso' -and $av.txt -match 'no mueve el inventario') 'C: el aviso dice lo mismo' $av.txt
-    OK ((JS "!document.querySelector('[data-seccion-horas]')") -eq $true) 'C: el historico NO trae la seccion de horas'
+    OK ((JS "!!document.querySelector('[data-seccion-horas]')") -eq $true) 'C: el historico SI trae la seccion de horas (con Aplicar en la estacion)'
     Cancelar
     Rest "fert_historico_permisos?persona_id=eq.$qaId" 'Delete' -Servicio | Out-Null
     # Custodia para el usuario QA
