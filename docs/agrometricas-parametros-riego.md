@@ -80,3 +80,39 @@
   abre con señal; se muestra «Turnos al <fecha>».
 - **Código**: `lib/agrometricas/colaPura.ts` (lógica pura, probada en `pruebas/unit/agrometricas_cola.test.mjs`),
   `almacen.ts` (IndexedDB), `cola.ts` (Supabase). Las funciones de `cola.ts` ahora son asíncronas.
+
+## 6. Baja a AGL (sql/122)
+
+**Regla**: Supabase es solo un intermediario. Parámetros (`agm_parametros`), clima (`agm_clima`), calicatas
+(`agm_calicatas`) y las fotos del bucket `agrometricas` se **bajan a AGL**, se verifican con sha256 y recién entonces se
+borran de Supabase. Mismo patrón que Terminar ciclo (102) y lo eliminado (121).
+
+**Quién**: el usuario técnico «Integración AGL» con los permisos que ya tiene en la matriz (`fertirriego_agl`): **ver**
+para leer, **publicar** para confirmar y purgar. No hay permisos nuevos ni nombres de rol en el código.
+
+**Qué hace AGL (en este orden)**
+1. `fn_agm_exportar({desde?, hasta?, limite?, despues_de?})`: trae en lotes lo «por bajar» (nunca bajado, o cambiado
+   después de bajarlo). Cada fila trae su `texto` exacto (jsonb sin las marcas de bajada), su `huella` (= sha256 hex del
+   texto), el turno de AGL (`turno_agl_id`, `turno`, `temporada`, `ciclo`), la zona y la `foto` `{ruta, bytes}`.
+   `sha256_lote` = sha256 de las huellas unidas con `|`, ordenadas por `cursor` (comparación binaria).
+2. AGL guarda la fila en su almacén, **baja la foto** de Storage (`agrometricas/<ruta>`) a OneDrive y verifica el sha256 de
+   cada texto (y el tamaño de la foto contra `bytes`).
+3. `fn_agm_confirmar_bajada({lote:[{tabla,id,huella}], cuantos, sha256_lote})`: **no borra**. La base recalcula la huella
+   de cada fila; las que coinciden quedan marcadas (`bajado_a_agl_en`, `huella`); las que cambiaron entre la lectura y la
+   confirmación vuelven en `rechazadas` y siguen «por bajar». Un `cuantos` o `sha256_lote` que no cuadra rechaza todo el lote.
+4. `fn_agm_purgar_bajadas({limite?, retencion_dias?})`: borra de Supabase solo lo confirmado cuya huella actual sigue
+   igual y que lleva más de la **retención** desde la confirmación (**7 días** por defecto; se lee o cambia con
+   `fn_agm_bajada_retencion(dias)`; el parámetro `retencion_dias` solo puede aumentarla). Devuelve
+   `{parametros, clima, calicatas, fotos[], hay_mas}`. **AGL borra las `fotos` de Storage** con la llave de servicio (la
+   base no toca Storage); una foto solo aparece en la lista si ninguna fila restante la usa. Si `hay_mas`, repetir.
+
+**Reglas**
+- **Editado después de bajado**: la huella cambia, la fila vuelve a «por bajar», no se purga hasta reconfirmarla. AGL debe
+  reemplazar su copia por `id` (upsert).
+- **Calicata**: es fija por ciclo y el teléfono la consulta; se baja pronto pero solo se borra de Supabase cuando su
+  turno ya no está activo (ciclo terminado).
+- **Retención**: los 7 días cubren a un teléfono que estuvo sin señal y reenvía con el mismo UUID (si la fila ya no está,
+  se vuelve a crear como «por bajar» y AGL la recibe otra vez por `id`).
+- Una foto que quedó huérfana por reemplazo (la fila apunta a otra ruta) no la lista la purga; AGL puede limpiar el
+  bucket por antigüedad.
+- Probado en réplica: `pruebas/sql/122_agrometricas_bajar.sql`.
