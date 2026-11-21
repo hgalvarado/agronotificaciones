@@ -13,7 +13,7 @@
  * - Al guardar: aviso flotante abajo (se ve aunque se esté al final del formulario).
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alerta, AreaTexto, Boton, BotonLink, Campo, Entrada, Insignia, Tarjeta, TarjetaEncabezado, bordeError } from '@/components/ui/Primitivos'
 import { Acordeon } from '@/components/ui/Acordeon'
 import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
@@ -56,9 +56,13 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
   const [error, setError] = useState<string | null>(null)
   const { aviso, mostrar } = useAvisoFlotante()
 
+  // Solo cuenta la lectura MÁS RECIENTE: una lectura vieja que termina tarde no pisa el número actual
+  const lecturaCola = useRef(0)
   const refrescarCola = useCallback(async () => {
+    const mia = ++lecturaCola.current
     try {
       const [p, r, u] = await Promise.all([Cola.pendientes(usuarioId), Cola.rechazados(usuarioId), Cola.ultimoEnvio(usuarioId)])
+      if (mia !== lecturaCola.current) return
       setCola(p.length); setRechazados(r); setUltimo(u)
     } catch { /* sin almacén local: se muestra lo último conocido */ }
   }, [usuarioId])
@@ -73,7 +77,7 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
   useEffect(() => {
     Cola.pedirPersistente().then(setPersistente, () => setPersistente(null))   // silencioso: si lo niega, solo se avisa
     Cola.datosGuardados<Datos>(usuarioId).then((d) => setDatos((x) => x ?? d), () => {})
-    refrescarCola()
+    const primeraLectura = setTimeout(() => { refrescarCola() }, 0)   // fuera del cuerpo del efecto (regla set-state-in-effect)
     createClient().rpc('fn_agm_mis_turnos').then(({ data, error: e }) => {
       if (e || !data) return
       const nuevos = { ...(data as Omit<Datos, 'bajado'>), bajado: new Date().toISOString() }
@@ -83,7 +87,7 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
     const primerEnvio = setTimeout(() => { enviar() }, 0)
     const alVolver = () => { enviar() }
     window.addEventListener('online', alVolver)
-    return () => { clearTimeout(primerEnvio); window.removeEventListener('online', alVolver) }
+    return () => { clearTimeout(primerEnvio); clearTimeout(primeraLectura); window.removeEventListener('online', alVolver) }
   }, [usuarioId, refrescarCola, enviar])
 
   const turno = datos?.turnos.find((t) => t.id === turnoId) ?? null
@@ -227,7 +231,7 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
             {datos?.bajado ? `Turnos al ${new Date(datos.bajado).toLocaleString('es-HN', { timeZone: 'America/Tegucigalpa', dateStyle: 'short', timeStyle: 'short' })}` : 'Cargando turnos…'}
           </p>
         </div>
-        <span data-estado-cola className="shrink-0"><Insignia tono={cola ? 'ambar' : 'verde'} punto>{cola ? `${cola} pendientes de enviar` : 'Todo enviado'}</Insignia></span>
+        <span data-estado-cola className="shrink-0"><Insignia tono={cola ? 'ambar' : 'verde'} punto>{cola ? `${cola} ${cola === 1 ? 'pendiente' : 'pendientes'} de enviar` : 'Todo enviado'}</Insignia></span>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2" data-envio>
         <p className="text-sm text-slate-500">
