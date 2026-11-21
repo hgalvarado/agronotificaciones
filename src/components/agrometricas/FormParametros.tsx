@@ -23,6 +23,8 @@ import { ayerIso, hoyIso } from '@/lib/fechas/zona'
 import { CAMPOS, SECCIONES, ddt, leerNumero, revisar, type Rango } from '@/lib/agrometricas/parametros'
 import { calidad, comprimirFoto, medirCalicata, type Medicion } from '@/lib/agrometricas/gps'
 import * as Cola from '@/lib/agrometricas/cola'
+import { RUTAS_SIN_SENAL } from '@/lib/agrometricas/colaPura'
+import { RegistroServiceWorker } from '@/components/fertirriego/RegistroServiceWorker'
 
 type Turno = { id: string; turno: string; temporada: string; ciclo: string | null; fecha_siembra: string | null;
   estacion: string | null; zona_id: string | null; zona: string | null }
@@ -44,6 +46,8 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
   const [comentarioGuardado, setComentarioGuardado] = useState('')
   const [abiertas, setAbiertas] = useState<Record<string, boolean>>(() => Object.fromEntries(SECCIONES.map((s) => [s.clave, s.abierta])))
   const [cola, setCola] = useState(0)
+  const [ultimo, setUltimo] = useState<string | null>(null)
+  const [persistente, setPersistente] = useState<boolean | null>(null)
   const [rechazados, setRechazados] = useState<Cola.Rechazado[]>([])
   const [calicata, setCalicata] = useState<Calicata | null>(null)
   const [midiendo, setMidiendo] = useState<Medicion | 'iniciando' | null>(null)
@@ -52,23 +56,24 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
   const [error, setError] = useState<string | null>(null)
   const { aviso, mostrar } = useAvisoFlotante()
 
-  const refrescarCola = useCallback(() => {
-    setCola(Cola.pendientes(usuarioId).length)
-    setRechazados(Cola.rechazados(usuarioId))
+  const refrescarCola = useCallback(async () => {
+    try {
+      const [p, r, u] = await Promise.all([Cola.pendientes(usuarioId), Cola.rechazados(usuarioId), Cola.ultimoEnvio(usuarioId)])
+      setCola(p.length); setRechazados(r); setUltimo(u)
+    } catch { /* sin almacén local: se muestra lo último conocido */ }
   }, [usuarioId])
 
   const enviar = useCallback(async () => {
     const n = await Cola.enviar(usuarioId)
-    refrescarCola()
+    await refrescarCola()
     if (n) mostrar(`${n === 1 ? 'Registro enviado' : `${n} registros enviados`} a la base.`)
   }, [usuarioId, refrescarCola, mostrar])
 
   // Turnos y rangos: primero lo guardado en el teléfono; después, con señal, lo nuevo de la base
   useEffect(() => {
-    Promise.resolve().then(() => {
-      setDatos((d) => d ?? Cola.datosGuardados<Datos>(usuarioId))
-      refrescarCola()
-    })
+    Cola.pedirPersistente().then(setPersistente, () => setPersistente(null))   // silencioso: si lo niega, solo se avisa
+    Cola.datosGuardados<Datos>(usuarioId).then((d) => setDatos((x) => x ?? d), () => {})
+    refrescarCola()
     createClient().rpc('fn_agm_mis_turnos').then(({ data, error: e }) => {
       if (e || !data) return
       const nuevos = { ...(data as Omit<Datos, 'bajado'>), bajado: new Date().toISOString() }
@@ -131,8 +136,9 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
         mostrar(`La ubicación guardada (±${calicata.precision_m} m) es igual o más precisa. Se queda.`, 'info')
         return
       }
+      const guardada = await Cola.encolar(usuarioId, { id: uuid(), tipo: 'calicata', resumen: `Calicata ${turno.turno}`, datos: { turno_ciclo_id: turno.id, ...m } })
+      if (!guardada) { mostrar('El teléfono no pudo guardar la ubicación. Libera espacio e intenta otra vez.', 'error'); return }
       setCalicata(m)
-      Cola.encolar(usuarioId, { id: uuid(), tipo: 'calicata', resumen: `Calicata ${turno.turno}`, datos: { turno_ciclo_id: turno.id, ...m } })
       mostrar(`${calicata ? 'Calicata mejorada' : 'Calicata ubicada'}: ±${m.precision_m} m (${calidad(m.precision_m).texto.toLowerCase()}).`)
       refrescarCola()
       enviar()
@@ -148,7 +154,7 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
     try { setFoto(await comprimirFoto(archivo)) } catch { mostrar('No se pudo leer la foto. Intenta otra vez.', 'error') }
   }
 
-  function guardar() {
+  async function guardar() {
     setError(null)
     if (!turno) { setError('Elige el turno.'); return }
     const cambiados = (deClima: boolean) => Object.fromEntries(CAMPOS
@@ -172,12 +178,12 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
     let cupo = true
     if (Object.keys(numeros).length || foto || nota) {
       const id = uuid()
-      cupo = Cola.encolar(usuarioId, { id, tipo: 'parametros', resumen: `${turno.turno} · ${fecha}`, foto: foto ?? undefined,
-        datos: { id, turno_ciclo_id: turno.id, fecha, ...numeros, comentario: nota || null } })
+      cupo = await Cola.encolar(usuarioId, { id, tipo: 'parametros', resumen: `${turno.turno} · ${fecha}`,
+        datos: { id, turno_ciclo_id: turno.id, fecha, ...numeros, comentario: nota || null } }, foto)
     }
     if (cupo && Object.keys(clima).length && turno.zona_id) {
       const id = uuid()
-      cupo = Cola.encolar(usuarioId, { id, tipo: 'clima', resumen: `Clima ${turno.zona ?? ''} · ${fecha}`,
+      cupo = await Cola.encolar(usuarioId, { id, tipo: 'clima', resumen: `Clima ${turno.zona ?? ''} · ${fecha}`,
         datos: { id, zona_id: turno.zona_id, fecha, ...clima } })
     }
     if (!cupo) {
@@ -193,10 +199,25 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
     enviar()
   }
 
+  async function exportarPendientes() {
+    try {
+      const json = await Cola.exportarPendientes(usuarioId)
+      const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }))
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `agrometricas_pendientes_${hoyIso()}.json`
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(url), 10_000)
+    } catch {
+      mostrar('No se pudo exportar. Intenta otra vez.', 'error')
+    }
+  }
+
   const enMedicion = midiendo && midiendo !== 'iniciando' ? midiendo : null
 
   return (
     <>
+      <RegistroServiceWorker rutas={RUTAS_SIN_SENAL} />
       <BotonLink href="/agrometricas" variante="secundario" tamano="md" className="self-start">← AgroMétricas</BotonLink>
 
       <div className="flex items-start justify-between gap-3">
@@ -206,13 +227,20 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
             {datos?.bajado ? `Turnos al ${new Date(datos.bajado).toLocaleString('es-HN', { timeZone: 'America/Tegucigalpa', dateStyle: 'short', timeStyle: 'short' })}` : 'Cargando turnos…'}
           </p>
         </div>
-        <span data-estado-cola className="shrink-0"><Insignia tono={cola ? 'ambar' : 'verde'} punto>{cola ? `${cola} por enviar` : 'Todo enviado'}</Insignia></span>
+        <span data-estado-cola className="shrink-0"><Insignia tono={cola ? 'ambar' : 'verde'} punto>{cola ? `${cola} pendientes de enviar` : 'Todo enviado'}</Insignia></span>
       </div>
+      <div className="flex flex-wrap items-center justify-between gap-2" data-envio>
+        <p className="text-sm text-slate-500">
+          {ultimo ? `Último envío: ${new Date(ultimo).toLocaleString('es-HN', { timeZone: 'America/Tegucigalpa', dateStyle: 'short', timeStyle: 'short' })}` : 'Aún no se ha enviado nada desde este teléfono.'}
+        </p>
+        {cola > 0 && <Boton type="button" tamano="md" variante="secundario" onClick={exportarPendientes} data-exportar-pendientes>Exportar pendientes</Boton>}
+      </div>
+      {persistente === false && <Alerta tono="ambar">El teléfono no garantiza conservar lo guardado si se queda sin espacio. Envía los registros apenas tengas señal.</Alerta>}
 
       {rechazados.map((r) => (
         <Alerta key={r.id} tono="rojo">
           No se guardó {r.resumen}: {r.mensaje}{' '}
-          <button className="font-semibold underline" onClick={() => { Cola.descartarRechazado(usuarioId, r.id); refrescarCola() }}>Quitar aviso</button>
+          <button className="font-semibold underline" onClick={async () => { await Cola.descartarRechazado(usuarioId, r.id); refrescarCola() }}>Quitar aviso</button>
         </Alerta>
       ))}
       {!puedeRegistrar && <Alerta tono="ambar">Puedes ver, pero no registrar parámetros. Pídelo a tu jefe de zona.</Alerta>}

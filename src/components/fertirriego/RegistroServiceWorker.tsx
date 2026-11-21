@@ -8,7 +8,8 @@
 
 import { useEffect } from 'react'
 
-export function RegistroServiceWorker() {
+/** `rutas`: pantallas que el service worker debe guardar para abrir sin señal (AgroMétricas); Fertirriego no manda ninguna. */
+export function RegistroServiceWorker({ rutas }: { rutas?: string[] } = {}) {
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return
     const seguro = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1'
@@ -16,6 +17,9 @@ export function RegistroServiceWorker() {
     navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' }).catch(() => {
       // Sin service worker la pantalla funciona igual con señal; solo no abre sin ella
     })
-  }, [])
+    if (rutas?.length) {
+      navigator.serviceWorker.ready.then((r) => r.active?.postMessage({ tipo: 'guardar-rutas', rutas }), () => {})
+    }
+  }, [rutas])
   return null
 }

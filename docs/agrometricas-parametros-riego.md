@@ -58,3 +58,25 @@
 5. **Fotos de calicata**: las viejas quedan con **enlace a Drive**; las nuevas se guardan en OneDrive (el teléfono las
    sube a Supabase Storage de paso y AGL las baja a OneDrive y las borra de Supabase).
 
+
+## 5. Sin señal: IndexedDB
+
+- **Decisión (2026-11-21)**: lo que se captura en campo se guarda en **IndexedDB** (base `agn-agrometricas-<usuario>`), igual
+  que Fertirriego. Antes vivía en `localStorage` (cuota ~5 MB: las fotos de calicata como texto podían llenarla y perder
+  datos; el navegador puede vaciarla).
+- **Por qué no SQLite**: el navegador no trae SQLite nativo. Habría que cargar un motor WASM (peso extra, y persiste encima
+  de IndexedDB/OPFS de todos modos). IndexedDB es transaccional, guarda archivos (Blob) y ya está probado en Fertirriego.
+- **Almacenes**: `cola` (pendientes, llave = UUID), `rechazados`, `datos` (catálogo de turnos y rangos `turnos`, hora de
+  `ultimo_envio`) y `fotos` (Blob JPEG; la cola solo guarda `tieneFoto`). El pendiente y su foto se escriben en una sola
+  transacción: o entran los dos o ninguno. Un registro **no sale de la cola** hasta que la base confirma o lo rechaza de
+  forma definitiva.
+- **Migración desde localStorage**: al abrir, si existen `agm_cola_<usuario>`, `agm_rechazados_<usuario>` o
+  `agm_datos_<usuario>`, se pasan a IndexedDB (fotos data URL → Blob), se **leen de vuelta** para confirmar y solo entonces
+  se borran de localStorage. Si algo no se confirma, se queda lo viejo y se reintenta en la próxima apertura.
+- **Pantalla**: «N pendientes de enviar», «Último envío», botón **Exportar pendientes** (JSON de respaldo con las fotos) y
+  un aviso discreto si el navegador no concede almacenamiento persistente (`navigator.storage.persist()`, pedido al abrir).
+- **Abrir sin señal**: `public/sw.js` guarda `/agrometricas` y `/agrometricas/parametros` (la página que se abre le pide
+  guardarlas) más los `/_next/static`. Los turnos y rangos (`fn_agm_mis_turnos`) se guardan en IndexedDB cada vez que se
+  abre con señal; se muestra «Turnos al <fecha>».
+- **Código**: `lib/agrometricas/colaPura.ts` (lógica pura, probada en `pruebas/unit/agrometricas_cola.test.mjs`),
+  `almacen.ts` (IndexedDB), `cola.ts` (Supabase). Las funciones de `cola.ts` ahora son asíncronas.
