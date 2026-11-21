@@ -101,7 +101,9 @@ export function FormAplicacion({
   // La casilla vale SOLO para el faltante exacto que se marcó: si cambia un producto o una cantidad, hay que marcarla otra vez
   const [aceptada, setAceptada] = useState<string | null>(null)
   const productos = useCrearProducto(estado.materiales, b?.productosNuevos, con99 && estacion.permisos.recibir)
-  // Horas de riego en el mismo formulario (no en el histórico: ahí no hay bitácora)
+  // Horas de riego en el mismo formulario (también en el histórico). La base pide «Aplicar» en la estación para la
+  // bitácora (la misma regla del botón Horas): sin ese permiso la sección no se ofrece
+  const puedeHoras = estacion.permisos.aplicar
   const [horasAbierto, setHorasAbierto] = useState(b?.horasAbierto ?? false)
   const [horasEditadas, setHorasEditadas] = useState<DatosHoras | null>(b?.horas ?? null)
   useAutoguardado(borrador, { turno, fecha, ejecutor2, editadas, eleccion: elegida, productosNuevos: productos.nuevos, horas: horasEditadas, horasAbierto })
@@ -219,7 +221,7 @@ export function FormAplicacion({
         if (faltante.length) datos.acepta_negativo = true
         // Horas de riego del mismo turno y día, si se escribieron (se valida ANTES de guardar nada)
         let opHoras: Operacion | null = null
-        if (!historico && horasAbierto && horasEditadas && horasCambiadas(horasEditadas, horasBase)) {
+        if (puedeHoras && horasAbierto && horasEditadas && horasCambiadas(horasEditadas, horasBase)) {
           const h = armarBitacora(horasEditadas, {
             estacion_id: estacion.id,
             turno_ciclo_id: turno,
@@ -390,7 +392,7 @@ export function FormAplicacion({
         />
       </Campo>
 
-      {!historico && (
+      {puedeHoras && (
         <div className="rounded-xl ring-1 ring-inset ring-slate-200" data-seccion-horas>
           <button
             type="button"
