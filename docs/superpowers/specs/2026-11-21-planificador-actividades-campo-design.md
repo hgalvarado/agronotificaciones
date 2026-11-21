@@ -99,4 +99,4 @@ Roles: moderador (da la palabra), jefes de zona, jefe de Labores Culturales, de 
 - **Decisión pendiente del usuario**: ver §16 de la conversación (misma letra con mejor reparto, o que al 125 % se vea como al 100 %).
 
 ## 16. Decisión sobre la pantalla (2026-11-21)
-El usuario eligió la opción B (que al 125 % se vea como a 100 %), limitada a **Trasplante y Fertirriego**. Implementada en AGL (`escala.js`, `styles.css`, `trasplante.css`); ver `proyecto-seguimiento.md` §4 punto 0e. Se extenderá a otras pantallas más adelante; las pantallas nuevas del planificador deben nacer ya con esta escala.
+El usuario eligió la opción B (que al 125 % se vea como a 100 %); primero Trasplante y Fertirriego y luego **toda AGL**. Implementada en AGL (`escala.js`, `styles.css`, `trasplante.css`); ver `proyecto-seguimiento.md` §4 punto 0e. Se extenderá a otras pantallas más adelante; las pantallas nuevas del planificador deben nacer ya con esta escala.
