@@ -62,11 +62,14 @@ Roles: moderador (da la palabra), jefes de zona, jefe de Labores Culturales, de 
 3. Módulo Inyección.
 4. Checklist de Fertirriego, Polinización, acuerdos/asistencia de la reunión.
 
-## 11. Preguntas abiertas
-- DDT de cada labor: ¿día exacto o ventana?
-- Loop de Microsoft: acuerdos propios dentro del programa (propuesta inicial, con exportación a Excel) vs integración (depende de permisos de la empresa).
-- Fitoprotección: tolerancia de días al emparejar con salidas SAP; qué pasa con productos de varias tareas.
-- Polinización: qué se revisa exactamente y de dónde sale.
+## 11. Decisiones del usuario (2026-11-21, segunda ronda)
+- **DDT = día exacto.** Se compara con el día real: la plataforma muestra los días de diferencia y el jefe explica el porqué. No hay tolerancia ni ventana. (Esto vale también para el emparejamiento de las demás actividades: se empareja por lote/turno + tipo y se mide la diferencia contra el día del plan.)
+- **Fitoprotección**: sin tolerancia; si no se hizo el día del plan se revisa la causa y se compara con lo registrado en SAP (salidas T500–T503).
+- **Polinización**: hace falta un **módulo nuevo de registro**: lotes donde ya entraron colmenas, cantidad de colmenas, fecha y área de avance. El plan ya existe en el módulo de Trasplante; falta registrar lo ejecutado. Se agrega al orden de construcción (paso 4) y se empareja igual que el resto.
+- **Costos e inventarios**: fuera de este alcance. Se cubrirán mejorando el módulo del LTP.
+- **Loop de Microsoft**: el usuario prefiere **integrarlo** y, si no se puede, otra solución. Estado de la investigación: no hay API pública confirmada para crear/leer páginas de Loop (en desarrollo según la comunidad; las primeras serían de administración de espacios, no de contenido). Los componentes Loop son archivos `.loop` en OneDrive/SharePoint. Pendiente: revisar con TI de la empresa qué permisos hay y probar si se pueden leer los acuerdos como archivos. Plan B: acuerdos y asistencia propios dentro del programa con exportación.
+
+## 12. Preguntas abiertas
 - Cómo hacer más fácil de leer el LTP (muchos productos): propuesta de agrupar por tipo y semana, con detalle al abrir.
 - Permisos por rol (jefe de zona, jefes por categoría, moderador): por la matriz de permisos de la base, sin roles escritos en el código.
-- Costos e inventarios en la reunión: ¿qué cifras quieren ver?
+- Loop: viabilidad técnica (ver §11).
