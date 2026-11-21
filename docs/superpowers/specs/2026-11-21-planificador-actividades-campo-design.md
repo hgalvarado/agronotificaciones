@@ -70,6 +70,18 @@ Roles: moderador (da la palabra), jefes de zona, jefe de Labores Culturales, de 
 - **Loop de Microsoft**: el usuario prefiere **integrarlo** y, si no se puede, otra solución. Estado de la investigación: no hay API pública confirmada para crear/leer páginas de Loop (en desarrollo según la comunidad; las primeras serían de administración de espacios, no de contenido). Los componentes Loop son archivos `.loop` en OneDrive/SharePoint. Pendiente: revisar con TI de la empresa qué permisos hay y probar si se pueden leer los acuerdos como archivos. Plan B: acuerdos y asistencia propios dentro del programa con exportación.
 
 ## 12. Preguntas abiertas
-- Cómo hacer más fácil de leer el LTP (muchos productos): propuesta de agrupar por tipo y semana, con detalle al abrir.
+- Cómo mostrar el LTP fácil de leer: ver §13 (propuesta basada en el archivo real).
 - Permisos por rol (jefe de zona, jefes por categoría, moderador): por la matriz de permisos de la base, sin roles escritos en el código.
-- Loop: viabilidad técnica (ver §11).
+- Loop: viabilidad técnica (ver §11). Decisión 2026-11-21: por ahora los acuerdos van **sin integrar**; se decide después si se integran en AgroNotificaciones/AGL.
+- «Inyección» aparece en el LTP bajo dos departamentos (§13): confirmar con el usuario quién la ejecuta en cada caso.
+
+## 13. Lo verificado en el LTP real (LTP_Insumos_Temporada_2026-2027.xlsx + Ruta_Siembra.xlsx, solo lectura)
+- **Estructura**: 13 311 filas. Columnas: Temporada, Finca, Ciclo, Variedad, Tipo de Fruto, **Departamento**, **Categoría**, Centro, Almacén, **DDT**, Material, Texto Breve, Grupo, Dosis, % Aplicación, % Calculado, Área de Siembra, Total Producto, Control sobre, Observaciones.
+- **El plan es por Variedad × Ciclo × DDT × Material, NO por lote.** 31 combinaciones variedad-ciclo, 18 variedades, 2 ciclos, 168 materiales, una sola finca (Santa Rosa). Cada combinación tiene ~600 filas repartidas en ~130 DDT distintos; un mismo DDT llega a tener **hasta 20 productos**.
+- **El lote entra por la Ruta de Siembra** (`Ruta_Siembra.xlsx`: Temporada, Ciclo, FechaSiembra, Finca, UbicacionTecnica, **Lote**, Variedad, AreaSembrar, SemSiembra, Zona). `ltp_corrida.py` ya cruza ambos (fecha = FechaSiembra + DDT; necesidad = área × dosis × %) y guarda el resultado en caché Parquet. **El planificador debe reutilizar ese cruce, no rehacerlo.**
+- **DDT va de −265 a 78**: los DDT negativos son preparación previa al trasplante (suelo, plástico…).
+- **Departamento**: Ferti-Riego 9 502 filas y Fito-Proteccion 3 809. Dentro de Ferti-Riego, **8 579 son «Fertilizantes»** (el 64 % de todo el LTP); el resto: Preparación Suelo 374, Inyección 191, Aseg. Calidad 120, Trasplante 100, Invernadero 53, Cultivo Rotación 46, Drensh 23. Fito-Proteccion: «Fitoproteccion» 2 109, Herbicidas 1 002, Adherentes 268, Muestras de suelo 151, Fungicidas 63, Insecticidas 57, Biológicos 48, Inyección 18, entre otras.
+- **Por qué cuesta leerlo**: lo que abruma son los fertilizantes (varios productos en el mismo DDT que se repiten día tras día). Es el plan de nutrición, cuyo «hecho» viene de Fertirriego en campo.
+- **Propuesta de lectura (a validar)**: una línea por día, lote y Departamento + Categoría; p. ej. «DDT 36 · Fertilización · 13 productos» con el detalle al abrir; Fitoprotección, Inyección y Drench cada una con su propia línea. Así la reunión ve «qué actividades tocan» y no 13 filas por día.
+- **Inyección** existe en el plan (191 filas bajo Ferti-Riego y 18 bajo Fito-Proteccion) y **Drensh** (23): ya hay plan para el módulo Inyección; falta el registro.
+- **No hay Labores Culturales en el LTP** (coincide con lo dicho: hay que crear el catálogo).
