@@ -23,7 +23,7 @@ export type Vista = {
   datos: string[]
 }
 
-export type EntradaHistorial = { id: string; tipo: 'parametros' | 'clima' | 'calicata'; vista: Vista; creado_en: string; enviado_en: string }
+export type EntradaHistorial = { id: string; tipo: 'parametros' | 'clima' | 'calicata' | 'indice'; vista: Vista; creado_en: string; enviado_en: string }
 
 export type Estado = 'sin_enviar' | 'enviado' | 'rechazado'
 export type ItemVista = { id: string; estado: Estado; cuando: string; vista: Vista; mensaje?: string }
@@ -47,7 +47,7 @@ export function resumirDatos(datos: Record<string, unknown>, campos: CampoResume
 
 /** Arma la vista de un registro al guardarlo. */
 export function resumirRegistro(
-  tipo: 'parametros' | 'clima' | 'calicata',
+  tipo: 'parametros' | 'clima' | 'calicata' | 'indice',
   datos: Record<string, unknown>,
   ctx: { turno: string; lugar: string; ddt: number | null; fecha: string },
   campos: CampoResumen[],
@@ -56,6 +56,11 @@ export function resumirRegistro(
   if (tipo === 'calicata') {
     const p = Number(datos.precision_m)
     lista = Number.isFinite(p) ? [`Calicata ±${p} m`] : ['Calicata']
+  } else if (tipo === 'indice') {
+    // El IC lo calcula la base; aquí solo se resumen las hojas (y si fue una corrección)
+    const h = Number(datos.hojas)
+    lista = [Number.isFinite(h) ? `IC: ${h} hojas` : 'Índice de crecimiento']
+    if (datos.correccion) lista.push('corrección')
   } else {
     lista = resumirDatos(datos, campos)
     if (tipo === 'parametros' && lista.length < MAX_DATOS && datos.comentario) lista.push('con comentario')

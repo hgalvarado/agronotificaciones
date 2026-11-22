@@ -10,6 +10,10 @@
  *   precisión. Medir otra vez solo la mejora si es más precisa.
  * - Foto del día de la calicata (cámara trasera), comprimida y en la cola sin señal.
  * - Fuera de rango = aviso con «Usar 7.97», nunca bloquea. Clima una vez por zona y día.
+ * - Índice de crecimiento (IC): sección plegable. Se registran solo las HOJAS; el IC y el plan se muestran en vivo con la
+ *   fórmula vigente guardada en el teléfono (funciona sin señal) y la base los calcula al guardar (sql/127). Del DDT 5 al 20
+ *   la sección se abre sola; fuera de ese rango solo se avisa. Un segundo registro del mismo turno y día es una corrección
+ *   y pide confirmación con una casilla.
  * - Al guardar: aviso flotante abajo (se ve aunque se esté al final del formulario).
  */
 
@@ -25,6 +29,7 @@ import { calidad, comprimirFoto, medirCalicata, type Medicion } from '@/lib/agro
 import * as Cola from '@/lib/agrometricas/cola'
 import { RUTAS_SIN_SENAL } from '@/lib/agrometricas/colaPura'
 import { resumirRegistro, unirItems, type EntradaHistorial } from '@/lib/agrometricas/historialPura'
+import { armarDatosIC, ddtEnRangoIC, normalizarVersiones, resultadoIC, validarHojas, type VersionFormula } from '@/lib/agrometricas/indicePura'
 import { MisRegistros } from './MisRegistros'
 import { RegistroServiceWorker } from '@/components/fertirriego/RegistroServiceWorker'
 
@@ -58,6 +63,11 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
   const [foto, setFoto] = useState<string | null>(null)
   const [fotoGuardada, setFotoGuardada] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [formulas, setFormulas] = useState<VersionFormula[]>([])
+  const [hojasIC, setHojasIC] = useState('')
+  const [hojasICGuardadas, setHojasICGuardadas] = useState('')   // lo que ya está en la base ese turno y día
+  const [corregirIC, setCorregirIC] = useState(false)
+  const [icAbierto, setIcAbierto] = useState<boolean | null>(null)   // null = automático (abierta del DDT 5 al 20)
   const { aviso, mostrar } = useAvisoFlotante()
 
   // Solo cuenta la lectura MÁS RECIENTE: una lectura vieja que termina tarde no pisa el número actual
@@ -81,6 +91,15 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
   useEffect(() => {
     Cola.pedirPersistente().then(setPersistente, () => setPersistente(null))   // silencioso: si lo niega, solo se avisa
     Cola.datosGuardados<Datos>(usuarioId).then((d) => setDatos((x) => x ?? d), () => {})
+    // Fórmula del IC: primero la guardada en el teléfono; con señal, la vigente de la base
+    Cola.formulaGuardada<unknown>(usuarioId).then((v) => { if (v) setFormulas((x) => (x.length ? x : normalizarVersiones({ versiones: v }))) }, () => {})
+    createClient().rpc('fn_agm_ic_config').then(({ data, error: e }) => {
+      if (e || !data) return
+      const v = normalizarVersiones(data)
+      if (!v.length) return
+      Cola.guardarFormula(usuarioId, v)
+      setFormulas(v)
+    }, () => {})
     const primeraLectura = setTimeout(() => { refrescarCola() }, 0)   // fuera del cuerpo del efecto (regla set-state-in-effect)
     createClient().rpc('fn_agm_mis_turnos').then(({ data, error: e }) => {
       if (e || !data) return
@@ -106,7 +125,8 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
       turno.zona_id ? supabase.from('agm_clima').select('eto,dpv,viento').eq('zona_id', turno.zona_id).eq('fecha', fecha).maybeSingle()
         : Promise.resolve({ data: null }),
       supabase.from('agm_calicatas').select('*').eq('turno_ciclo_id', turno.id).maybeSingle(),
-    ]).then(([p, c, k]) => {
+      supabase.from('agm_ic_registros').select('hojas').eq('turno_ciclo_id', turno.id).eq('fecha', fecha).is('eliminado_en', null).maybeSingle(),
+    ]).then(([p, c, k, ic]) => {
       if (!vigente) return
       const fila = { ...(p.data ?? {}), ...(c.data ?? {}) } as Record<string, unknown>
       const previos = Object.fromEntries(CAMPOS.map((x) => [x.clave, texto(fila[x.clave])]).filter(([, v]) => v !== ''))
@@ -116,14 +136,22 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
       setComentarioGuardado(texto(fila.comentario))
       setFotoGuardada(Boolean(fila.foto_calicata))
       setCalicata((k.data as Calicata | null) ?? null)
+      const h = (ic.data as { hojas: number | string } | null)?.hojas
+      setHojasICGuardadas(h == null ? '' : String(Number(h)))
+      setHojasIC(h == null ? '' : String(Number(h)))
+      setCorregirIC(false)
     }, () => {})   // sin señal: se trabaja con lo que hay; la base completa sin borrar
     return () => { vigente = false }
   }, [turno, fecha])
 
   const elegirTurno = (id: string) => {
     setTurnoId(id); setValores({}); setGuardados({}); setComentario(''); setComentarioGuardado(''); setFoto(null); setFotoGuardada(false); setCalicata(null)
+    setHojasIC(''); setHojasICGuardadas(''); setCorregirIC(false)
   }
-  const cambiarFecha = (f: string) => { setFecha(f); setValores({}); setGuardados({}); setComentario(''); setComentarioGuardado(''); setFoto(null); setFotoGuardada(false) }
+  const cambiarFecha = (f: string) => {
+    setFecha(f); setValores({}); setGuardados({}); setComentario(''); setComentarioGuardado(''); setFoto(null); setFotoGuardada(false)
+    setHojasIC(''); setHojasICGuardadas(''); setCorregirIC(false)
+  }
 
   const rangos = useMemo(() => new Map((datos?.rangos ?? []).map((r) => [r.parametro, r])), [datos])
   const opciones = useMemo(() => (datos?.turnos ?? []).map((t) => ({
@@ -132,8 +160,17 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
   const dias = turno ? ddt(fecha, turno.fecha_siembra) : null
   const misRegistros = useMemo(() => unirItems(pendientes, rechazados, historial, new Date().toISOString()), [pendientes, rechazados, historial])
   /** Resumen corto del registro (se guarda con él en la cola y luego en el historial local). */
-  const vistaDe = (tipo: 'parametros' | 'clima' | 'calicata', d: Record<string, unknown>, t: Turno) =>
+  const vistaDe = (tipo: 'parametros' | 'clima' | 'calicata' | 'indice', d: Record<string, unknown>, t: Turno) =>
     resumirRegistro(tipo, d, { turno: tipo === 'clima' ? `Clima ${t.zona ?? ''}`.trim() : t.turno, lugar: (tipo === 'clima' ? t.zona : t.estacion ?? t.zona) ?? '', ddt: dias, fecha }, CAMPOS)
+  // Índice de crecimiento: lo ya enviado (base) o guardado en el teléfono para ese turno y día
+  const icPendiente = Boolean(turno) && pendientes.some((x) => x.tipo === 'indice' && x.datos.turno_ciclo_id === turno?.id && x.datos.fecha === fecha)
+  const hayIC = hojasICGuardadas !== '' || icPendiente
+  const hojasLeidas = validarHojas(hojasIC)
+  const hojasNum = 'valor' in hojasLeidas ? hojasLeidas.valor : null
+  const calculoIC = resultadoIC(hojasNum, dias, fecha, formulas)
+  const icEnRango = ddtEnRangoIC(dias)
+  const icVisible = icAbierto ?? icEnRango
+  const icCambia = hojasNum != null && String(hojasNum) !== hojasICGuardadas
   const poner = (clave: string, v: string) => setValores((x) => ({ ...x, [clave]: v }))
   const alternar = (clave: string) => setAbiertas((a) => ({ ...a, [clave]: !a[clave] }))
   const llenos = (seccion: string) => CAMPOS.filter((c) => c.seccion === seccion && leerNumero(valores[c.clave] || guardados[c.clave]) != null).length
@@ -182,9 +219,18 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
       setError(`${enorme.etiqueta}: ${valores[enorme.clave]} es demasiado grande. Revisa la lectura.`)
       return
     }
+    // Índice de crecimiento: solo las hojas; un segundo registro del mismo turno y día es una corrección y se confirma
+    const hojas = validarHojas(hojasIC)
+    if ('error' in hojas) { setIcAbierto(true); setError(hojas.error); return }
+    const hojasNuevas = 'valor' in hojas && String(hojas.valor) !== hojasICGuardadas ? hojas.valor : null
+    if (hojasNuevas != null && hayIC && !corregirIC) {
+      setIcAbierto(true)
+      setError('Este turno ya tiene su índice de crecimiento de ese día. Marca «Corregir el índice ya registrado» para reemplazarlo.')
+      return
+    }
     // El comentario solo viaja si cambió (el ya guardado se carga en el campo: no es un cambio)
     const nota = comentario.trim() === comentarioGuardado.trim() ? '' : comentario.trim()
-    if (!Object.keys(numeros).length && !Object.keys(clima).length && !foto && !nota) {
+    if (!Object.keys(numeros).length && !Object.keys(clima).length && !foto && !nota && hojasNuevas == null) {
       mostrar('No hay cambios para guardar.', 'info')
       return
     }
@@ -201,6 +247,11 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
       cupo = await Cola.encolar(usuarioId, { id, tipo: 'clima', resumen: `Clima ${turno.zona ?? ''} · ${fecha}`,
         datos: datosC, vista: vistaDe('clima', datosC, turno) })
     }
+    if (cupo && hojasNuevas != null) {
+      const id = uuid()
+      const datosI = armarDatosIC({ id, turnoId: turno.id, fecha, hojas: hojasNuevas, correccion: hayIC })
+      cupo = await Cola.encolar(usuarioId, { id, tipo: 'indice', resumen: `IC ${turno.turno} · ${fecha}`, datos: datosI, vista: vistaDe('indice', datosI, turno) })
+    }
     if (!cupo) {
       mostrar('El teléfono no tiene espacio para guardar (¿muchas fotos sin enviar?). Busca señal para enviar.', 'error')
       return
@@ -208,6 +259,7 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
     // Lo guardado queda en pantalla para seguir editando: no se limpia nada
     setGuardados((g) => ({ ...g, ...Object.fromEntries(Object.entries({ ...numeros, ...clima }).map(([k, v]) => [k, String(v)])) }))
     if (nota) setComentarioGuardado(nota)
+    if (hojasNuevas != null) { setHojasICGuardadas(String(hojasNuevas)); setCorregirIC(false) }
     if (foto) { setFoto(null); setFotoGuardada(true) }
     mostrar(navigator.onLine ? `Registrado: ${turno.turno} · ${fecha}` : 'Registrado en el teléfono. Se enviará al volver la señal.')
     refrescarCola()
@@ -344,6 +396,38 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
           </div>
         </Acordeon>
       ))}
+
+      <Acordeon titulo="Índice de crecimiento (IC)" abierto={icVisible} onAlternar={() => setIcAbierto(!icVisible)}
+        descripcion="Se mide por turno, del DDT 5 al 20. Escribe las hojas; el IC se calcula solo."
+        resumen={icEnRango && !hayIC ? <Insignia tono="verde">Toca medir · DDT {dias}</Insignia> : hayIC ? <Insignia tono="azul">Ya registrado</Insignia> : undefined}>
+        <div className="flex flex-col gap-3 px-3.5 pb-4" data-indice>
+          <Campo etiqueta="Número de hojas">
+            <Entrada inputMode="decimal" enterKeyHint="done" autoComplete="off" data-campo="ic_hojas" disabled={!turno}
+              placeholder={hojasICGuardadas ? `Guardado: ${hojasICGuardadas}` : turno ? undefined : 'Elige el turno primero'}
+              className="h-12 text-base tabular-nums" value={hojasIC}
+              onChange={(e) => { setHojasIC(e.target.value); setCorregirIC(false) }} />
+          </Campo>
+          {turno && (
+            <div className="flex flex-wrap items-center gap-2" data-ic-calculo>
+              <Insignia tono={calculoIC.ic != null ? 'verde' : 'gris'}>IC {calculoIC.ic ?? '—'}</Insignia>
+              <Insignia tono="gris">Plan {calculoIC.plan ?? '—'}</Insignia>
+              {calculoIC.diferencia != null && <Insignia tono={calculoIC.diferencia >= 0 ? 'azul' : 'ambar'}>{calculoIC.diferencia >= 0 ? '+' : ''}{calculoIC.diferencia} vs plan</Insignia>}
+              {calculoIC.version && (
+                <span className="text-xs text-slate-500">
+                  hojas ÷ DDT{calculoIC.version.exponente_ddt !== 1 ? `^${calculoIC.version.exponente_ddt}` : ''} ÷ {calculoIC.version.divisor} (fórmula del {calculoIC.version.vigente_desde})
+                </span>
+              )}
+            </div>
+          )}
+          {turno && hojasNum != null && calculoIC.avisos.map((a) => <p key={a} className="text-sm text-amber-700">{a}</p>)}
+          {hayIC && icCambia && (
+            <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-3 text-sm font-semibold text-amber-900">
+              <input type="checkbox" className="h-5 w-5" checked={corregirIC} onChange={(e) => setCorregirIC(e.target.checked)} data-ic-corregir />
+              Corregir el índice ya registrado de este día
+            </label>
+          )}
+        </div>
+      </Acordeon>
 
       <Tarjeta>
         <div className="p-4">

@@ -48,6 +48,8 @@ export const SECCIONES_ADMIN: SeccionAdmin[] = [
   { pantalla: 'fertirriego', accion: 'eliminar_definitivo', href: '/admin/fertirriego-eliminar', etiqueta: 'Eliminar registros', grupo: 'fertirriego' },
   // 118: bitácora de errores por usuario (acción «ver»; «atender» marca lo atendido)
   { pantalla: 'errores', href: '/admin/errores', etiqueta: 'Bitácora de errores', grupo: 'seguridad' },
+  // 127: fórmula del índice de crecimiento de AgroMétricas (acción «Configurar rangos»)
+  { pantalla: 'agrometricas', accion: 'configurar_rangos', href: '/admin/agrometricas-ic', etiqueta: 'Fórmula del IC (AgroMétricas)', grupo: 'datos' },
   // 99: choferes, vehículos, envases y productos de campo
   { pantalla: 'fertirriego', accion: 'gestionar_choferes', href: '/admin/fertirriego-catalogos', etiqueta: 'Choferes y catálogos de campo', grupo: 'fertirriego' },
 ]
