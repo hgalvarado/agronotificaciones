@@ -66,7 +66,7 @@ y baja lo que el campo registra. Lo terminado se baja a AGL, se verifica (sha256
 
 **AgroNotificaciones**
 - Commits en `desarrollo`. **Nunca** push/merge a `main` sin «pasa a producción» (merge en un worktree aparte; el `CLAUDE.md` del usuario tiene cambios locales).
-- **Claude no ejecuta SQL de estructura (DDL).** Entrega `sql/NN_*.sql`, lo prueba (solo Opus) y el usuario lo corre: **primero desarrollo, después producción**.
+- **SQL de estructura:** desde 2026-11-21 Claude SÍ corre los `sql/NN_*.sql` en **desarrollo** (cadena `SUPABASE_DB_URL_DESARROLLO` en `.env.local`, nunca impresa; réplica local primero, dos corridas, verificación y reporte). **Producción la corre SOLO el usuario**, después de que Vercel publique el código.
 - Migraciones de permisos: equivalencia antes/después sobre un clon de producción.
 - Supabase rechaza `UPDATE`/`DELETE` sin `WHERE` aun dentro de funciones: **todo** lleva `WHERE`.
 - Toda migración es idempotente y se prueba en distintos **órdenes de corrida** (p. ej. 100>101>100): quien redefine una función ya parchada debe traer ese parche.
