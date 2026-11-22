@@ -145,3 +145,13 @@ mantenimiento iniciales (los da el usuario por modelo).
 - **AGL publica a las estaciones** el plan completo de las categorías activas (lote, categoría, DDT, producto, dosis), como el plan de Fertirriego, para trabajar sin señal.
 - **Motores**: la continuidad del horómetro es por motor, no por estación; el registro diario funciona sin señal como el resto de Campo; el catálogo de equipos aporta código SAP y nombre, y el modelo/intervalo de mantenimiento se agrega a ese catálogo.
 - **Permisos**: una pantalla de la matriz por ficha (Inyección, Motores y combustible), agrupadas en el módulo «Campo» (`pantallas.modulo`); equivalencia antes/después sobre un clon de producción.
+
+## 10. Aclaración del usuario (2026-11-22) sobre el tanque — reemplaza lo ambiguo de §6.4
+El **tanque de la estación es el tanque del motor**: no hay un tanque grande del que baje combustible a otro. El chofer entrega el
+diésel directo a ese tanque. Por tanto:
+- Una estación tiene un **tanque por motor conectado**; cada tanque es su propio saldo de diésel (cuenta de la estación, subcuenta del tanque).
+- **Recepción** = entrada al tanque indicado. **Consumo diario** (visor inicial − visor final + lo recibido ese día) = salida. El visor es el
+  conteo que valida el saldo; diferencias grandes se alertan y se ajustan con conteo.
+- El «suministro» de la hoja es esa recepción; no existe paso «bodega → tanque».
+- Traslado/retiro del motor: fin de temporada → su saldo se va con él (o se devuelve); daño y reemplazo → el tanque y su saldo quedan
+  en la estación y el motor de reemplazo se conecta a ese tanque.
