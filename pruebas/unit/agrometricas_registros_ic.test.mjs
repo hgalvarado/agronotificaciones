@@ -11,7 +11,7 @@ register(
       `export async function resolve(s, c, n) { try { return await n(s, c) } catch (e) { if (s.startsWith('.') && !/\\.[cm]?[jt]sx?$/.test(s)) return n(s + '.ts', c); throw e } }`
     )
 )
-const { textoIC, diferenciaIC, estadoContraPlan, seriesIC, seriesHojas, sparksIC, validarHojas, DECIMALES_IC } =
+const { textoIC, diferenciaIC, estadoContraPlan, seriesIC, seriesHojas, sparksIC, validarHojas, DECIMALES_IC, planEnDdt, resumenTurnoIC, resumenPorTurno } =
   await import('../../src/lib/agrometricas/registrosIC.ts')
 
 const reg = (o) => ({ id: 'x', fecha: '2026-11-20', ddt: 10, turno: 'T1', temporada: '2026-2027', ciclo: 'Ciclo 1',
@@ -88,4 +88,40 @@ test('validarHojas: número válido, coma decimal, errores en español', () => {
   }
   assert.deepEqual(validarHojas('100000'), { ok: false, error: 'El número de hojas es demasiado grande.' })
   assert.equal(validarHojas('99999').ok, true)
+})
+
+const PLAN = [{ ddt: 5, ic_plan: 0.3 }, { ddt: 10, ic_plan: 0.5 }, { ddt: 20, ic_plan: 1.0 }]
+
+test('planEnDdt: exacto, interpolado y fuera de la tabla', () => {
+  assert.equal(planEnDdt(PLAN, 10), 0.5)
+  assert.equal(planEnDdt(PLAN, 15), 0.75)
+  assert.equal(planEnDdt(PLAN, 4), null)
+  assert.equal(planEnDdt([], 10), null)
+})
+
+test('resumenTurnoIC: % del plan, tendencia y frase', () => {
+  const r = resumenTurnoIC([
+    reg({ id: 'a', ddt: 6, ic_real: 0.3, ic_plan: 0.32 }),
+    reg({ id: 'b', ddt: 12, ic_real: 0.6, ic_plan: 0.6 }),
+    reg({ id: 'c', ddt: 18, ic_real: 0.7, ic_plan: 0.9 }),
+  ], PLAN)
+  assert.equal(r.ddt, 18)
+  assert.equal(r.pct, 78)
+  assert.equal(r.dif, -0.2)
+  assert.equal(r.tendencia, 'sube')
+  assert.match(r.frase, /78 % del plan en el DDT 18.*por debajo/)
+})
+
+test('resumenTurnoIC: sin plan en el registro usa la tabla; sin IC avisa; fuera de ventana se cuenta', () => {
+  const r = resumenTurnoIC([reg({ ddt: 10, ic_real: 0.5 }), reg({ id: 'z', ddt: 3, ic_real: 0.1 })], PLAN)
+  assert.equal(r.pct, 100)
+  assert.equal(r.fueraVentana, 1)
+  const v = resumenTurnoIC([reg({ ddt: null, ic_real: null })], PLAN)
+  assert.equal(v.pct, null)
+  assert.match(v.frase, /todavía no hay IC/)
+})
+
+test('resumenPorTurno: del más atrasado al más adelantado', () => {
+  const regs = [reg({ turno: 'A', ddt: 10, ic_real: 0.6, ic_plan: 0.5 }), reg({ turno: 'B', ddt: 10, ic_real: 0.25, ic_plan: 0.5 }), reg({ turno: 'C', ddt: null })]
+  assert.deepEqual(resumenPorTurno(regs, ['A', 'B', 'C'], PLAN).map((x) => x.turno), ['B', 'A', 'C'])
 })

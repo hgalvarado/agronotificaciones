@@ -81,3 +81,70 @@ export function validarHojas(texto: string | null | undefined): { ok: true; hoja
   if (n >= 100000) return { ok: false, error: 'El número de hojas es demasiado grande.' }
   return { ok: true, hojas: n }
 }
+
+// ---------------------------------------------------------------- resumen que «dice algo» (gráficas del IC)
+
+export const VENTANA_IC = { min: 5, max: 20 }
+export interface PlanPunto { ddt: number; ic_plan: number }
+
+/** IC del plan en un DDT: el de la tabla si existe; si no, interpola entre los dos DDT vecinos. null si no hay con qué. */
+export function planEnDdt(plan: PlanPunto[], ddt: number): number | null {
+  if (!plan.length) return null
+  const orden = plan.slice().sort((a, b) => a.ddt - b.ddt)
+  const exacto = orden.find((p) => p.ddt === ddt)
+  if (exacto) return exacto.ic_plan
+  const antes = orden.filter((p) => p.ddt < ddt).pop(), despues = orden.find((p) => p.ddt > ddt)
+  if (!antes || !despues) return null
+  const f = (ddt - antes.ddt) / (despues.ddt - antes.ddt)
+  return Math.round((antes.ic_plan + f * (despues.ic_plan - antes.ic_plan)) * 10 ** 4) / 10 ** 4
+}
+
+export type Tendencia = 'sube' | 'baja' | 'igual'
+export interface ResumenTurnoIC {
+  turno: string
+  n: number
+  /** Último registro con IC real y DDT (el de mayor DDT). */
+  ddt: number | null
+  fecha: string | null
+  real: number | null
+  plan: number | null
+  /** IC real como % del plan (100 = va justo en el plan). */
+  pct: number | null
+  dif: number | null
+  tendencia: Tendencia | null
+  fueraVentana: number
+  frase: string
+}
+
+/** Resumen de UN turno: dónde va el IC hoy contra el plan y hacia dónde se mueve. */
+export function resumenTurnoIC(registros: Registro[], plan: PlanPunto[] = []): ResumenTurnoIC {
+  const turno = registros[0]?.turno ?? ''
+  const conIC = registros.filter((r) => r.ddt !== null && r.ddt !== undefined && valorNumero(r, 'ic_real') !== null)
+    .slice().sort((a, b) => (a.ddt as number) - (b.ddt as number))
+  const fueraVentana = registros.filter((r) => r.ddt != null && ((r.ddt as number) < VENTANA_IC.min || (r.ddt as number) > VENTANA_IC.max)).length
+  const base = { turno, n: registros.length, fueraVentana }
+  const ult = conIC[conIC.length - 1]
+  if (!ult) return { ...base, ddt: null, fecha: null, real: null, plan: null, pct: null, dif: null, tendencia: null, frase: `${turno}: todavía no hay IC con DDT para comparar.` }
+  const real = valorNumero(ult, 'ic_real') as number
+  const planUlt = valorNumero(ult, 'ic_plan') ?? planEnDdt(plan, ult.ddt as number)
+  const pct = planUlt && planUlt > 0 ? Math.round((real / planUlt) * 100) : null
+  const dif = planUlt === null ? null : Math.round((real - planUlt) * 10 ** DECIMALES_IC) / 10 ** DECIMALES_IC
+  let tendencia: Tendencia | null = null
+  if (conIC.length > 1) {
+    const d = real - (valorNumero(conIC[conIC.length - 2], 'ic_real') as number)
+    tendencia = Math.abs(d) < 0.005 ? 'igual' : d > 0 ? 'sube' : 'baja'
+  }
+  let frase: string
+  if (pct === null) frase = `${turno}: IC real ${textoIC(real)} en el DDT ${ult.ddt}; no hay plan para ese DDT.`
+  else if (pct >= 100) frase = `${turno} va al ${pct} % del plan en el DDT ${ult.ddt}: ${pct === 100 ? 'justo en el plan' : `por encima del plan (+${textoIC(dif)})`}.`
+  else frase = `${turno} va al ${pct} % del plan en el DDT ${ult.ddt}: por debajo del plan (${textoIC(dif)}).`
+  if (tendencia === 'sube') frase += ' Está subiendo.'
+  else if (tendencia === 'baja') frase += ' Bajó desde la lectura anterior.'
+  return { ...base, ddt: ult.ddt as number, fecha: ult.fecha, real, plan: planUlt, pct, dif, tendencia, frase }
+}
+
+/** Resumen de varios turnos, del más atrasado (menor % del plan) al más adelantado; sin dato al final. */
+export function resumenPorTurno(registros: Registro[], turnos: string[], plan: PlanPunto[] = []): ResumenTurnoIC[] {
+  return turnos.map((t) => resumenTurnoIC(registros.filter((r) => r.turno === t), plan))
+    .sort((a, b) => (a.pct ?? Infinity) - (b.pct ?? Infinity) || a.turno.localeCompare(b.turno))
+}

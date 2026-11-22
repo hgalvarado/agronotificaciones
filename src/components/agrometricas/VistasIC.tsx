@@ -5,14 +5,17 @@
  * forma que las de parámetros. Solo presentan; guardar y eliminar lo hace la pantalla que las usa (la base decide el permiso).
  */
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Boton, Insignia, Tarjeta } from '@/components/ui/Primitivos'
 import { DataGrid, type ColumnaGrid } from '@/components/ui/DataGrid'
 import { SelectorMultiple } from '@/components/ui/SelectorMultiple'
 import { ayerIso, hoyIso } from '@/lib/fechas/zona'
 import { agruparPorDia, nombreZona, quienRegistro, turnosDe, valorNumero, type Registro } from '@/lib/agrometricas/registrosPura'
-import { diferenciaIC, estadoContraPlan, seriesHojas, seriesIC, sparksIC, textoIC } from '@/lib/agrometricas/registrosIC'
-import { GraficaLinea, colorLeyenda } from './GraficaLinea'
+import { VENTANA_IC, diferenciaIC, estadoContraPlan, resumenPorTurno, resumenTurnoIC, sparksIC, textoIC, type PlanPunto } from '@/lib/agrometricas/registrosIC'
+import { normalizarVersiones } from '@/lib/agrometricas/indicePura'
+import { createClient } from '@/lib/supabase/client'
+import { GraficaLinea } from './GraficaLinea'
+import { BarrasHojas, GraficaICPlan } from './GraficaIC'
 
 const Estado = ({ r }: { r: Registro }) => {
   const e = estadoContraPlan(r)
@@ -120,48 +123,117 @@ export function TablaIC({ registros, cargando, onEditarCelda, onAbrir, onElimina
   )
 }
 
+/** Plan del IC de la versión de fórmula vigente: una sola lectura al abrir las gráficas (sin temporizadores ni reintentos). */
+function usePlanIC(): PlanPunto[] {
+  const [plan, setPlan] = useState<PlanPunto[]>([])
+  const pedido = useRef(false)
+  useEffect(() => {
+    if (pedido.current) return
+    pedido.current = true
+    createClient().rpc('fn_agm_ic_config').then(({ data }) => {
+      const versiones = normalizarVersiones(data)
+      const hoy = hoyIso()
+      const vigente = [...versiones].reverse().find((v) => v.vigente_desde <= hoy) ?? versiones[0]
+      if (vigente) setPlan(vigente.plan)
+    }, () => {})   // sin plan de la fórmula: las gráficas usan el plan que trae cada registro
+  }, [])
+  return plan
+}
+
+const FLECHA: Record<string, string> = { sube: '↑ Sube', baja: '↓ Baja', igual: '→ Igual' }
+
+function Dato({ etiqueta, valor, tono }: { etiqueta: string; valor: string; tono?: string }) {
+  return (
+    <div className="rounded-xl border border-slate-100 px-3 py-2">
+      <p className="text-xs text-slate-500">{etiqueta}</p>
+      <p className={`text-base font-semibold tabular-nums ${tono ?? 'text-slate-900'}`}>{valor}</p>
+    </div>
+  )
+}
+
 export function GraficasIC({ registros }: { registros: Registro[] }) {
   const turnos = useMemo(() => turnosDe(registros), [registros])
+  const plan = usePlanIC()
   const [sel, setSel] = useState<string[]>([])
   const validos = sel.filter((t) => turnos.some((x) => x.turno === t))
   const elegidos = validos.length ? validos : turnos.slice(0, 1).map((t) => t.turno)
+  const comparativo = useMemo(() => resumenPorTurno(registros, elegidos, plan), [registros, elegidos, plan])
   if (!turnos.length) return <p className="text-sm text-slate-500">No hay registros para graficar con estos filtros.</p>
 
   return (
     <div className="flex flex-col gap-3" data-graficas-ic>
       <SelectorMultiple etiqueta="Turno de las gráficas" valores={validos} onCambiar={setSel}
         opciones={turnos.map((t) => ({ valor: t.turno, etiqueta: `${t.turno} (${t.n})` }))} />
-      <p className="text-xs text-slate-500">Mostrando: {elegidos.join(', ')}. Línea punteada = IC del plan para cada DDT.</p>
+      <p className="text-xs text-slate-500">
+        Cómo leerlas: la línea punteada es el IC que se esperaba (plan); la verde es el IC medido. El tallo de cada punto muestra cuánto se aleja del plan:
+        verde = por encima, ámbar = por debajo. El IC se mide preferiblemente del DDT {VENTANA_IC.min} al {VENTANA_IC.max}.
+      </p>
+
+      {elegidos.length > 1 && (
+        <Tarjeta className="p-3.5">
+          <div data-resumen-turnos>
+            <h3 className="mb-1 text-sm font-semibold text-slate-800">Resumen por turno · del más atrasado al más adelantado</h3>
+            <p className="mb-2 text-xs text-slate-500">La barra es el IC real como % del plan en la última lectura; la marca vertical es el 100 %.</p>
+            <ul className="flex flex-col gap-1.5">
+              {comparativo.map((r) => {
+                const ancho = r.pct === null ? 0 : Math.min(100, (r.pct / 150) * 100)
+                return (
+                  <li key={r.turno} className="grid grid-cols-[6.5rem_1fr_auto] items-center gap-2 text-sm" data-fila-turno={r.turno}>
+                    <span className="truncate font-medium text-slate-800">{r.turno}</span>
+                    <span className="relative h-4 rounded-full bg-slate-100">
+                      <span className={`absolute inset-y-0 left-0 rounded-full ${r.pct !== null && r.pct >= 100 ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${ancho}%` }} />
+                      <span className="absolute inset-y-0 w-px bg-slate-500" style={{ left: `${(100 / 150) * 100}%` }} />
+                    </span>
+                    <span className="min-w-28 text-right tabular-nums text-slate-700">
+                      {r.pct === null ? 'Sin plan' : `${r.pct} %`}{r.ddt !== null ? ` · DDT ${r.ddt}` : ''}
+                    </span>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        </Tarjeta>
+      )}
+
       {elegidos.map((turno) => {
         const delTurno = registros.filter((r) => r.turno === turno)
-        const ic = seriesIC(delTurno)
-        const hojas = seriesHojas(delTurno)
+        const r = resumenTurnoIC(delTurno, plan)
+        const sobre = r.pct !== null && r.pct >= 100
         return (
           <section key={turno} className="flex flex-col gap-3" data-turno-grafica-ic={turno}>
             <h2 className="text-sm font-semibold text-slate-900">{turno}</h2>
+            <Tarjeta className="p-3.5">
+              <div data-resumen-ic>
+                <p className={`mb-3 text-sm font-medium ${r.pct === null ? 'text-slate-700' : sobre ? 'text-emerald-700' : 'text-amber-700'}`}>{r.frase}</p>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <Dato etiqueta="Último IC real" valor={textoIC(r.real)} />
+                  <Dato etiqueta={r.ddt !== null ? `IC plan (DDT ${r.ddt})` : 'IC plan'} valor={textoIC(r.plan)} />
+                  <Dato etiqueta="% del plan" valor={r.pct === null ? '—' : `${r.pct} %`} tono={r.pct === null ? undefined : sobre ? 'text-emerald-700' : 'text-amber-700'} />
+                  <Dato etiqueta="Tendencia" valor={r.tendencia ? FLECHA[r.tendencia] : '—'} />
+                </div>
+                <p className="mt-2 text-xs text-slate-500">
+                  {r.n} registro{r.n === 1 ? '' : 's'}{r.fecha ? ` · última lectura ${r.fecha}` : ''}
+                  {r.fueraVentana > 0 ? ` · ${r.fueraVentana} fuera de la ventana DDT ${VENTANA_IC.min}–${VENTANA_IC.max}` : ''}
+                </p>
+              </div>
+            </Tarjeta>
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
               <Tarjeta className="p-3.5">
                 <div data-grafica="ic">
-                  <h3 className="mb-2 text-sm font-semibold text-slate-800">IC real contra plan</h3>
-                  {ic.series.length ? (
-                    <>
-                      <GraficaLinea series={ic.series} etiqueta={`IC real contra plan por DDT, turno ${turno}`} />
-                      <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
-                        {ic.series.map((s) => (
-                          <li key={s.campo} className="flex items-center gap-1.5 text-xs text-slate-600">
-                            <svg width="10" height="10" aria-hidden><circle cx="5" cy="5" r="4" className={colorLeyenda(s.campo)} /></svg>{s.etiqueta}
-                          </li>
-                        ))}
-                      </ul>
-                    </>
-                  ) : <p className="text-sm text-slate-400">Sin lecturas.</p>}
-                  {ic.sinDdt > 0 && <p className="mt-1 text-xs text-amber-700">{ic.sinDdt} registros sin DDT no se grafican.</p>}
+                  <h3 className="mb-2 text-sm font-semibold text-slate-800">IC real contra el plan</h3>
+                  <GraficaICPlan registros={delTurno} plan={plan} etiqueta={`IC real contra plan por DDT, turno ${turno}`} />
+                  <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600">
+                    <li className="flex items-center gap-1.5"><svg width="22" height="8" aria-hidden><line x1="0" x2="22" y1="4" y2="4" className="stroke-emerald-600" strokeWidth="2.6" /></svg>IC real</li>
+                    <li className="flex items-center gap-1.5"><svg width="22" height="8" aria-hidden><line x1="0" x2="22" y1="4" y2="4" className="stroke-slate-500" strokeWidth="1.8" strokeDasharray="5 3" /></svg>IC plan</li>
+                    <li className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-600" />Sobre el plan</li>
+                    <li className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-full bg-amber-500" />Bajo el plan</li>
+                  </ul>
                 </div>
               </Tarjeta>
               <Tarjeta className="p-3.5">
                 <div data-grafica="hojas">
                   <h3 className="mb-2 text-sm font-semibold text-slate-800">Hojas por DDT</h3>
-                  {hojas.length ? <GraficaLinea series={hojas} etiqueta={`Hojas por DDT, turno ${turno}`} /> : <p className="text-sm text-slate-400">Sin lecturas.</p>}
+                  <BarrasHojas registros={delTurno} etiqueta={`Hojas por DDT, turno ${turno}`} />
                 </div>
               </Tarjeta>
             </div>
