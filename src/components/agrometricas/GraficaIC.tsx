@@ -126,8 +126,10 @@ export function GraficaICPlan({ registros, plan, etiqueta }: { registros: Regist
       {/* Último punto: cuánto va del plan (dentro del gráfico; texto oscuro sobre ámbar para que contraste) */}
       {ultimo.plan ? (() => {
         const sobreU = ultimo.real >= ultimo.plan
-        const bx = Math.min(Math.max(g.cx(ultimo.ddt) - 26, M.l + 2), W - M.r - 52)
-        const by = Math.max(M.t + 16, g.cy(Math.max(ultimo.real, ultimo.plan)) - 34)
+        // Al lado del último punto (no encima: taparía su valor); a la izquierda si a la derecha no cabe
+        const xp = g.cx(ultimo.ddt)
+        const bx = xp + 12 + 52 <= W - M.r ? xp + 12 : Math.max(M.l + 2, xp - 12 - 52)
+        const by = Math.min(Math.max(M.t + 16, g.cy(ultimo.real) - 10), H - M.b - 24)
         return (
           <g data-ultimo-pct>
             <rect x={bx} y={by} width={52} height={20} rx={10} className={sobreU ? 'fill-emerald-700' : 'fill-amber-400'} />
