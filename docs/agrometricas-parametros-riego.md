@@ -127,8 +127,8 @@ para leer, **publicar** para confirmar y purgar. No hay permisos nuevos ni nombr
 
 **Pedido (2026-11-21)**: los 107 registros de 2026-2027 que vivían solo en AGL (importados de AppSheet por «Glopez», «Rwlopez»,
 «gbetancourth») aparecen en Supabase como si los hubieran ingresado esos usuarios (cruce por correo: noelopez@agl.com,
-rudylopez@agl.com, gustavobetancourth@agrolibano.com). Cada usuario ve los suyos; el encargado de zona los de su zona; el
-administrador todos.
+rudylopez@agl.com, gustavobetancourth@agrolibano.com). **Visibilidad (ajustada 2026-11-21)**: el administrador ve todo; quien tenga
+`agrometricas · ver` en la zona del turno ve **todos** los registros de esa zona, aunque los haya capturado otro. Editar y eliminar no cambian.
 
 **Funciones** (todas `jsonb`, mensajes en español)
 - `fn_agm_cargar_appsheet({registros:[{id_appsheet, fecha, turno_ciclo_id (= id del turno en AGL, `turnos_ciclo.agl_id`),
@@ -139,10 +139,17 @@ administrador todos.
   no se toca (no pisa ediciones). Sin autor o sin turno **no se carga** (se informa para reintentar). Nacen ya «bajados»
   (AGL los tiene): solo vuelven a bajar si alguien los edita.
 - `fn_agm_mis_registros({temporada?, turno?, turno_ciclo_id?, zona_id?, desde?, hasta?, texto?, limite? (50, máx. 1000), pagina?
-  (desde 0), orden? 'desc'|'asc'})` → `{total, limite, pagina, registros:[…]}`. Cada registro trae todas las columnas con
-  valores (para graficar), `turno, temporada, ciclo, estacion, zona, creado_por_nombre, creado_por_email, editado_por_nombre`,
-  y `puede_editar`, `puede_eliminar`. No trae eliminados, huella ni datos internos. Visibles: administrador (todos), dueño (los
-  suyos, con `agrometricas · ver`) y encargado de la zona del turno («Corregir parámetros» en esa zona).
+  (desde 0), orden? 'desc'|'asc', lote? (texto exacto, p. ej. '1002-120'), lotes? (arreglo, selección múltiple)})` → `{total, limite, pagina, registros:[…]}`. Cada registro trae todas las columnas con
+  valores (para graficar), `turno, temporada, ciclo, estacion, zona, lotes:[{lote, nombre}], creado_por_nombre, creado_por_email, editado_por_nombre`,
+  y `puede_editar`, `puede_eliminar`. No trae eliminados, huella ni datos internos. Visibles: administrador (todos) y cualquiera con
+  `agrometricas · ver` en la zona del turno (todos los de la zona). `puede_editar` (dueño con «Registrar parámetros» en la zona, encargado con
+  «Corregir» o administrador) y `puede_eliminar` (solo `eliminar_definitivo`) se calculan por fila. **Filtro por lote**: `lote`/`lotes`
+  devuelven los registros de TODOS los turnos que contengan ese lote (un lote como 1002-120 «Areanales-2» está en T1002-T36, T37, T38…).
+- `public.turno_lotes(turno_ciclo_id → turnos_ciclo on delete cascade, lote, nombre, area_mz; pk (turno_ciclo_id, lote); índice por lote)`:
+  lotes de cada turno; RLS de lectura con la misma regla de zona («ver»). `fn_agm_publicar_turno_lotes({turnos:[{turno_ciclo_id (= agl_id),
+  lotes:[{lote, nombre?, area_mz?}]}]})` → `{turnos, lotes, sin_turno:[agl_id], invalidos:[…]}`: solo el usuario técnico (`fertirriego_agl · publicar`),
+  REEMPLAZA los lotes de cada turno (idempotente). `fn_agm_lotes_visibles()` → `[{lote, nombre, turnos:[código de turno]}]` de lo que el usuario ve
+  (para el selector). `fn_agm_cargar_appsheet` acepta `lotes` por registro y los guarda solo si el turno aún no tiene.
 - `fn_agm_editar_parametro({id, <valores>…, latitud?, longitud?, comentario?})` → `{cambio, registro}`. Solo cambia lo que viene
   (valor vacío = limpiar; no número = error). Dueño (con «Registrar parámetros» en la zona), encargado de la zona o administrador.
   Marca `editado_en/por`; la huella cambia sola y AGL lo vuelve a bajar. No edita turnos archivados («reactívalo en AGL»).

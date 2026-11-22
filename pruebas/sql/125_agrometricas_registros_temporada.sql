@@ -168,13 +168,13 @@ select pg_temp.ok((select count(*) = 3 from agm_parametros where id_appsheet lik
 select pg_temp.como(null);
 select pg_temp.falla($q$ select fn_agm_mis_registros('{}') $q$, 'mis registros sin sesión: 42501', 'sesión', '42501');
 select pg_temp.como((select glopez from k));
-select pg_temp.ok((select (j->>'total')::int = 1 and j->'registros'->0->>'id_appsheet' = 'T125-A1' from (select pg_temp.mr('{"temporada":"T125-2026-2027"}') j) q), 'el dueño (Glopez) ve solo los suyos');
+select pg_temp.ok((select (j->>'total')::int = 2 and not exists (select 1 from jsonb_array_elements(j->'registros') e where e->>'id_appsheet' = 'T125-B1') from (select pg_temp.mr('{"temporada":"T125-2026-2027"}') j) q), 'Glopez ve A1 y A2 (toda su zona, aunque A2 lo capturó otro) y no B1 (otra zona)');
 select pg_temp.como((select rwlopez from k));
-select pg_temp.ok((select (j->>'total')::int = 1 and j->'registros'->0->>'id_appsheet' = 'T125-A2' from (select pg_temp.mr('{"temporada":"T125-2026-2027"}') j) q), 'el dueño (Rwlopez) ve solo los suyos');
+select pg_temp.ok((select (j->>'total')::int = 2 and not exists (select 1 from jsonb_array_elements(j->'registros') e where e->>'id_appsheet' = 'T125-B1') from (select pg_temp.mr('{"temporada":"T125-2026-2027"}') j) q), 'Rwlopez ve A1 y A2 (toda su zona)');
 select pg_temp.como((select gbet from k));
-select pg_temp.ok((select (j->>'total')::int = 1 and j->'registros'->0->>'id_appsheet' = 'T125-B1' from (select pg_temp.mr('{"temporada":"T125-2026-2027"}') j) q), 'el dueño (Gbetancourth) ve solo los suyos');
+select pg_temp.ok((select (j->>'total')::int = 1 and j->'registros'->0->>'id_appsheet' = 'T125-B1' from (select pg_temp.mr('{"temporada":"T125-2026-2027"}') j) q), 'Gbetancourth ve solo B1 (su zona B; no ve la zona A)');
 select pg_temp.como((select otro from k));
-select pg_temp.ok((select (j->>'total')::int = 0 from (select pg_temp.mr('{"temporada":"T125-2026-2027"}') j) q), 'otra persona de la misma zona (sin «Corregir parámetros») NO ve los de otros');
+select pg_temp.ok((select (j->>'total')::int = 2 and not exists (select 1 from jsonb_array_elements(j->'registros') e where e->>'id_appsheet' = 'T125-B1') from (select pg_temp.mr('{"temporada":"T125-2026-2027"}') j) q), 'otra persona de la zona A (sin «Corregir parámetros») ve los de toda la zona A, no la B');
 select pg_temp.como((select enc from k));
 select pg_temp.ok((select (j->>'total')::int = 2 and not exists (select 1 from jsonb_array_elements(j->'registros') e where e->>'id_appsheet' = 'T125-B1') from (select pg_temp.mr('{"temporada":"T125-2026-2027"}') j) q), 'el encargado de la zona A ve A1 y A2, no B1');
 select pg_temp.como((select adm from k));
@@ -187,7 +187,7 @@ select pg_temp.ok((select e->>'creado_por_email' = 'glopez@t125.test' from adm1,
 select pg_temp.como((select glopez from k));
 select pg_temp.ok((select (e->>'puede_editar')::boolean and not (e->>'puede_eliminar')::boolean from (select pg_temp.mr('{"temporada":"T125-2026-2027"}')->'registros'->0 e) q), 'dueño: puede editar, no eliminar');
 select pg_temp.como((select elim from k));
-select pg_temp.ok((select (j->>'total')::int = 0 from (select pg_temp.mr('{"temporada":"T125-2026-2027"}') j) q), 'quien solo tiene «Eliminar por completo» (sin ser dueño ni encargado) no ve registros ajenos');
+select pg_temp.ok((select (j->>'total')::int = 3 from (select pg_temp.mr('{"temporada":"T125-2026-2027"}') j) q), 'quien tiene «ver» global ve todos (la visibilidad es por «ver» en la zona)');
 -- filtros (administrador)
 select pg_temp.como((select adm from k));
 select pg_temp.ok((pg_temp.mr('{"temporada":"T125-2026-2027","turno":"t125-t1"}')->>'total')::int = 2, 'filtro por turno');
@@ -252,7 +252,7 @@ select pg_temp.falla(format($q$ select fn_agm_eliminar_parametro(jsonb_build_obj
 select pg_temp.falla(format($q$ select fn_agm_editar_parametro(jsonb_build_object('id', %L, 'ph_agua', 6)) $q$, (select a1 from k)), 'editar un eliminado: 22023', 'eliminado', '22023');
 select pg_temp.ok((pg_temp.mr('{"temporada":"T125-2026-2027"}')->>'total')::int = 2, 'mis registros ya no lista al eliminado');
 select pg_temp.como((select glopez from k));
-select pg_temp.ok((pg_temp.mr('{"temporada":"T125-2026-2027"}')->>'total')::int = 0, 'el dueño ya no ve el suyo eliminado');
+select pg_temp.ok((pg_temp.mr('{"temporada":"T125-2026-2027"}')->>'total')::int = 1, 'Glopez ya no ve el eliminado (A1); sigue viendo A2 de su zona');
 -- un rol al que el usuario le concedió el permiso (no administrador) también elimina; sin ser dueño tampoco lo veía en la lista
 select pg_temp.como((select elim from k));
 select pg_temp.ok((fn_agm_eliminar_parametro(jsonb_build_object('id', (select a2 from k), 'motivo', 'se registró en el turno equivocado'))->>'id')::uuid = (select a2 from k), 'quien tenga el permiso concedido en la matriz elimina (sin ser administrador)');
@@ -305,7 +305,138 @@ update agm_parametros a set bajado_a_agl_en = now(),
 select pg_temp.ok(not exists (select 1 from jsonb_array_elements(pg_temp.exp()->'filas') e where e->>'id' = '12500000-0000-4000-8000-0000000000f1'),
     'una fila confirmada con la huella de antes de la 125 NO vuelve a «por bajar» (las claves nuevas en null se ignoran)');
 
+-- ---------------------------------------------------------------- lotes de los turnos (turno_lotes) y filtro por lote
+select pg_temp.ok(exists (select 1 from pg_tables where schemaname = 'public' and tablename = 'turno_lotes' and rowsecurity)
+                  and exists (select 1 from pg_policies where tablename = 'turno_lotes' and policyname = 'turno_lotes_leer' and cmd = 'SELECT'),
+                  'turno_lotes existe con RLS y política de lectura');
+-- turnos T36/T37/T38 de la zona A (comparten el lote 1002-120) y T39 de la zona B (también lo tiene)
+insert into turnos (codigo, nombre, zona_id)
+select x.c, 'T125 ' || x.c, (select id from zonas where nombre = x.z)
+  from (values ('T125-T36', 'T125-A'), ('T125-T37', 'T125-A'), ('T125-T38', 'T125-A'), ('T125-T39', 'T125-B'), ('T125-T40', 'T125-A')) x(c, z)
+on conflict (codigo) do nothing;
+insert into turnos_ciclo (agl_id, turno_id, temporada, ciclo, fecha_siembra, zona_id, activo)
+select 'T125-L-' || right(x.c, 2), (select id from turnos where codigo = x.c), 'T125-2026-2027', 'Ciclo 1', '2026-08-01',
+       (select id from zonas where nombre = x.z), true
+  from (values ('T125-T36', 'T125-A'), ('T125-T37', 'T125-A'), ('T125-T38', 'T125-A'), ('T125-T39', 'T125-B'), ('T125-T40', 'T125-A')) x(c, z)
+on conflict (agl_id) do update set activo = true;
+insert into agm_parametros (id, turno_ciclo_id, fecha, ph_agua, creado_por)
+select gen_random_uuid(), (select id from turnos_ciclo where agl_id = x.a), '2026-10-20', 6.5, x.u
+  from (select 'T125-L-36' a, (select glopez from k) u union all select 'T125-L-37', (select rwlopez from k)
+        union all select 'T125-L-38', (select glopez from k) union all select 'T125-L-39', (select gbet from k)) x;
+
+-- permisos de publicar
+select pg_temp.como((select glopez from k));
+select pg_temp.falla($q$ select fn_agm_publicar_turno_lotes('{"turnos":[]}') $q$, 'publicar lotes sin permiso AGL: 42501', 'permiso', '42501');
+select pg_temp.como((select enc from k));
+select pg_temp.falla($q$ select fn_agm_publicar_turno_lotes('{"turnos":[]}') $q$, 'publicar lotes el encargado (sin permiso AGL): 42501', 'permiso', '42501');
+select pg_temp.como(null);
+select pg_temp.falla($q$ select fn_agm_publicar_turno_lotes('{"turnos":[]}') $q$, 'publicar lotes sin sesión: 42501', 'sesión', '42501');
+select pg_temp.falla($q$ select fn_agm_lotes_visibles() $q$, 'lotes visibles sin sesión: 42501', 'sesión', '42501');
+select pg_temp.como((select agl from k));
+select pg_temp.falla($q$ select fn_agm_publicar_turno_lotes('{"lotes":[]}') $q$, 'publicar sin la lista de turnos: 22023', 'turnos', '22023');
+
+create temp table pubj as select jsonb_build_object('turnos', jsonb_build_array(
+    jsonb_build_object('turno_ciclo_id', 'T125-L-36', 'lotes', jsonb_build_array(
+        jsonb_build_object('lote', '1002-120', 'nombre', 'Areanales-2', 'area_mz', '3,5'), jsonb_build_object('lote', '1002-121', 'nombre', 'Areanales-3'),
+        jsonb_build_object('lote', '1002-120', 'nombre', 'Areanales-2', 'area_mz', 3.5), jsonb_build_object('nombre', 'sin lote'))),
+    jsonb_build_object('turno_ciclo_id', 'T125-L-37', 'lotes', jsonb_build_array(jsonb_build_object('lote', ' 1002-120 ', 'nombre', 'Areanales-2'))),
+    jsonb_build_object('turno_ciclo_id', 'T125-L-38', 'lotes', jsonb_build_array(jsonb_build_object('lote', '1002-120', 'nombre', 'Areanales-2'))),
+    jsonb_build_object('turno_ciclo_id', 'T125-L-39', 'lotes', jsonb_build_array(jsonb_build_object('lote', '1002-120', 'nombre', 'Areanales-2'))),
+    jsonb_build_object('turno_ciclo_id', 'NO-EXISTE-L', 'lotes', jsonb_build_array(jsonb_build_object('lote', 'X'))))) as p;
+create temp table pub1 as select fn_agm_publicar_turno_lotes((select p from pubj)) as j;
+select pg_temp.ok((select (j->>'turnos')::int = 4 and (j->>'lotes')::int = 5 and j->'sin_turno' = '["NO-EXISTE-L"]'::jsonb and j->'invalidos' = '[]'::jsonb from pub1),
+    'publicar lotes: 4 turnos, 5 lotes (duplicado y lote vacío se ignoran), el turno inexistente se informa en sin_turno');
+select pg_temp.ok((select count(*) = 5 from turno_lotes where turno_ciclo_id in (select id from turnos_ciclo where agl_id like 'T125-L-%'))
+                  and (select area_mz = 3.5 from turno_lotes where turno_ciclo_id = (select id from turnos_ciclo where agl_id = 'T125-L-36') and lote = '1002-120')
+                  and exists (select 1 from turno_lotes where turno_ciclo_id = (select id from turnos_ciclo where agl_id = 'T125-L-37') and lote = '1002-120'), 'lotes guardados (área con coma decimal, espacios recortados)');
+-- idempotente
+create temp table pub2 as select fn_agm_publicar_turno_lotes((select p from pubj)) as j;
+select pg_temp.ok((select j = (select j from pub1) from pub2)
+                  and (select count(*) = 5 from turno_lotes where turno_ciclo_id in (select id from turnos_ciclo where agl_id like 'T125-L-%')), 'publicar dos veces: mismo resultado y sin duplicar');
+-- reemplaza por turno
+select fn_agm_publicar_turno_lotes('{"turnos":[{"turno_ciclo_id":"T125-L-36","lotes":[{"lote":"1002-122","nombre":"Otro"}]}]}');
+select pg_temp.ok((select array_agg(lote order by lote) = array['1002-122'] from turno_lotes where turno_ciclo_id = (select id from turnos_ciclo where agl_id = 'T125-L-36')), 'publicar REEMPLAZA los lotes de ese turno');
+select pg_temp.ok((select count(*) = 1 from turno_lotes where turno_ciclo_id = (select id from turnos_ciclo where agl_id = 'T125-L-37')), 'los demás turnos no cambian');
+select fn_agm_publicar_turno_lotes((select p from pubj));
+select pg_temp.ok((select array_agg(lote order by lote) = array['1002-120', '1002-121'] from turno_lotes where turno_ciclo_id = (select id from turnos_ciclo where agl_id = 'T125-L-36')), 'se restauran los lotes de T36');
+
+-- filtro por lote (todos los turnos que lo contienen)
+select pg_temp.como((select glopez from k));
+create temp table fl1 as select pg_temp.mr('{"lote":"1002-120","temporada":"T125-2026-2027"}') as j;
+select pg_temp.ok((select (j->>'total')::int = 3 from fl1), 'lote 1002-120: registros de los turnos T36, T37 y T38 (todos los que lo contienen; T39 es de otra zona)');
+select pg_temp.ok((select array_agg(distinct e->>'turno' order by e->>'turno') = array['T125-T36', 'T125-T37', 'T125-T38'] from fl1, jsonb_array_elements(j->'registros') e), 'son exactamente los de T36, T37 y T38 (incluido el que capturó otro usuario)');
+select pg_temp.ok((select bool_and(exists (select 1 from jsonb_array_elements(e->'lotes') l where l->>'lote' = '1002-120' and l->>'nombre' = 'Areanales-2')) from fl1, jsonb_array_elements(j->'registros') e), 'cada registro trae su arreglo `lotes` [{lote, nombre}]');
+select pg_temp.ok((select jsonb_array_length(e->'lotes') = 2 from fl1, jsonb_array_elements(j->'registros') e where e->>'turno' = 'T125-T36'), 'T36 trae sus dos lotes');
+select pg_temp.ok((pg_temp.mr('{"lote":"9999-999","temporada":"T125-2026-2027"}')->>'total')::int = 0
+                  and jsonb_array_length(pg_temp.mr('{"lote":"9999-999"}')->'registros') = 0, 'lote inexistente: vacío');
+select pg_temp.ok((pg_temp.mr('{"lotes":["1002-120","1002-121"],"temporada":"T125-2026-2027"}')->>'total')::int = 3, 'lotes (selección múltiple) 1002-120 y 1002-121: sin duplicar el turno T36');
+select pg_temp.ok((pg_temp.mr('{"lotes":["1002-121"],"temporada":"T125-2026-2027"}')->>'total')::int = 1, 'lotes con uno solo (1002-121): solo T36');
+select pg_temp.ok((pg_temp.mr('{"lote":"1002-121","lotes":["1002-120"],"temporada":"T125-2026-2027"}')->>'total')::int = 3, 'lote + lotes se suman');
+select pg_temp.ok((pg_temp.mr('{"lote":"","lotes":[],"temporada":"T125-2026-2027","turno":"t125-t3"}')->>'total')::int = 3, 'lote vacío / lotes vacío = sin filtro de lote');
+select pg_temp.ok((pg_temp.mr('{"lote":"1002-120","temporada":"T125-2026-2027","turno":"t125-t37"}')->>'total')::int = 1, 'el filtro de lote se combina con los demás (turno)');
+-- visibilidad por zona con lotes
+select pg_temp.como((select otro from k));
+select pg_temp.ok((pg_temp.mr('{"lote":"1002-120","temporada":"T125-2026-2027"}')->>'total')::int = 3, 'otro usuario de la zona A ve los 3 (sin ver el de la zona B)');
+select pg_temp.como((select gbet from k));
+select pg_temp.ok((select (j->>'total')::int = 1 and j->'registros'->0->>'turno' = 'T125-T39' from (select pg_temp.mr('{"lote":"1002-120","temporada":"T125-2026-2027"}') j) q), 'usuario de la zona B ve solo T39 (no la zona A)');
+select pg_temp.como((select adm from k));
+select pg_temp.ok((pg_temp.mr('{"lote":"1002-120","temporada":"T125-2026-2027"}')->>'total')::int = 4, 'el administrador ve los 4 turnos del lote');
+
+-- editar / eliminar siguen restringidos aunque ahora vea todo
+select pg_temp.como((select otro from k));
+select pg_temp.ok((select bool_and(not (e->>'puede_editar')::boolean and not (e->>'puede_eliminar')::boolean)
+                     from jsonb_array_elements(pg_temp.mr('{"lote":"1002-120","temporada":"T125-2026-2027"}')->'registros') e),
+                  'quien ve la zona sin ser dueño ni encargado: puede_editar = false y puede_eliminar = false en todas las filas');
+select pg_temp.falla(format($q$ select fn_agm_editar_parametro(jsonb_build_object('id', %L, 'ph_agua', 6)) $q$,
+        (select a.id from agm_parametros a where a.turno_ciclo_id = (select id from turnos_ciclo where agl_id = 'T125-L-37'))), 'ver no basta para editar: 42501', 'permiso', '42501');
+select pg_temp.falla(format($q$ select fn_agm_eliminar_parametro(jsonb_build_object('id', %L, 'motivo', 'este motivo es suficientemente largo')) $q$,
+        (select a.id from agm_parametros a where a.turno_ciclo_id = (select id from turnos_ciclo where agl_id = 'T125-L-37'))), 'ver no basta para eliminar: 42501', 'Eliminar por completo', '42501');
+select pg_temp.como((select glopez from k));
+select pg_temp.ok((select (e->>'puede_editar')::boolean from jsonb_array_elements(pg_temp.mr('{"lote":"1002-120","temporada":"T125-2026-2027"}')->'registros') e where e->>'turno' = 'T125-T36'), 'el dueño puede editar el suyo (T36)');
+select pg_temp.ok((select not (e->>'puede_editar')::boolean from jsonb_array_elements(pg_temp.mr('{"lote":"1002-120","temporada":"T125-2026-2027"}')->'registros') e where e->>'turno' = 'T125-T37'), 'el dueño NO puede editar el de otro (T37), aunque lo ve');
+select pg_temp.como((select enc from k));
+select pg_temp.ok((select bool_and((e->>'puede_editar')::boolean and not (e->>'puede_eliminar')::boolean)
+                     from jsonb_array_elements(pg_temp.mr('{"lote":"1002-120","temporada":"T125-2026-2027"}')->'registros') e), 'el encargado de la zona edita todos los de su zona y no elimina');
+
+-- selector de lotes
+select pg_temp.como((select glopez from k));
+create temp table lv1 as select fn_agm_lotes_visibles() as j;
+select pg_temp.ok((select e->>'nombre' = 'Areanales-2' and jsonb_array_length(e->'turnos') = 3
+                          and e->'turnos' = '["T125-T36", "T125-T37", "T125-T38"]'::jsonb from lv1, jsonb_array_elements(j) e where e->>'lote' = '1002-120'),
+                  'lotes visibles: 1002-120 con su nombre y los 3 turnos de la zona A');
+select pg_temp.ok((select count(*) = 1 from lv1, jsonb_array_elements(j) e where e->>'lote' = '1002-121' and e->'turnos' = '["T125-T36"]'::jsonb), 'lotes visibles: 1002-121 solo en T36');
+select pg_temp.como((select gbet from k));
+select pg_temp.ok((select jsonb_array_length(e->'turnos') = 1 and e->'turnos'->>0 = 'T125-T39'
+                     from jsonb_array_elements(fn_agm_lotes_visibles()) e where e->>'lote' = '1002-120')
+                  and not exists (select 1 from jsonb_array_elements(fn_agm_lotes_visibles()) e where e->>'lote' = '1002-121'), 'lotes visibles de la zona B: solo T39, sin los lotes de A');
+select pg_temp.como((select adm from k));
+select pg_temp.ok((select jsonb_array_length(e->'turnos') = 4 from jsonb_array_elements(fn_agm_lotes_visibles()) e where e->>'lote' = '1002-120'), 'administrador: el lote en sus 4 turnos');
+
+-- carga de AppSheet con lotes (solo si el turno aún no los tiene)
+select pg_temp.como((select agl from k));
+create temp table cl1 as select fn_agm_cargar_appsheet(jsonb_build_object('mapa_usuarios', jsonb_build_object('glopez', 'glopez@t125.test'), 'registros', jsonb_build_array(
+    jsonb_build_object('id_appsheet', 'T125-L-C1', 'fecha', '2026-10-21', 'turno_ciclo_id', 'T125-L-40', 'usuario_appsheet', 'glopez', 'ph_agua', 6.4,
+        'lotes', jsonb_build_array(jsonb_build_object('lote', '1002-130', 'nombre', 'Lote 130', 'area_mz', 2))),
+    jsonb_build_object('id_appsheet', 'T125-L-C2', 'fecha', '2026-10-22', 'turno_ciclo_id', 'T125-L-40', 'usuario_appsheet', 'glopez', 'ph_agua', 6.4,
+        'lotes', jsonb_build_array(jsonb_build_object('lote', '1002-131')))))) as j;
+select pg_temp.ok((select (j->>'insertadas')::int = 2 from cl1), 'cargar con lotes: 2 insertadas');
+select pg_temp.ok((select array_agg(lote order by lote) = array['1002-130'] from turno_lotes where turno_ciclo_id = (select id from turnos_ciclo where agl_id = 'T125-L-40')),
+    'la carga guarda los lotes del primer registro; un turno que ya tiene lotes no se toca');
+select pg_temp.como((select glopez from k));
+select pg_temp.ok((pg_temp.mr('{"lote":"1002-130","temporada":"T125-2026-2027"}')->>'total')::int = 2, 'se filtra por el lote guardado desde la carga de AppSheet');
+select pg_temp.como((select agl from k));
+select pg_temp.ok((fn_agm_cargar_appsheet(jsonb_build_object('mapa_usuarios', jsonb_build_object('glopez', 'glopez@t125.test'), 'registros', jsonb_build_array(
+    jsonb_build_object('id_appsheet', 'T125-L-C1', 'fecha', '2026-10-21', 'turno_ciclo_id', 'T125-L-40', 'usuario_appsheet', 'glopez', 'lotes', jsonb_build_array(jsonb_build_object('lote', 'Z')))))))->>'ya_existian' = '1'
+    and not exists (select 1 from turno_lotes where lote = 'Z'), 'repetir la carga no duplica ni cambia los lotes');
+
+-- limpieza de lo de esta sección (los turnos T125-L-* no deben alimentar las pruebas siguientes)
+delete from agm_parametros where turno_ciclo_id in (select id from turnos_ciclo where agl_id like 'T125-L-%');
+delete from turnos_ciclo where agl_id like 'T125-L-%';
+delete from turnos where codigo in ('T125-T36', 'T125-T37', 'T125-T38', 'T125-T39', 'T125-T40');
+select pg_temp.ok(not exists (select 1 from turno_lotes where lote in ('1002-120', '1002-121', '1002-122', '1002-130') and turno_ciclo_id not in (select id from turnos_ciclo)), 'borrar el turno borra sus lotes (cascade)');
+
 -- ---------------------------------------------------------------- órdenes de corrida
+
 create or replace function pg_temp.finales(p_etq text, p_dia integer) returns void language plpgsql as $$
 declare j jsonb; v_ia text := 'T125-F-' || p_etq; v_id uuid; v_exp jsonb;
 begin
@@ -316,6 +447,11 @@ begin
     if exists (select 1 from pg_constraint where conname = 'agm_parametros_turno_dia')
        or not exists (select 1 from pg_indexes where indexname = 'agm_parametros_turno_dia_viva') then
         raise exception 'FALLA [%]: unicidad parcial', p_etq; end if;
+    if to_regclass('public.turno_lotes') is null or to_regprocedure('public.fn_agm_publicar_turno_lotes(jsonb)') is null
+       or to_regprocedure('public.fn_agm_lotes_visibles()') is null
+       or not exists (select 1 from pg_policies where tablename = 'turno_lotes' and policyname = 'turno_lotes_leer')
+       or not exists (select 1 from pg_policies where tablename = 'agm_parametros' and policyname = 'agm_parametros_leer' and qual ilike '%eliminado_en IS NULL%') then
+        raise exception 'FALLA [%]: lotes de turno o política de lectura', p_etq; end if;
     if (select md5(coalesce(string_agg(p::text, '|' order by p::text), '')) from permisos p where recurso = 'agrometricas') is distinct from (select v from sv where clave = 'perm') then
         raise exception 'FALLA [%]: la tabla de permisos de agrometricas cambió', p_etq; end if;
     j := fn_agm_cargar_appsheet(jsonb_build_object('mapa_usuarios', jsonb_build_object('glopez', 'glopez@t125.test'),

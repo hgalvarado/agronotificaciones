@@ -3,15 +3,18 @@
 -- =====================================================================
 -- Pedido del usuario (2026-11-21): los 107 registros de 2026-2027 que hoy viven SOLO en AGL (importados de AppSheet por
 -- «Glopez», «Rwlopez», «gbetancourth») aparecen en Supabase como si los hubieran ingresado esos usuarios de AgroNotificaciones
--- (el cruce es por correo). Cada usuario ve los suyos; el encargado de zona ve los de su(s) zona(s); el administrador ve todos.
+-- (el cruce es por correo). Visibilidad: el administrador ve todo; cualquiera con «AgroMétricas · ver» en la zona del turno ve TODOS
+-- los registros de esa zona (aunque los haya capturado otro); editar y eliminar siguen restringidos (ver 4 y 5).
 --
 --   1. Columnas nuevas (nullable) en agm_parametros: id_appsheet, editado_en/por, eliminado_en/por/motivo. «origen» ya existía
 --      (109; si faltara se agrega). La unicidad (turno, fecha) pasa a ser PARCIAL (solo registros no eliminados) para que se pueda
 --      volver a registrar ese día después de eliminar; índice único parcial por id_appsheet.
 --   2. fn_agm_cargar_appsheet(p)    AGL sube los registros (usuario técnico: «Conexión AGL · publicar»). UUID determinista
 --                                   por id_appsheet (idempotente; NO pisa lo editado en la app). Nacen ya «bajados» (AGL los tiene).
---   3. fn_agm_mis_registros(p)      lista paginada y filtrable para la pantalla y las gráficas, con visibilidad por persona,
---                                   zona (encargado = «Corregir parámetros» en la zona del turno) o administrador.
+--   3. fn_agm_mis_registros(p)      lista paginada y filtrable para la pantalla y las gráficas; visibilidad por zona («ver» en la
+--                                   zona del turno) o administrador; filtro por lote (`lote` | `lotes`: todos los turnos que lo contienen).
+--   3b. public.turno_lotes          lotes de cada turno (los publica AGL con fn_agm_publicar_turno_lotes; la carga de AppSheet
+--                                   los puede traer); fn_agm_lotes_visibles() llena el selector de lotes.
 --   4. fn_agm_editar_parametro(p)   dueño, encargado de la zona o administrador. Marca editado_en/por; la huella cambia sola y
 --                                   AGL lo vuelve a bajar.
 --   5. fn_agm_eliminar_parametro(p) SOLO con el permiso nuevo «Eliminar por completo» (acción `eliminar_definitivo`, nivel 4,
@@ -103,12 +106,10 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------- 4 · visibilidad y permisos de una fila
-/** ¿Ve ESTE registro? Administrador; el dueño (con «ver»); o el encargado de la zona del turno («Corregir parámetros» en esa zona). */
+/** ¿Ve ESTE registro? Administrador, o cualquiera con «ver» en la zona del turno (sin importar quién lo capturó). p_creado_por ya no se usa (se conserva la firma). */
 create or replace function public._agm_puede_ver_registro(p_creado_por uuid, p_turno uuid)
 returns boolean language sql stable security definer set search_path = public, pg_temp as $$
-    select public.fn_es_admin()
-        or (p_creado_por is not null and p_creado_por = (select auth.uid()) and public.fn_tiene_permiso('agrometricas', 'ver'))
-        or public.fn_agm_puede_zona(public._agm_zona_turno(p_turno), 'corregir_parametros')
+    select public.fn_agm_puede_zona(public._agm_zona_turno(p_turno), 'ver')
 $$;
 revoke execute on function public._agm_puede_ver_registro(uuid, uuid) from public, anon, authenticated;
 
@@ -128,7 +129,7 @@ returns boolean language sql stable security definer set search_path = public, p
 $$;
 revoke execute on function public._agm_puede_eliminar_registro() from public, anon, authenticated;
 
--- La lectura directa de la tabla (pantalla de captura) no ve las eliminadas.
+-- La lectura directa de la tabla (pantalla de captura) no ve las eliminadas; misma regla de zona que _agm_puede_ver_registro.
 drop policy if exists agm_parametros_leer on public.agm_parametros;
 create policy agm_parametros_leer on public.agm_parametros for select to authenticated
     using (eliminado_en is null and public.fn_agm_puede_zona(public._agm_zona_turno(turno_ciclo_id), 'ver'));
@@ -241,10 +242,109 @@ returns uuid language sql immutable set search_path = public, pg_temp as $$
 $$;
 revoke execute on function public._agm_uuid_appsheet(text) from public, anon, authenticated;
 
+-- ---------------------------------------------------------------- 6b · lotes de cada turno
+/** Lotes (ubicaciones técnicas) de cada turno. Un lote puede estar en varios turnos (T1002-T36, T37, T38…). Lo publica AGL. */
+create table if not exists public.turno_lotes (
+    turno_ciclo_id uuid not null references public.turnos_ciclo(id) on delete cascade,
+    lote           text not null,
+    nombre         text,
+    area_mz        numeric(12,4),
+    primary key (turno_ciclo_id, lote)
+);
+create index if not exists idx_turno_lotes_lote on public.turno_lotes (lote);
+alter table public.turno_lotes enable row level security;
+drop policy if exists turno_lotes_leer on public.turno_lotes;
+create policy turno_lotes_leer on public.turno_lotes for select to authenticated
+    using (public.fn_agm_puede_zona(public._agm_zona_turno(turno_ciclo_id), 'ver'));
+grant select on public.turno_lotes to authenticated;
+
+/** Pone los lotes de un turno. p_lotes = [{lote, nombre?, area_mz?}]. Con p_reemplazar borra antes los del turno. -> filas puestas. */
+create or replace function public._agm_poner_lotes(p_tc uuid, p_lotes jsonb, p_reemplazar boolean)
+returns integer language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_n integer := 0;
+begin
+    if p_reemplazar then
+        delete from public.turno_lotes where turno_ciclo_id = p_tc;
+    end if;
+    if jsonb_typeof(p_lotes) is distinct from 'array' then return 0; end if;
+    insert into public.turno_lotes (turno_ciclo_id, lote, nombre, area_mz)
+    select p_tc, q.l, max(q.nm), max(q.ar)
+      from (select btrim(x ->> 'lote') as l, nullif(btrim(x ->> 'nombre'), '') as nm, public._agm_num(x, 'area_mz') as ar
+              from jsonb_array_elements(p_lotes) x where jsonb_typeof(x) = 'object') q
+     where q.l is not null and q.l <> ''
+     group by q.l
+    on conflict (turno_ciclo_id, lote) do update set nombre = excluded.nombre, area_mz = excluded.area_mz;
+    get diagnostics v_n = row_count;
+    return v_n;
+end $$;
+revoke execute on function public._agm_poner_lotes(uuid, jsonb, boolean) from public, anon, authenticated;
+
+/**
+ * Solo el usuario técnico de AGL (Conexión AGL · publicar). p = {turnos: [{turno_ciclo_id (= turnos_ciclo.agl_id),
+ * lotes: [{lote, nombre?, area_mz?}]}]}. REEMPLAZA los lotes de cada turno (idempotente). Un turno que no existe se informa.
+ * -> {turnos, lotes, sin_turno: [agl_id…], invalidos: [{turno_ciclo_id, error}]}
+ */
+create or replace function public.fn_agm_publicar_turno_lotes(p jsonb)
+returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+    t     jsonb;
+    v_agl text;
+    v_tc  uuid;
+    v_nt  integer := 0;
+    v_nl  integer := 0;
+    v_n   integer;
+    v_sin jsonb := '[]'::jsonb;
+    v_inv jsonb := '[]'::jsonb;
+begin
+    perform public._agm_exigir_agl('publicar');
+    if p is null or jsonb_typeof(p -> 'turnos') is distinct from 'array' then
+        raise exception 'Se esperaba {turnos: [{turno_ciclo_id, lotes: [...]}]}.' using errcode = '22023';
+    end if;
+    for t in select x from jsonb_array_elements(p -> 'turnos') x loop
+        v_agl := nullif(btrim(t ->> 'turno_ciclo_id'), '');
+        begin
+            v_tc := null;
+            select id into v_tc from public.turnos_ciclo where agl_id = v_agl;
+            if v_agl is null or v_tc is null then
+                v_sin := v_sin || to_jsonb(v_agl);
+                continue;
+            end if;
+            v_n := public._agm_poner_lotes(v_tc, coalesce(t -> 'lotes', '[]'::jsonb), true);
+            v_nt := v_nt + 1;
+            v_nl := v_nl + v_n;
+        exception when others then
+            v_inv := v_inv || jsonb_build_object('turno_ciclo_id', v_agl, 'error', sqlerrm);
+        end;
+    end loop;
+    return jsonb_build_object('turnos', v_nt, 'lotes', v_nl, 'sin_turno', v_sin, 'invalidos', v_inv);
+end $$;
+revoke execute on function public.fn_agm_publicar_turno_lotes(jsonb) from public, anon;
+grant  execute on function public.fn_agm_publicar_turno_lotes(jsonb) to authenticated;
+
+/** Para el selector de lotes: [{lote, nombre, turnos: [código de turno…]}] de lo que el usuario puede ver. */
+create or replace function public.fn_agm_lotes_visibles()
+returns jsonb language plpgsql stable security definer set search_path = public, pg_temp as $$
+begin
+    if (select auth.uid()) is null then
+        raise exception 'Tu sesión ya no es válida. Vuelve a entrar.' using errcode = '42501';
+    end if;
+    return coalesce((
+        select jsonb_agg(jsonb_build_object('lote', q.lote, 'nombre', q.nombre, 'turnos', q.turnos) order by q.lote)
+          from (select l.lote, max(l.nombre) as nombre, to_jsonb(array_agg(distinct tu.codigo order by tu.codigo)) as turnos
+                  from public.turno_lotes l
+                  join public.turnos_ciclo tc on tc.id = l.turno_ciclo_id
+                  join public.turnos tu on tu.id = tc.turno_id
+                 where public._agm_puede_ver_registro(null, tc.id)
+                 group by l.lote) q), '[]'::jsonb);
+end $$;
+revoke execute on function public.fn_agm_lotes_visibles() from public, anon;
+grant  execute on function public.fn_agm_lotes_visibles() to authenticated;
+
 -- ---------------------------------------------------------------- 7 · cargar el histórico (AGL)
 /**
  * p = {registros: [{id_appsheet, fecha, turno_ciclo_id (= turnos_ciclo.agl_id, el id del turno en AGL), usuario_appsheet,
- *                   tensiometro_12_am … ce_suelo_despues, latitud?, longitud?, comentario?}],
+ *                   tensiometro_12_am … ce_suelo_despues, latitud?, longitud?, comentario?,
+ *                   lotes?: [{lote, nombre?, area_mz?}] (solo se guardan si el turno aún no tiene lotes)}],
  *      mapa_usuarios: {Glopez: 'noelopez@agl.com', …}}   (la clave se compara sin mayúsculas)
  * El autor se busca por correo en auth.users + perfiles. Sin autor o sin turno: NO se carga y se informa. Idempotente por
  * id_appsheet: lo ya cargado no se toca (ni pisa ediciones). Un registro del mismo turno y día ya existente (de la app o de
@@ -366,6 +466,13 @@ begin
             update public.agm_parametros a set bajado_a_agl_en = now(), huella = public._agm_huella(to_jsonb(a))
              where a.id = v_id;
             v_ins := v_ins + 1;
+            -- lotes del turno (opcional; solo si el turno aún no los tiene; un fallo aquí no invalida el registro)
+            if jsonb_typeof(r -> 'lotes') = 'array' and not exists (select 1 from public.turno_lotes where turno_ciclo_id = v_tc.id) then
+                begin
+                    perform public._agm_poner_lotes(v_tc.id, r -> 'lotes', false);
+                exception when others then null;
+                end;
+            end if;
         exception when others then
             v_inv := v_inv || jsonb_build_object('id_appsheet', v_idapp, 'error', sqlerrm);
         end;
@@ -380,10 +487,12 @@ grant  execute on function public.fn_agm_cargar_appsheet(jsonb) to authenticated
 -- ---------------------------------------------------------------- 8 · mis registros (lista y gráficas)
 /**
  * p = {temporada?, turno? (código del turno, sin mayúsculas, o parte), turno_ciclo_id?, zona_id?, desde?, hasta?, texto?,
+ *      lote? (texto exacto, p. ej. '1002-120'), lotes? (arreglo: selección múltiple) -> registros de TODOS los turnos que
+ *      contengan alguno de esos lotes,
  *      limite? (1..1000, 50), pagina? (desde 0), orden? 'desc' (por defecto) | 'asc'}
- * Visibles: del administrador todos; del dueño los suyos; del encargado de zona los de su zona. Sin eliminados.
+ * Visibles: administrador todos; los demás, todos los de las zonas donde tengan «ver» (sin importar quién los capturó). Sin eliminados.
  * -> {total, limite, pagina, registros: [{...todas las columnas del registro (valores para graficar), turno, temporada, ciclo,
- *     estacion, zona_id, zona, creado_por_nombre, creado_por_email, editado_por_nombre, puede_editar, puede_eliminar}]}
+ *     estacion, zona_id, zona, lotes: [{lote, nombre}], creado_por_nombre, creado_por_email, editado_por_nombre, puede_editar, puede_eliminar}]}
  * (no incluye huella, marcas de bajada ni datos de eliminación).
  */
 create or replace function public.fn_agm_mis_registros(p jsonb default '{}'::jsonb)
@@ -401,6 +510,7 @@ declare
     v_desde date := nullif(v_p ->> 'desde', '')::date;
     v_hasta date := nullif(v_p ->> 'hasta', '')::date;
     v_txt   text := nullif(btrim(v_p ->> 'texto'), '');
+    v_lotes text[];
     v_total integer;
     v_regs  jsonb;
     v_elim  boolean;
@@ -409,6 +519,10 @@ begin
         raise exception 'Tu sesión ya no es válida. Vuelve a entrar.' using errcode = '42501';
     end if;
     v_elim := public._agm_puede_eliminar_registro();
+    select array_agg(distinct btrim(q.x)) into v_lotes
+      from (select x from jsonb_array_elements_text(case when jsonb_typeof(v_p -> 'lotes') = 'array' then v_p -> 'lotes' else '[]'::jsonb end) x
+            union all select v_p ->> 'lote') q
+     where nullif(btrim(q.x), '') is not null;
 
     with f as (
         select a.id, a.fecha
@@ -423,6 +537,7 @@ begin
            and (v_tc is null or tc.id = v_tc)
            and (v_turno is null or tu.codigo ilike '%' || v_turno || '%')
            and (v_zona is null or coalesce(e.zona_id, tc.zona_id) = v_zona)
+           and (v_lotes is null or exists (select 1 from public.turno_lotes tl where tl.turno_ciclo_id = tc.id and tl.lote = any (v_lotes)))
            and (v_desde is null or a.fecha >= v_desde)
            and (v_hasta is null or a.fecha <= v_hasta)
            and (v_txt is null or concat_ws(' ', tu.codigo, z.nombre, e.nombre, pf.nombre, a.comentario, a.id_appsheet, a.fecha::text) ilike '%' || v_txt || '%')
@@ -439,6 +554,8 @@ begin
                || jsonb_build_object(
                    'turno', tu.codigo, 'temporada', tc.temporada, 'ciclo', tc.ciclo,
                    'estacion', e.nombre, 'zona_id', coalesce(e.zona_id, tc.zona_id), 'zona', z.nombre,
+                   'lotes', coalesce((select jsonb_agg(jsonb_build_object('lote', tl.lote, 'nombre', tl.nombre) order by tl.lote)
+                                        from public.turno_lotes tl where tl.turno_ciclo_id = tc.id), '[]'::jsonb),
                    'creado_por_nombre', pf.nombre,
                    'creado_por_email', (select lower(u.email) from auth.users u where u.id = a.creado_por),
                    'editado_por_nombre', pe.nombre,
