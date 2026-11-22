@@ -185,7 +185,7 @@ select pg_temp.ok((select bool_and(not (e ? 'huella') and not (e ? 'bajado_a_agl
 select pg_temp.ok((select bool_and((e->>'puede_editar')::boolean and (e->>'puede_eliminar')::boolean) from adm1, jsonb_array_elements(j->'registros') e), 'administrador: puede editar y eliminar');
 select pg_temp.ok((select e->>'creado_por_email' = 'glopez@t125.test' from adm1, jsonb_array_elements(j->'registros') e where e->>'id_appsheet' = 'T125-A1'), 'trae el correo del autor');
 select pg_temp.como((select glopez from k));
-select pg_temp.ok((select (e->>'puede_editar')::boolean and not (e->>'puede_eliminar')::boolean from (select pg_temp.mr('{"temporada":"T125-2026-2027"}')->'registros'->0 e) q), 'dueño: puede editar, no eliminar');
+select pg_temp.ok((select (e->>'puede_editar')::boolean and not (e->>'puede_eliminar')::boolean from jsonb_array_elements(pg_temp.mr('{"temporada":"T125-2026-2027"}')->'registros') e where e->>'id_appsheet' = 'T125-A1'), 'dueño: puede editar, no eliminar');
 select pg_temp.como((select elim from k));
 select pg_temp.ok((select (j->>'total')::int = 3 from (select pg_temp.mr('{"temporada":"T125-2026-2027"}') j) q), 'quien tiene «ver» global ve todos (la visibilidad es por «ver» en la zona)');
 -- filtros (administrador)
