@@ -187,6 +187,30 @@ qué ve, edita y elimina cada persona lo decide la base (`puede_editar`, `puede_
 - **Detalle** (`DetalleRegistro.tsx`): todos los valores, foto de la calicata (enlace firmado del bucket `agrometricas`; si no se puede ver, no se muestra), quién y cuándo,
   Editar (`fn_agm_editar_parametro`, solo manda lo que cambió, avisos de rango como la captura) y Eliminar (`ModalEliminar`: motivo ≥ 15 letras + casilla; `fn_agm_eliminar_parametro`).
 - **Paginación del servidor**: 50 por página y «Ver más». Estados vacío, cargando y error en español.
-- **Horas de riego**: no son columna de `agm_parametros` (viven en Fertirriego › Horas); la tarjeta las muestra si la fila trae `horas_riego` y si no pone «—».
+- **Horas de riego y % de fertilización**: son un parámetro más; ver «Horas de riego y % en los registros (sql/126)» más abajo.
 - **Código**: lógica pura en `src/lib/agrometricas/registrosPura.ts` (agrupar, series por DDT, escala SVG, motivo, validación de edición, parámetros de consulta); pruebas
   `pruebas/unit/agrometricas_registros.test.mjs`. Requiere la **125** corrida.
+
+### Horas de riego y % de fertilización en los registros (sql/126) y Resumen (pedido 2026-11-22)
+
+**Relación con Fertirriego**: `fert_bitacora_riego` tiene UNA fila por `(turno_ciclo_id, fecha)` (PK desde la 91; `pct_fertilizacion` desde la 112,
+`horas_riego`, `horas_fertilizacion`), la misma clave que `agm_parametros` (`turno_ciclo_id`, `fecha`). Como la clave es única **no se suma ni se
+pondera nada**: se trae la fila tal cual. **`sql/126_agrometricas_horas_riego_en_registros.sql`** redefine `fn_agm_mis_registros` (mismos filtros que la 125):
+- cada registro trae `horas_riego`, `horas_fertilizacion`, `pct_fertilizacion` del mismo turno y día (vacíos si ese día no hay bitácora);
+- los días con horas/% y **sin parámetros vivos** salen como filas del turno con `solo_horas = true`, id de texto `h:<turno_ciclo_id>:<fecha>`, DDT = fecha − siembra,
+  `puede_editar`/`puede_eliminar` en `false` (se corrigen en Fertirriego › Horas), y entran en `total`, paginación y todos los filtros; una bitácora toda vacía no genera fila;
+  si se elimina el parámetro de un día que tiene bitácora, ese día pasa a ser fila solo-horas (no se duplica);
+- **permisos**: SECURITY DEFINER, `search_path` fijo; una fila solo sale si la persona ve el turno por `AgroMétricas · ver` en su zona (o es administrador), la misma regla
+  de la 125; no se devuelve ninguna otra columna de Fertirriego (ni cantidades, productos, ejecutores, horas de inicio/fin ni cloro). Un turno archivado (102) ya no tiene bitácora en Supabase;
+- sin DDL; requiere 125 y 112; si se vuelve a correr la 125, correr la 126 después. Pruebas escritas: `pruebas/sql/126_agrometricas_horas_riego_en_registros.sql`.
+- **AGL**: el Resumen de AGL ya espera `horas_riego` (grupo «Horas de riego» en `backend/agrometricas_resumen.py`) y varios módulos de AGL leen la bitácora de Fertirriego
+  (`fertirriego_*`); el % de fertilización lo baja Fertirriego (112). Lo que NO baja es unirlas al registro de parámetros por turno y día (eso es de esta pantalla, en línea).
+
+**Resumen** (primera pestaña de `/agrometricas/registros`; `ResumenRegistros.tsx`, `GraficasResumen.tsx`, lógica pura `resumenPura.ts`, pruebas `pruebas/unit/agrometricas_resumen.test.mjs`):
+mismo diseño que el Resumen de AGL (tarjetas, mapa de calor turnos × días, líneas por DDT, turnos al mismo DDT) **sin** «Normal histórico» ni comparativo con la temporada pasada.
+Filtros propios (recordados): Lote (al elegirlo salen todos sus turnos), Ciclo («Ciclo N»), Zona, Turno (`SelectorMultiple`: búsqueda y única/varios), rango Desde/Hasta (por defecto
+los últimos 14 días) y parámetro (CE, pH, tensiómetros, cloro, horas de riego, % de fertilización) con su medida. **Cálculo en el cliente**: pide `fn_agm_mis_registros` por páginas de 1000
+(máx. 10 páginas) desde min(Desde, hoy−13) hasta max(Hasta, hoy) con `lotes` y zona única en la base; ciclo, varias zonas y turnos se recortan en local; sin función de agregado nueva.
+«Registro» (tarjetas) = fila de parámetros; un día solo-horas no cuenta como registro del parametrista pero sí aparece en el mapa y las líneas de Horas y % de fertilización.
+Mapa: color = intensidad relativa del valor mostrado (no hay rangos); gris = sin registro; borde rojo = fuera de rango al guardar. SVG propio con clases de Tailwind (claro/oscuro).
+**Zona**: se muestra como en AGL («Zona-2A») con `nombreZona` (si el nombre de la tabla `zonas` ya empieza por «Zona» se deja tal cual). **«Registró»**: `quienRegistro` = nombre, si no correo, nunca el UUID.

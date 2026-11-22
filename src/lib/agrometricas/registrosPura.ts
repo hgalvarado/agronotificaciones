@@ -23,12 +23,14 @@ export interface Registro {
   comentario: string | null
   puede_editar: boolean
   puede_eliminar: boolean
+  /** true = día con horas de riego / % de fertilización de Fertirriego y SIN parámetros (id «h:…»; solo lectura). */
+  solo_horas?: boolean
   [campo: string]: unknown
 }
 
 /** Un parámetro clave = una idea = una gráfica; `campos` son sus series. */
 export interface GrupoParametro {
-  clave: 'ce' | 'ph' | 'tensiometros' | 'cloro' | 'horas'
+  clave: 'ce' | 'ph' | 'tensiometros' | 'cloro' | 'horas' | 'pct'
   etiqueta: string
   unidad: string
   decimales: number
@@ -44,8 +46,9 @@ export const GRUPOS: GrupoParametro[] = [
     campos: [{ clave: 'tensiometro_12_am', etiqueta: '12 cm AM' }, { clave: 'tensiometro_24_am', etiqueta: '24 cm AM' },
       { clave: 'tensiometro_12_pm', etiqueta: '12 cm PM' }, { clave: 'tensiometro_24_pm', etiqueta: '24 cm PM' }] },
   { clave: 'cloro', etiqueta: 'Cloro', unidad: 'ppm', decimales: 2, campos: [{ clave: 'cloro_cinta', etiqueta: 'Cinta' }] },
-  // Las horas de riego salen de Fertirriego › Horas; si la fila las trae (`horas_riego`) se muestran, si no queda «—»
+  // Horas de riego y % de fertilización salen de Fertirriego › Horas (sql/126 los trae en cada registro); sin dato queda «—»
   { clave: 'horas', etiqueta: 'Horas de riego', unidad: 'h', decimales: 1, campos: [{ clave: 'horas_riego', etiqueta: 'Horas' }] },
+  { clave: 'pct', etiqueta: '% de fertilización', unidad: '%', decimales: 1, campos: [{ clave: 'pct_fertilizacion', etiqueta: '%' }] },
 ]
 
 /** Columnas de valores que se pueden editar (las mismas que acepta fn_agm_editar_parametro). */
@@ -76,6 +79,24 @@ export function valorGrupo(reg: Record<string, unknown>, grupo: GrupoParametro):
 export function grupoFuera(reg: Pick<Registro, 'fuera_rango'>, grupo: GrupoParametro): boolean {
   const fuera = reg.fuera_rango ?? []
   return grupo.campos.some((c) => fuera.includes(c.clave))
+}
+
+const UUID_TEXTO = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** Zona como la muestra AGL: «Zona-2A». Si el nombre de la tabla de zonas ya empieza por «Zona» se deja tal cual. */
+export function nombreZona(nombre: string | null | undefined): string {
+  const t = String(nombre ?? '').trim()
+  if (!t || UUID_TEXTO.test(t)) return ''
+  return /^zona([ _-]|$)/i.test(t) ? t : `Zona-${t}`
+}
+
+/** Quién registró: nombre, si no el correo; nunca el UUID (ni vacío engañoso: '' si no hay nada). */
+export function quienRegistro(r: { creado_por_nombre?: unknown; creado_por_email?: unknown }): string {
+  for (const v of [r.creado_por_nombre, r.creado_por_email]) {
+    const t = String(v ?? '').trim()
+    if (t && !UUID_TEXTO.test(t)) return t
+  }
+  return ''
 }
 
 const DIAS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb']

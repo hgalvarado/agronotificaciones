@@ -10,7 +10,7 @@ import { Alerta, Boton, Campo, Entrada, Insignia } from '@/components/ui/Primiti
 import { Modal } from '@/components/ui/Modal'
 import { createClient } from '@/lib/supabase/client'
 import { CAMPOS, SECCIONES, revisar, type Rango } from '@/lib/agrometricas/parametros'
-import { cambiosDeEdicion, validarEdicion, valorNumero, type Registro } from '@/lib/agrometricas/registrosPura'
+import { cambiosDeEdicion, nombreZona, quienRegistro, validarEdicion, valorNumero, type Registro } from '@/lib/agrometricas/registrosPura'
 
 const texto = (v: unknown) => (v === null || v === undefined ? '' : String(v))
 const cuando = (iso: unknown) => {
@@ -66,7 +66,7 @@ export function DetalleRegistro({ registro, rangos, onCerrar, onGuardado, onPedi
   }
 
   const fuera = registro.fuera_rango ?? []
-  const quien = texto(registro.creado_por_nombre) || texto(registro.creado_por_email)
+  const quien = quienRegistro(registro)
 
   return (
     <Modal abierto onCerrar={guardando ? () => {} : onCerrar} ancho="ancho"
@@ -83,7 +83,7 @@ export function DetalleRegistro({ registro, rangos, onCerrar, onGuardado, onPedi
       <div className="flex flex-col gap-4" data-detalle>
         {error && <Alerta tono="rojo">{error}</Alerta>}
         <p className="text-sm text-slate-500">
-          {[registro.estacion, registro.zona, registro.temporada, registro.ciclo].filter(Boolean).join(' · ')}
+          {[registro.estacion, nombreZona(registro.zona), registro.temporada, registro.ciclo].filter(Boolean).join(' · ')}
         </p>
         {registro.lotes?.length > 0 && (
           <p className="text-xs text-slate-500">Lotes: {registro.lotes.map((l) => `${l.lote}${l.nombre ? ` ${l.nombre}` : ''}`).join(', ')}</p>
@@ -113,6 +113,21 @@ export function DetalleRegistro({ registro, rangos, onCerrar, onGuardado, onPedi
             </div>
           </section>
         ))}
+
+        {(valorNumero(registro, 'horas_riego') !== null || valorNumero(registro, 'pct_fertilizacion') !== null) && (
+          <section className="flex flex-col gap-2" data-fertirriego>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Riego del día (Fertirriego)</h3>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {[['Horas de riego', 'horas_riego', ' h'], ['% de fertilización', 'pct_fertilizacion', ' %']].map(([etq, clave, u]) => (
+                <div key={clave} className="flex min-h-11 items-center justify-between gap-2 rounded-xl border border-slate-100 px-3">
+                  <span className="text-sm text-slate-600">{etq}</span>
+                  <span className="text-sm font-semibold tabular-nums text-slate-900">{valorNumero(registro, clave) === null ? '—' : `${valorNumero(registro, clave)}${u}`}</span>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-slate-500">Se corrigen en Fertirriego › Horas.</p>
+          </section>
+        )}
 
         <section className="flex flex-col gap-2">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Comentario</h3>

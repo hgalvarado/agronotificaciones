@@ -14,11 +14,11 @@ const COLOR: Record<string, string> = {
   tensiometro_12_pm: 'stroke-amber-600', tensiometro_24_pm: 'stroke-amber-600',
   ce_agua: 'stroke-sky-600', ce_gotero: 'stroke-emerald-600', ce_extractor: 'stroke-violet-600',
   ph_agua: 'stroke-sky-600', ph_gotero: 'stroke-emerald-600', ph_extractor: 'stroke-violet-600',
-  cloro_cinta: 'stroke-teal-600', horas_riego: 'stroke-slate-600',
+  cloro_cinta: 'stroke-teal-600', horas_riego: 'stroke-slate-600', pct_fertilizacion: 'stroke-lime-600',
 }
 const RELLENO: Record<string, string> = {
   'stroke-sky-600': 'fill-sky-600', 'stroke-amber-600': 'fill-amber-600', 'stroke-emerald-600': 'fill-emerald-600',
-  'stroke-violet-600': 'fill-violet-600', 'stroke-teal-600': 'fill-teal-600', 'stroke-slate-600': 'fill-slate-600',
+  'stroke-violet-600': 'fill-violet-600', 'stroke-teal-600': 'fill-teal-600', 'stroke-slate-600': 'fill-slate-600', 'stroke-lime-600': 'fill-lime-600',
 }
 const colorDe = (campo: string) => COLOR[campo] ?? 'stroke-slate-600'
 export const colorLeyenda = (campo: string) => RELLENO[colorDe(campo)] ?? 'fill-slate-600'
