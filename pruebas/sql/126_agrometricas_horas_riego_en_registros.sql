@@ -149,7 +149,7 @@ select pg_temp.ok((select (j ->> 'total')::int = 1 and j -> 'registros' -> 0 ->>
 select pg_temp.ok((select (j ->> 'total')::int = 3 from (select pg_temp.mi('{"temporada":"T126-2026-2027","turno":"t126-t1"}') j) q), 'filtro turno exacto (sin distinguir mayúsculas)');
 select pg_temp.ok((select (j ->> 'total')::int = 1 from (select pg_temp.mi('{"temporada":"T126-2026-2027","texto":"solo horas"}') j) q), 'filtro de texto encuentra el comentario de la bitácora');
 select pg_temp.ok((select (j ->> 'total')::int = 1 and j -> 'registros' -> 0 ->> 'turno' = 'T126-T2'
-                   from (select pg_temp.mi('{"temporada":"T126-2026-2027","zona_id":"' || (select zb.id::text from zonas zb where zb.nombre = 'T126-B') || '"}') j) q), 'filtro de zona incluye los días solo de horas');
+                   from (select pg_temp.mi(('{"temporada":"T126-2026-2027","zona_id":"' || (select zb.id::text from zonas zb where zb.nombre = 'T126-B') || '"}')::jsonb) j) q), 'filtro de zona incluye los días solo de horas');
 insert into turno_lotes (turno_ciclo_id, lote, nombre) select tca, 'T126-LOTE', 'Lote 126' from k on conflict do nothing;
 select pg_temp.ok((select (j ->> 'total')::int = 3 from (select pg_temp.mi('{"temporada":"T126-2026-2027","lotes":["T126-LOTE"]}') j) q), 'filtro por lote incluye los días solo de horas del turno');
 select pg_temp.ok((select j -> 'registros' -> 0 ->> 'fecha' = '2026-10-03' and j -> 'registros' -> 2 ->> 'fecha' = '2026-10-01'

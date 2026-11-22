@@ -156,8 +156,10 @@ test('GRUPOS incluye % de fertilización y las horas salen del registro', () => 
 test('nombreZona: «Zona-2A» como AGL; si ya empieza por «Zona» se deja tal cual; nunca un UUID', () => {
   assert.equal(nombreZona('2A'), 'Zona-2A')
   assert.equal(nombreZona('Zona-2A'), 'Zona-2A')
-  assert.equal(nombreZona('Zona 1'), 'Zona 1')
-  assert.equal(nombreZona('zona_3'), 'zona_3')
+  assert.equal(nombreZona('Zona 2A'), 'Zona-2A')
+  assert.equal(nombreZona('zona 1'), 'Zona-1')
+  assert.equal(nombreZona('ZONA-3B'), 'Zona-3B')
+  assert.equal(nombreZona('zona_3'), 'Zona-3')
   assert.equal(nombreZona(' 1 '), 'Zona-1')
   assert.equal(nombreZona(null), '')
   assert.equal(nombreZona('3f2b8a52-0c6d-4d57-9a8e-123456789abc'), '')

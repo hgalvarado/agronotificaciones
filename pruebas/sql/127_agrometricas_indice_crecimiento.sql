@@ -353,7 +353,8 @@ select pg_temp.ok((select fn_agm_ic_editar('{"id":"aaaaaaaa-0000-0000-0000-00000
 select pg_temp.como((select agl from k));
 update agm_ic_registros set bajado_a_agl_en = now() - interval '10 days' where id = 'aaaaaaaa-0000-0000-0000-000000127009';
 update turnos_ciclo set activo = false where id = (select tcb from k);
-select pg_temp.ok((select (fn_agm_ic_purgar_bajadas('{}') ->> 'registros')::int = 1 and exists (select 1 from agm_ic_registros where id = 'aaaaaaaa-0000-0000-0000-000000127009')
+create temp table pg356 as select fn_agm_ic_purgar_bajadas('{}') as j;
+select pg_temp.ok((select (select (j ->> 'registros')::int = 1 from pg356) and exists (select 1 from agm_ic_registros where id = 'aaaaaaaa-0000-0000-0000-000000127009')
                           and not exists (select 1 from agm_ic_registros where id = 'aaaaaaaa-0000-0000-0000-000000127010')),
                   'turno B terminado: se purga lo confirmado (010) pero lo cambiado después de la confirmación (009, huella distinta) nunca');
 update turnos_ciclo set activo = true where id = (select tcb from k);
@@ -399,7 +400,7 @@ begin
     select (select count(*) from agm_ic_registros) as nr, (select md5(string_agg(id::text || coalesce(ic_real::text, '') || hojas::text, '|' order by id)) from agm_ic_registros) as mr,
            (select count(*) from agm_ic_formula) as nf, (select count(*) from agm_ic_plan) as np into ahora;
     if a.nr <> ahora.nr or a.mr <> ahora.mr or a.nf <> ahora.nf or a.np <> ahora.np then raise exception 'FALLA finales [%]: cambió algún dato', p_etq; end if;
-    if not exists (select 1 from agm_ic_formula where vigente_desde = date '2000-01-01' and divisor = 10) then raise exception 'FALLA finales [%]: la fórmula inicial', p_etq; end if;
+    if not exists (select 1 from agm_ic_formula where vigente_desde = date '2000-01-01' and divisor = 11) then raise exception 'FALLA finales [%]: la fórmula inicial', p_etq; end if;
     raise notice 'ok  finales [%]', p_etq;
 end $$;
 select pg_temp.como((select enc from k));

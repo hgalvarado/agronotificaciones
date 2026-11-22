@@ -146,11 +146,11 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
 
   const elegirTurno = (id: string) => {
     setTurnoId(id); setValores({}); setGuardados({}); setComentario(''); setComentarioGuardado(''); setFoto(null); setFotoGuardada(false); setCalicata(null)
-    setHojasIC(''); setHojasICGuardadas(''); setCorregirIC(false)
+    setHojasIC(''); setHojasICGuardadas(''); setCorregirIC(false); setIcAbierto(null)
   }
   const cambiarFecha = (f: string) => {
     setFecha(f); setValores({}); setGuardados({}); setComentario(''); setComentarioGuardado(''); setFoto(null); setFotoGuardada(false)
-    setHojasIC(''); setHojasICGuardadas(''); setCorregirIC(false)
+    setHojasIC(''); setHojasICGuardadas(''); setCorregirIC(false); setIcAbierto(null)
   }
 
   const rangos = useMemo(() => new Map((datos?.rangos ?? []).map((r) => [r.parametro, r])), [datos])

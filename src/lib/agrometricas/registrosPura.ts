@@ -25,6 +25,8 @@ export interface Registro {
   puede_eliminar: boolean
   /** true = día con horas de riego / % de fertilización de Fertirriego y SIN parámetros (id «h:…»; solo lectura). */
   solo_horas?: boolean
+  creado_por_nombre?: string | null
+  creado_por_email?: string | null
   [campo: string]: unknown
 }
 
@@ -87,7 +89,8 @@ const UUID_TEXTO = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 export function nombreZona(nombre: string | null | undefined): string {
   const t = String(nombre ?? '').trim()
   if (!t || UUID_TEXTO.test(t)) return ''
-  return /^zona([ _-]|$)/i.test(t) ? t : `Zona-${t}`
+  const resto = t.replace(/^zona[\s_-]*/i, '').trim()
+  return resto ? `Zona-${resto.toUpperCase()}` : ''
 }
 
 /** Quién registró: nombre, si no el correo; nunca el UUID (ni vacío engañoso: '' si no hay nada). */
