@@ -13,6 +13,7 @@
 
 import { useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { crearFreno } from './frenos'
 
 const ESPERA_AVISOS = 1200         // ms para agrupar avisos seguidos de la base
 const MINIMO_AL_VOLVER = 4000      // al volver a la ventana, no repetir lo que se acaba de traer
@@ -50,13 +51,24 @@ export function useAvisosCambios({ tablas, alCambiar, habilitado = true, ultima 
   const avisarRef = useRef<() => void>(() => {})
   useEffect(() => {
     let pendiente: number | undefined
+    // Frenos (lib/datos/frenos.ts): intervalo mínimo de 15 s entre avisos y disyuntor (>6 en 60 s = pausa 2 min).
+    // Con Realtime reconectándose en red inestable o foco repetido, los avisos sobrantes se juntan en UNA pendiente
+    const freno = crearFreno()
     avisarRef.current = () => {
       window.clearTimeout(pendiente)
       if (escribiendo()) {
         pendiente = window.setTimeout(() => avisarRef.current(), REINTENTO_EDICION)
         return
       }
-      alCambiarRef.current()
+      const d = freno.autorizar(Date.now())
+      if (d.accion === 'ejecutar') {
+        alCambiarRef.current()
+        return
+      }
+      if (d.accion === 'pausado' && d.avisar) {
+        console.warn('[useAvisosCambios] demasiados avisos seguidos: avisos automáticos en pausa 2 min')
+      }
+      pendiente = window.setTimeout(() => avisarRef.current(), d.enMs + 100)
     }
     return () => window.clearTimeout(pendiente)
   }, [])

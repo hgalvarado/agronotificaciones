@@ -19,6 +19,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAvisosCambios } from './useAvisosCambios'
+import { crearFreno } from './frenos'
 
 type Resultado<T> = { datos: T[]; error: string | null }
 
@@ -58,7 +59,11 @@ export function useConsultaViva<T>({ clave, leer, tablas = [], habilitado = true
   const parches = useRef(0)
   // Lectura silenciosa agendada para después (fin del silencio o repetición de una descartada)
   const temporizador = useRef<number | undefined>(undefined)
-  const reprogramar = useRef<(ms: number) => void>(() => {})
+  // `auto` = al vencer vuelve a pasar por el freno (intervalo mínimo y disyuntor); si no, consulta directo
+  const reprogramar = useRef<(ms: number, auto?: boolean) => void>(() => {})
+  const refrescarRef = useRef<() => void>(() => {})
+  // Frenos de seguridad (lib/datos/frenos.ts): evitan una tormenta de consultas automáticas de esta clave
+  const freno = useRef(crearFreno())
   const leerRef = useRef(leer)
   useEffect(() => {
     leerRef.current = leer
@@ -112,9 +117,9 @@ export function useConsultaViva<T>({ clave, leer, tablas = [], habilitado = true
   // Los avisos que la propia pantalla provoca al guardar (eco) se ignoran un momento: ya se parchó lo suyo
   const silencioHasta = useRef(0)
   useEffect(() => {
-    reprogramar.current = (ms: number) => {
+    reprogramar.current = (ms: number, auto = false) => {
       window.clearTimeout(temporizador.current)
-      temporizador.current = window.setTimeout(() => void consultar(true), ms)
+      temporizador.current = window.setTimeout(() => (auto ? refrescarRef.current() : void consultar(true)), ms)
     }
     return () => window.clearTimeout(temporizador.current)
   }, [consultar])
@@ -122,11 +127,23 @@ export function useConsultaViva<T>({ clave, leer, tablas = [], habilitado = true
     const falta = silencioHasta.current - Date.now()
     // Durante el silencio NO se descarta el aviso (podría ser de otra persona): se atiende al terminar
     if (falta > 0) {
-      reprogramar.current(falta + 100)
+      reprogramar.current(falta + 100, true)
       return
     }
-    void consultar(true)
-  }, [consultar])
+    // Freno: intervalo mínimo entre consultas automáticas (una sola pendiente) y disyuntor (pausa de 2 min)
+    const d = freno.current.autorizar(Date.now())
+    if (d.accion === 'ejecutar') {
+      void consultar(true)
+      return
+    }
+    if (d.accion === 'pausado' && d.avisar) {
+      console.warn(`[useConsultaViva] demasiadas consultas para «${clave}»: avisos automáticos en pausa 2 min`)
+    }
+    reprogramar.current(d.enMs + 100, true)
+  }, [consultar, clave])
+  useEffect(() => {
+    refrescarRef.current = refrescar
+  }, [refrescar])
   const ultimaVez = useCallback(() => ultima.current, [])
   useAvisosCambios({ tablas, alCambiar: refrescar, habilitado, ultima: ultimaVez })
 
@@ -148,6 +165,16 @@ export function useConsultaViva<T>({ clave, leer, tablas = [], habilitado = true
     silencioHasta.current = Date.now() + ms
   }, [])
 
+  // Inmediata (manual o tras guardar): no se frena, pero se anota para que el disyuntor la vea.
+  // Estable (useCallback): un efecto que dependa de ella NO se vuelve a disparar en cada render (era el bucle de Tickets)
+  const recargar = useCallback(
+    (silencioso = false) => {
+      freno.current.anotar(Date.now())
+      return consultar(silencioso, true)
+    },
+    [consultar]
+  )
+
   return {
     parchar,
     silenciarAvisos,
@@ -156,6 +183,6 @@ export function useConsultaViva<T>({ clave, leer, tablas = [], habilitado = true
     error,
     actualizado,
     /** Tras guardar algo desde la pantalla: `recargar(true)` actualiza sin atenuar la tabla. */
-    recargar: (silencioso = false) => consultar(silencioso, true),
+    recargar,
   }
 }

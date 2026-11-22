@@ -12,7 +12,7 @@
  * páginas. Se actualiza solo (useConsultaViva: al volver a la ventana y con avisos de la base).
  */
 
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { Alerta, Esqueleto } from '@/components/ui/Primitivos'
 import { useConsultaViva } from '@/lib/datos/useConsultaViva'
 import { leerPagina, cursorDe } from '@/lib/tickets/repositorio'
@@ -22,6 +22,7 @@ import { hoyIso, instanteDeFecha, primerDiaDelMes, sumarDias, ZONA } from '@/lib
 /** Días hacia atrás que siempre se ven, aunque sean del mes anterior. */
 const DIAS_MINIMOS = 10
 const POR_PAGINA = 200
+const MAX_PAGINAS = 5
 
 /** Desde cuándo: el día 1 del mes, o 10 días atrás si eso es antes. */
 export function inicioRecientes(): string {
@@ -76,12 +77,15 @@ export function TicketsRecientes({
     for (const mes of mesesEntre(desde, hoy)) {
       let cursor = null as ReturnType<typeof cursorDe>
       // Todas las páginas del mes (un mes son a lo sumo unos cientos de tickets)
-      for (let vuelta = 0; vuelta < 20; vuelta++) {
+      // Tope de 5 páginas (1 000 tickets por mes): el mes en curso sale en 1–2; así una anomalía no se multiplica
+      for (let vuelta = 0; vuelta < MAX_PAGINAS; vuelta++) {
         const { filas, error } = await leerPagina(mes, null, filtro, cursor, POR_PAGINA)
         if (error) return { datos: [], error }
         todas.push(...filas)
         if (filas.length < POR_PAGINA) break
-        cursor = cursorDe(filas)
+        const siguiente = cursorDe(filas)
+        if (cursor && siguiente && siguiente.id === cursor.id) break // el cursor no avanzó: no repetir
+        cursor = siguiente
       }
     }
     return { datos: todas.filter((t) => t.fecha >= desde), error: null }
@@ -94,13 +98,27 @@ export function TicketsRecientes({
   })
 
   // Un cambio de proceso o estado hecho desde esta pantalla: volver a consultar en silencio
+  // Solo cuando CAMBIA `revision` (no en cada render ni al cambiar la identidad de `recargar`): antes dependía de
+  // `recargar`, que era nueva en cada render → consulta → setFilas → onFilasCargadas → render del padre → bucle
+  const recargarRef = useRef(recargar)
   useEffect(() => {
-    if (revision > 0) void recargar(true)
-  }, [revision, recargar])
+    recargarRef.current = recargar
+  }, [recargar])
+  const revisionVista = useRef(revision)
+  useEffect(() => {
+    if (revision === revisionVista.current) return
+    revisionVista.current = revision
+    if (revision > 0) void recargarRef.current(true)
+  }, [revision])
 
+  // Solo se avisa al padre cuando llegan filas NUEVAS (no por cambiar la identidad del callback)
+  const onFilasRef = useRef(onFilasCargadas)
   useEffect(() => {
-    if (filas) onFilasCargadas?.(filas)
-  }, [filas, onFilasCargadas])
+    onFilasRef.current = onFilasCargadas
+  }, [onFilasCargadas])
+  useEffect(() => {
+    if (filas) onFilasRef.current?.(filas)
+  }, [filas])
 
   const porDia = useMemo(() => {
     const procesos = new Set(filtros.procesos)

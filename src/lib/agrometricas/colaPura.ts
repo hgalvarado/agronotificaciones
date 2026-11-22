@@ -12,7 +12,7 @@ export const RUTAS_SIN_SENAL = ['/agrometricas', '/agrometricas/parametros']
 
 export type Pendiente = {
   id: string
-  tipo: 'parametros' | 'clima' | 'calicata'
+  tipo: 'parametros' | 'clima' | 'calicata' | 'indice'
   datos: Record<string, unknown>
   resumen: string
   /** Hay una foto (Blob JPEG) guardada aparte en el almacén `fotos`, con este mismo id. */

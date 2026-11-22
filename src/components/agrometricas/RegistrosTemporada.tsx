@@ -3,7 +3,7 @@
 /**
  * AgroMétricas › «Registros de la temporada». EN LÍNEA: pide a la base fn_agm_mis_registros (la base decide qué ve,
  * edita y elimina cada persona; aquí no se mira ningún rol). Tres vistas del mismo conjunto: Rápida (tarjetas),
- * Tabla (DataGrid) y Gráficas. Lo capturado en este teléfono sin enviar sigue en Parámetros › Mis registros.
+ * Tabla (DataGrid) y Gráficas; más el Resumen (el de AGL: tarjetas, mapa de calor, líneas por DDT; ResumenRegistros). Lo capturado en este teléfono sin enviar sigue en Parámetros › Mis registros.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -14,19 +14,20 @@ import { useMemoria } from '@/lib/memoria/useMemoria'
 import { createClient } from '@/lib/supabase/client'
 import type { Rango } from '@/lib/agrometricas/parametros'
 import {
-  FILTROS_VACIOS, POR_PAGINA, cambiosDeEdicion, filtrarLocal, paramsConsulta, unirPagina, validarEdicion,
+  FILTROS_VACIOS, POR_PAGINA, cambiosDeEdicion, filtrarLocal, nombreZona, paramsConsulta, unirPagina, validarEdicion,
   type FiltrosRegistros, type Registro,
 } from '@/lib/agrometricas/registrosPura'
 import { FiltrosRegistrosPanel } from './FiltrosRegistros'
 import { TarjetasRegistros } from './TarjetasRegistros'
 import { TablaRegistros } from './TablaRegistros'
 import { GraficasRegistros } from './GraficasRegistros'
+import { ResumenRegistros } from './ResumenRegistros'
 import { DetalleRegistro } from './DetalleRegistro'
 import { ModalEliminar } from './ModalEliminar'
 
-type Vista = 'rapida' | 'tabla' | 'graficas'
+type Vista = 'resumen' | 'rapida' | 'tabla' | 'graficas'
 const VISTAS: { clave: Vista; texto: string }[] = [
-  { clave: 'rapida', texto: 'Vista rápida' }, { clave: 'tabla', texto: 'Tabla' }, { clave: 'graficas', texto: 'Gráficas' },
+  { clave: 'resumen', texto: 'Resumen' }, { clave: 'rapida', texto: 'Vista rápida' }, { clave: 'tabla', texto: 'Tabla' }, { clave: 'graficas', texto: 'Gráficas' },
 ]
 interface TurnoCatalogo { turno: string; temporada: string | null; zona_id: string | null; zona: string | null }
 interface LoteVisible { lote: string; nombre: string | null; turnos: string[] }
@@ -36,7 +37,7 @@ const mensaje = (e: unknown) => (e instanceof Error && e.message && !/failed to 
 
 export function RegistrosTemporada() {
   const [filtros, setFiltros, lista] = useMemoria<FiltrosRegistros>('agrometricas:registros:filtros', FILTROS_VACIOS)
-  const [vista, setVista] = useMemoria<Vista>('agrometricas:registros:vista', 'rapida')
+  const [vista, setVista, vistaLista] = useMemoria<Vista>('agrometricas:registros:vista', 'resumen')
   const [registros, setRegistros] = useState<Registro[]>([])
   const [total, setTotal] = useState(0)
   const [recibidos, setRecibidos] = useState(0)
@@ -74,12 +75,12 @@ export function RegistrosTemporada() {
   // Cada cambio de filtros vuelve a la primera página (espera a que se lea lo recordado: una consulta, no dos)
   const clave = JSON.stringify(filtros)
   useEffect(() => {
-    if (!lista) return
+    if (!lista || !vistaLista || vista === 'resumen') return   // el Resumen pide lo suyo (ResumenRegistros)
     const t = setTimeout(() => { cargar(0, JSON.parse(clave) as FiltrosRegistros) }, 0)
     const alVolver = () => { cargar(0, JSON.parse(clave) as FiltrosRegistros) }
     window.addEventListener('online', alVolver)
     return () => { clearTimeout(t); window.removeEventListener('online', alVolver) }
-  }, [lista, clave, cargar])
+  }, [lista, vistaLista, vista, clave, cargar])
 
   // Catálogos para los selectores (turnos activos, rangos y lotes con sus turnos)
   useEffect(() => {
@@ -100,12 +101,12 @@ export function RegistrosTemporada() {
     const turnos: [string, string][] = []
     for (const t of catalogo) {
       if (t.temporada) temporadas.push([t.temporada, t.temporada])
-      if (t.zona_id) zonas.push([t.zona_id, t.zona ?? t.zona_id])
+      if (t.zona_id) zonas.push([t.zona_id, nombreZona(t.zona) || t.zona_id])
       turnos.push([t.turno, t.turno])
     }
     for (const r of registros) {
       if (r.temporada) temporadas.push([r.temporada, r.temporada])
-      if (r.zona_id) zonas.push([r.zona_id, r.zona ?? r.zona_id])
+      if (r.zona_id) zonas.push([r.zona_id, nombreZona(r.zona) || r.zona_id])
       turnos.push([r.turno, r.turno])
     }
     for (const v of filtros.temporada) temporadas.push([v, v])
@@ -172,7 +173,7 @@ export function RegistrosTemporada() {
         <BotonLink href="/agrometricas/parametros" variante="secundario" tamano="md">Parámetros de riego</BotonLink>
       </div>
 
-      <FiltrosRegistrosPanel filtros={filtros} opciones={opciones} onCambiar={cambiar} turnosDeLotes={turnosDeLotes} />
+      {vista !== 'resumen' && <FiltrosRegistrosPanel filtros={filtros} opciones={opciones} onCambiar={cambiar} turnosDeLotes={turnosDeLotes} />}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div role="tablist" aria-label="Vista" className="flex gap-1 rounded-xl bg-slate-100 p-1" data-vistas>
@@ -183,22 +184,24 @@ export function RegistrosTemporada() {
             </button>
           ))}
         </div>
-        <Insignia tono="gris">{visibles.length} de {total} registros</Insignia>
+        {vista !== 'resumen' && <Insignia tono="gris">{visibles.length} de {total} registros</Insignia>}
       </div>
 
-      {error && (
+      {vista === 'resumen' && vistaLista && <ResumenRegistros />}
+
+      {vista !== 'resumen' && error && (
         <div className="flex flex-col gap-2" data-error>
           <Alerta tono="rojo">{error}</Alerta>
           <Boton type="button" variante="secundario" className="self-start" onClick={() => cargar(0, filtros)}>Reintentar</Boton>
         </div>
       )}
 
-      {!error && cargando && !registros.length && <ListaEsqueleto filas={4} />}
-      {!error && !cargando && !visibles.length && (
+      {vista !== 'resumen' && !error && cargando && !registros.length && <ListaEsqueleto filas={4} />}
+      {vista !== 'resumen' && !error && !cargando && !visibles.length && (
         <EstadoVacio titulo="Sin registros" descripcion="No hay registros con estos filtros. Prueba otra temporada, turno o rango de fechas." />
       )}
 
-      {visibles.length > 0 && (
+      {vista !== 'resumen' && visibles.length > 0 && (
         <div className={cargando ? 'opacity-60 transition-opacity' : ''}>
           {vista === 'rapida' && <TarjetasRegistros registros={visibles} onAbrir={(r) => setAbiertoId(r.id)} />}
           {vista === 'tabla' && (
@@ -209,7 +212,7 @@ export function RegistrosTemporada() {
         </div>
       )}
 
-      {!error && hayMas && (
+      {vista !== 'resumen' && !error && hayMas && (
         <Boton type="button" variante="secundario" tamano="lg" disabled={cargando} onClick={() => cargar(pagina + 1, filtros)} data-ver-mas>
           {cargando ? 'Cargando…' : `Ver más (${Math.min(POR_PAGINA, total - recibidos)} de ${total - recibidos} restantes)`}
         </Boton>

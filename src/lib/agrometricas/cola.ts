@@ -13,7 +13,7 @@ import { podar, type EntradaHistorial } from './historialPura'
 
 export type { Pendiente, Rechazado }
 
-const FUNCIONES = { parametros: 'fn_agm_guardar_parametros', clima: 'fn_agm_guardar_clima', calicata: 'fn_agm_guardar_calicata' } as const
+const FUNCIONES = { parametros: 'fn_agm_guardar_parametros', clima: 'fn_agm_guardar_clima', calicata: 'fn_agm_guardar_calicata', indice: 'fn_agm_ic_registrar' } as const
 
 const ordenados = (l: Pendiente[]) => [...l].sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0))
 
@@ -21,6 +21,12 @@ export const pendientes = async (usuario: string) => ordenados(await Almacen.lee
 export const rechazados = (usuario: string) => Almacen.leerTodo<Rechazado>(usuario, 'rechazados')
 export const datosGuardados = <T,>(usuario: string) => Almacen.leerDato<T>(usuario, 'turnos')
 export const ultimoEnvio = (usuario: string) => Almacen.leerDato<string>(usuario, 'ultimo_envio')
+
+/** Versiones de la fórmula del IC guardadas en el teléfono (cálculo en vivo sin señal). */
+export const formulaGuardada = <T,>(usuario: string) => Almacen.leerDato<T>(usuario, 'ic_formula')
+export async function guardarFormula(usuario: string, versiones: unknown): Promise<boolean> {
+  try { await Almacen.guardarDato(usuario, 'ic_formula', versiones); return true } catch { return false }
+}
 
 export async function guardarDatos(usuario: string, datos: unknown): Promise<boolean> {
   try { await Almacen.guardarDato(usuario, 'turnos', datos); return true } catch { return false }

@@ -36,7 +36,7 @@ export function GraficasRegistros({ registros, intervalos = {} }: {
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
               {GRUPOS.map((g) => {
                 const { series, sinDdt } = seriesPorDdt(delTurno, g)
-                if (!series.length && g.clave === 'horas') return null
+                if (!series.length && (g.clave === 'horas' || g.clave === 'pct')) return null
                 return (
                   <Tarjeta key={g.clave} className="p-3.5">
                     <div data-grafica={g.clave}>

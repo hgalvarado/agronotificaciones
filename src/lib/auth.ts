@@ -5,12 +5,18 @@ import { leerAlcance, leerCondicion } from '@/lib/permisos/abac'
 import { REGLA_ABIERTA, type Reglas } from '@/lib/permisos/clientABAC'
 import { SIN_MIGRACION } from '@/lib/permisos/puede'
 import type { MenuDeRol } from '@/lib/navegacion/menuRol'
+import { crearCacheTtl } from '@/lib/datos/frenos'
+
+// Cachés de PRESENTACIÓN (menú). Los permisos reales (getReglas, getPerfilActual, getMisZonas) NO se cachean entre
+// peticiones: nunca se muestran acciones de más. 60 s: un cambio del diseño del menú se ve en un minuto.
+const cachePantallas = crearCacheTtl<PantallaMenu[]>(60_000)
+const cacheMenus = crearCacheTtl<MenuDeRol[]>(60_000)
 
 // `cache()` de React deduplica dentro de UN MISMO request: aunque el
 // layout, la página y un componente anidado llamen a getPerfilActual(),
 // se ejecuta una sola vez. Antes se hacían hasta 4 viajes a Supabase por
 // pantalla (getUser + perfil + rol, repetidos en layout y página).
-export const getUsuarioActual = cache(async () => {
+export const getUsuarioActual = cache(async (): Promise<{ id: string } | null> => {
   const supabase = await createClient()
   // Va en un try porque una sesión caducada hace que `getUser` LANCE, no
   // que devuelva error, y una excepción aquí tumba la pantalla entera con
@@ -18,10 +24,13 @@ export const getUsuarioActual = cache(async () => {
   // redirigir se encarga el middleware, que corre antes; esto sólo evita
   // que el camino intermedio reviente.
   try {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    return user
+    // `getClaims` verifica la firma del JWT en local (sin viaje a /auth/v1/user cuando el proyecto usa llaves
+    // asimétricas; si no, cae a getUser por dentro: igual de seguro). El proxy (updateSession) ya validó la
+    // sesión con `getUser` en esta misma petición, así que aquí solo se lee la identidad. Antes: 2 viajes por
+    // navegación (proxy + layout); ahora 1. Solo hace falta el id (lo único que usan los 14 llamadores).
+    const { data } = await supabase.auth.getClaims()
+    const id = data?.claims?.sub
+    return id ? { id } : null
   } catch {
     return null
   }
@@ -188,6 +197,9 @@ export type PantallaMenu = {
 export const getPantallasMenu = cache(async (): Promise<PantallaMenu[]> => {
   const user = await getUsuarioActual()
   if (!user) return []
+  // Presentación, no permisos (el menú igual se filtra con getPermisos): vigencia corta en memoria
+  const guardado = cachePantallas.leer('menu', Date.now())
+  if (guardado) return guardado
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('pantallas')
@@ -196,7 +208,9 @@ export const getPantallasMenu = cache(async (): Promise<PantallaMenu[]> => {
     .not('ruta', 'is', null)
     .order('orden')
   if (error) return []
-  return (data as PantallaMenu[] | null) ?? []
+  const filas = (data as PantallaMenu[] | null) ?? []
+  cachePantallas.guardar('menu', filas, Date.now())
+  return filas
 })
 
 /**
@@ -207,10 +221,15 @@ export const getPantallasMenu = cache(async (): Promise<PantallaMenu[]> => {
 export const getMenusRol = cache(async (): Promise<MenuDeRol[]> => {
   const user = await getUsuarioActual()
   if (!user) return []
+  // Por persona (clave = su id, así no se mezcla entre usuarios); vigencia corta: es el diseño del menú, no permisos
+  const guardado = cacheMenus.leer(user.id, Date.now())
+  if (guardado) return guardado
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('fn_mi_menu')
   if (error) return []
-  return (data as MenuDeRol[] | null) ?? []
+  const filas = (data as MenuDeRol[] | null) ?? []
+  cacheMenus.guardar(user.id, filas, Date.now())
+  return filas
 })
 
 export { canExecuteAction, zonasParaCrear, filtrarPorZona } from '@/lib/permisos/clientABAC'

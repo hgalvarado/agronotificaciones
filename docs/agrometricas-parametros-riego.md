@@ -187,6 +187,75 @@ qué ve, edita y elimina cada persona lo decide la base (`puede_editar`, `puede_
 - **Detalle** (`DetalleRegistro.tsx`): todos los valores, foto de la calicata (enlace firmado del bucket `agrometricas`; si no se puede ver, no se muestra), quién y cuándo,
   Editar (`fn_agm_editar_parametro`, solo manda lo que cambió, avisos de rango como la captura) y Eliminar (`ModalEliminar`: motivo ≥ 15 letras + casilla; `fn_agm_eliminar_parametro`).
 - **Paginación del servidor**: 50 por página y «Ver más». Estados vacío, cargando y error en español.
-- **Horas de riego**: no son columna de `agm_parametros` (viven en Fertirriego › Horas); la tarjeta las muestra si la fila trae `horas_riego` y si no pone «—».
+- **Horas de riego y % de fertilización**: son un parámetro más; ver «Horas de riego y % en los registros (sql/126)» más abajo.
 - **Código**: lógica pura en `src/lib/agrometricas/registrosPura.ts` (agrupar, series por DDT, escala SVG, motivo, validación de edición, parámetros de consulta); pruebas
   `pruebas/unit/agrometricas_registros.test.mjs`. Requiere la **125** corrida.
+
+### Horas de riego y % de fertilización en los registros (sql/126) y Resumen (pedido 2026-11-22)
+
+**Relación con Fertirriego**: `fert_bitacora_riego` tiene UNA fila por `(turno_ciclo_id, fecha)` (PK desde la 91; `pct_fertilizacion` desde la 112,
+`horas_riego`, `horas_fertilizacion`), la misma clave que `agm_parametros` (`turno_ciclo_id`, `fecha`). Como la clave es única **no se suma ni se
+pondera nada**: se trae la fila tal cual. **`sql/126_agrometricas_horas_riego_en_registros.sql`** redefine `fn_agm_mis_registros` (mismos filtros que la 125):
+- cada registro trae `horas_riego`, `horas_fertilizacion`, `pct_fertilizacion` del mismo turno y día (vacíos si ese día no hay bitácora);
+- los días con horas/% y **sin parámetros vivos** salen como filas del turno con `solo_horas = true`, id de texto `h:<turno_ciclo_id>:<fecha>`, DDT = fecha − siembra,
+  `puede_editar`/`puede_eliminar` en `false` (se corrigen en Fertirriego › Horas), y entran en `total`, paginación y todos los filtros; una bitácora toda vacía no genera fila;
+  si se elimina el parámetro de un día que tiene bitácora, ese día pasa a ser fila solo-horas (no se duplica);
+- **permisos**: SECURITY DEFINER, `search_path` fijo; una fila solo sale si la persona ve el turno por `AgroMétricas · ver` en su zona (o es administrador), la misma regla
+  de la 125; no se devuelve ninguna otra columna de Fertirriego (ni cantidades, productos, ejecutores, horas de inicio/fin ni cloro). Un turno archivado (102) ya no tiene bitácora en Supabase;
+- sin DDL; requiere 125 y 112; si se vuelve a correr la 125, correr la 126 después. Pruebas escritas: `pruebas/sql/126_agrometricas_horas_riego_en_registros.sql`.
+- **AGL**: el Resumen de AGL ya espera `horas_riego` (grupo «Horas de riego» en `backend/agrometricas_resumen.py`) y varios módulos de AGL leen la bitácora de Fertirriego
+  (`fertirriego_*`); el % de fertilización lo baja Fertirriego (112). Lo que NO baja es unirlas al registro de parámetros por turno y día (eso es de esta pantalla, en línea).
+
+**Resumen** (primera pestaña de `/agrometricas/registros`; `ResumenRegistros.tsx`, `GraficasResumen.tsx`, lógica pura `resumenPura.ts`, pruebas `pruebas/unit/agrometricas_resumen.test.mjs`):
+mismo diseño que el Resumen de AGL (tarjetas, mapa de calor turnos × días, líneas por DDT, turnos al mismo DDT) **sin** «Normal histórico» ni comparativo con la temporada pasada.
+Filtros propios (recordados): Lote (al elegirlo salen todos sus turnos), Ciclo («Ciclo N»), Zona, Turno (`SelectorMultiple`: búsqueda y única/varios), rango Desde/Hasta (por defecto
+los últimos 14 días) y parámetro (CE, pH, tensiómetros, cloro, horas de riego, % de fertilización) con su medida. **Cálculo en el cliente**: pide `fn_agm_mis_registros` por páginas de 1000
+(máx. 10 páginas) desde min(Desde, hoy−13) hasta max(Hasta, hoy) con `lotes` y zona única en la base; ciclo, varias zonas y turnos se recortan en local; sin función de agregado nueva.
+«Registro» (tarjetas) = fila de parámetros; un día solo-horas no cuenta como registro del parametrista pero sí aparece en el mapa y las líneas de Horas y % de fertilización.
+Mapa: color = intensidad relativa del valor mostrado (no hay rangos); gris = sin registro; borde rojo = fuera de rango al guardar. SVG propio con clases de Tailwind (claro/oscuro).
+**Zona**: se muestra como en AGL («Zona-2A») con `nombreZona` (si el nombre de la tabla `zonas` ya empieza por «Zona» se deja tal cual). **«Registró»**: `quienRegistro` = nombre, si no correo, nunca el UUID.
+
+## 8. Índice de crecimiento (IC) · `sql/127`
+
+Pedido del usuario (2026-11-21): el IC se mide **siempre por turno**, preferiblemente del **DDT 5 al 20**, lo mide el **mismo parametrista** que captura
+los parámetros y quiere **control para cambiar los parámetros de la fórmula durante la temporada**. Va dentro de Parámetros de riego (misma pantalla,
+misma cola sin señal en IndexedDB, misma baja a AGL).
+
+**Fórmula** (confirmada con los datos reales de AppSheet en `data/agrometricas_historico/indice_crecimiento.parquet`, 3 136 filas; 3 132 con datos): `IC = hojas / DDT / 10`.
+La diferencia máxima contra el `ic_real` de AppSheet es 0.005, o sea que AppSheet redondeaba a 2 decimales; las 4 filas restantes no tienen hojas ni DDT (IC 0, basura).
+Se generaliza a `IC = hojas / (DDT ^ exponente_ddt) / divisor` (inicial: divisor 10, exponente 1). El **plan IC** es una tabla por DDT 5–20
+(`ic_plan.parquet`: 0.30, 0.33, 0.35, 0.33, 0.36, 0.38, 0.48, 0.63, 0.74, 0.89, 1.05, 1.08, 1.12, 1.18, 1.24, 1.30), igual para todas las variedades
+(en 22 de 3 133 filas el plan guardado en AppSheet difería de la tabla; el histórico conserva el suyo).
+
+**Decisiones**
+1. El capturador registra **solo las hojas** (dato crudo). El IC y el plan se calculan con la **versión de fórmula vigente a la fecha del registro**
+   (`agm_ic_formula.vigente_desde ≤ fecha`, la más reciente; sin ninguna anterior, la primera).
+2. Cambiar la fórmula **no recalcula** lo ya guardado. «Recalcular» es explícito: vista previa (qué cambiaría) y confirmación.
+3. **Un IC por turno y día** (índice único parcial entre los no eliminados). Un segundo registro del mismo turno y día es una **corrección**: en el teléfono se
+   confirma con la casilla «Corregir el índice ya registrado de este día» (manda `correccion: true`); sin ella la base lo rechaza (22023).
+4. El DDT sale de la siembra del turno. **Fuera de 5–20 solo se avisa** en el teléfono (nunca bloquea). Sin siembra o antes de la siembra: no se calcula el IC (se guardan las hojas).
+5. Permisos: **sin acciones nuevas**. Registrar = «Registrar parámetros»; corregir días anteriores a ayer o registros ajenos = «Corregir parámetros»;
+   guardar fórmula y recalcular = «Configurar rangos» (`configurar_rangos`); eliminar = «Eliminar por completo» (`eliminar_definitivo`, solo administrador salvo concesión).
+   Lo que se ve y edita lo decide la zona del turno, igual que la 125 (`_agm_puede_ver_registro`, `_agm_puede_editar_registro`). Ningún nombre de rol.
+
+**Base** (`sql/127`, requiere 109, 122 y 125; solo crea objetos `agm_ic_*`, correr/re-correr 109/122/125 en cualquier orden no la rompe; no pisa una fórmula ya editada)
+- Tablas: `agm_ic_formula` (versiones), `agm_ic_plan` (versión, DDT, IC plan), `agm_ic_registros` (id uuid del teléfono, turno, fecha, DDT, hojas, `ic_real`, `ic_plan`,
+  `version_formula_id`, `zona_id`, autor, `editado_*`, tumba `eliminado_*`, `origen`/`id_appsheet`, `bajado_a_agl_en`, `huella`).
+- Teléfono: `fn_agm_ic_config()` (todas las versiones con su plan: el teléfono las guarda en IndexedDB, clave `ic_formula`, y calcula sin señal), `fn_agm_ic_formula_vigente(fecha?)`,
+  `fn_agm_ic_registrar(p)` (idempotente por id; un objeto, o `{registros: [...]}` = lote de la cola con `resultados` por registro).
+- Lista y gráficas: `fn_agm_ic_mis_registros(p)` (mismos filtros que `fn_agm_mis_registros`: temporada, turno exacto, `turno_contiene`, zona, lote/lotes, fechas, texto, paginación; trae `ic_real`, `ic_plan`, `puede_editar`, `puede_eliminar`).
+- Edición y baja: `fn_agm_ic_editar` (conserva la versión de fórmula del registro), `fn_agm_ic_eliminar` (motivo ≥ 15 letras, tumba).
+- Control: `fn_agm_ic_guardar_formula({vigente_desde, divisor, exponente_ddt, notas?, plan?})` (misma fecha = reemplaza; sin `plan` copia el de la vigente), `fn_agm_ic_recalcular({previsualizar?, desde?, hasta?, turno_ciclo_id?, temporada?})`.
+- AGL: `fn_agm_ic_cargar_appsheet` (histórico; UUID determinista `_agm_uuid_appsheet('ic:'||id_appsheet)`; IC con la fórmula vigente, plan y DDT de AppSheet si vienen; 77 repetidos del histórico quedan en `en_conflicto`),
+  `fn_agm_ic_exportar` / `fn_agm_ic_confirmar_bajada` / `fn_agm_ic_purgar_bajadas` (patrón 122/125: huella sha256, cursor `i|<id>`, tumbas; no se purga lo de un turno activo) y `fn_agm_ic_exportar_formulas()`.
+
+**Teléfono** (`FormParametros.tsx`, `lib/agrometricas/indicePura.ts`): sección plegable «Índice de crecimiento (IC)»; siempre está, y del DDT 5 al 20 se abre sola con la insignia «Toca medir». Campo de hojas, IC
+y plan en vivo con la fórmula vigente a la fecha de la jornada (guardada en el teléfono). La cola lleva el tipo nuevo `indice` (función `fn_agm_ic_registrar`); entra a «Mis registros».
+**Administración › Fórmula del IC (AgroMétricas)** (`/admin/agrometricas-ic`, `FormulaIC.tsx`, permiso «Configurar rangos»): versiones, crear/editar versión con tabla de plan y «Recalcular» con vista previa.
+
+**Pruebas (escritas, sin correr)**: `pruebas/sql/127_agrometricas_indice_crecimiento.sql` (fórmula, versiones por fecha, corrección, permisos por zona, recalcular, baja, órdenes 127>127, 125>127>125, 109>127, 122>127) y
+`pruebas/unit/agrometricas_indice.test.mjs`.
+
+**Lado AGL (siguiente bloque)**: (1) cargar el histórico del IC (`indice_crecimiento.parquet` → `fn_agm_ic_cargar_appsheet`, mismo mapa de usuarios que parámetros; `idindicecrecimiento` = `id_appsheet`, `idregistroturno` → turno AGL, `numero_hojas`, `ddt`, `ic_plan`);
+(2) bajar lo capturado en campo (`fn_agm_ic_exportar` → guardar con huella → `fn_agm_ic_confirmar_bajada` → `fn_agm_ic_purgar_bajadas`, aplicando tumbas) y leer las fórmulas con `fn_agm_ic_exportar_formulas`;
+(3) botón «Fórmula del IC» en /AM01 (ver versiones; la edición se hace en AgroNoti); (4) gráfica IC real contra plan por turno (por DDT) usando la fórmula vigente de cada registro.

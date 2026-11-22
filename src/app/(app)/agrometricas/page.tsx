@@ -10,7 +10,7 @@ import { RUTAS_SIN_SENAL } from '@/lib/agrometricas/colaPura'
 const PARTES = [
   { href: '/agrometricas/parametros', titulo: 'Parámetros de riego', detalle: 'Tensiómetros, agua y solución, suelo y clima', icono: 'gota' },
   { href: '/agrometricas/registros', titulo: 'Registros de la temporada', detalle: 'Lo registrado por turno y lote, con gráficas (requiere conexión)', icono: 'chart' },
-  { href: null, titulo: 'Índice de crecimiento', detalle: 'Curva de crecimiento del cultivo', icono: 'chart' },
+  { href: '/agrometricas/parametros', titulo: 'Índice de crecimiento', detalle: 'Hojas por turno (DDT 5 al 20): va dentro de Parámetros de riego', icono: 'chart' },
   { href: null, titulo: 'Polinización', detalle: 'Colmenas y días de polinización', icono: 'plan' },
   { href: null, titulo: 'Análisis de extractor y savia', detalle: 'Ca, K, Na, NO3, pH, CE, P', icono: 'gauge' },
   { href: null, titulo: 'Registro de productos', detalle: 'Productos de inyección', icono: 'bandeja' },

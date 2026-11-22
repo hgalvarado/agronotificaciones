@@ -5,7 +5,7 @@
 import { useMemo } from 'react'
 import { Insignia, Tarjeta } from '@/components/ui/Primitivos'
 import { ayerIso, hoyIso } from '@/lib/fechas/zona'
-import { GRUPOS, agruparPorDia, grupoFuera, indexarSparks, valorGrupo, type Registro } from '@/lib/agrometricas/registrosPura'
+import { GRUPOS, agruparPorDia, grupoFuera, indexarSparks, nombreZona, quienRegistro, valorGrupo, type Registro } from '@/lib/agrometricas/registrosPura'
 import { GraficaLinea } from './GraficaLinea'
 
 export function TarjetasRegistros({ registros, onAbrir }: { registros: Registro[]; onAbrir: (r: Registro) => void }) {
@@ -27,12 +27,13 @@ export function TarjetasRegistros({ registros, onAbrir }: { registros: Registro[
                       {r.turno}{r.ddt != null ? ` · DDT ${r.ddt}` : ''}
                     </p>
                     <span className="flex shrink-0 items-center gap-1.5">
+                      {r.solo_horas && <Insignia tono="gris">Solo horas de riego</Insignia>}
                       {r.fuera_rango?.length > 0 && <Insignia tono="rojo">Fuera de rango</Insignia>}
                       {r.puede_editar && <Insignia tono="gris">Editable</Insignia>}
                     </span>
                   </div>
                   <p className="mb-2 text-xs text-slate-500">
-                    {[r.estacion, r.zona, r.creado_por_nombre ? String(r.creado_por_nombre) : ''].filter(Boolean).join(' · ')}
+                    {[r.estacion, nombreZona(r.zona), quienRegistro(r)].filter(Boolean).join(' · ')}
                   </p>
                   <ul className="flex flex-col divide-y divide-slate-100">
                     {GRUPOS.map((gr) => {
