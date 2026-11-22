@@ -150,7 +150,7 @@ select pg_temp.ok((select jsonb_array_length(j->'confirmadas') = 4 and jsonb_arr
                           and j->'rechazadas'->0->>'id' = (select p2::text from k) from cm), 'confirmar: la fila con huella mala se rechaza, las otras 4 se confirman');
 select pg_temp.ok((select bajado_a_agl_en is null and huella is null from agm_parametros where id = (select p2 from k)), 'la rechazada sigue «por bajar»');
 select pg_temp.ok((select count(*) = 2 and bool_and(bajado_a_agl_en is not null and huella is not null) from agm_parametros where id in ((select p1 from k), (select p3 from k))), 'las confirmadas guardan bajado_a_agl_en y huella');
-select pg_temp.ok((select huella = encode(sha256(convert_to(((to_jsonb(a) - 'bajado_a_agl_en') - 'huella')::text, 'UTF8')), 'hex') from agm_parametros a where id = (select p1 from k)), 'la huella guardada es la de la fila sin las marcas');
+select pg_temp.ok((select huella = encode(sha256(convert_to(((to_jsonb(a) - 'bajado_a_agl_en') - 'huella' - array['id_appsheet','editado_en','editado_por','eliminado_en','eliminado_por','eliminado_motivo'])::text, 'UTF8')), 'hex') from agm_parametros a where id = (select p1 from k)), 'la huella guardada es la de la fila sin las marcas (ni las claves de la 125 en null)');
 select pg_temp.ok((select count(*) = 3 from agm_parametros where turno_ciclo_id = (select tc from k) and fecha between '2020-01-01' and '2020-01-31')
                    and (select count(*) = 1 from agm_clima where id = (select c1 from k))
                    and (select count(*) = 1 from agm_calicatas where turno_ciclo_id = (select tc from k)), 'confirmar NO borra nada (parámetros, clima ni calicata)');
@@ -186,19 +186,19 @@ update agm_parametros set bajado_a_agl_en = now() - interval '10 days' where id 
 update agm_parametros set ph_agua = 7.7 where id = (select p3 from k);
 select pg_temp.ok((select j->'filas'->0->>'id' = (select p3::text from k) and jsonb_array_length(j->'filas') = 1
                    from (select fn_agm_exportar('{"desde":"2020-01-12","hasta":"2020-01-12"}') as j) q), 'editado después de bajado: vuelve a «por bajar»');
+create temp table pu1a as select fn_agm_purgar_bajadas('{}') as j;
+select pg_temp.ok((select (j->>'parametros')::int = 0 and (j->>'clima')::int = 1 and (j->>'calicatas')::int = 0 from pu1a), 'turno activo (125): solo se purga el clima; parámetros y calicata se quedan');
+update turnos_ciclo set activo = false where id = (select tc from k);
 create temp table pu1 as select fn_agm_purgar_bajadas('{}') as j;
-select pg_temp.ok((select (j->>'parametros')::int = 3 and (j->>'clima')::int = 1 and (j->>'calicatas')::int = 0 from pu1), 'purgar: borra P1, P2 y P4 y el clima; NO P3 (cambió) ni la calicata (turno activo)');
+select pg_temp.ok((select (j->>'parametros')::int = 3 and (j->>'clima')::int = 0 and (j->>'calicatas')::int = 1 from pu1), 'turno inactivo: borra P1, P2, P4 y la calicata; NO P3 (cambió)');
 select pg_temp.ok((select not exists (select 1 from agm_parametros where id in ((select p1 from k), (select p2 from k), (select p4 from k)))
                           and exists (select 1 from agm_parametros where id in ((select p3 from k), (select p5 from k)))
-                          and exists (select 1 from agm_calicatas where turno_ciclo_id = (select tc from k))), 'quedan P3, P5 y la calicata');
+                          and not exists (select 1 from agm_calicatas where turno_ciclo_id = (select tc from k))), 'quedan P3 y P5; la calicata se fue');
 select pg_temp.ok((select j->'fotos' = '["f122/p1.jpg","f122/p2.jpg"]'::jsonb from pu1), 'fotos para borrar de Storage: solo las de filas purgadas y que ninguna fila restante usa (la compartida NO)');
 -- reconfirmar P3 y purgar
 select pg_temp.ok((jsonb_array_length(fn_agm_confirmar_bajada(pg_temp.mk(fn_agm_exportar('{"desde":"2020-01-12","hasta":"2020-01-12"}')))->'confirmadas') = 1), 'P3 vuelve a confirmarse con la huella nueva');
 update agm_parametros set bajado_a_agl_en = now() - interval '10 days' where id = (select p3 from k);
 select pg_temp.ok((fn_agm_purgar_bajadas('{}')->>'parametros')::int = 1, 'P3 reconfirmada y vieja: se purga');
--- calicata: solo con el turno inactivo
-update turnos_ciclo set activo = false where id = (select tc from k);
-select pg_temp.ok((fn_agm_purgar_bajadas('{}')->>'calicatas')::int = 1, 'calicata se purga cuando su turno ya no está activo');
 select pg_temp.ok((select count(*) = 1 from agm_parametros where comentario = 'T122b'), 'P5 (nunca bajada) sigue en Supabase');
 -- límite y hay_mas
 insert into agm_parametros (id, turno_ciclo_id, fecha, ph_agua, comentario)
@@ -239,6 +239,8 @@ select pg_temp.finales('122>109');
 \i sql/122_agrometricas_bajar_a_agl.sql
 \i sql/122_agrometricas_bajar_a_agl.sql
 select pg_temp.finales('109>110>122>122');
+\i sql/125_agrometricas_registros_temporada.sql
+select pg_temp.finales('122>125');
 select pg_temp.ok((select md5(string_agg(p::text, '|' order by p::text)) from permisos p) = (select v from sv where clave = 'perm'), 'la tabla de permisos no cambió (la 122 no crea permisos)');
 
 select 'FIN 122 OK' as resultado;

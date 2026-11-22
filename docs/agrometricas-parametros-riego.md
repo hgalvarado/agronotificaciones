@@ -122,3 +122,71 @@ para leer, **publicar** para confirmar y purgar. No hay permisos nuevos ni nombr
 - Probado en réplica: `pruebas/sql/122_agrometricas_bajar.sql`.
 - **Borrado de fotos (sql/123)**: AGL borra las fotos de `fotos[]` del bucket `agrometricas` con el token del usuario técnico. La 123 agrega la política DELETE de `storage.objects` solo para ese bucket y solo con «Conexión AGL · publicar». Alternativa: guardar la llave de servicio en AGL /SE03.
 - El usuario «Integración AGL» necesita además `agrometricas · ver` (la política de lectura de fotos lo exige: sin ella no puede bajar ni, por RLS, borrar fotos).
+
+## 7. Registros de la temporada (sql/125)
+
+**Pedido (2026-11-21)**: los 107 registros de 2026-2027 que vivían solo en AGL (importados de AppSheet por «Glopez», «Rwlopez»,
+«gbetancourth») aparecen en Supabase como si los hubieran ingresado esos usuarios (cruce por correo: noelopez@agl.com,
+rudylopez@agl.com, gustavobetancourth@agrolibano.com). **Visibilidad (ajustada 2026-11-21)**: el administrador ve todo; quien tenga
+`agrometricas · ver` en la zona del turno ve **todos** los registros de esa zona, aunque los haya capturado otro. Editar y eliminar no cambian.
+
+**Funciones** (todas `jsonb`, mensajes en español)
+- `fn_agm_cargar_appsheet({registros:[{id_appsheet, fecha, turno_ciclo_id (= id del turno en AGL, `turnos_ciclo.agl_id`),
+  usuario_appsheet, <13 valores>, latitud?, longitud?, comentario?}], mapa_usuarios:{Glopez:'correo',…}})` → `{insertadas,
+  ya_existian, sin_usuario:[{id_appsheet, usuario_appsheet}], sin_turno:[{id_appsheet, turno}], en_conflicto:[{id_appsheet,
+  existente}], invalidas:[{id_appsheet, error}]}`. Solo el usuario técnico (`fertirriego_agl · publicar`). Idempotente: el `id`
+  es determinista (sha-256 de `'agm_appsheet:' || id_appsheet`, versión 5/variante RFC; AGL puede recalcularlo) y lo ya cargado
+  no se toca (no pisa ediciones). Sin autor o sin turno **no se carga** (se informa para reintentar). Nacen ya «bajados»
+  (AGL los tiene): solo vuelven a bajar si alguien los edita.
+- `fn_agm_mis_registros({temporada?, turno? (código EXACTO, sin distinguir mayúsculas), turno_contiene? (búsqueda parcial por código), turno_ciclo_id?, zona_id?, desde?, hasta?, texto?, limite? (50, máx. 1000), pagina?
+  (desde 0), orden? 'desc'|'asc', lote? (texto exacto, p. ej. '1002-120'), lotes? (arreglo, selección múltiple)})` → `{total, limite, pagina, registros:[…]}`. Cada registro trae todas las columnas con
+  valores (para graficar), `turno, temporada, ciclo, estacion, zona, lotes:[{lote, nombre}], creado_por_nombre, creado_por_email, editado_por_nombre`,
+  y `puede_editar`, `puede_eliminar`. No trae eliminados, huella ni datos internos. Visibles: administrador (todos) y cualquiera con
+  `agrometricas · ver` en la zona del turno (todos los de la zona). `puede_editar` (dueño con «Registrar parámetros» en la zona, encargado con
+  «Corregir» o administrador) y `puede_eliminar` (solo `eliminar_definitivo`) se calculan por fila. **Filtro por lote**: `lote`/`lotes`
+  devuelven los registros de TODOS los turnos que contengan ese lote (un lote como 1002-120 «Areanales-2» está en T1002-T36, T37, T38…).
+- `public.turno_lotes(turno_ciclo_id → turnos_ciclo on delete cascade, lote, nombre, area_mz; pk (turno_ciclo_id, lote); índice por lote)`:
+  lotes de cada turno; RLS de lectura con la misma regla de zona («ver»). `fn_agm_publicar_turno_lotes({turnos:[{turno_ciclo_id (= agl_id),
+  lotes:[{lote, nombre?, area_mz?}]}]})` → `{turnos, lotes, sin_turno:[agl_id], invalidos:[…]}`: solo el usuario técnico (`fertirriego_agl · publicar`),
+  REEMPLAZA los lotes de cada turno (idempotente). `fn_agm_lotes_visibles()` → `[{lote, nombre, turnos:[código de turno]}]` de lo que el usuario ve
+  (para el selector). `fn_agm_cargar_appsheet` acepta `lotes` por registro y los guarda solo si el turno aún no tiene.
+- `fn_agm_editar_parametro({id, <valores>…, latitud?, longitud?, comentario?})` → `{cambio, registro}`. Solo cambia lo que viene
+  (valor vacío = limpiar; no número = error). Dueño (con «Registrar parámetros» en la zona), encargado de la zona o administrador.
+  Marca `editado_en/por`; la huella cambia sola y AGL lo vuelve a bajar. No edita turnos archivados («reactívalo en AGL»).
+- `fn_agm_eliminar_parametro({id, motivo})` → `{id, eliminado_en}`. Solo con el permiso **«Eliminar por completo»**
+  (`agrometricas · eliminar_definitivo`, nivel 4: los niveles rápidos no lo encienden; no se concede a ningún rol, solo el
+  administrador; el usuario puede darlo después en Permisos). Motivo ≥ 15 letras. Eliminación lógica (tumba: `eliminado_en/por/motivo`).
+- `fn_agm_guardar_parametros` (109) se redefine: la unicidad (turno, fecha) es **parcial** (solo no eliminados), y reenviar el id
+  de un eliminado se rechaza (no se resucita). La política de lectura de la tabla oculta los eliminados.
+
+**Baja a AGL (122 ajustada)**: `fn_agm_exportar` trae también las tumbas (`eliminado:true`, la fila trae el motivo) y
+`creado_por_email`; AGL las aplica en su copia y confirma con la misma huella. La huella ignora las claves nuevas cuando están
+en null (lo confirmado antes de la 125 no vuelve a «por bajar»).
+
+**Retención**: un parámetro de un turno **activo** se queda en Supabase aunque ya esté confirmado (consultable y editable);
+se purga cuando el turno ya no está activo (Terminar ciclo) y AGL lo confirmó con huella. Una tumba confirmada se purga pasada
+la retención (7 días: cubre a un teléfono sin señal que reenvíe ese UUID). Las fotos siguen el camino de la 122/123.
+
+**Órdenes de corrida**: si se vuelve a correr la 109 o la 122, correr la **125** después. Pruebas: `pruebas/sql/125_agrometricas_registros_temporada.sql`
+(la de la 122 describe el comportamiento previo: no se corre sobre una base con la 125).
+
+### Pantalla «Registros de la temporada» (`/agrometricas/registros`)
+
+Pantalla EN LÍNEA (no está en `RUTAS_SIN_SENAL`; sin señal muestra el aviso «Esta pantalla necesita conexión» con Reintentar y recuerda que lo
+local sigue en Parámetros › Mis registros). Entrada desde `/agrometricas` y desde un botón en Parámetros de riego. Permiso de página: `agrometricas · ver`;
+qué ve, edita y elimina cada persona lo decide la base (`puede_editar`, `puede_eliminar` por fila); el código no nombra roles.
+
+- **Filtros** (`FiltrosRegistros.tsx`, recordados por usuario con `useMemoria`): Temporada, Zona, Turno y Lote con `SelectorMultiple` (búsqueda y Única/Varios),
+  Desde/Hasta y búsqueda de texto (400 ms). Un lote trae los registros de todos los turnos que lo contienen y se avisa cuáles son. Las listas salen de
+  `fn_agm_mis_turnos` (turnos activos), `fn_agm_lotes_visibles` y lo ya cargado. La base filtra por UNA temporada/zona/turno: con varias selecciones se pide sin ese
+  filtro y se recorta en local (`filtrarLocal`; el selector de turno manda `turno` exacto; solo el cuadro de texto hace búsqueda parcial). Con una sola selección el total del servidor coincide con lo mostrado.
+- **Vistas** (pestañas): Vista rápida (tarjetas por día/turno con CE, pH, tensiómetros, cloro y horas + sparkline por DDT del turno), Tabla (DataGrid: filtros, orden,
+  selección múltiple, edición en línea de los 13 valores solo donde `puede_editar`, «Eliminar» en masa con un solo motivo donde `puede_eliminar`, Excel) y Gráficas
+  (una gráfica por parámetro y turno, líneas por DDT, punto rojo = fuera de rango, 24 cm punteado, SVG propio sin librerías). Cada gráfica trae el espacio del IC
+  (prop `intervalos` de `GraficasRegistros`: franja por DDT; hoy muestra «Intervalo (IC): próximamente»).
+- **Detalle** (`DetalleRegistro.tsx`): todos los valores, foto de la calicata (enlace firmado del bucket `agrometricas`; si no se puede ver, no se muestra), quién y cuándo,
+  Editar (`fn_agm_editar_parametro`, solo manda lo que cambió, avisos de rango como la captura) y Eliminar (`ModalEliminar`: motivo ≥ 15 letras + casilla; `fn_agm_eliminar_parametro`).
+- **Paginación del servidor**: 50 por página y «Ver más». Estados vacío, cargando y error en español.
+- **Horas de riego**: no son columna de `agm_parametros` (viven en Fertirriego › Horas); la tarjeta las muestra si la fila trae `horas_riego` y si no pone «—».
+- **Código**: lógica pura en `src/lib/agrometricas/registrosPura.ts` (agrupar, series por DDT, escala SVG, motivo, validación de edición, parámetros de consulta); pruebas
+  `pruebas/unit/agrometricas_registros.test.mjs`. Requiere la **125** corrida.
