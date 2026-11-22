@@ -23,7 +23,7 @@ begin
     insert into roles (codigo, nombre) values ('T123_PUB', 'P123 AGL publicar'), ('T123_NADA', 'P123 sin AGL') on conflict (codigo) do nothing;
     select id into r1 from roles where codigo = 'T123_PUB'; select id into r2 from roles where codigo = 'T123_NADA';
     insert into permisos (rol_id, recurso, accion, permitido, alcance) values
-        (r1, 'fertirriego_agl', 'publicar', true, 'global'), (r2, 'agrometricas', 'ver', true, 'global')
+        (r1, 'fertirriego_agl', 'publicar', true, 'global'), (r1, 'agrometricas', 'ver', true, 'global'), (r2, 'agrometricas', 'ver', true, 'global')
     on conflict (rol_id, recurso, accion) do update set permitido = true, alcance = excluded.alcance;
     insert into auth.users (id, email) values ('00000000-0000-0000-0000-000000012301', 'pub@123'), ('00000000-0000-0000-0000-000000012302', 'nada@123') on conflict do nothing;
     insert into perfiles (id, nombre, rol_id, todas_las_zonas) values
@@ -36,13 +36,19 @@ grant select on all tables in schema pg_temp to public;
 set role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000012302', false);
 delete from storage.objects where name = 'f123/a.jpg';
-select pg_temp.ok((select count(*) = 1 from storage.objects where name = 'f123/a.jpg'), 'sin permiso: no borra (la foto sigue)');
+reset role;
+select pg_temp.ok((select count(*) = 1 from storage.objects where name = 'f123/a.jpg'), 'sin permiso: no borra (la foto sigue existiendo)');
+set role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000012301', false);
+delete from storage.objects where bucket_id = 'otro_bucket_123';
+reset role;
+select pg_temp.ok((select count(*) = 1 from storage.objects where bucket_id = 'otro_bucket_123'), 'otro bucket: no borra aunque tenga permiso (la fila sigue)');
+set role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000012301', false);
 delete from storage.objects where name = 'f123/a.jpg' and bucket_id = 'agrometricas';
-select pg_temp.ok((select count(*) = 0 from storage.objects where name = 'f123/a.jpg'), 'con AGL · publicar: borra la foto');
-delete from storage.objects where bucket_id = 'otro_bucket_123';
-select pg_temp.ok((select count(*) = 1 from storage.objects where bucket_id = 'otro_bucket_123'), 'otro bucket: no borra aunque tenga permiso');
 reset role;
+select pg_temp.ok((select count(*) = 0 from storage.objects where name = 'f123/a.jpg'), 'con AGL publicar (+ agrometricas ver): la fila ya no existe');
+select pg_temp.ok((select count(*) = 1 from storage.objects where name = 'f123/b.jpg'), 'las demás fotos del bucket siguen');
 -- idempotencia 123>123: una sola política
 \i sql/123_agrometricas_storage_borrar.sql
 \i sql/123_agrometricas_storage_borrar.sql

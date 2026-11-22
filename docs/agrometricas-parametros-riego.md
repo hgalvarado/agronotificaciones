@@ -117,3 +117,4 @@ para leer, **publicar** para confirmar y purgar. No hay permisos nuevos ni nombr
   bucket por antigüedad.
 - Probado en réplica: `pruebas/sql/122_agrometricas_bajar.sql`.
 - **Borrado de fotos (sql/123)**: AGL borra las fotos de `fotos[]` del bucket `agrometricas` con el token del usuario técnico. La 123 agrega la política DELETE de `storage.objects` solo para ese bucket y solo con «Conexión AGL · publicar». Alternativa: guardar la llave de servicio en AGL /SE03.
+- El usuario «Integración AGL» necesita además `agrometricas · ver` (la política de lectura de fotos lo exige: sin ella no puede bajar ni, por RLS, borrar fotos).

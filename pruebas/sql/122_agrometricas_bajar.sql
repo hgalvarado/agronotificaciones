@@ -151,8 +151,9 @@ select pg_temp.ok((select jsonb_array_length(j->'confirmadas') = 4 and jsonb_arr
 select pg_temp.ok((select bajado_a_agl_en is null and huella is null from agm_parametros where id = (select p2 from k)), 'la rechazada sigue «por bajar»');
 select pg_temp.ok((select count(*) = 2 and bool_and(bajado_a_agl_en is not null and huella is not null) from agm_parametros where id in ((select p1 from k), (select p3 from k))), 'las confirmadas guardan bajado_a_agl_en y huella');
 select pg_temp.ok((select huella = encode(sha256(convert_to(((to_jsonb(a) - 'bajado_a_agl_en') - 'huella')::text, 'UTF8')), 'hex') from agm_parametros a where id = (select p1 from k)), 'la huella guardada es la de la fila sin las marcas');
-select pg_temp.ok((select count(*) = 5 from agm_parametros where turno_ciclo_id = (select tc from k) and fecha between '2020-01-01' and '2020-01-31')
-                   or (select count(*) = 3 from agm_parametros where turno_ciclo_id = (select tc from k) and fecha between '2020-01-01' and '2020-01-31'), 'confirmar NO borra nada');
+select pg_temp.ok((select count(*) = 3 from agm_parametros where turno_ciclo_id = (select tc from k) and fecha between '2020-01-01' and '2020-01-31')
+                   and (select count(*) = 1 from agm_clima where id = (select c1 from k))
+                   and (select count(*) = 1 from agm_calicatas where turno_ciclo_id = (select tc from k)), 'confirmar NO borra nada (parámetros, clima ni calicata)');
 select pg_temp.ok((select jsonb_array_length(fn_agm_exportar('{"desde":"2020-01-01","hasta":"2020-01-31"}')->'filas') = 1 and
                           fn_agm_exportar('{"desde":"2020-01-01","hasta":"2020-01-31"}')->'filas'->0->>'id' = (select p2::text from k)), 'exportar ahora solo trae la que falta');
 -- confirmar la que falta con huella buena
