@@ -146,7 +146,7 @@ export function RegistrosTemporada() {
   async function editarCelda(fila: Registro, campo: string, valor: unknown) {
     if (esIC) {   // IC: solo se editan las hojas; la base recalcula el IC con la fórmula que ya tenía el registro
       const h = validarHojas(valor === null || valor === undefined ? '' : String(valor))
-      if (!h.ok) throw new Error(h.error)
+      if (!h.ok) { mostrar(h.error, 'error'); throw new Error(h.error) }
       if (h.hojas === Number(fila.hojas)) return
       const { data, error: e } = await createClient().rpc('fn_agm_ic_editar', { p: { id: fila.id, hojas: h.hojas } })
       if (e) { mostrar(e.message, 'error'); throw new Error(e.message) }
@@ -156,7 +156,7 @@ export function RegistrosTemporada() {
       return
     }
     const v = validarEdicion({ [campo]: valor === null || valor === undefined ? '' : String(valor) })
-    if (!v.ok) throw new Error(v.errores[campo])
+    if (!v.ok) { mostrar(v.errores[campo], 'error'); throw new Error(v.errores[campo]) }
     const cambios = cambiosDeEdicion(fila, v.numeros)
     if (!Object.keys(cambios).length) return
     const { data, error: e } = await createClient().rpc('fn_agm_editar_parametro', { p: { id: fila.id, ...cambios } })
