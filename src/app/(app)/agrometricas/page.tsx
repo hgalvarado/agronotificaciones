@@ -9,6 +9,7 @@ import { RUTAS_SIN_SENAL } from '@/lib/agrometricas/colaPura'
 /** AgroMétricas: menú de botones grandes (teléfono primero). Las partes se migran de AppSheet una por una. */
 const PARTES = [
   { href: '/agrometricas/parametros', titulo: 'Parámetros de riego', detalle: 'Tensiómetros, agua y solución, suelo y clima', icono: 'gota' },
+  { href: '/agrometricas/registros', titulo: 'Registros de la temporada', detalle: 'Lo registrado por turno y lote, con gráficas (requiere conexión)', icono: 'chart' },
   { href: null, titulo: 'Índice de crecimiento', detalle: 'Curva de crecimiento del cultivo', icono: 'chart' },
   { href: null, titulo: 'Polinización', detalle: 'Colmenas y días de polinización', icono: 'plan' },
   { href: null, titulo: 'Análisis de extractor y savia', detalle: 'Ca, K, Na, NO3, pH, CE, P', icono: 'gauge' },

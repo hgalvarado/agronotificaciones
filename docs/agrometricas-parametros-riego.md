@@ -169,3 +169,24 @@ la retención (7 días: cubre a un teléfono sin señal que reenvíe ese UUID). 
 
 **Órdenes de corrida**: si se vuelve a correr la 109 o la 122, correr la **125** después. Pruebas: `pruebas/sql/125_agrometricas_registros_temporada.sql`
 (la de la 122 describe el comportamiento previo: no se corre sobre una base con la 125).
+
+### Pantalla «Registros de la temporada» (`/agrometricas/registros`)
+
+Pantalla EN LÍNEA (no está en `RUTAS_SIN_SENAL`; sin señal muestra el aviso «Esta pantalla necesita conexión» con Reintentar y recuerda que lo
+local sigue en Parámetros › Mis registros). Entrada desde `/agrometricas` y desde un botón en Parámetros de riego. Permiso de página: `agrometricas · ver`;
+qué ve, edita y elimina cada persona lo decide la base (`puede_editar`, `puede_eliminar` por fila); el código no nombra roles.
+
+- **Filtros** (`FiltrosRegistros.tsx`, recordados por usuario con `useMemoria`): Temporada, Zona, Turno y Lote con `SelectorMultiple` (búsqueda y Única/Varios),
+  Desde/Hasta y búsqueda de texto (400 ms). Un lote trae los registros de todos los turnos que lo contienen y se avisa cuáles son. Las listas salen de
+  `fn_agm_mis_turnos` (turnos activos), `fn_agm_lotes_visibles` y lo ya cargado. La base filtra por UNA temporada/zona/turno: con varias selecciones se pide sin ese
+  filtro y se recorta en local (`filtrarLocal`; el turno también se recorta exacto porque la base busca «contiene»), así que el total del servidor puede ser algo mayor al mostrado.
+- **Vistas** (pestañas): Vista rápida (tarjetas por día/turno con CE, pH, tensiómetros, cloro y horas + sparkline por DDT del turno), Tabla (DataGrid: filtros, orden,
+  selección múltiple, edición en línea de los 13 valores solo donde `puede_editar`, «Eliminar» en masa con un solo motivo donde `puede_eliminar`, Excel) y Gráficas
+  (una gráfica por parámetro y turno, líneas por DDT, punto rojo = fuera de rango, 24 cm punteado, SVG propio sin librerías). Cada gráfica trae el espacio del IC
+  (prop `intervalos` de `GraficasRegistros`: franja por DDT; hoy muestra «Intervalo (IC): próximamente»).
+- **Detalle** (`DetalleRegistro.tsx`): todos los valores, foto de la calicata (enlace firmado del bucket `agrometricas`; si no se puede ver, no se muestra), quién y cuándo,
+  Editar (`fn_agm_editar_parametro`, solo manda lo que cambió, avisos de rango como la captura) y Eliminar (`ModalEliminar`: motivo ≥ 15 letras + casilla; `fn_agm_eliminar_parametro`).
+- **Paginación del servidor**: 50 por página y «Ver más». Estados vacío, cargando y error en español.
+- **Horas de riego**: no son columna de `agm_parametros` (viven en Fertirriego › Horas); la tarjeta las muestra si la fila trae `horas_riego` y si no pone «—».
+- **Código**: lógica pura en `src/lib/agrometricas/registrosPura.ts` (agrupar, series por DDT, escala SVG, motivo, validación de edición, parámetros de consulta); pruebas
+  `pruebas/unit/agrometricas_registros.test.mjs`. Requiere la **125** corrida.
