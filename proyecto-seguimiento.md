@@ -41,6 +41,8 @@ y baja lo que el campo registra. Lo terminado se baja a AGL, se verifica (sha256
   3. Aprobar antes de hacer merge de ramas complejas a `main`.
   4. Diseño de arquitectura profunda.
 
+**Tope de tiempo de TODA prueba (regla del usuario, 2026-11-21; la olvidé el 2026-11-22):** el brief de cada agente de pruebas lleva tope total de **25 min**, cada comando con timeout, y «si algo se traba más de ~3 min: abortar, limpiar y seguir»; informe parcial marcando PASA / FALLA / SIN PROBAR. Copiar esto en CADA brief.
+
 **Regla estricta anti-redundancia de pruebas (obligatoria):**
 - **Cero pruebas intermedias:** ni el orquestador, ni Haiku, ni Sonnet ejecutan pruebas. Todo el desarrollo se hace en
   bloque y **se prueba UNA sola vez al final con Opus**.
