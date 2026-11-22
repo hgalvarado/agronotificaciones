@@ -24,6 +24,8 @@ import { CAMPOS, SECCIONES, ddt, leerNumero, revisar, type Rango } from '@/lib/a
 import { calidad, comprimirFoto, medirCalicata, type Medicion } from '@/lib/agrometricas/gps'
 import * as Cola from '@/lib/agrometricas/cola'
 import { RUTAS_SIN_SENAL } from '@/lib/agrometricas/colaPura'
+import { resumirRegistro, unirItems, type EntradaHistorial } from '@/lib/agrometricas/historialPura'
+import { MisRegistros } from './MisRegistros'
 import { RegistroServiceWorker } from '@/components/fertirriego/RegistroServiceWorker'
 
 type Turno = { id: string; turno: string; temporada: string; ciclo: string | null; fecha_siembra: string | null;
@@ -49,6 +51,8 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
   const [ultimo, setUltimo] = useState<string | null>(null)
   const [persistente, setPersistente] = useState<boolean | null>(null)
   const [rechazados, setRechazados] = useState<Cola.Rechazado[]>([])
+  const [pendientes, setPendientes] = useState<Cola.Pendiente[]>([])
+  const [historial, setHistorial] = useState<EntradaHistorial[]>([])
   const [calicata, setCalicata] = useState<Calicata | null>(null)
   const [midiendo, setMidiendo] = useState<Medicion | 'iniciando' | null>(null)
   const [foto, setFoto] = useState<string | null>(null)
@@ -61,9 +65,9 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
   const refrescarCola = useCallback(async () => {
     const mia = ++lecturaCola.current
     try {
-      const [p, r, u] = await Promise.all([Cola.pendientes(usuarioId), Cola.rechazados(usuarioId), Cola.ultimoEnvio(usuarioId)])
+      const [p, r, u, h] = await Promise.all([Cola.pendientes(usuarioId), Cola.rechazados(usuarioId), Cola.ultimoEnvio(usuarioId), Cola.historial(usuarioId)])
       if (mia !== lecturaCola.current) return
-      setCola(p.length); setRechazados(r); setUltimo(u)
+      setCola(p.length); setPendientes(p); setRechazados(r); setUltimo(u); setHistorial(h)
     } catch { /* sin almacén local: se muestra lo último conocido */ }
   }, [usuarioId])
 
@@ -126,6 +130,10 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
     id: t.id, titulo: t.turno, subtitulo: [t.estacion, t.ciclo, t.temporada].filter(Boolean).join(' · '), grupo: t.zona ?? 'Sin zona',
   })), [datos])
   const dias = turno ? ddt(fecha, turno.fecha_siembra) : null
+  const misRegistros = useMemo(() => unirItems(pendientes, rechazados, historial, new Date().toISOString()), [pendientes, rechazados, historial])
+  /** Resumen corto del registro (se guarda con él en la cola y luego en el historial local). */
+  const vistaDe = (tipo: 'parametros' | 'clima' | 'calicata', d: Record<string, unknown>, t: Turno) =>
+    resumirRegistro(tipo, d, { turno: tipo === 'clima' ? `Clima ${t.zona ?? ''}`.trim() : t.turno, lugar: (tipo === 'clima' ? t.zona : t.estacion ?? t.zona) ?? '', ddt: dias, fecha }, CAMPOS)
   const poner = (clave: string, v: string) => setValores((x) => ({ ...x, [clave]: v }))
   const alternar = (clave: string) => setAbiertas((a) => ({ ...a, [clave]: !a[clave] }))
   const llenos = (seccion: string) => CAMPOS.filter((c) => c.seccion === seccion && leerNumero(valores[c.clave] || guardados[c.clave]) != null).length
@@ -140,7 +148,8 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
         mostrar(`La ubicación guardada (±${calicata.precision_m} m) es igual o más precisa. Se queda.`, 'info')
         return
       }
-      const guardada = await Cola.encolar(usuarioId, { id: uuid(), tipo: 'calicata', resumen: `Calicata ${turno.turno}`, datos: { turno_ciclo_id: turno.id, ...m } })
+      const datosCal = { turno_ciclo_id: turno.id, ...m }
+      const guardada = await Cola.encolar(usuarioId, { id: uuid(), tipo: 'calicata', resumen: `Calicata ${turno.turno}`, datos: datosCal, vista: vistaDe('calicata', datosCal, turno) })
       if (!guardada) { mostrar('El teléfono no pudo guardar la ubicación. Libera espacio e intenta otra vez.', 'error'); return }
       setCalicata(m)
       mostrar(`${calicata ? 'Calicata mejorada' : 'Calicata ubicada'}: ±${m.precision_m} m (${calidad(m.precision_m).texto.toLowerCase()}).`)
@@ -182,13 +191,15 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
     let cupo = true
     if (Object.keys(numeros).length || foto || nota) {
       const id = uuid()
+      const datosP = { id, turno_ciclo_id: turno.id, fecha, ...numeros, comentario: nota || null }
       cupo = await Cola.encolar(usuarioId, { id, tipo: 'parametros', resumen: `${turno.turno} · ${fecha}`,
-        datos: { id, turno_ciclo_id: turno.id, fecha, ...numeros, comentario: nota || null } }, foto)
+        datos: datosP, vista: vistaDe('parametros', datosP, turno) }, foto)
     }
     if (cupo && Object.keys(clima).length && turno.zona_id) {
       const id = uuid()
+      const datosC = { id, zona_id: turno.zona_id, fecha, ...clima }
       cupo = await Cola.encolar(usuarioId, { id, tipo: 'clima', resumen: `Clima ${turno.zona ?? ''} · ${fecha}`,
-        datos: { id, zona_id: turno.zona_id, fecha, ...clima } })
+        datos: datosC, vista: vistaDe('clima', datosC, turno) })
     }
     if (!cupo) {
       mostrar('El teléfono no tiene espacio para guardar (¿muchas fotos sin enviar?). Busca señal para enviar.', 'error')
@@ -339,6 +350,9 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
         </div>
       </Tarjeta>
       {error && <Alerta tono="rojo">{error}</Alerta>}
+
+      <MisRegistros items={misRegistros} />
+      <div className="h-20" aria-hidden />   {/* que la barra fija de Guardar no tape «Mis registros» */}
 
       <AvisoFlotante aviso={aviso} />
       <div className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/95 p-3 pb-[max(.75rem,env(safe-area-inset-bottom))] backdrop-blur">

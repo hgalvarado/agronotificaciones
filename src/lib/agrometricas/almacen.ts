@@ -6,14 +6,15 @@
  *   - `cola`       : pendientes de enviar (llave = id UUID del registro).
  *   - `rechazados` : lo que la base rechazó de forma definitiva (se ve en pantalla hasta quitarlo).
  *   - `datos`      : clave/valor: catálogo de turnos y rangos (`turnos`) y hora del último envío (`ultimo_envio`).
+ *   - `historial`  : resumen en texto (sin fotos) de lo que la base confirmó, para «Mis registros»; se poda solo.
  *   - `fotos`      : Blob JPEG de la calicata (llave = id del pendiente al que pertenece).
  * Al abrir se migra lo viejo de localStorage; se borra de allí solo tras confirmar la escritura.
  */
 
 import { claveLocal, migrarLocal, type Pendiente, type Rechazado } from './colaPura'
 
-const VERSION = 1
-type Almacen = 'cola' | 'rechazados' | 'datos' | 'fotos'
+const VERSION = 2   // 2: agrega `historial` (Mis registros). Las bases en versión 1 solo ganan el almacén nuevo: cola y datos intactos.
+type Almacen = 'cola' | 'rechazados' | 'datos' | 'fotos' | 'historial'
 
 const abiertas = new Map<string, Promise<IDBDatabase>>()
 
@@ -26,8 +27,13 @@ function abrirBase(usuario: string): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains('rechazados')) db.createObjectStore('rechazados', { keyPath: 'id' })
       if (!db.objectStoreNames.contains('datos')) db.createObjectStore('datos')
       if (!db.objectStoreNames.contains('fotos')) db.createObjectStore('fotos', { keyPath: 'id' })
+      if (!db.objectStoreNames.contains('historial')) db.createObjectStore('historial', { keyPath: 'id' })
     }
-    s.onsuccess = () => resolver(s.result)
+    s.onsuccess = () => {
+      const db = s.result
+      db.onversionchange = () => db.close()   // otra pestaña con versión nueva no queda bloqueada por esta
+      resolver(db)
+    }
     s.onerror = () => rechazar(s.error)
     s.onblocked = () => rechazar(new Error('IndexedDB bloqueada'))
   })
@@ -86,7 +92,7 @@ export function abrir(usuario: string): Promise<IDBDatabase> {
   return p
 }
 
-export const leerTodo = async <T,>(usuario: string, almacen: 'cola' | 'rechazados' | 'fotos'): Promise<T[]> =>
+export const leerTodo = async <T,>(usuario: string, almacen: 'cola' | 'rechazados' | 'fotos' | 'historial'): Promise<T[]> =>
   ((await transaccion<T[]>(await abrir(usuario), [almacen], 'readonly', (s) => s[almacen].getAll())) ?? [])
 
 export const leerDato = async <T,>(usuario: string, clave: string): Promise<T | null> =>
@@ -120,6 +126,15 @@ export async function quitarPendiente(usuario: string, id: string): Promise<void
 
 export async function guardarRechazado(usuario: string, r: Rechazado): Promise<void> {
   await transaccion(await abrir(usuario), ['rechazados'], 'readwrite', (s) => s.rechazados.put(r))
+}
+
+export async function guardarHistorial(usuario: string, e: { id: string }): Promise<void> {
+  await transaccion(await abrir(usuario), ['historial'], 'readwrite', (s) => s.historial.put(e))
+}
+
+export async function quitarHistorial(usuario: string, ids: string[]): Promise<void> {
+  if (!ids.length) return
+  await transaccion(await abrir(usuario), ['historial'], 'readwrite', (s) => { for (const id of ids) s.historial.delete(id) })
 }
 
 export async function quitarRechazado(usuario: string, id: string): Promise<void> {

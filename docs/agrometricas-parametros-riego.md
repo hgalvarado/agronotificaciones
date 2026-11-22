@@ -78,6 +78,10 @@
 - **Abrir sin señal**: `public/sw.js` guarda `/agrometricas` y `/agrometricas/parametros` (la página que se abre le pide
   guardarlas) más los `/_next/static`. Los turnos y rangos (`fn_agm_mis_turnos`) se guardan en IndexedDB cada vez que se
   abre con señal; se muestra «Turnos al <fecha>».
+- **Mis registros** (sin SQL): sección plegable al final de Parámetros con lo que esa persona guardó desde ese teléfono
+  (cola «Sin enviar» + rechazados con motivo + almacén `historial` de IndexedDB, versión 2 de la base, con solo un resumen de
+  texto de ~1 KB sin fotos, guardado al confirmarse y podado a 14 días / 200 registros). Agrupado por día (UTC-6), 15 al abrir
+  y «Ver más». Lógica en `lib/agrometricas/historialPura.ts`, pantalla `components/agrometricas/MisRegistros.tsx`.
 - **Código**: `lib/agrometricas/colaPura.ts` (lógica pura, probada en `pruebas/unit/agrometricas_cola.test.mjs`),
   `almacen.ts` (IndexedDB), `cola.ts` (Supabase). Las funciones de `cola.ts` ahora son asíncronas.
 

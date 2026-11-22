@@ -6,6 +6,8 @@
  */
 
 /** Pantallas de AgroMétricas que el service worker guarda para abrir sin señal (deben estar en RUTAS_CAMPO de public/sw.js). */
+import type { Vista } from './historialPura'
+
 export const RUTAS_SIN_SENAL = ['/agrometricas', '/agrometricas/parametros']
 
 export type Pendiente = {
@@ -17,6 +19,10 @@ export type Pendiente = {
   tieneFoto?: boolean
   /** Orden de llegada (el envío respeta el orden en que se registró). */
   orden?: number
+  /** Cuándo se guardó en el teléfono (ISO). Opcional: lo viejo no lo trae. */
+  creado_en?: string
+  /** Resumen corto para «Mis registros» (opcional: lo viejo no lo trae). */
+  vista?: Vista
 }
 export type Rechazado = Pendiente & { mensaje: string }
 
@@ -138,6 +144,8 @@ export type OperacionesEnvio = {
   quitar: (id: string) => Promise<void>
   rechazar: (r: Rechazado) => Promise<void>
   quitarFoto?: (id: string) => Promise<void>
+  /** Aviso (mejor esfuerzo) de que la base CONFIRMÓ el registro, antes de quitarlo de la cola: alimenta «Mis registros». */
+  confirmado?: (p: Pendiente) => Promise<void>
 }
 
 /**
@@ -168,6 +176,7 @@ export async function procesarCola(pendientes: Pendiente[], op: OperacionesEnvio
     }
     if (error && !esDefinitivo(error.code)) break   // red / servidor: luego
     if (error) await op.rechazar({ ...p, mensaje: MENSAJES[error.code ?? ''] ?? error.message })
+    else { try { await op.confirmado?.(p) } catch { /* el historial es opcional: nunca frena la cola */ } }
     await op.quitar(p.id)
     if (!error) enviados++
   }

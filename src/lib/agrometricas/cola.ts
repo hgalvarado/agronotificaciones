@@ -9,6 +9,7 @@
 import { createClient } from '@/lib/supabase/client'
 import * as Almacen from './almacen'
 import { agregarPorId, blobADataUrl, dataUrlABlob, procesarCola, type Pendiente, type Rechazado } from './colaPura'
+import { podar, type EntradaHistorial } from './historialPura'
 
 export type { Pendiente, Rechazado }
 
@@ -29,18 +30,39 @@ export async function guardarDatos(usuario: string, datos: unknown): Promise<boo
  * Agrega (o reemplaza, mismo id) un registro a la cola del teléfono, con su foto (data URL comprimida) si trae.
  * -> true solo cuando el navegador confirmó la escritura.
  */
-export async function encolar(usuario: string, p: Omit<Pendiente, 'tieneFoto' | 'orden'>, fotoDataUrl?: string | null): Promise<boolean> {
+export async function encolar(usuario: string, p: Omit<Pendiente, 'tieneFoto' | 'orden' | 'creado_en'>, fotoDataUrl?: string | null): Promise<boolean> {
   try {
     const foto = fotoDataUrl ? dataUrlABlob(fotoDataUrl) : null
     if (fotoDataUrl && !foto) return false
     const actuales = await Almacen.leerTodo<Pendiente>(usuario, 'cola')
     const lista = agregarPorId(actuales, { ...p, tieneFoto: foto ? true : undefined })
     const nuevo = lista.find((x) => x.id === p.id)!
+    nuevo.creado_en ??= new Date().toISOString()
     await Almacen.guardarPendiente(usuario, nuevo, foto)
     return true
   } catch {
     return false   // sin espacio o sin IndexedDB
   }
+}
+
+/** Lo que la base confirmó desde este teléfono (resumen en texto), ya podado. Nunca lanza: sin almacén, lista vacía. */
+export async function historial(usuario: string): Promise<EntradaHistorial[]> {
+  try {
+    const todo = await Almacen.leerTodo<EntradaHistorial>(usuario, 'historial')
+    const { conservar, quitar } = podar(todo, Date.now())
+    if (quitar.length) Almacen.quitarHistorial(usuario, quitar).catch(() => {})
+    return conservar
+  } catch {
+    return []
+  }
+}
+
+/** Guarda el resumen de un registro confirmado y poda (14 días / 200). Mejor esfuerzo. */
+async function registrarConfirmado(usuario: string, p: Pendiente): Promise<void> {
+  if (!p.vista) return   // registros viejos de la cola: no hay resumen que guardar
+  const ahora = new Date().toISOString()
+  await Almacen.guardarHistorial(usuario, { id: p.id, tipo: p.tipo, vista: p.vista, creado_en: p.creado_en ?? ahora, enviado_en: ahora } satisfies EntradaHistorial)
+  await historial(usuario)   // poda
 }
 
 export async function descartarRechazado(usuario: string, id: string): Promise<void> {
@@ -92,6 +114,7 @@ export function enviar(usuario: string): Promise<number> {
       quitar: (id) => Almacen.quitarPendiente(usuario, id),
       rechazar: (r) => Almacen.guardarRechazado(usuario, r),
       quitarFoto: (id) => Almacen.quitarFoto(usuario, id),
+      confirmado: (p) => registrarConfirmado(usuario, p),
     })
     if (n) await Almacen.guardarDato(usuario, 'ultimo_envio', new Date().toISOString())
     return n
