@@ -124,6 +124,9 @@ try {
     OK ((JS "!![...document.querySelectorAll('a[href=""/fertirriego""]')].find(a => a.offsetParent)") -eq $true) 'Menú: una pantalla marcada en la base aparece sola a quien la ve'
     Rest 'pantallas?codigo=eq.fertirriego' 'Patch' @{ en_menu = $false } -Servicio | Out-Null
     Ir "/admin/usuarios?r=$s-3"
+    # El menú de la base se guarda 60 s en memoria del servidor (79319ba): se espera 65 s antes de recargar
+    Start-Sleep 65
+    Ir "/admin/usuarios?r=$s-4"
     Esperar "!!document.querySelector('nav')" 30000 | Out-Null
     Start-Sleep 1
     OK ((JS "!![...document.querySelectorAll('a[href=""/fertirriego""]')].find(a => a.offsetParent)") -eq $false) 'Menú: apagada en la base, desaparece'

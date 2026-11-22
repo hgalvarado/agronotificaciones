@@ -1,12 +1,14 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { esSesionMuerta, limpiarSesion } from './sesion'
+import { decidirProxy } from './decisionProxy'
 
 /**
  * Middleware de sesión: el patrón estándar de `@supabase/ssr`, sin más.
  *
- *   · `getUser()` valida (y, si hace falta, refresca UNA vez y escribe las
- *     cookies nuevas en la respuesta).
+ *   · `getClaims()` valida (y, si hace falta, refresca UNA vez y escribe las
+ *     cookies nuevas en la respuesta); las precargas con token vigente ni
+ *     llaman a Supabase (ver `decisionProxy.ts`).
  *   · Con usuario: se avanza. En `/login`, se manda a la portada.
  *   · Sin usuario: a `/login`. Nada de parámetros ni cortafuegos.
  *
@@ -50,16 +52,32 @@ export async function updateSession(request: NextRequest) {
   // configuración del Administrador, no la sesión.
   const esPublica = ruta.startsWith('/reporte-maquinaria')
 
-  let usuario = null
+  // Precargas (prefetch RSC) de los enlaces del menú: con token vigente pasan SIN viaje a Supabase (antes cada una
+  // hacía getUser → ~30 viajes por carga). Los datos siguen protegidos: la página verifica de nuevo
+  // (getUsuarioActual) y RLS decide qué filas salen.
+  const decision = decidirProxy({
+    cabeceras: request.headers,
+    cookies: request.cookies.getAll(),
+    ahoraSeg: Math.floor(Date.now() / 1000),
+  })
+  if (decision === 'validar-local') return supabaseResponse
+
+  let usuario = false
   let muerta = false
-  try {
-    const { data, error } = await supabase.auth.getUser()
-    usuario = data.user
-    // Sólo por código explícito: un corte de red NO es una sesión muerta.
-    muerta = !usuario && Boolean(error?.code) && esSesionMuerta(error)
-  } catch {
-    // Supabase no contestó: no se toca ninguna cookie.
-    usuario = null
+  if (decision === 'redirigir') {
+    usuario = false
+  } else {
+    try {
+      // `getClaims` verifica el JWT en local (llaves asimétricas) y solo refresca —una vez, escribiendo las
+      // cookies nuevas— cuando el token está por vencer; si la llave es simétrica cae a getUser por dentro.
+      const { data, error } = await supabase.auth.getClaims()
+      usuario = Boolean(data?.claims?.sub)
+      // Sólo por código explícito: un corte de red NO es una sesión muerta.
+      muerta = !usuario && Boolean(error?.code) && esSesionMuerta(error)
+    } catch {
+      // Supabase no contestó: no se toca ninguna cookie.
+      usuario = false
+    }
   }
 
   if (!usuario && !isAuthRoute && !esPublica) {
