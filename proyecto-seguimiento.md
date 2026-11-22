@@ -66,6 +66,7 @@ y baja lo que el campo registra. Lo terminado se baja a AGL, se verifica (sha256
 - Toda QA de Opus que toque pantallas con consultas automáticas cuenta las llamadas reales (Red/CDP) en 2 min quieto, con foco alternado y con cambios de otro cliente.
 
 **Generales**
+- **Supabase «Log Query» (2026-11-22):** el panel (Usage, proyecto de producción) marcó 27.69 GB de 100 GB incluidos, todo el día 22/11; no se factura y no afecta la app. Es el volumen de logs que se LEE desde el panel/API; ninguna parte del código lee logs. Origen probable: consultas en Logs Explorer/Reports (la medición aparece desde hoy). Evitar consultas pesadas de rangos largos; Log Ingestion 0.593 GB, Egress 1.2 GB (normales).
 - **QA con clics reales** sigue obligatoria antes de entregar (Edge sin ventana + CDP), pero la ejecuta **SOLO Opus, una vez por bloque**.
 - **Supabase es solo un intermediario:** todo lo documental (auditorías, bitácoras, copias de registros, informes) se baja a AGL,
   se consulta desde AGL y se borra de Supabase tras verificar la copia (sha256). En AgroNotificaciones no van pantallas de bitácora ni auditoría.
