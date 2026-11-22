@@ -11,6 +11,7 @@ import { createClient } from '@/lib/supabase/client'
 import { VERSION } from '@/lib/version'
 import { ahoraIso } from '@/lib/fechas/zona'
 import { confirmar, crearLimitador, encolar, esDefinitivo, esperaMs, tomarLote, type AlmacenSimple, type Severidad } from './cola'
+import { crearDedupe } from '@/lib/datos/frenos'
 import { acortarPila, esRuido, huellaLocal, sanear, sanearTexto } from './saneo'
 
 export type ContextoError = {
@@ -31,6 +32,7 @@ let pausadoHasta = 0
 let temporizador: ReturnType<typeof setTimeout> | null = null
 let ultimoLatido = 0
 const pasa = crearLimitador(20, 60_000)
+const dedupe = crearDedupe({ ventanaMs: 60_000, maxSesion: 20 })
 
 /** Quién tiene la sesión (lo fija el componente raíz). Al entrar otra persona, se manda lo que quedó pendiente. */
 export function fijarUsuario(id: string | null) {
@@ -112,6 +114,8 @@ export function registrarError(e: unknown, ctx: ContextoError = {}): string | nu
     const origen = ctx.origen ?? 'navegador'
     const huella = huellaLocal(origen, modulo, ruta, codigo, mensaje)
     if (!pasa(huella)) return huella // bucle: el mismo error más de 20 veces por minuto se ignora
+    // Deduplicación por huella: la misma huella como mucho 1 vez por minuto y 20 envíos por sesión
+    if (!dedupe(huella, Date.now())) return huella
     const ahora = ahoraIso()
     const detalle = {
       ...contexto(),
@@ -329,7 +333,7 @@ export function instalarCapturaGlobal(): () => void {
     fallosSeguidos = 0
     proximoIntento = 0
     void enviarPendientes(true)
-    void enviarLatido(true)
+    void enviarLatido() // sin forzar: con la señal yendo y viniendo, como mucho uno cada 2 minutos
   }
   window.addEventListener('error', alError)
   window.addEventListener('unhandledrejection', alRechazo)

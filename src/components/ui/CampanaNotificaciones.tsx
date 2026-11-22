@@ -24,6 +24,7 @@ const TONOS: Record<Aviso['tipo'], { etiqueta: string; clase: string }> = {
 
 /** Cada cuánto se vuelve a preguntar por el contador, en milisegundos. */
 const INTERVALO = 60_000
+let ultimaConsultaCampana = 0
 
 /**
  * Campana de avisos.
@@ -66,6 +67,11 @@ export function CampanaNotificaciones({ compacta = false }: { compacta?: boolean
     // Sólo se pide el número, no la lista: es una sola función en la base y
     // se puede consultar cada minuto sin que pese.
     async function contar() {
+      // Freno: la campana se monta dos veces (escritorio y celular) y el foco repite: como mucho una consulta cada
+      // 30 s por pestaña, compartida entre las dos instancias
+      const ahora = Date.now()
+      if (ahora - ultimaConsultaCampana < 30_000) return
+      ultimaConsultaCampana = ahora
       const { data } = await supabase.rpc('fn_notificaciones_pendientes')
       if (vivo && typeof data === 'number') setPendientes(data)
     }
