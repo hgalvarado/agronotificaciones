@@ -255,7 +255,7 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
       {rechazados.map((r) => (
         <Alerta key={r.id} tono="rojo">
           No se guardó {r.resumen}: {r.mensaje}{' '}
-          <button className="font-semibold underline" onClick={async () => { await Cola.descartarRechazado(usuarioId, r.id); refrescarCola() }}>Quitar aviso</button>
+          <button type="button" className="inline-flex min-h-11 items-center px-2 font-semibold underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2" onClick={async () => { await Cola.descartarRechazado(usuarioId, r.id); refrescarCola() }}>Quitar aviso</button>
         </Alerta>
       ))}
       {!puedeRegistrar && <Alerta tono="ambar">Puedes ver, pero no registrar parámetros. Pídelo a tu jefe de zona.</Alerta>}

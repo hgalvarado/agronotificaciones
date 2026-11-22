@@ -12,6 +12,7 @@
  */
 
 import { claveLocal, migrarLocal, type Pendiente, type Rechazado } from './colaPura'
+import type { EntradaHistorial } from './historialPura'
 
 const VERSION = 2   // 2: agrega `historial` (Mis registros). Las bases en versión 1 solo ganan el almacén nuevo: cola y datos intactos.
 type Almacen = 'cola' | 'rechazados' | 'datos' | 'fotos' | 'historial'
@@ -128,7 +129,7 @@ export async function guardarRechazado(usuario: string, r: Rechazado): Promise<v
   await transaccion(await abrir(usuario), ['rechazados'], 'readwrite', (s) => s.rechazados.put(r))
 }
 
-export async function guardarHistorial(usuario: string, e: { id: string }): Promise<void> {
+export async function guardarHistorial(usuario: string, e: EntradaHistorial): Promise<void> {
   await transaccion(await abrir(usuario), ['historial'], 'readwrite', (s) => s.historial.put(e))
 }
 
