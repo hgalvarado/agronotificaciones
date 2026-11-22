@@ -43,6 +43,8 @@ y baja lo que el campo registra. Lo terminado se baja a AGL, se verifica (sha256
 
 **Tope de tiempo de TODA prueba (regla del usuario, 2026-11-21; la olvidé el 2026-11-22):** el brief de cada agente de pruebas lleva tope total de **25 min**, cada comando con timeout, y «si algo se traba más de ~3 min: abortar, limpiar y seguir»; informe parcial marcando PASA / FALLA / SIN PROBAR. Copiar esto en CADA brief.
 
+**Pruebas VISUALES en el navegador (regla del usuario, 2026-11-22):** lo visual (tamaños, colores, tema oscuro, aspecto) lo verifica el orquestador directo en Chrome (/chrome), sin scripts de Opus. AgroNotificaciones: en el servidor de desarrollo del usuario (puerto 3000, recarga sola; NO `npm run build` en su carpeta, borra su `.next`; un build real va en una copia aparte) y, ya en producción, en `agronotificaciones.vercel.app`. AGL: en `localhost:5001` (desarrollo) y producción en `localhost:5000`, **solo mirando** (lo que escribe datos —cargar IC, bajar de campo— se prueba en copia aislada con Supabase falso, nunca contra el 5000). Opus queda para lo no visual: SQL y permisos, conteo de llamadas, seguridad, flujos que escriben y regresiones, siempre con el tope de 25 min.
+
 **Regla estricta anti-redundancia de pruebas (obligatoria):**
 - **Cero pruebas intermedias:** ni el orquestador, ni Haiku, ni Sonnet ejecutan pruebas. Todo el desarrollo se hace en
   bloque y **se prueba UNA sola vez al final con Opus**.
