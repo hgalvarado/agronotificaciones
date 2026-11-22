@@ -116,3 +116,4 @@ para leer, **publicar** para confirmar y purgar. No hay permisos nuevos ni nombr
 - Una foto que quedó huérfana por reemplazo (la fila apunta a otra ruta) no la lista la purga; AGL puede limpiar el
   bucket por antigüedad.
 - Probado en réplica: `pruebas/sql/122_agrometricas_bajar.sql`.
+- **Borrado de fotos (sql/123)**: AGL borra las fotos de `fotos[]` del bucket `agrometricas` con el token del usuario técnico. La 123 agrega la política DELETE de `storage.objects` solo para ese bucket y solo con «Conexión AGL · publicar». Alternativa: guardar la llave de servicio en AGL /SE03.
