@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
+import { crearSondeo } from '@/lib/datos/frenos'
 import { IconCampana, IconTicket, IconX } from './Icons'
 import { formatearFechaHora } from '@/lib/estados'
 import { anclarA, type Anclaje } from '@/lib/ui/anclaje'
@@ -23,8 +24,11 @@ const TONOS: Record<Aviso['tipo'], { etiqueta: string; clase: string }> = {
 }
 
 /** Cada cuánto se vuelve a preguntar por el contador, en milisegundos. */
-const INTERVALO = 60_000
-let ultimaConsultaCampana = 0
+const INTERVALO = 60_000   // el reloj despierta cada minuto, pero el sondeo compartido deja pasar una consulta cada 2
+const sondeo = crearSondeo(120_000)
+// El número se comparte entre las dos campanas (escritorio y celular): solo una consulta, las dos lo muestran
+let ultimoNumero = 0
+const oyentes = new Set<(n: number) => void>()
 
 /**
  * Campana de avisos.
@@ -44,7 +48,7 @@ let ultimaConsultaCampana = 0
  */
 export function CampanaNotificaciones({ compacta = false }: { compacta?: boolean }) {
   const supabase = createClient()
-  const [pendientes, setPendientes] = useState(0)
+  const [pendientes, setPendientes] = useState(ultimoNumero)
   const [abierto, setAbierto] = useState(false)
   const [avisos, setAvisos] = useState<Aviso[] | null>(null)
   const contenedor = useRef<HTMLDivElement>(null)
@@ -62,20 +66,26 @@ export function CampanaNotificaciones({ compacta = false }: { compacta?: boolean
     // que actualice estado de forma sincrónica en el cuerpo del efecto;
     // declarada aquí, el setState ocurre después del await y la regla queda
     // conforme. De paso se evita depender de la identidad del cliente.
-    let vivo = true
 
     // Sólo se pide el número, no la lista: es una sola función en la base y
     // se puede consultar cada minuto sin que pese.
     async function contar() {
       // Freno: la campana se monta dos veces (escritorio y celular) y el foco repite: como mucho una consulta cada
-      // 30 s por pestaña, compartida entre las dos instancias
-      const ahora = Date.now()
-      if (ahora - ultimaConsultaCampana < 30_000) return
-      ultimaConsultaCampana = ahora
-      const { data } = await supabase.rpc('fn_notificaciones_pendientes')
-      if (vivo && typeof data === 'number') setPendientes(data)
+      // 2 min por pestaña, compartida entre las dos instancias
+      // Mínimo 2 min, nunca con la pestaña oculta ni sin red, y sin reintento inmediato (lib/datos/frenos.ts)
+      if (!sondeo(Date.now(), document.visibilityState === 'visible', navigator.onLine !== false)) return
+      try {
+        const { data } = await supabase.rpc('fn_notificaciones_pendientes')
+        if (typeof data === 'number') {
+          ultimoNumero = data
+          oyentes.forEach((f) => f(data))
+        }
+      } catch {
+        /* sin señal: se conserva el número anterior; el próximo intento es en 2 min como mínimo */
+      }
     }
 
+    oyentes.add(setPendientes)
     contar()
     const id = setInterval(contar, INTERVALO)
 
@@ -87,7 +97,7 @@ export function CampanaNotificaciones({ compacta = false }: { compacta?: boolean
     document.addEventListener('visibilitychange', alVolver)
 
     return () => {
-      vivo = false
+      oyentes.delete(setPendientes)
       clearInterval(id)
       document.removeEventListener('visibilitychange', alVolver)
     }

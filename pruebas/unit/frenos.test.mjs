@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-const { crearFreno, crearDedupe } = await import(pathToFileURL(resolve('src/lib/datos/frenos.ts')).href)
+const { crearFreno, crearDedupe, crearSondeo, crearCacheTtl } = await import(pathToFileURL(resolve('src/lib/datos/frenos.ts')).href)
 
 test('la primera consulta automatica va; la siguiente antes de 15 s espera lo que falta', () => {
   const f = crearFreno()
@@ -79,4 +79,28 @@ test('dedupe: maximo 20 envios por sesion', () => {
   for (let i = 0; i < 30; i++) if (d(`h${i}`, i)) ok++
   assert.equal(ok, 20)
   assert.equal(d('nueva', 1_000_000), false)
+})
+
+test('sondeo: una consulta cada 2 min, nunca oculta ni sin red, sin reintento inmediato', () => {
+  const s = crearSondeo(120_000)
+  assert.equal(s(0, true, true), true)
+  assert.equal(s(60_000, true, true), false)
+  assert.equal(s(121_000, false, true), false) // pestaña oculta
+  assert.equal(s(121_000, true, false), false) // sin red
+  assert.equal(s(121_000, true, true), true)
+  assert.equal(s(122_000, true, true), false)
+})
+
+test('cache con vigencia: vence, se invalida por clave y completa, y no mezcla usuarios', () => {
+  const c = crearCacheTtl(60_000)
+  c.guardar('u1', ['a'], 0)
+  c.guardar('u2', ['b'], 0)
+  assert.deepEqual(c.leer('u1', 59_000), ['a'])
+  assert.deepEqual(c.leer('u2', 59_000), ['b'])
+  assert.equal(c.leer('u1', 60_000), undefined)
+  c.invalidar('u2')
+  assert.equal(c.leer('u2', 1), undefined)
+  c.guardar('u3', ['c'], 0)
+  c.invalidar()
+  assert.equal(c.leer('u3', 1), undefined)
 })

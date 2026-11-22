@@ -65,3 +65,43 @@ export function crearDedupe({ ventanaMs = 60_000, maxSesion = 20 }: { ventanaMs?
     return true
   }
 }
+
+/**
+ * Sondeo periódico compartido (p. ej. la campana de avisos): como mucho una consulta cada `minimoMs`, nunca con la
+ * pestaña oculta ni sin red, y el intento se anota ANTES de pedir (un fallo no provoca reintento inmediato).
+ */
+export function crearSondeo(minimoMs = 120_000) {
+  let ultima = Number.NEGATIVE_INFINITY
+  return (ahora: number, visible: boolean, enLinea: boolean): boolean => {
+    if (!visible || !enLinea) return false
+    if (ahora - ultima < minimoMs) return false
+    ultima = ahora
+    return true
+  }
+}
+
+/**
+ * Caché en memoria con vigencia, por clave (p. ej. el menú de una persona). `invalidar()` la vacía (cambio de
+ * usuario o de permisos). Solo para datos de PRESENTACIÓN: los permisos reales nunca se cachean entre peticiones.
+ */
+export function crearCacheTtl<T>(ttlMs = 60_000) {
+  const guardado = new Map<string, { valor: T; hasta: number }>()
+  return {
+    leer(clave: string, ahora: number): T | undefined {
+      const g = guardado.get(clave)
+      if (!g) return undefined
+      if (ahora >= g.hasta) {
+        guardado.delete(clave)
+        return undefined
+      }
+      return g.valor
+    },
+    guardar(clave: string, valor: T, ahora: number) {
+      guardado.set(clave, { valor, hasta: ahora + ttlMs })
+    },
+    invalidar(clave?: string) {
+      if (clave === undefined) guardado.clear()
+      else guardado.delete(clave)
+    },
+  }
+}
