@@ -375,7 +375,7 @@ select pg_temp.ok((pg_temp.mr('{"lote":"9999-999","temporada":"T125-2026-2027"}'
 select pg_temp.ok((pg_temp.mr('{"lotes":["1002-120","1002-121"],"temporada":"T125-2026-2027"}')->>'total')::int = 3, 'lotes (selección múltiple) 1002-120 y 1002-121: sin duplicar el turno T36');
 select pg_temp.ok((pg_temp.mr('{"lotes":["1002-121"],"temporada":"T125-2026-2027"}')->>'total')::int = 1, 'lotes con uno solo (1002-121): solo T36');
 select pg_temp.ok((pg_temp.mr('{"lote":"1002-121","lotes":["1002-120"],"temporada":"T125-2026-2027"}')->>'total')::int = 3, 'lote + lotes se suman');
-select pg_temp.ok((pg_temp.mr('{"lote":"","lotes":[],"temporada":"T125-2026-2027","turno":"t125-t3"}')->>'total')::int = 3, 'lote vacío / lotes vacío = sin filtro de lote');
+select pg_temp.ok((pg_temp.mr('{"lote":"","lotes":[],"temporada":"T125-2026-2027","turno_contiene":"t125-t3"}')->>'total')::int = 3, 'lote vacío / lotes vacío = sin filtro de lote');
 select pg_temp.ok((pg_temp.mr('{"lote":"1002-120","temporada":"T125-2026-2027","turno":"t125-t37"}')->>'total')::int = 1, 'el filtro de lote se combina con los demás (turno)');
 -- visibilidad por zona con lotes
 select pg_temp.como((select otro from k));
