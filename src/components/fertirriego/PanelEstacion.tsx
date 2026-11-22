@@ -24,7 +24,7 @@ function MarcaBorrador({ si }: { si: boolean }) {
   )
 }
 
-export type Accion = 'recibir' | 'envases' | 'aplicar' | 'historico' | 'contar' | 'custodia' | 'entregar' | 'recibir_relevo' | 'codigo'
+export type Accion = 'recibir' | 'envases' | 'aplicar' | 'historico' | 'contar' | 'custodia' | 'entregar' | 'recibir_relevo' | 'codigo' | 'devolver_bodega'
 
 export function PanelEstacion({
   estado,
@@ -140,6 +140,12 @@ export function PanelEstacion({
           </Boton>
         )}
       </div>
+      {estacion.permisos.aplicar && productos.some(([, v]) => v > 0) && (
+        <Boton variante="secundario" onClick={() => onAccion('devolver_bodega')} disabled={!regla.si} className="min-h-11 flex-col py-3" data-accion="devolver_bodega">
+          Devolver a bodega
+          <MarcaBorrador si={borradores.has('devolucion_bodega')} />
+        </Boton>
+      )}
       {permisoHistorico && (
         <div className="rounded-xl bg-sky-50 p-3 ring-1 ring-inset ring-sky-200" data-registro-historico-panel>
           <p className="text-xs text-sky-900">

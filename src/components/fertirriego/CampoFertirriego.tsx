@@ -34,6 +34,7 @@ import { FormAnularDiferencia } from './FormAnularDiferencia'
 import { FormAplicacion } from './FormAplicacion'
 import { FormBitacora } from './FormBitacora'
 import { FormConteo } from './FormConteo'
+import { FormDevolucionBodega } from './FormDevolucionBodega'
 import { FormEntregarRelevo } from './FormEntregarRelevo'
 import { FormEnvases } from './FormEnvases'
 import { FormRecibirRelevo } from './FormRecibirRelevo'
@@ -58,6 +59,7 @@ type Ventana =
   | { tipo: 'aplicar'; turno?: string; fecha?: string; eleccion?: string }
   | { tipo: 'historico' }
   | { tipo: 'contar' }
+  | { tipo: 'devolver_bodega' }
   | { tipo: 'horas'; turno: string; fecha: string }
   | { tipo: 'documento'; documentoTipo: string; documentoId: string }
   | { tipo: 'custodia' }
@@ -387,6 +389,8 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
                         ? { tipo: 'historico' }
                         : a === 'contar'
                           ? { tipo: 'contar' }
+                          : a === 'devolver_bodega'
+                          ? { tipo: 'devolver_bodega' }
                           : a === 'entregar'
                             ? { tipo: 'entregar' }
                             : a === 'recibir_relevo'
@@ -515,6 +519,9 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
             )}
             {ventana?.tipo === 'contar' && (
               <FormConteo estado={estado} estacion={estacion} yo={estado.yo} saldos={saldos} saldosEnvases={saldosEnvases} registrar={campo.registrar} onCerrar={() => setVentana(null)} onGuardado={guardado} />
+            )}
+            {ventana?.tipo === 'devolver_bodega' && (
+              <FormDevolucionBodega estado={estado} estacion={estacion} yo={estado.yo} saldos={saldos} registrar={campo.registrar} onCerrar={() => setVentana(null)} onGuardado={guardado} />
             )}
             {ventana?.tipo === 'horas' && (
               <FormBitacora

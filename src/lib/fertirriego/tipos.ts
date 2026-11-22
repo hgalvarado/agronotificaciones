@@ -92,6 +92,8 @@ export type TipoMovimiento =
   | 'RECEPCION'
   | 'APLICACION'
   | 'DEVOLUCION'
+  /** sql/128: salida hacia suministros, bodega o taller (no es consumo). */
+  | 'DEVOLUCION_BODEGA'
   | 'AJUSTE_CONTEO'
   | 'DIFERENCIA_RELEVO'
   | 'TRASLADO_SALIDA'
@@ -329,6 +331,8 @@ export type TipoOperacion =
   | 'bitacora'
   | 'conteo'
   | 'devolucion'
+  /** sql/128: devolver producto de la estación a suministros, bodega o taller. */
+  | 'devolucion_bodega'
   | 'anulacion'
   | 'chofer'
   | 'vehiculo'

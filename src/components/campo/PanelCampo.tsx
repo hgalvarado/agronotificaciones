@@ -1,0 +1,27 @@
+import Link from 'next/link'
+import { Tarjeta } from '@/components/ui/Primitivos'
+import type { FichaCampo } from '@/lib/campo/fichas'
+
+/** Una tarjeta por ficha de Campo; cada una es un enlace de al menos 44 px de alto. */
+export function PanelCampo({ fichas }: { fichas: FichaCampo[] }) {
+  return (
+    <div className="flex flex-col gap-3" data-panel-campo>
+      <h1 className="text-xl font-bold text-slate-900">Campo</h1>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {fichas.map((f) => (
+          <Link
+            key={f.codigo}
+            href={f.ruta}
+            data-ficha-campo={f.codigo}
+            className="block min-h-11 rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
+          >
+            <Tarjeta className="h-full p-4 transition-colors hover:border-brand-300">
+              <p className="text-base font-bold text-slate-900">{f.nombre}</p>
+              <p className="mt-1 text-sm text-slate-500">{f.descripcion}</p>
+            </Tarjeta>
+          </Link>
+        ))}
+      </div>
+    </div>
+  )
+}

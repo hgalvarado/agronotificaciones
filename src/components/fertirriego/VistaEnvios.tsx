@@ -19,6 +19,7 @@ const NOMBRE_TIPO: Record<string, string> = {
   bitacora: 'Bitácora de riego',
   conteo: 'Conteo',
   devolucion: 'Devolución',
+  devolucion_bodega: 'Devolución a bodega',
   anulacion: 'Anulación',
   chofer: 'Chofer nuevo',
   vehiculo: 'Vehículo nuevo',

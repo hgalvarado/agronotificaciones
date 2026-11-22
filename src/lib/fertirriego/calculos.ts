@@ -37,6 +37,8 @@ export function efectosDe(op: Operacion, estado: EstadoCampo, saldo: (est: strin
       const e = apl?.estacion_id ?? est
       return lineasDe(d).map((l) => ({ estacion_id: e, material_id: l.material_id, cantidad: num(l.cantidad), tipo: 'DEVOLUCION' }))
     }
+    case 'devolucion_bodega':
+      return lineasDe(d).map((l) => ({ estacion_id: est, material_id: l.material_id, cantidad: -num(l.cantidad), tipo: 'DEVOLUCION_BODEGA' }))
     case 'conteo':
       return ((d.lineas as { material_id: string; cantidad_real: number }[] | undefined) ?? [])
         .filter((l) => l.cantidad_real !== null && l.cantidad_real !== undefined && String(l.cantidad_real) !== '')
@@ -151,6 +153,7 @@ export const NOMBRE_MOVIMIENTO: Record<TipoMovimiento, string> = {
   RECEPCION: 'Entrega recibida',
   APLICACION: 'Aplicación',
   DEVOLUCION: 'Devolución a bodega',
+  DEVOLUCION_BODEGA: 'Devuelto a suministros / bodega / taller',
   AJUSTE_CONTEO: 'Ajuste por conteo',
   DIFERENCIA_RELEVO: 'Diferencia en relevo',
   TRASLADO_SALIDA: 'Traslado enviado',

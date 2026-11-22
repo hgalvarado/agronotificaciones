@@ -20,6 +20,7 @@ import { NOMBRE_MOVIMIENTO, cantidad } from '@/lib/fertirriego/calculos'
 import { crearOperacion, nuevoId } from '@/lib/fertirriego/operaciones'
 import type { EstadoCampo, Estacion, InfoOperacion, Operacion, Persona } from '@/lib/fertirriego/tipos'
 import { esTipoEliminable } from '@/lib/fertirriego/eliminar'
+import { esDocumentoAnulable } from '@/lib/fertirriego/devolucionBodega'
 import { EditorLineas, leerLineas, type LineaEditable } from './EditorLineas'
 import { EliminarPorCompleto } from './EliminarPorCompleto'
 import { MarcoRegistro } from './MarcoRegistro'
@@ -34,6 +35,7 @@ const NOMBRE_DOC: Record<string, string> = {
 const NOMBRE_OTRO: Record<string, string> = {
   relevo: 'Relevo de estación',
   traslado: 'Traslado',
+  devolucion_bodega: 'Devolución a bodega',
   // 102: lo que aplicó un turno terminado, en un solo renglón (el detalle quedó en AGL)
   archivo_turno: 'Turno terminado (archivado en AGL)',
 }
@@ -104,7 +106,8 @@ export function DetalleDocumento({
   const soloEnvases = Boolean(recepcion && (recepcion.solo_envases || (movs.length === 0 && (recepcion.envases?.length ?? 0) > 0)))
 
   // Relevos y traslados no se anulan: tienen su propio camino (rechazar, cancelar)
-  const anulable = documentoTipo in NOMBRE_DOC
+  // (la devolución a bodega sí: su anulación va por su propia función en la base)
+  const anulable = esDocumentoAnulable(documentoTipo)
   // Una recepción de solo envases no mueve producto: se anula igual (la base revierte sus envases)
   // sql/116: una aplicación histórica no tiene movimientos (no movió el inventario): se anula solo con «Anular» y no admite devolución
   const historica = Boolean(aplicacion?.historica)
