@@ -3,6 +3,8 @@ import { redirect } from 'next/navigation'
 import { getPermisos, puede } from '@/lib/auth'
 import { Insignia, Tarjeta } from '@/components/ui/Primitivos'
 import { IconoMenu } from '@/components/ui/iconosMenu'
+import { RegistroServiceWorker } from '@/components/fertirriego/RegistroServiceWorker'
+import { RUTAS_SIN_SENAL } from '@/lib/agrometricas/colaPura'
 
 /** AgroMétricas: menú de botones grandes (teléfono primero). Las partes se migran de AppSheet una por una. */
 const PARTES = [
@@ -33,6 +35,7 @@ export default async function AgroMetricasPage() {
   if (!puede(permisos, 'agrometricas', 'ver')) redirect('/')
   return (
     <div className="anim-aparecer mx-auto flex max-w-2xl flex-col gap-3 p-4 lg:p-6">
+      <RegistroServiceWorker rutas={RUTAS_SIN_SENAL} />
       <div>
         <h1 className="text-lg font-semibold text-slate-900">AgroMétricas</h1>
         <p className="text-sm text-slate-500">Registros de campo por turno. Los turnos y planes vienen de AGL.</p>

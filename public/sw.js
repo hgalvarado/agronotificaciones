@@ -1,10 +1,12 @@
 /*
- * Service worker de AgroNotificaciones · Fertirriego (Etapa B).
+ * Service worker de AgroNotificaciones · pantallas de campo (Fertirriego y AgroMétricas).
  *
  * Alcance mínimo, a propósito (la plataforma está en producción):
- *   - Se instala SOLO cuando alguien abre /fertirriego.
- *   - Guarda la pantalla /fertirriego y los archivos estáticos de Next (/_next/static, con huella en el nombre:
+ *   - Se instala SOLO cuando alguien abre /fertirriego o /agrometricas.
+ *   - Guarda las pantallas de campo (/fertirriego, /agrometricas y /agrometricas/parametros) y los archivos estáticos de Next (/_next/static, con huella en el nombre:
  *     nunca cambian, guardarlos es seguro) para que la app de campo abra SIN SEÑAL.
+ *   - AgroMétricas: la página que se abre le pide al service worker (mensaje `guardar-rutas`) guardar sus pantallas;
+ *     el catálogo de turnos NO vive aquí: va en IndexedDB (lib/agrometricas/almacen.ts).
  *   - Cualquier otra página va a la red exactamente como siempre. Solo si NO hay red y se intenta abrir otra
  *     página, lleva a /fertirriego (si está guardada), que es la que funciona sin señal.
  *   - No toca peticiones a Supabase (otro dominio) ni nada que no sea GET.
@@ -15,12 +17,14 @@ const VERSION = 'v1'
 const PAGINAS = `agn-fert-paginas-${VERSION}`
 const ESTATICOS = `agn-fert-estaticos-${VERSION}`
 const CAMPO = '/fertirriego'
+/** Únicas pantallas que se guardan para abrir sin señal. Lo demás sigue igual que siempre. */
+const RUTAS_CAMPO = [CAMPO, '/agrometricas', '/agrometricas/parametros']
 const ESPERA_RED_MS = 4000
 
-/** La pantalla de campo y los archivos que ella pide (scripts y estilos). */
-async function guardarCampo(respuesta) {
+/** Una pantalla de campo (por su ruta) y los archivos que ella pide (scripts y estilos). */
+async function guardarCampo(respuesta, ruta = CAMPO) {
   const cache = await caches.open(PAGINAS)
-  await cache.put(CAMPO, respuesta.clone())
+  await cache.put(ruta, respuesta.clone())
   const html = await respuesta.text()
   const archivos = [...new Set([...html.matchAll(/(?:src|href)="(\/_next\/static\/[^"]+)"/g)].map((m) => m[1]))]
   const estaticos = await caches.open(ESTATICOS)
@@ -38,9 +42,27 @@ async function guardarCampo(respuesta) {
 }
 
 /** Respuesta buena de la pantalla de campo (no una redirección al login, no un error). */
-function esCampoValido(r) {
-  return r && r.ok && !r.redirected && new URL(r.url).pathname === CAMPO
+function esCampoValido(r, ruta = CAMPO) {
+  return r && r.ok && !r.redirected && new URL(r.url).pathname === ruta
 }
+
+/** La página abierta pide guardar sus pantallas (AgroMétricas). Solo rutas de la lista. */
+self.addEventListener('message', (evento) => {
+  const d = evento.data
+  if (!d || d.tipo !== 'guardar-rutas' || !Array.isArray(d.rutas)) return
+  evento.waitUntil(
+    Promise.all(
+      d.rutas.filter((r) => RUTAS_CAMPO.includes(r)).map(async (ruta) => {
+        try {
+          const r = await fetch(ruta, { credentials: 'include' })
+          if (esCampoValido(r, ruta)) await guardarCampo(r, ruta)
+        } catch {
+          /* sin red: se guarda en la próxima visita */
+        }
+      })
+    )
+  )
+})
 
 self.addEventListener('install', (evento) => {
   evento.waitUntil(
@@ -93,20 +115,21 @@ self.addEventListener('fetch', (evento) => {
 
   if (req.mode !== 'navigate') return
 
-  // La pantalla de campo: primero la red (con límite de espera); si no hay, la guardada
-  if (url.pathname === CAMPO) {
+  // Una pantalla de campo: primero la red (con límite de espera); si no hay, la guardada
+  if (RUTAS_CAMPO.includes(url.pathname)) {
+    const ruta = url.pathname
     evento.respondWith(
       (async () => {
         const red = fetch(req)
         try {
           const r = await conLimite(red, ESPERA_RED_MS)
-          if (esCampoValido(r)) evento.waitUntil(guardarCampo(r.clone()))
+          if (esCampoValido(r, ruta)) evento.waitUntil(guardarCampo(r.clone(), ruta))
           return r
         } catch {
-          const guardada = await caches.match(CAMPO, { cacheName: PAGINAS, ignoreVary: true, ignoreSearch: true })
+          const guardada = await caches.match(ruta, { cacheName: PAGINAS, ignoreVary: true, ignoreSearch: true })
           if (guardada) {
             // Si la red respondía tarde, se aprovecha para actualizar lo guardado
-            evento.waitUntil(red.then((r) => (esCampoValido(r) ? guardarCampo(r) : null)).catch(() => null))
+            evento.waitUntil(red.then((r) => (esCampoValido(r, ruta) ? guardarCampo(r, ruta) : null)).catch(() => null))
             return guardada
           }
           return red

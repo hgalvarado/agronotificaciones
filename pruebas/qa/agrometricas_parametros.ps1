@@ -189,7 +189,7 @@ try {
     ClicEn "document.querySelector('[data-guardar]')" | Out-Null
     $t = EsperarAviso 'Registrado en el teléfono' 5000
     Start-Sleep -Milliseconds 1500
-    OK ($t -ge 0 -and (Cola) -eq '1 por enviar') 'Sin señal: «Registrado en el teléfono…» y «1 por enviar»' "$(Aviso) / $(Cola)"
+    OK ($t -ge 0 -and (Cola) -eq '1 pendiente de enviar') 'Sin señal: «Registrado en el teléfono…» y «1 pendiente de enviar»' "$(Aviso) / $(Cola)"
     OK ((Lista "agm_parametros?select=id&turno_ciclo_id=eq.$tcId&fecha=eq.$AYER").Count -eq 0) 'Sin señal: todavía no está en la base'
     CDP 'Network.emulateNetworkConditions' @{ offline = $false; latency = 0; downloadThroughput = -1; uploadThroughput = -1 } | Out-Null
     $t = Esperar "(document.querySelector('[data-estado-cola]')?.textContent || '') === 'Todo enviado'" 40000

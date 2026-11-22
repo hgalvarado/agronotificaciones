@@ -34,9 +34,9 @@
 ## 3. Estado actual (2026-11-19)
 
 - **Producción** `main` = `7a17a2b` (publicado 2026-11-19): «Eliminar por completo» (sql/119–121) con copia de auditoría en AGL; bitácora de Fertirriego por día con bloques «hecho junto».
-- SQL corridas en producción hasta la 121 (verificado 2026-11-19); `desarrollo` = `296a7f2`. **Próximo número libre: 122.**
+- SQL corridas en producción hasta la 121 (verificado 2026-11-19); `desarrollo` = `296a7f2`. **sql/122 = AgroMétricas: baja a AGL (escrita 2026-11-21, sin correr). Próximo número libre: 125 (123 = AgroMétricas borrar fotos en Storage).**
 - AGL `main` = `16adc8f`, publicado por el usuario (2026-11-19).
-- SIGUIENTE a construir: bitácora de errores → AGL (sql/122). Detalle en `proyecto-seguimiento.md` §4.
+- SIGUIENTE a construir: bitácora de errores → AGL (sql/124). Detalle en `proyecto-seguimiento.md` §4.
 
 ## (estado anterior 2026-11-12)
 
