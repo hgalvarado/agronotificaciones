@@ -23,12 +23,17 @@ import { TablaRegistros } from './TablaRegistros'
 import { GraficasRegistros } from './GraficasRegistros'
 import { ResumenRegistros } from './ResumenRegistros'
 import { DetalleRegistro } from './DetalleRegistro'
+import { DetalleIC } from './DetalleIC'
+import { GraficasIC, TablaIC, TarjetasIC } from './VistasIC'
+import { validarHojas } from '@/lib/agrometricas/registrosIC'
 import { ModalEliminar } from './ModalEliminar'
 
 type Vista = 'resumen' | 'rapida' | 'tabla' | 'graficas'
+type Datos = 'parametros' | 'ic'
 const VISTAS: { clave: Vista; texto: string }[] = [
   { clave: 'resumen', texto: 'Resumen' }, { clave: 'rapida', texto: 'Vista rápida' }, { clave: 'tabla', texto: 'Tabla' }, { clave: 'graficas', texto: 'Gráficas' },
 ]
+const DATOS: { clave: Datos; texto: string }[] = [{ clave: 'parametros', texto: 'Parámetros' }, { clave: 'ic', texto: 'Índice de crecimiento' }]
 interface TurnoCatalogo { turno: string; temporada: string | null; zona_id: string | null; zona: string | null }
 interface LoteVisible { lote: string; nombre: string | null; turnos: string[] }
 
@@ -37,7 +42,11 @@ const mensaje = (e: unknown) => (e instanceof Error && e.message && !/failed to 
 
 export function RegistrosTemporada() {
   const [filtros, setFiltros, lista] = useMemoria<FiltrosRegistros>('agrometricas:registros:filtros', FILTROS_VACIOS)
-  const [vista, setVista, vistaLista] = useMemoria<Vista>('agrometricas:registros:vista', 'resumen')
+  const [vistaGuardada, setVista, vistaLista] = useMemoria<Vista>('agrometricas:registros:vista', 'resumen')
+  const [datos, setDatos, datosLista] = useMemoria<Datos>('agrometricas:registros:datos', 'parametros')
+  const esIC = datos === 'ic'
+  const vista: Vista = esIC && vistaGuardada === 'resumen' ? 'rapida' : vistaGuardada   // el Resumen es solo de parámetros
+  const vistas = esIC ? VISTAS.filter((v) => v.clave !== 'resumen') : VISTAS
   const [registros, setRegistros] = useState<Registro[]>([])
   const [total, setTotal] = useState(0)
   const [recibidos, setRecibidos] = useState(0)
@@ -52,12 +61,12 @@ export function RegistrosTemporada() {
   const { aviso, mostrar } = useAvisoFlotante()
   const lectura = useRef(0)
 
-  const cargar = useCallback(async (pag: number, f: FiltrosRegistros) => {
+  const cargar = useCallback(async (pag: number, f: FiltrosRegistros, d: Datos) => {
     const mia = ++lectura.current
     setCargando(true); setError(null)
     try {
       if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new Error(MSG_SIN_CONEXION)
-      const { data, error: e } = await createClient().rpc('fn_agm_mis_registros', { p: paramsConsulta(f, pag) })
+      const { data, error: e } = await createClient().rpc(d === 'ic' ? 'fn_agm_ic_mis_registros' : 'fn_agm_mis_registros', { p: paramsConsulta(f, pag) })
       if (mia !== lectura.current) return
       if (e) throw new Error(e.message)
       const r = data as { total: number; registros: Registro[] }
@@ -75,12 +84,12 @@ export function RegistrosTemporada() {
   // Cada cambio de filtros vuelve a la primera página (espera a que se lea lo recordado: una consulta, no dos)
   const clave = JSON.stringify(filtros)
   useEffect(() => {
-    if (!lista || !vistaLista || vista === 'resumen') return   // el Resumen pide lo suyo (ResumenRegistros)
-    const t = setTimeout(() => { cargar(0, JSON.parse(clave) as FiltrosRegistros) }, 0)
-    const alVolver = () => { cargar(0, JSON.parse(clave) as FiltrosRegistros) }
+    if (!lista || !vistaLista || !datosLista || vista === 'resumen') return   // el Resumen pide lo suyo (ResumenRegistros)
+    const t = setTimeout(() => { cargar(0, JSON.parse(clave) as FiltrosRegistros, datos) }, 0)
+    const alVolver = () => { cargar(0, JSON.parse(clave) as FiltrosRegistros, datos) }
     window.addEventListener('online', alVolver)
     return () => { clearTimeout(t); window.removeEventListener('online', alVolver) }
-  }, [lista, vistaLista, vista, clave, cargar])
+  }, [lista, vistaLista, datosLista, vista, datos, clave, cargar])
 
   // Catálogos para los selectores (turnos activos, rangos y lotes con sus turnos)
   useEffect(() => {
@@ -124,14 +133,30 @@ export function RegistrosTemporada() {
   const hayMas = recibidos < total
 
   const cambiar = (cambio: Partial<FiltrosRegistros>) => setFiltros((previos) => ({ ...previos, ...cambio }))
+  const elegirDatos = (d: Datos) => {
+    if (d === datos) return
+    setRegistros([]); setRecibidos(0); setTotal(0); setPagina(0); setAbiertoId(null)   // no mezclar filas de parámetros con las de IC
+    setDatos(d)
+  }
   const parchar = useCallback((nuevo: Record<string, unknown>) => {
     setRegistros((previos) => previos.map((r) => (r.id === nuevo.id ? { ...r, ...nuevo } : r)))
   }, [])
 
   /** Edición en línea de una celda numérica: misma validación que el formulario; la base decide el permiso. */
   async function editarCelda(fila: Registro, campo: string, valor: unknown) {
+    if (esIC) {   // IC: solo se editan las hojas; la base recalcula el IC con la fórmula que ya tenía el registro
+      const h = validarHojas(valor === null || valor === undefined ? '' : String(valor))
+      if (!h.ok) { mostrar(h.error, 'error'); throw new Error(h.error) }
+      if (h.hojas === Number(fila.hojas)) return
+      const { data, error: e } = await createClient().rpc('fn_agm_ic_editar', { p: { id: fila.id, hojas: h.hojas } })
+      if (e) { mostrar(e.message, 'error'); throw new Error(e.message) }
+      const nuevo = (data as { registro?: Record<string, unknown> } | null)?.registro
+      if (nuevo) parchar(nuevo)
+      mostrar('Cambio guardado.')
+      return
+    }
     const v = validarEdicion({ [campo]: valor === null || valor === undefined ? '' : String(valor) })
-    if (!v.ok) throw new Error(v.errores[campo])
+    if (!v.ok) { mostrar(v.errores[campo], 'error'); throw new Error(v.errores[campo]) }
     const cambios = cambiosDeEdicion(fila, v.numeros)
     if (!Object.keys(cambios).length) return
     const { data, error: e } = await createClient().rpc('fn_agm_editar_parametro', { p: { id: fila.id, ...cambios } })
@@ -146,7 +171,7 @@ export function RegistrosTemporada() {
     const hechos: string[] = []
     try {
       for (const r of aEliminar.registros) {
-        const { error: e } = await createClient().rpc('fn_agm_eliminar_parametro', { p: { id: r.id, motivo } })
+        const { error: e } = await createClient().rpc(esIC ? 'fn_agm_ic_eliminar' : 'fn_agm_eliminar_parametro', { p: { id: r.id, motivo } })
         if (e) throw new Error(hechos.length ? `${e.message} (se eliminaron ${hechos.length} antes del error).` : e.message)
         hechos.push(r.id)
       }
@@ -175,9 +200,18 @@ export function RegistrosTemporada() {
 
       {vista !== 'resumen' && <FiltrosRegistrosPanel filtros={filtros} opciones={opciones} onCambiar={cambiar} turnosDeLotes={turnosDeLotes} />}
 
+      <div role="tablist" aria-label="Qué registros" className="flex gap-1 self-start rounded-xl bg-slate-100 p-1" data-datos>
+        {DATOS.map((d) => (
+          <button key={d.clave} type="button" role="tab" aria-selected={datos === d.clave} onClick={() => elegirDatos(d.clave)} data-datos-opcion={d.clave}
+            className={`min-h-11 rounded-lg px-4 text-sm font-semibold transition-colors ${datos === d.clave ? 'bg-white text-brand-800 shadow-sm' : 'text-slate-600'}`}>
+            {d.texto}
+          </button>
+        ))}
+      </div>
+
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div role="tablist" aria-label="Vista" className="flex gap-1 rounded-xl bg-slate-100 p-1" data-vistas>
-          {VISTAS.map((v) => (
+          {vistas.map((v) => (
             <button key={v.clave} type="button" role="tab" aria-selected={vista === v.clave} onClick={() => setVista(v.clave)} data-vista={v.clave}
               className={`min-h-11 rounded-lg px-4 text-sm font-semibold transition-colors ${vista === v.clave ? 'bg-white text-brand-800 shadow-sm' : 'text-slate-600'}`}>
               {v.texto}
@@ -192,7 +226,7 @@ export function RegistrosTemporada() {
       {vista !== 'resumen' && error && (
         <div className="flex flex-col gap-2" data-error>
           <Alerta tono="rojo">{error}</Alerta>
-          <Boton type="button" variante="secundario" className="self-start" onClick={() => cargar(0, filtros)}>Reintentar</Boton>
+          <Boton type="button" variante="secundario" className="self-start" onClick={() => cargar(0, filtros, datos)}>Reintentar</Boton>
         </div>
       )}
 
@@ -203,25 +237,29 @@ export function RegistrosTemporada() {
 
       {vista !== 'resumen' && visibles.length > 0 && (
         <div className={cargando ? 'opacity-60 transition-opacity' : ''}>
-          {vista === 'rapida' && <TarjetasRegistros registros={visibles} onAbrir={(r) => setAbiertoId(r.id)} />}
-          {vista === 'tabla' && (
-            <TablaRegistros registros={visibles} cargando={cargando} onEditarCelda={editarCelda} onAbrir={(r) => setAbiertoId(r.id)}
-              onEliminarVarios={(ids, limpiar) => setAEliminar({ registros: registros.filter((r) => ids.includes(r.id)), limpiar })} />
-          )}
-          {vista === 'graficas' && <GraficasRegistros registros={visibles} />}
+          {vista === 'rapida' && (esIC ? <TarjetasIC registros={visibles} onAbrir={(r) => setAbiertoId(r.id)} /> : <TarjetasRegistros registros={visibles} onAbrir={(r) => setAbiertoId(r.id)} />)}
+          {vista === 'tabla' && (() => {
+            const Tabla = esIC ? TablaIC : TablaRegistros
+            return (
+              <Tabla registros={visibles} cargando={cargando} onEditarCelda={editarCelda} onAbrir={(r) => setAbiertoId(r.id)}
+                onEliminarVarios={(ids, limpiar) => setAEliminar({ registros: registros.filter((r) => ids.includes(r.id)), limpiar })} />
+            )
+          })()}
+          {vista === 'graficas' && (esIC ? <GraficasIC registros={visibles} /> : <GraficasRegistros registros={visibles} />)}
         </div>
       )}
 
       {vista !== 'resumen' && !error && hayMas && (
-        <Boton type="button" variante="secundario" tamano="lg" disabled={cargando} onClick={() => cargar(pagina + 1, filtros)} data-ver-mas>
+        <Boton type="button" variante="secundario" tamano="lg" disabled={cargando} onClick={() => cargar(pagina + 1, filtros, datos)} data-ver-mas>
           {cargando ? 'Cargando…' : `Ver más (${Math.min(POR_PAGINA, total - recibidos)} de ${total - recibidos} restantes)`}
         </Boton>
       )}
 
-      {abierto && !aEliminar && (
-        <DetalleRegistro registro={abierto} rangos={rangos} onCerrar={() => setAbiertoId(null)} onGuardado={(n) => { parchar(n); mostrar('Cambio guardado.') }}
-          onPedirEliminar={(r) => setAEliminar({ registros: [r] })} />
-      )}
+      {abierto && !aEliminar && (esIC
+        ? <DetalleIC registro={abierto} onCerrar={() => setAbiertoId(null)} onGuardado={(n) => { parchar(n); mostrar('Cambio guardado.') }}
+            onPedirEliminar={(r) => setAEliminar({ registros: [r] })} />
+        : <DetalleRegistro registro={abierto} rangos={rangos} onCerrar={() => setAbiertoId(null)} onGuardado={(n) => { parchar(n); mostrar('Cambio guardado.') }}
+            onPedirEliminar={(r) => setAEliminar({ registros: [r] })} />)}
       {aEliminar && <ModalEliminar registros={aEliminar.registros} onCerrar={() => setAEliminar(null)} onConfirmar={eliminar} />}
       <AvisoFlotante aviso={aviso} />
     </div>
