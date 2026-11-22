@@ -54,6 +54,13 @@ y baja lo que el campo registra. Lo terminado se baja a AGL, se verifica (sha256
 - El límite de uso es compartido (los subagentes en Opus agotaron el límite de 5 horas el 2026-11-15). Invocar a Opus
   **una sola vez por bloque funcional terminado**, nunca tras cada archivo editado.
 
+**Bucles infinitos y reconsultas sin freno (regla del usuario, 2026-11-22; incidente real)**
+- El 21–22/11 la pantalla de Tickets entró en bucle (55 040 llamadas a `fn_tickets_pagina` en 24 h, 41 831 en una hora) y llevó el log de Supabase a 0.73 GB de 1 GB. Causa: un efecto dependía de `recargar` (función nueva en cada dibujo) y al consultar volvía a dibujar.
+- **Todo código nuevo que consulte la red** (efectos, temporizadores, Realtime, foco, sincronizadores de AGL) lleva: dependencias estables (ref, `useCallback`, huella `JSON.stringify` en vez de objetos), intervalo mínimo entre consultas, tope de vueltas/páginas, backoff ante error (nunca reintento inmediato) y limpieza al desmontar. `useConsultaViva`/`useAvisosCambios` ya traen freno (15 s) y disyuntor (6 consultas en 60 s → pausa 2 min); usarlos, no reinventar.
+- **Hook de revisión** (`.claude/settings.json` + `scripts/revisar-bucles.mjs`): tras cada Edit/Write en `src/**/*.ts(x)` revisa esos patrones y devuelve los hallazgos a Claude como contexto; hay que corregirlos o marcar `// bucle-ok: motivo` si se verificó que es seguro. Revisión completa: `node scripts/revisar-bucles.mjs --todo`. Pendiente conocido: `onSinMigracion` en `components/desinfeccion/Grid{Ejecucion,Logistica,Plan}.tsx` (callback de props en las dependencias de un efecto que consulta).
+- **Vigilancia**: en el panel de Supabase (Logs → Explorer, fuente `edge_logs`, agrupar por `request.path`) mirar cada semana que ninguna ruta pase de unos miles de llamadas/día; el contador «Llamadas a Supabase hoy» de AGL (/SE03) también.
+- Toda QA de Opus que toque pantallas con consultas automáticas cuenta las llamadas reales (Red/CDP) en 2 min quieto, con foco alternado y con cambios de otro cliente.
+
 **Generales**
 - **QA con clics reales** sigue obligatoria antes de entregar (Edge sin ventana + CDP), pero la ejecuta **SOLO Opus, una vez por bloque**.
 - **Supabase es solo un intermediario:** todo lo documental (auditorías, bitácoras, copias de registros, informes) se baja a AGL,
