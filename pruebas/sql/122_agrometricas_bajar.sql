@@ -125,7 +125,7 @@ select pg_temp.ok((select (j->>'hay_mas')::boolean and (j->>'cuantos')::int = 2 
 create temp table pg2 as select fn_agm_exportar(jsonb_build_object('desde', '2020-01-01', 'hasta', '2020-01-31', 'limite', 2, 'despues_de', (select j->>'siguiente' from pg1))) as j;
 create temp table pg3 as select fn_agm_exportar(jsonb_build_object('desde', '2020-01-01', 'hasta', '2020-01-31', 'limite', 2, 'despues_de', (select j->>'siguiente' from pg2))) as j;
 select pg_temp.ok((select (select j->>'cuantos' from pg1) = '2' and (select j->>'cuantos' from pg2) = '2' and (select j->>'cuantos' from pg3) = '1'
-                          and not (select (j->>'hay_mas')::boolean from pg3), 'por lotes: 2 + 2 + 1 con el cursor'));
+                          and not (select (j->>'hay_mas')::boolean from pg3)), 'por lotes: 2 + 2 + 1 con el cursor');
 select pg_temp.ok((select count(distinct e->>'cursor') = 5 from (select j from pg1 union all select j from pg2 union all select j from pg3) x, jsonb_array_elements(x.j->'filas') e), 'por lotes: sin repetir ni perder filas');
 select pg_temp.ok((jsonb_array_length(fn_agm_exportar('{"desde":"2020-01-11","hasta":"2020-01-11"}')->'filas') = 1), 'filtro por desde/hasta');
 
