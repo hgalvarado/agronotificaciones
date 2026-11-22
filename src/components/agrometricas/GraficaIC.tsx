@@ -31,9 +31,14 @@ function useAncho(inicial: number): [React.RefObject<HTMLDivElement | null>, num
 }
 
 function ticksY(max: number): number[] {
-  const paso = [0.1, 0.2, 0.25, 0.5, 1, 2, 5, 10].find((p) => max / p <= 6) ?? 10
+  const paso = [0.1, 0.2, 0.25, 0.5, 1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000].find((p) => max / p <= 6) ?? 1000
   const salida: number[] = []
-  for (let v = 0; v <= max + paso * 0.01; v += paso) salida.push(Math.round(v * 1000) / 1000)
+  let v = 0
+  for (let i = 0; i < 40; i++) {   // el último valor es el primero que cubre el máximo (el tope nunca queda bajo los datos)
+    salida.push(Math.round(v * 1000) / 1000)
+    if (v >= max) break
+    v += paso
+  }
   return salida
 }
 
@@ -64,6 +69,10 @@ export function GraficaICPlan({ registros, plan, etiqueta }: { registros: Regist
   const pasoX = g.xMax - g.xMin > 16 ? 2 : 1
   const etiquetasX: number[] = []
   for (let x = g.xMin; x <= g.xMax; x += pasoX) etiquetasX.push(x)
+  if (etiquetasX[etiquetasX.length - 1] !== g.xMax) {   // el último DDT siempre lleva etiqueta (reemplaza a la anterior si quedaría pegada)
+    if (g.xMax - etiquetasX[etiquetasX.length - 1] < pasoX) etiquetasX.pop()
+    etiquetasX.push(g.xMax)
+  }
   const poner = g.reales.length <= 14
   const ultimo = g.reales[g.reales.length - 1]
   const ventanaX1 = g.cx(Math.max(VENTANA_IC.min, g.xMin)), ventanaX2 = g.cx(Math.min(VENTANA_IC.max, g.xMax))
@@ -89,7 +98,7 @@ export function GraficaICPlan({ registros, plan, etiqueta }: { registros: Regist
       ))}
       <line x1={M.l} x2={W - M.r} y1={H - M.b} y2={H - M.b} className="stroke-slate-400" />
       <text x={(M.l + W - M.r) / 2} y={H - 6} textAnchor="middle" fontSize={12} className="fill-current text-slate-600">DDT (días después del trasplante)</text>
-      <text transform={`translate(12 ${(M.t + H - M.b) / 2}) rotate(-90)`} textAnchor="middle" fontSize={12} className="fill-current text-slate-600">Índice de crecimiento (IC)</text>
+      <text transform={`translate(14 ${(M.t + H - M.b) / 2}) rotate(-90)`} textAnchor="middle" fontSize={12} className="fill-current text-slate-600">Índice de crecimiento (IC)</text>
       {/* Curva completa del plan */}
       {g.curvaPlan.length > 1 && (
         <path d={g.curvaPlan.map((p, i) => `${i ? 'L' : 'M'}${g.cx(p.ddt)} ${g.cy(p.ic_plan)}`).join(' ')}
@@ -114,16 +123,20 @@ export function GraficaICPlan({ registros, plan, etiqueta }: { registros: Regist
           </g>
         )
       })}
-      {/* Último punto: cuánto va del plan */}
-      {ultimo.plan ? (
-        <g data-ultimo-pct>
-          <rect x={Math.min(g.cx(ultimo.ddt) - 26, W - M.r - 52)} y={g.cy(Math.max(ultimo.real, ultimo.plan)) - 38} width={52} height={18} rx={9}
-            className={ultimo.real >= ultimo.plan ? 'fill-emerald-600' : 'fill-amber-500'} />
-          <text x={Math.min(g.cx(ultimo.ddt), W - M.r - 26)} y={g.cy(Math.max(ultimo.real, ultimo.plan)) - 26} textAnchor="middle" fontSize={11} fontWeight={700} className="fill-current text-white">
-            {Math.round((ultimo.real / ultimo.plan) * 100)} %
-          </text>
-        </g>
-      ) : null}
+      {/* Último punto: cuánto va del plan (dentro del gráfico; texto oscuro sobre ámbar para que contraste) */}
+      {ultimo.plan ? (() => {
+        const sobreU = ultimo.real >= ultimo.plan
+        const bx = Math.min(Math.max(g.cx(ultimo.ddt) - 26, M.l + 2), W - M.r - 52)
+        const by = Math.max(M.t + 16, g.cy(Math.max(ultimo.real, ultimo.plan)) - 34)
+        return (
+          <g data-ultimo-pct>
+            <rect x={bx} y={by} width={52} height={20} rx={10} className={sobreU ? 'fill-emerald-700' : 'fill-amber-400'} />
+            <text x={bx + 26} y={by + 14} textAnchor="middle" fontSize={12} fontWeight={700} style={{ fill: sobreU ? '#ffffff' : '#1f2937' }}>
+              {Math.round((ultimo.real / ultimo.plan) * 100)} %
+            </text>
+          </g>
+        )
+      })() : null}
     </svg>
     </div>
   )
