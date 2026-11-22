@@ -76,7 +76,8 @@ begin
 end $$;
 create temp table s0 as select pg_temp.saldo((select est from k), (select a from k)) as a,
                                pg_temp.saldo((select est from k), (select b from k)) as b;
-select pg_temp.ok((pg_temp.op(pg_temp.uid(1), 'recepcion', jsonb_build_object('estacion_id', (select est from k),
+select pg_temp.como((select e1 from k));  -- recibir exige la estación a cargo (e1 es el custodio)
+select pg_temp.ok((pg_temp.op(pg_temp.uid(1), 'recepcion', jsonb_build_object('estacion_id', (select est from k), 'chofer_id', '10000000-0000-0000-0000-000000000001',
         'fecha_hora', now() - interval '1 hour', 'lineas', jsonb_build_array(pg_temp.l((select a from k), 100), pg_temp.l((select b from k), 10))))->>'estado')
         like 'ACEPTADO%', 'recepción de 100 y 10 (saldo de partida)');
 select pg_temp.ok(pg_temp.saldo((select est from k), (select a from k)) = (select a from s0) + 100, 'saldo de A = partida + 100');
@@ -96,9 +97,9 @@ select pg_temp.ok((select tipo = 'devolucion_bodega' from fert_operaciones where
 
 -- ---------------------------------------------------------------- 3 · rechazos
 create temp table s1 as select pg_temp.saldo((select est from k), (select a from k)) as a, (select count(*) from fert_movimientos) as movs;
-create temp table d2 as select pg_temp.dev(pg_temp.uid(12), 'BODEGA', 'Prueba', jsonb_build_array(pg_temp.l((select a from k), 80))) as r;
-select pg_temp.ok((select r->>'estado' = 'RECHAZADO' and r::text like '%solo hay%' and r::text like '%' || (select (a - (select a from s0))::text from s1) || '%' from d2),
-                  'devolver 80 con 70 disponibles: rechazada, con el saldo en el mensaje');
+create temp table d2 as select pg_temp.dev(pg_temp.uid(12), 'BODEGA', 'Prueba', jsonb_build_array(pg_temp.l((select a from k), (select a from s1) + 10))) as r;
+select pg_temp.ok((select r->>'estado' = 'RECHAZADO' and r::text like '%solo hay%' and r::text like '%' || (select a::text from s1) || '%' from d2),
+                  'devolver el saldo + 10: rechazada, con el saldo en el mensaje');
 create temp table d3 as select pg_temp.dev(pg_temp.uid(13), 'OTRO', 'Prueba', jsonb_build_array(pg_temp.l((select a from k), 1))) as r;
 select pg_temp.ok((select r->>'estado' = 'RECHAZADO' and r::text like '%destino%' from d3), 'destino fuera de SUMINISTROS/BODEGA/TALLER: rechazado');
 create temp table d4 as select pg_temp.dev(pg_temp.uid(14), 'TALLER', '   ', jsonb_build_array(pg_temp.l((select a from k), 1))) as r;
@@ -127,8 +128,8 @@ create temp table d9 as select pg_temp.dev(pg_temp.uid(19), 'BODEGA', 'Tarde', j
 select pg_temp.ok((select r->>'estado' = 'RECHAZADO' and r::text like '%solo hay%' from d9), 'enviada tarde (cola sin señal) y sin saldo: rechazada');
 
 -- ---------------------------------------------------------------- 6 · quien no tiene la estación a cargo: observación
-select pg_temp.como((select e2 from k));
-create temp table d10 as select pg_temp.dev(pg_temp.uid(20), 'BODEGA', 'Fin de temporada', jsonb_build_array(pg_temp.l((select b from k), 2))) as r;
+select pg_temp.como((select adm from k));  -- nunca tuvo la estación (e2 la tuvo ayer); sin señal (no inmediata): en línea se rechaza, como aplicar
+create temp table d10 as select pg_temp.dev(pg_temp.uid(20), 'BODEGA', 'Fin de temporada', jsonb_build_array(pg_temp.l((select b from k), 2)), 1) as r;
 select pg_temp.ok((select r->>'estado' = 'ACEPTADO_CON_OBSERVACIONES' and r::text like '%FUERA_DE_CUSTODIA%' from d10),
                   'sin la estación a cargo: se guarda con FUERA_DE_CUSTODIA');
 
@@ -194,13 +195,14 @@ declare
     v_r jsonb;
     v_ant numeric := pg_temp.saldo((select est from k), (select a from k));
 begin
-    perform pg_temp.como((select adm from k));
-    v_r := pg_temp.op(pg_temp.uid(p_n), 'recepcion', jsonb_build_object('estacion_id', (select est from k),
+    perform pg_temp.como((select e1 from k));
+    v_r := pg_temp.op(pg_temp.uid(p_n), 'recepcion', jsonb_build_object('estacion_id', (select est from k), 'chofer_id', '10000000-0000-0000-0000-000000000001',
               'lineas', jsonb_build_array(pg_temp.l((select a from k), 10))));
     if v_r->>'estado' not like 'ACEPTADO%' then raise exception 'FALLA [%]: recibir: %', p_etiqueta, v_r; end if;
     v_r := pg_temp.dev(pg_temp.uid(p_n + 1), 'BODEGA', 'Fin de temporada', jsonb_build_array(pg_temp.l((select a from k), 4)));
     if v_r->>'estado' not like 'ACEPTADO%' then raise exception 'FALLA [%]: devolver: %', p_etiqueta, v_r; end if;
     if pg_temp.saldo((select est from k), (select a from k)) <> v_ant + 6 then raise exception 'FALLA [%]: saldo', p_etiqueta; end if;
+    perform pg_temp.como((select adm from k));
     v_r := pg_temp.op(pg_temp.uid(p_n + 2), 'anulacion', jsonb_build_object('documento_tipo', 'devolucion_bodega',
               'documento_id', pg_temp.uid(p_n + 1), 'motivo', 'prueba ' || p_etiqueta));
     if v_r->>'estado' not like 'ACEPTADO%' then raise exception 'FALLA [%]: anular: %', p_etiqueta, v_r; end if;
