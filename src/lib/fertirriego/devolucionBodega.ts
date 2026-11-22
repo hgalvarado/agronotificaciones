@@ -53,7 +53,7 @@ export function primerExceso(
 }
 
 /** Tipos de documento que el detalle ofrece anular (relevo y traslado tienen su propio camino). */
-export const TIPOS_ANULABLES = ['recepcion', 'aplicacion', 'conteo', 'devolucion', 'devolucion_bodega']
+export const TIPOS_ANULABLES = ['recepcion', 'aplicacion', 'conteo', 'devolucion', 'devolucion_bodega', 'aplicacion_lote']
 
 export function esDocumentoAnulable(tipo: string): boolean {
   return TIPOS_ANULABLES.includes(tipo)

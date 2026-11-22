@@ -98,7 +98,7 @@ const TONO_SEMAFORO = { verde: 'verde', ambar: 'ambar', rojo: 'rojo', gris: 'gri
 const TEXTO_SEMAFORO = { verde: 'Sano', ambar: 'Revisar', rojo: 'Actuar', gris: 'Sin datos' } as const
 const NOMBRE_TIPO: Record<string, string> = {
   recepcion: 'Recepción', aplicacion: 'Aplicación', aplicacion_historica: 'Aplicación histórica', bitacora: 'Bitácora de riego',
-  conteo: 'Conteo', devolucion: 'Devolución', devolucion_bodega: 'Devolución a bodega', anulacion: 'Anulación', chofer: 'Chofer nuevo', vehiculo: 'Vehículo nuevo',
+  conteo: 'Conteo', devolucion: 'Devolución', devolucion_bodega: 'Devolución a bodega', aplicacion_lote: 'Aplicación por lote', anulacion: 'Anulación', chofer: 'Chofer nuevo', vehiculo: 'Vehículo nuevo',
   relevo_entregar: 'Entrega de estación', relevo_recibir: 'Recepción de estación', traslado_crear: 'Traslado',
 }
 const PESO: Record<Gravedad, number> = { info: 0, aviso: 1, error: 2, critico: 3 }

@@ -25,3 +25,9 @@ test('ambas, en orden Fertirriego y AgroMétricas', () => {
 test('solo cuenta la acción «ver»', () => {
   assert.deepEqual(fichasCampo((_p, a) => a === 'editar'), [])
 })
+
+test('Inyección: ficha propia, entre Fertirriego y AgroMétricas', () => {
+  const f = fichasCampo((p, a) => a === 'ver' && ['fertirriego', 'inyeccion', 'agrometricas'].includes(p))
+  assert.deepEqual(f.map((x) => x.ruta), ['/fertirriego', '/inyeccion', '/agrometricas'])
+  assert.equal(f[1].nombre, 'Inyección')
+})

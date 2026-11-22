@@ -36,6 +36,7 @@ const NOMBRE_OTRO: Record<string, string> = {
   relevo: 'Relevo de estación',
   traslado: 'Traslado',
   devolucion_bodega: 'Devolución a bodega',
+  aplicacion_lote: 'Aplicación por lote',
   // 102: lo que aplicó un turno terminado, en un solo renglón (el detalle quedó en AGL)
   archivo_turno: 'Turno terminado (archivado en AGL)',
 }
