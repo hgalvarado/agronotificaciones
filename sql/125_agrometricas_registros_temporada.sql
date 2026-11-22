@@ -486,7 +486,7 @@ grant  execute on function public.fn_agm_cargar_appsheet(jsonb) to authenticated
 
 -- ---------------------------------------------------------------- 8 · mis registros (lista y gráficas)
 /**
- * p = {temporada?, turno? (código del turno, sin mayúsculas, o parte), turno_ciclo_id?, zona_id?, desde?, hasta?, texto?,
+ * p = {temporada?, turno? (código EXACTO del turno, sin distinguir mayúsculas), turno_contiene? (parte del código, búsqueda parcial), turno_ciclo_id?, zona_id?, desde?, hasta?, texto?,
  *      lote? (texto exacto, p. ej. '1002-120'), lotes? (arreglo: selección múltiple) -> registros de TODOS los turnos que
  *      contengan alguno de esos lotes,
  *      limite? (1..1000, 50), pagina? (desde 0), orden? 'desc' (por defecto) | 'asc'}
@@ -505,6 +505,7 @@ declare
     v_asc   boolean := lower(coalesce(v_p ->> 'orden', 'desc')) = 'asc';
     v_temp  text := nullif(btrim(v_p ->> 'temporada'), '');
     v_turno text := nullif(btrim(v_p ->> 'turno'), '');
+    v_turno_c text := nullif(btrim(v_p ->> 'turno_contiene'), '');
     v_tc    uuid := nullif(v_p ->> 'turno_ciclo_id', '')::uuid;
     v_zona  uuid := nullif(v_p ->> 'zona_id', '')::uuid;
     v_desde date := nullif(v_p ->> 'desde', '')::date;
@@ -535,7 +536,8 @@ begin
          where a.eliminado_en is null
            and (v_temp is null or tc.temporada = v_temp)
            and (v_tc is null or tc.id = v_tc)
-           and (v_turno is null or tu.codigo ilike '%' || v_turno || '%')
+           and (v_turno is null or lower(btrim(tu.codigo)) = lower(v_turno))
+           and (v_turno_c is null or tu.codigo ilike '%' || v_turno_c || '%')
            and (v_zona is null or coalesce(e.zona_id, tc.zona_id) = v_zona)
            and (v_lotes is null or exists (select 1 from public.turno_lotes tl where tl.turno_ciclo_id = tc.id and tl.lote = any (v_lotes)))
            and (v_desde is null or a.fecha >= v_desde)

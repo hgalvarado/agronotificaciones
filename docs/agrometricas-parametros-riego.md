@@ -138,7 +138,7 @@ rudylopez@agl.com, gustavobetancourth@agrolibano.com). **Visibilidad (ajustada 2
   es determinista (sha-256 de `'agm_appsheet:' || id_appsheet`, versión 5/variante RFC; AGL puede recalcularlo) y lo ya cargado
   no se toca (no pisa ediciones). Sin autor o sin turno **no se carga** (se informa para reintentar). Nacen ya «bajados»
   (AGL los tiene): solo vuelven a bajar si alguien los edita.
-- `fn_agm_mis_registros({temporada?, turno?, turno_ciclo_id?, zona_id?, desde?, hasta?, texto?, limite? (50, máx. 1000), pagina?
+- `fn_agm_mis_registros({temporada?, turno? (código EXACTO, sin distinguir mayúsculas), turno_contiene? (búsqueda parcial por código), turno_ciclo_id?, zona_id?, desde?, hasta?, texto?, limite? (50, máx. 1000), pagina?
   (desde 0), orden? 'desc'|'asc', lote? (texto exacto, p. ej. '1002-120'), lotes? (arreglo, selección múltiple)})` → `{total, limite, pagina, registros:[…]}`. Cada registro trae todas las columnas con
   valores (para graficar), `turno, temporada, ciclo, estacion, zona, lotes:[{lote, nombre}], creado_por_nombre, creado_por_email, editado_por_nombre`,
   y `puede_editar`, `puede_eliminar`. No trae eliminados, huella ni datos internos. Visibles: administrador (todos) y cualquiera con
@@ -179,7 +179,7 @@ qué ve, edita y elimina cada persona lo decide la base (`puede_editar`, `puede_
 - **Filtros** (`FiltrosRegistros.tsx`, recordados por usuario con `useMemoria`): Temporada, Zona, Turno y Lote con `SelectorMultiple` (búsqueda y Única/Varios),
   Desde/Hasta y búsqueda de texto (400 ms). Un lote trae los registros de todos los turnos que lo contienen y se avisa cuáles son. Las listas salen de
   `fn_agm_mis_turnos` (turnos activos), `fn_agm_lotes_visibles` y lo ya cargado. La base filtra por UNA temporada/zona/turno: con varias selecciones se pide sin ese
-  filtro y se recorta en local (`filtrarLocal`; el turno también se recorta exacto porque la base busca «contiene»), así que el total del servidor puede ser algo mayor al mostrado.
+  filtro y se recorta en local (`filtrarLocal`; el selector de turno manda `turno` exacto; solo el cuadro de texto hace búsqueda parcial). Con una sola selección el total del servidor coincide con lo mostrado.
 - **Vistas** (pestañas): Vista rápida (tarjetas por día/turno con CE, pH, tensiómetros, cloro y horas + sparkline por DDT del turno), Tabla (DataGrid: filtros, orden,
   selección múltiple, edición en línea de los 13 valores solo donde `puede_editar`, «Eliminar» en masa con un solo motivo donde `puede_eliminar`, Excel) y Gráficas
   (una gráfica por parámetro y turno, líneas por DDT, punto rojo = fuera de rango, 24 cm punteado, SVG propio sin librerías). Cada gráfica trae el espacio del IC

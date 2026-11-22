@@ -109,7 +109,7 @@ test('paramsConsulta: una selección va al servidor, varias se recortan en local
   assert.equal(POR_PAGINA, 50)
 })
 
-test('filtrarLocal: turno exacto (la base busca «contiene») y selección múltiple', () => {
+test('filtrarLocal: turno exacto con selección múltiple (la base ya compara exacto)', () => {
   const regs = [reg({ id: '1', turno: 'T1002-T3' }), reg({ id: '2', turno: 'T1002-T36' }), reg({ id: '3', turno: 'T1002-T37', zona_id: 'z2' })]
   assert.deepEqual(filtrarLocal(regs, { ...FILTROS_VACIOS, turno: ['T1002-T3'] }).map((r) => r.id), ['1'])
   assert.deepEqual(filtrarLocal(regs, { ...FILTROS_VACIOS, zona: ['z2'] }).map((r) => r.id), ['3'])

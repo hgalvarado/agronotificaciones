@@ -190,7 +190,10 @@ select pg_temp.como((select elim from k));
 select pg_temp.ok((select (j->>'total')::int = 3 from (select pg_temp.mr('{"temporada":"T125-2026-2027"}') j) q), 'quien tiene «ver» global ve todos (la visibilidad es por «ver» en la zona)');
 -- filtros (administrador)
 select pg_temp.como((select adm from k));
-select pg_temp.ok((pg_temp.mr('{"temporada":"T125-2026-2027","turno":"t125-t1"}')->>'total')::int = 2, 'filtro por turno');
+select pg_temp.ok((pg_temp.mr('{"temporada":"T125-2026-2027","turno":"t125-t1"}')->>'total')::int = 2, 'filtro por turno (exacto, sin distinguir mayúsculas)');
+select pg_temp.ok((pg_temp.mr('{"temporada":"T125-2026-2027","turno":"T125-T"}')->>'total')::int = 0, 'turno exacto «T125-T» no trae T125-T1 ni T125-T2 (prefijo)');
+select pg_temp.ok((pg_temp.mr('{"temporada":"T125-2026-2027","turno_contiene":"125-t"}')->>'total')::int = (pg_temp.mr('{"temporada":"T125-2026-2027"}')->>'total')::int
+                  and (pg_temp.mr('{"temporada":"T125-2026-2027","turno_contiene":"125-t"}')->>'total')::int >= 2, 'turno_contiene sí busca parcial');
 select pg_temp.ok((pg_temp.mr(jsonb_build_object('temporada', 'T125-2026-2027', 'zona_id', (select zb from k)))->>'total')::int = 1, 'filtro por zona');
 select pg_temp.ok((pg_temp.mr('{"temporada":"T125-2026-2027","desde":"2026-10-02","hasta":"2026-10-02"}')->>'total')::int = 1, 'filtro por fechas');
 select pg_temp.ok((pg_temp.mr('{"temporada":"T125-2026-2027","texto":"rwlopez"}')->>'total')::int = 1, 'filtro de texto (nombre del autor)');

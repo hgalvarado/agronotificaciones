@@ -264,7 +264,7 @@ export function paramsConsulta(f: FiltrosRegistros, pagina: number): Record<stri
   return p
 }
 
-/** Recorte local: el turno exacto (la base busca «contiene») y las selecciones múltiples. */
+/** Recorte local de las selecciones múltiples (la base ya compara el turno exacto; la búsqueda parcial va por `texto`). */
 export function filtrarLocal(registros: Registro[], f: FiltrosRegistros): Registro[] {
   return registros.filter((r) =>
     (!f.turno.length || f.turno.includes(r.turno)) &&
