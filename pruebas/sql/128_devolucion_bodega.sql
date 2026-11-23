@@ -4,6 +4,8 @@
 -- Correr DESDE LA RAÍZ DEL REPO (usa \i) con:
 --   psql -d <base> -v ON_ERROR_STOP=1 -f pruebas/sql/128_devolucion_bodega.sql
 -- Al final repite la 128 y la corre en otros órdenes (116>128>116, 121>128, 128>121, 100>128, 99/102/119>128).
+-- Actualizada al diseño de la 131: requiere la 131 YA corrida (chofer y vehículo con tipo obligatorios). Cada \i de la 128
+-- va seguido de la 131 (la 128 recrea _fert_op_devolucion_bodega sin los parches de la 131).
 -- =====================================================================
 \set ON_ERROR_STOP 1
 set client_min_messages = warning;
@@ -43,11 +45,14 @@ create temp table k as select
     (select id from materiales where codigo = 'QA-SOLCA') as a,
     (select id from materiales where codigo = '101478') as b,
     '00000000-0000-0000-0000-0000000000e1'::uuid as e1, '00000000-0000-0000-0000-0000000000e2'::uuid as e2,
-    '00000000-0000-0000-0000-000000012801'::uuid as adm;
+    '00000000-0000-0000-0000-000000012801'::uuid as adm,
+    '10000000-0000-0000-0000-000000000001'::uuid as chofer,
+    '128c0000-0000-4000-8000-000000000001'::uuid as veh;
 
-create or replace function pg_temp.dev(p_id uuid, p_destino text, p_motivo text, p_lineas jsonb, p_dias_atras integer default 0) returns jsonb language sql as $$
+-- (131) la devolución lleva SIEMPRE chofer y vehículo (con tipo) de los catálogos de campo
+create or replace function pg_temp.dev(p_id uuid, p_destino text, p_motivo text, p_lineas jsonb, p_dias_atras integer default 0, p_extra jsonb default null) returns jsonb language sql as $$
     select pg_temp.op(p_id, 'devolucion_bodega', jsonb_build_object('estacion_id', (select est from k), 'destino', p_destino,
-        'motivo', p_motivo, 'lineas', p_lineas), p_dias_atras)
+        'motivo', p_motivo, 'lineas', p_lineas, 'chofer_id', (select chofer from k), 'vehiculo_id', (select veh from k)) || coalesce(p_extra, '{}'::jsonb), p_dias_atras)
 $$;
 create or replace function pg_temp.l(p_mat uuid, p_cant numeric) returns jsonb language sql as $$
     select jsonb_build_object('material_id', p_mat, 'cantidad', p_cant) $$;
@@ -81,6 +86,8 @@ select pg_temp.ok((pg_temp.op(pg_temp.uid(1), 'recepcion', jsonb_build_object('e
         'fecha_hora', now() - interval '1 hour', 'lineas', jsonb_build_array(pg_temp.l((select a from k), 100), pg_temp.l((select b from k), 10))))->>'estado')
         like 'ACEPTADO%', 'recepción de 100 y 10 (saldo de partida)');
 select pg_temp.ok(pg_temp.saldo((select est from k), (select a from k)) = (select a from s0) + 100, 'saldo de A = partida + 100');
+select pg_temp.ok((pg_temp.op(pg_temp.uid(2), 'vehiculo', jsonb_build_object('vehiculo_id', (select veh from k), 'placa', 'CAM128', 'tipo', 'Camión'))->>'estado') like 'ACEPTADO%',
+                  'vehículo de prueba (con tipo) creado en el catálogo de campo');
 
 -- ---------------------------------------------------------------- 2 · devolver con saldo
 select pg_temp.como((select e1 from k));
@@ -92,6 +99,9 @@ select pg_temp.ok((select count(*) = 1 and sum(cantidad) = -30 from fert_movimie
                   'un movimiento DEVOLUCION_BODEGA de −30');
 select pg_temp.ok((select destino = 'SUMINISTROS' and motivo = 'Fin de temporada' and anulado_at is null from fert_devoluciones_bodega where id = pg_temp.uid(11)),
                   'queda el documento con destino y motivo');
+select pg_temp.ok((select chofer_id = (select chofer from k) and chofer_nombre is not null and vehiculo_id = (select veh from k)
+                          and vehiculo_placa = 'CAM128' and vehiculo_tipo = 'Camión' from fert_devoluciones_bodega where id = pg_temp.uid(11)),
+                  'y quién retiró (chofer) y en qué vehículo (placa y tipo)');
 select pg_temp.ok((select count(*) = 1 and sum(cantidad) = 30 from fert_devoluciones_bodega_detalle where devolucion_id = pg_temp.uid(11)), 'y su detalle');
 select pg_temp.ok((select tipo = 'devolucion_bodega' from fert_operaciones where id = pg_temp.uid(11)), 'queda la operación (auditoría)');
 
@@ -108,9 +118,15 @@ create temp table d5 as select pg_temp.dev(pg_temp.uid(15), 'TALLER', 'Prueba', 
 select pg_temp.ok((select r->>'estado' = 'RECHAZADO' and r::text like '%al menos un producto%' from d5), 'todas las líneas en 0: «Indica al menos un producto»');
 create temp table d6 as select pg_temp.dev(pg_temp.uid(16), 'TALLER', 'Prueba', '[]'::jsonb) as r;
 select pg_temp.ok((select r->>'estado' = 'RECHAZADO' and r::text like '%al menos un producto%' from d6), 'sin líneas: rechazado');
+create temp table d6b as select pg_temp.op(pg_temp.uid(17), 'devolucion_bodega', jsonb_build_object('estacion_id', (select est from k), 'destino', 'TALLER',
+        'motivo', 'Prueba', 'lineas', jsonb_build_array(pg_temp.l((select a from k), 1)), 'vehiculo_id', (select veh from k))) as r;
+select pg_temp.ok((select r->>'estado' = 'RECHAZADO' and r::text like '%quién retiró%' from d6b), 'sin chofer: rechazado');
+create temp table d6c as select pg_temp.op(pg_temp.uid(21), 'devolucion_bodega', jsonb_build_object('estacion_id', (select est from k), 'destino', 'TALLER',
+        'motivo', 'Prueba', 'lineas', jsonb_build_array(pg_temp.l((select a from k), 1)), 'chofer_id', (select chofer from k))) as r;
+select pg_temp.ok((select r->>'estado' = 'RECHAZADO' and r::text like '%vehículo%' from d6c), 'sin vehículo: rechazado');
 select pg_temp.ok(pg_temp.saldo((select est from k), (select a from k)) = (select a from s1) and (select count(*) from fert_movimientos) = (select movs from s1),
                   'los rechazos no movieron nada');
-select pg_temp.ok(not exists (select 1 from fert_devoluciones_bodega where id in (pg_temp.uid(12), pg_temp.uid(13), pg_temp.uid(14), pg_temp.uid(15), pg_temp.uid(16))),
+select pg_temp.ok(not exists (select 1 from fert_devoluciones_bodega where id in (pg_temp.uid(12), pg_temp.uid(13), pg_temp.uid(14), pg_temp.uid(15), pg_temp.uid(16), pg_temp.uid(17), pg_temp.uid(21))),
                   'ni dejaron documentos');
 
 -- ---------------------------------------------------------------- 4 · idempotencia y línea en 0 junto a una válida
@@ -184,6 +200,9 @@ begin
                    and pg_get_constraintdef(oid) like '%DEVOLUCION_BODEGA%') then
         raise exception 'FALLA [%]: el check de tipo no admite DEVOLUCION_BODEGA', p_etiqueta;
     end if;
+    if position('131: valida quién retiró' in pg_get_functiondef('public._fert_op_devolucion_bodega(uuid, jsonb, timestamptz, boolean, uuid)'::regprocedure)) = 0 then
+        raise exception 'FALLA [%]: _fert_op_devolucion_bodega sin el parche de la 131 (chofer y vehículo)', p_etiqueta;
+    end if;
     if (select count(*) from pantallas where codigo = 'campo') <> 1 then
         raise exception 'FALLA [%]: pantalla campo', p_etiqueta;
     end if;
@@ -212,25 +231,35 @@ end $$;
 
 select pg_temp.finales('estado actual');
 \i sql/128_campo_menu_y_devolucion_bodega.sql
-select pg_temp.ciclo('128 repetida', 100);
+\i sql/131_devolucion_bodega_detalle.sql
+select pg_temp.ciclo('128+131 repetidas', 100);
+\i sql/131_devolucion_bodega_detalle.sql
+select pg_temp.ciclo('131 repetida', 105);
 \i sql/116_fertirriego_registro_historico.sql
-select pg_temp.ciclo('116 despues de 128', 110);
+\i sql/131_devolucion_bodega_detalle.sql
+select pg_temp.ciclo('116 despues de 128>131', 110);
 \i sql/128_campo_menu_y_devolucion_bodega.sql
-select pg_temp.ciclo('116>128>116 (128 al final)', 120);
+\i sql/131_devolucion_bodega_detalle.sql
+select pg_temp.ciclo('116>128>131 (128 al final)', 120);
 \i sql/116_fertirriego_registro_historico.sql
-select pg_temp.ciclo('116>128>116', 130);
+\i sql/131_devolucion_bodega_detalle.sql
+select pg_temp.ciclo('116>128>116>131', 130);
 \i sql/121_fertirriego_auditoria_a_agl.sql
 \i sql/128_campo_menu_y_devolucion_bodega.sql
-select pg_temp.ciclo('121>128', 140);
+\i sql/131_devolucion_bodega_detalle.sql
+select pg_temp.ciclo('121>128>131', 140);
 \i sql/128_campo_menu_y_devolucion_bodega.sql
+\i sql/131_devolucion_bodega_detalle.sql
 \i sql/121_fertirriego_auditoria_a_agl.sql
-select pg_temp.ciclo('128>121', 150);
+select pg_temp.ciclo('128>131>121', 150);
 \i sql/100_fertirriego_piloto2.sql
 \i sql/101_fertirriego_pruebas_en_agl.sql
 \i sql/128_campo_menu_y_devolucion_bodega.sql
-select pg_temp.ciclo('100>101>128', 160);
+\i sql/131_devolucion_bodega_detalle.sql
+select pg_temp.ciclo('100>101>128>131', 160);
 \i sql/102_fertirriego_archivo_turnos.sql
 \i sql/128_campo_menu_y_devolucion_bodega.sql
-select pg_temp.ciclo('102>128', 170);
+\i sql/131_devolucion_bodega_detalle.sql
+select pg_temp.ciclo('102>128>131', 170);
 
 select 'FIN 128 OK' as resultado;

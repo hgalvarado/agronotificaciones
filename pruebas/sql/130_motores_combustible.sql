@@ -280,7 +280,7 @@ create temp table b1 as select fn_mot_exportar('{"limite": 1000}'::jsonb) as x;
 select pg_temp.ok((select (x->>'cuantos')::integer >= 5 from b1), 'exportar trae lo «por bajar»');
 select pg_temp.ok((select bool_and(f->>'huella' = encode(sha256(convert_to(f->>'texto', 'UTF8')), 'hex')) from b1, jsonb_array_elements(x->'filas') f), 'cada huella = sha256 de su texto');
 select pg_temp.ok((select bool_and(f->>'tabla' in ('registro', 'recepcion', 'mantenimiento', 'asignacion') and (f->>'cursor') like (substr(f->>'tabla', 1, 1) || '|%')
-                          or (f->>'tabla' = 'recepcion' and (f->>'cursor') like 'c|%')) from b1, jsonb_array_elements(x->'filas') f), 'cursores con su letra');
+                          or (f->>'tabla' = 'recepcion' and (f->>'cursor') like 'c|%') or (f->>'tabla' = 'movimiento' and (f->>'cursor') like 'v|%')) from b1, jsonb_array_elements(x->'filas') f), 'cursores con su letra');
 create temp table cf as select jsonb_build_object(
     'lote', (select jsonb_agg(jsonb_build_object('cursor', f->>'cursor', 'id', f->>'id', 'huella', f->>'huella')) from b1, jsonb_array_elements(x->'filas') f),
     'cuantos', (select (x->>'cuantos')::integer from b1), 'sha256_lote', (select x->>'sha256_lote' from b1)) as p;

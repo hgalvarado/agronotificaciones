@@ -4,6 +4,8 @@
 -- Correr DESDE LA RAÍZ DEL REPO (usa \i) con:
 --   psql -d <base> -v ON_ERROR_STOP=1 -f pruebas/sql/129_inyeccion_por_lote.sql
 -- Al final repite la 129 y la corre en otros órdenes (128>129>128, 116>129>116, 121>129, 129>121, 102>129>102).
+-- Actualizada al diseño de la 132: requiere la 132 YA corrida (lote SOLO del catálogo, objetivos del catálogo iny_objetivos).
+-- Cada \i de la 129 va seguido de la 132 (la 129 deshace los parches de la 132).
 -- NO ejecutada todavía (la corre Opus, Task 6 del plan).
 -- =====================================================================
 \set ON_ERROR_STOP 1
@@ -42,6 +44,14 @@ begin
     insert into perfiles (id, nombre, rol_id, todas_las_zonas) values ('00000000-0000-0000-0000-000000012902', 'Sin permisos 129', r2, true) on conflict (id) do nothing;
     insert into seguridad.perfiles_roles (perfil_id, rol_id) values ('00000000-0000-0000-0000-000000012901', r) on conflict do nothing;
     insert into seguridad.perfiles_roles (perfil_id, rol_id) values ('00000000-0000-0000-0000-000000012902', r2) on conflict do nothing;
+    -- catálogo de lotes (132): L129-1 y L129-SINPLAN asignados a la temporada del plan; L129-SINTEMP existe pero SIN temporada
+    insert into temporadas (nombre, fecha_inicio, fecha_fin, activa) values ('Temp 26-27', date '2026-01-01', date '2026-12-31', false) on conflict (nombre) do nothing;
+    insert into lotes (nomenclatura, nombre) values ('L129-1', 'Lote prueba 129') on conflict (nomenclatura) do nothing;
+    insert into lotes (nomenclatura, nombre) values ('L129-SINPLAN', 'Lote sin plan 129') on conflict (nomenclatura) do nothing;
+    insert into lotes (nomenclatura, nombre) values ('L129-SINTEMP', 'Lote sin temporada 129') on conflict (nomenclatura) do nothing;
+    insert into lotes_temporada (lote_id, temporada_id, area_neta)
+    select l.id, t.id, 5 from lotes l, temporadas t
+     where l.nomenclatura in ('L129-1', 'L129-SINPLAN') and t.nombre = 'Temp 26-27' on conflict (lote_id, temporada_id) do nothing;
 end $$;
 
 create temp table k as select
@@ -116,6 +126,9 @@ select pg_temp.pub('[{"clave":"ferti-riego|inyeccion","departamento":"Ferti-Rieg
 select pg_temp.ok((select count(*) = 3 from iny_plan where turno_agl_id in ('T-INY-1', 'T-INY-0')), 'publicar dos veces: idempotente (siguen 3 líneas)');
 select pg_temp.ok(jsonb_array_length(fn_iny_estado_campo()->'categorias') >= 1 and jsonb_array_length(fn_iny_estado_campo()->'plan') >= 3
                   and fn_iny_estado_campo()->'permisos'->>'registrar' = 'true', 'fn_iny_estado_campo trae categorías, plan y permisos');
+select pg_temp.ok(jsonb_array_length(fn_iny_estado_campo()->'objetivos') >= 5
+                  and exists (select 1 from jsonb_array_elements(fn_iny_estado_campo()->'lotes') x where x->>'nomenclatura' = 'L129-1'),
+                  'fn_iny_estado_campo trae los objetivos del catálogo y los lotes del catálogo (L129-1)');
 
 -- ---------------------------------------------------------------- 2 · aplicar con plan
 select pg_temp.como((select e1 from k));
@@ -127,8 +140,11 @@ select pg_temp.ok((select dosis_mz = 2 and en_plan and ddt_plan = 5 from iny_apl
                   'dosis/mz = cantidad ÷ 5, en_plan y ddt_plan = 5');
 select pg_temp.ok((select count(*) = 2 and sum(cantidad) = -12 from fert_movimientos where documento_id = pg_temp.uid(11) and tipo = 'APLICACION_LOTE'
                    and turno_ciclo_id is null and documento_tipo = 'aplicacion_lote'), 'dos movimientos APLICACION_LOTE sin turno');
-select pg_temp.ok((select turno_agl_id = 'T-INY-1' and ciclo = 'Ciclo 1' and objetivos = array['PLAGA'] and fecha = pg_temp.hoy() from iny_aplicaciones where id = pg_temp.uid(11)),
-                  'hereda turno y ciclo del plan más cercano (cohorte de hoy, no la de hace 20 días)');
+select pg_temp.ok((select turno_agl_id = 'T-INY-1' and ciclo = 'Ciclo 1' and objetivos = array['Plaga'] and fecha = pg_temp.hoy()
+                          and lote_temporada_id is not null
+                          and objetivo_ids = array[(select id from iny_objetivos where nombre_norm = 'plaga')]
+                     from iny_aplicaciones where id = pg_temp.uid(11)),
+                  'hereda turno y ciclo del plan más cercano (cohorte de hoy, no la de hace 20 días); objetivo por id del catálogo y lote_temporada_id resuelto');
 
 -- ---------------------------------------------------------------- 3 · sin plan, líneas en 0 y rechazos
 create temp table s1 as select pg_temp.saldo((select est from k), (select a from k)) as a, (select count(*) from fert_movimientos) as movs;
@@ -143,8 +159,8 @@ create temp table a5 as select pg_temp.apl(pg_temp.uid(15), jsonb_build_object('
 select pg_temp.ok((select r->>'estado' = 'RECHAZADO' and r::text like '%área cubierta%' from a5), 'área vacía: rechazada');
 create temp table a6 as select pg_temp.apl(pg_temp.uid(16), jsonb_build_object('objetivos', '[]'::jsonb, 'lineas', jsonb_build_array(pg_temp.l((select a from k), 1)))) as r;
 select pg_temp.ok((select r->>'estado' = 'RECHAZADO' and r::text like '%objetivo%' from a6), 'sin objetivo: rechazada');
-create temp table a7 as select pg_temp.apl(pg_temp.uid(17), jsonb_build_object('objetivos', jsonb_build_array('VIRUS'), 'lineas', jsonb_build_array(pg_temp.l((select a from k), 1)))) as r;
-select pg_temp.ok((select r->>'estado' = 'RECHAZADO' and r::text like '%Objetivo no válido%' from a7), 'objetivo fuera de la lista: rechazada');
+create temp table a7 as select pg_temp.apl(pg_temp.uid(17), jsonb_build_object('objetivos', jsonb_build_array('???'), 'lineas', jsonb_build_array(pg_temp.l((select a from k), 1)))) as r;
+select pg_temp.ok((select r->>'estado' = 'RECHAZADO' and r::text like '%no es válido%' from a7), 'objetivo sin letras: rechazada (ya no hay lista cerrada)');
 create temp table a8 as select pg_temp.apl(pg_temp.uid(18), jsonb_build_object('area_mz', 50, 'lineas', jsonb_build_array(pg_temp.l((select a from k), 1)))) as r;
 select pg_temp.ok((select r->>'estado' = 'RECHAZADO' and r::text like '%mayor que el área del lote%' from a8), 'área mayor que el lote (5 + 3): rechazada en línea');
 select pg_temp.ok(pg_temp.saldo((select est from k), (select a from k)) = (select a from s1) - 1, 'los rechazos no movieron nada (solo la de sin plan, −1)');
@@ -152,6 +168,23 @@ select pg_temp.ok(not exists (select 1 from iny_aplicaciones where id in (pg_tem
                   'ni dejaron documentos');
 create temp table a9 as select pg_temp.apl(pg_temp.uid(19), jsonb_build_object('area_mz', 50, 'lineas', jsonb_build_array(pg_temp.l((select b from k), 1))), 1) as r;
 select pg_temp.ok((select r->>'estado' like 'ACEPTADO%' and r::text like '%AREA_MAYOR_AL_LOTE%' from a9), 'área mayor llegada tarde (sin señal): se acepta con AREA_MAYOR_AL_LOTE');
+
+-- 3b · lote SOLO del catálogo y objetivos del catálogo (132)
+create temp table lt1 as select pg_temp.apl(pg_temp.uid(23), jsonb_build_object('lote', 'L129-NOEXISTE', 'lineas', jsonb_build_array(pg_temp.l((select b from k), 1)))) as r;
+select pg_temp.ok((select r->>'estado' = 'RECHAZADO' and r::text like '%no existe en el catálogo de lotes%' from lt1), 'lote que no está en el catálogo: rechazada (nada de texto libre)');
+create temp table lt2 as select pg_temp.apl(pg_temp.uid(24), jsonb_build_object('lote', 'L129-SINTEMP', 'lineas', jsonb_build_array(pg_temp.l((select b from k), 1)))) as r;
+select pg_temp.ok((select r->>'estado' = 'RECHAZADO' and r::text like '%no está asignado a la temporada%' from lt2), 'lote del catálogo sin asignar a la temporada: rechazada');
+create temp table lt3 as select pg_temp.apl(pg_temp.uid(25), jsonb_build_object('lote', ' l129-1 ', 'lineas', jsonb_build_array(pg_temp.l((select b from k), 1)))) as r;
+select pg_temp.ok((select r->>'estado' like 'ACEPTADO%' from lt3) and (select lote = 'L129-1' and lote_temporada_id is not null from iny_aplicaciones where id = pg_temp.uid(25)),
+                  'lote escrito con espacios y minúsculas: se guarda con la nomenclatura canónica del catálogo');
+create temp table ob1 as select pg_temp.apl(pg_temp.uid(26), jsonb_build_object('objetivos', jsonb_build_array(jsonb_build_object('nombre', 'Virus')), 'lineas', jsonb_build_array(pg_temp.l((select b from k), 1)))) as r;
+select pg_temp.ok((select r->>'estado' like 'ACEPTADO%' from ob1)
+                  and (select count(*) = 1 and bool_and(origen = 'CAMPO' and not revisado) from iny_objetivos where nombre_norm = fn_iny_normalizar_texto('virus')),
+                  'objetivo nuevo desde el campo: se crea en el catálogo como CAMPO «por revisar»');
+create temp table ob2 as select pg_temp.apl(pg_temp.uid(27), jsonb_build_object('objetivos', jsonb_build_array('VIRUS', 'Virus'), 'lineas', jsonb_build_array(pg_temp.l((select b from k), 1)))) as r;
+select pg_temp.ok((select r->>'estado' like 'ACEPTADO%' from ob2) and (select count(*) = 1 from iny_objetivos where nombre_norm = fn_iny_normalizar_texto('virus'))
+                  and (select cardinality(objetivo_ids) = 1 from iny_aplicaciones where id = pg_temp.uid(27)),
+                  'el mismo objetivo con otra escritura se enlaza al existente: no se duplica');
 
 -- ---------------------------------------------------------------- 4 · saldo
 create temp table a10 as select pg_temp.apl(pg_temp.uid(21), jsonb_build_object('lineas', jsonb_build_array(pg_temp.l((select a from k), 99999)))) as r;
@@ -277,6 +310,9 @@ begin
     if position('_fert_op_devolucion_bodega(' in v_def) = 0 then
         raise exception 'FALLA [%]: la 129 deshizo el parche de la 128', p_etiqueta;
     end if;
+    if position('132:lote' in pg_get_functiondef('public._iny_op_aplicacion_lote(uuid,jsonb,timestamptz,boolean,uuid)'::regprocedure)) = 0 then
+        raise exception 'FALLA [%]: _iny_op_aplicacion_lote sin el parche de la 132 (lote del catálogo)', p_etiqueta;
+    end if;
     if (length(v_def) - length(replace(v_def, '_iny_op_aplicacion_lote(', ''))) / length('_iny_op_aplicacion_lote(') <> 1 then
         raise exception 'FALLA [%]: el parche de la 129 quedó duplicado', p_etiqueta;
     end if;
@@ -306,28 +342,38 @@ end $$;
 
 select pg_temp.finales('estado actual');
 \i sql/129_campo_inyeccion_por_lote.sql
-select pg_temp.ciclo('129 repetida', 100);
+\i sql/132_inyeccion_objetivos.sql
+select pg_temp.ciclo('129+132 repetidas', 100);
+\i sql/132_inyeccion_objetivos.sql
+select pg_temp.ciclo('132 repetida', 105);
 \i sql/128_campo_menu_y_devolucion_bodega.sql
 select pg_temp.ciclo('129>128', 110);
 \i sql/129_campo_inyeccion_por_lote.sql
-select pg_temp.ciclo('128>129>128>129', 120);
+\i sql/132_inyeccion_objetivos.sql
+select pg_temp.ciclo('128>129>128>129>132', 120);
 \i sql/116_fertirriego_registro_historico.sql
 \i sql/129_campo_inyeccion_por_lote.sql
-select pg_temp.ciclo('116>129', 130);
+\i sql/132_inyeccion_objetivos.sql
+select pg_temp.ciclo('116>129>132', 130);
 \i sql/129_campo_inyeccion_por_lote.sql
+\i sql/132_inyeccion_objetivos.sql
 \i sql/116_fertirriego_registro_historico.sql
-select pg_temp.ciclo('129>116', 140);
+select pg_temp.ciclo('129>132>116', 140);
 \i sql/121_fertirriego_auditoria_a_agl.sql
 \i sql/129_campo_inyeccion_por_lote.sql
-select pg_temp.ciclo('121>129', 150);
+\i sql/132_inyeccion_objetivos.sql
+select pg_temp.ciclo('121>129>132', 150);
 \i sql/129_campo_inyeccion_por_lote.sql
+\i sql/132_inyeccion_objetivos.sql
 \i sql/121_fertirriego_auditoria_a_agl.sql
-select pg_temp.ciclo('129>121', 160);
+select pg_temp.ciclo('129>132>121', 160);
 \i sql/102_fertirriego_archivo_turnos.sql
 \i sql/129_campo_inyeccion_por_lote.sql
-select pg_temp.ciclo('102>129', 170);
+\i sql/132_inyeccion_objetivos.sql
+select pg_temp.ciclo('102>129>132', 170);
 \i sql/129_campo_inyeccion_por_lote.sql
+\i sql/132_inyeccion_objetivos.sql
 \i sql/102_fertirriego_archivo_turnos.sql
-select pg_temp.ciclo('129>102', 180);
+select pg_temp.ciclo('129>132>102', 180);
 
 select 'FIN 129 OK' as resultado;
