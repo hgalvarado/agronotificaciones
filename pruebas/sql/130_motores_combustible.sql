@@ -18,7 +18,7 @@ begin
     raise notice 'ok  %', p_msg;
 end $$;
 create or replace function pg_temp.m144() returns boolean language sql as $f$
-    select exists (select 1 from pg_proc where proname = '_mot_op_diesel_recibir' and prosrc like '%RECEPCION_DIESEL%') $f$;
+    select exists (select 1 from pg_proc where proname = '_mot_op_diesel_recibir' and prosrc like '%_fert_mover%') $f$;
 
 -- p_dias_atras > 0 = llegó de la cola (no inmediata)
 create or replace function pg_temp.op(p_id uuid, p_tipo text, p_datos jsonb, p_dias_atras integer default 0) returns jsonb language sql as $$

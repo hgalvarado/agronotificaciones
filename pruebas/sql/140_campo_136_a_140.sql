@@ -21,7 +21,7 @@ create or replace function pg_temp.m143() returns boolean language sql as $f$
     select exists (select 1 from pg_proc where proname = '_iny_linea_de_bodega' and prosrc not like '%de_bodega%' and prosrc like '%historica%') $f$;
 
 create or replace function pg_temp.m144() returns boolean language sql as $f$
-    select exists (select 1 from pg_proc where proname = '_mot_op_diesel_recibir' and prosrc like '%RECEPCION_DIESEL%') $f$;
+    select exists (select 1 from pg_proc where proname = '_mot_op_diesel_recibir' and prosrc like '%_fert_mover%') $f$;
 
 create or replace function pg_temp.op(p_id uuid, p_tipo text, p_datos jsonb, p_dias_atras integer default 0) returns jsonb language sql as $$
     select (fn_fert_sincronizar(jsonb_build_array(jsonb_build_object(
