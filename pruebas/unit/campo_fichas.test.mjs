@@ -19,7 +19,7 @@ test('solo Fertirriego', () => {
 
 test('ambas, en orden Fertirriego y AgroMétricas', () => {
   const f = fichasCampo((p, a) => a === 'ver' && (p === 'fertirriego' || p === 'agrometricas'))
-  assert.deepEqual(f.map((x) => x.ruta), ['/fertirriego', '/agrometricas'])
+  assert.deepEqual(f.map((x) => x.ruta), ['/fertirriego', '/agrometricas/parametros', ''])
 })
 
 test('solo cuenta la acción «ver»', () => {
@@ -28,12 +28,12 @@ test('solo cuenta la acción «ver»', () => {
 
 test('Motores y combustible: ficha propia, entre Inyección y AgroMétricas', () => {
   const f = fichasCampo((p, a) => a === 'ver' && ['fertirriego', 'inyeccion', 'motores', 'agrometricas'].includes(p))
-  assert.deepEqual(f.map((x) => x.ruta), ['/fertirriego', '/inyeccion', '/motores', '/agrometricas'])
+  assert.deepEqual(f.map((x) => x.ruta), ['/fertirriego', '/inyeccion', '/motores', '/agrometricas/parametros', ''])
   assert.equal(f[2].nombre, 'Motores y combustible')
 })
 
 test('Inyección: ficha propia, entre Fertirriego y AgroMétricas', () => {
   const f = fichasCampo((p, a) => a === 'ver' && ['fertirriego', 'inyeccion', 'agrometricas'].includes(p))
-  assert.deepEqual(f.map((x) => x.ruta), ['/fertirriego', '/inyeccion', '/agrometricas'])
+  assert.deepEqual(f.map((x) => x.ruta), ['/fertirriego', '/inyeccion', '/agrometricas/parametros', ''])
   assert.equal(f[1].nombre, 'Inyección')
 })

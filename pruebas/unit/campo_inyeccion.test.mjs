@@ -201,5 +201,5 @@ test('la ficha Inyección aparece con su permiso y el orden queda Fertirriego, I
   assert.equal(f.length, 1)
   assert.equal(f[0].ruta, '/inyeccion')
   const todas = fichasCampo((p, a) => a === 'ver' && ['fertirriego', 'inyeccion', 'agrometricas'].includes(p))
-  assert.deepEqual(todas.map((x) => x.ruta), ['/fertirriego', '/inyeccion', '/agrometricas'])
+  assert.deepEqual(todas.map((x) => x.ruta), ['/fertirriego', '/inyeccion', '/agrometricas/parametros', ''])
 })
