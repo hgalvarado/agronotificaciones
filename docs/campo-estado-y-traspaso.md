@@ -48,9 +48,9 @@ Documentos de diseño y planes (todos aprobados por el usuario):
 |---|---|---|---|---|
 | 1 | Menú «Campo» (`/campo`, tarjetas por permiso) + **Devolución a bodega** | AgroNoti `2700291`, AGL `c2aa348` | `sql/128` **corrida en desarrollo** | Opus: unitarias 44/44, SQL 43/43 en 7 órdenes, equivalencia OK, clics 28/30 (2 fallas eran del script) |
 | 2 | **Inyección / Drench / Calidad por lote** (ficha `/inyeccion`, MARA técnico en AGL, categorías LTP, plan por lote, cumplimiento y tendencia) | AgroNoti `bfdef5b`+fix, AGL `c701827`+fix | `sql/129` **corrida en desarrollo** | Opus: unitarias 56/56, SQL 70/70 (9 órdenes), integración AGL↔base 37/37; clics SIN PROBAR |
-| 3 | **Motores de riego y combustible** (ficha `/motores`, `sql/130`, AGL pestaña «Motores») | AgroNoti `cebeaf9`, AGL `60ba208` | `sql/130` escrita, **NO corrida** | QA de Opus en curso (ver §7) |
-| fix A | **Devolución con detalle completo** (chofer, vehículo, destino exacto, motivo, GPS, saldo antes/después, anulación) | `cebeaf9` | `sql/131` escrita, NO corrida | QA en curso |
-| fix B | **Objetivos de Inyección = catálogo en AGL ampliable desde el campo sin duplicados; lote SOLO del catálogo** | `cebeaf9` / AGL `60ba208` | `sql/132` escrita, NO corrida | QA en curso |
+| 3 | **Motores de riego y combustible** (ficha `/motores`, `sql/130`, AGL pestaña «Motores») | AgroNoti `cebeaf9`, AGL `60ba208` | `sql/130` **corrida en DESARROLLO (2026-11-22, 2 veces)** | QA Opus 2 vueltas: SQL 84/84, integración AGL↔base OK; clics SIN PROBAR |
+| fix A | **Devolución con detalle completo** (chofer, vehículo, destino exacto, motivo, GPS, saldo antes/después, anulación) | `cebeaf9` | `sql/131` **corrida en DESARROLLO** | SQL 25/25; falta saldo antes/después en la exportación y que AGL muestre GPS |
+| fix B | **Objetivos de Inyección = catálogo en AGL ampliable desde el campo sin duplicados; lote SOLO del catálogo** | `cebeaf9` / AGL `60ba208` | `sql/132` **corrida en DESARROLLO** | SQL 53/53; lote canónico de AGL = ubicación técnica (corregido) |
 
 Próximo número libre de SQL: **133**. Orden de corrida correcto: …→121→128→129→130→131→132. **Si se vuelve a correr** la
 128/99/100/116 → correr la 131; si se vuelve a correr la 129 → correr la 132; la 130 sobrevive a ambas. Las pruebas SQL
@@ -153,3 +153,8 @@ de la 128 y la 129 asumen el diseño anterior (devolución sin chofer/vehículo;
 - Publicar AGL: `Publicar_Produccion.bat /SI` (en PowerShell: `& cmd.exe /c ".\Publicar_Produccion.bat /SI"`, tarda minutos;
   copia a `…\TORRE DE CONTROL\Torre Control dv`). El usuario reinicia AGL.
 - Supabase «Log Query» (panel Usage) sube cuando se leen logs desde el panel; no es la app y no se factura (100 GB incluidos).
+
+
+## Resultado QA 2026-11-22 (Opus, 2 vueltas)
+- Corregido: alias `l` en 132, CRLF en parchar 132, orden de tipos en 130, `lotes_del_catalogo` por id de temporada y canónico = ubicación técnica (AGL, sin commit), normalización de mayúsculas con tilde en 132.
+- Pendiente: pruebas SQL 128/129 con el diseño viejo (actualizar); saldo antes/después y GPS de la devolución en AGL; `mot_movimientos` no se exporta; clics de Inyección/Motores; verificar el cambio de canónico con datos reales de AGL.

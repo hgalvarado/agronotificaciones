@@ -153,7 +153,9 @@ select pg_temp.ok((select lote_temporada_id is not null from iny_aplicaciones wh
 -- ---------------------------------------------------------------- 5 · estado del teléfono
 select pg_temp.como((select e1 from k));
 select pg_temp.ok(jsonb_array_length(fn_iny_estado_campo()->'objetivos') >= 6 and jsonb_array_length(fn_iny_estado_campo()->'lotes') >= 1
-                  and (fn_iny_estado_campo()->'lotes') @> '[{"nomenclatura":"L132-1"}]'::jsonb, 'estado: objetivos y lotes del catálogo');
+                  and not exists (select 1 from jsonb_array_elements(fn_iny_estado_campo()->'lotes') x where x->>'lote_temporada_id' is null)
+                  -- T132-Temp está inactiva y sin plan: por diseño (sql/132 §estado) su lote no va al teléfono
+                  and not ((fn_iny_estado_campo()->'lotes') @> '[{"nomenclatura":"L132-1"}]'::jsonb), 'estado: objetivos y lotes del catálogo (temporada activa o del plan)');
 select pg_temp.ok(exists (select 1 from jsonb_array_elements(fn_iny_estado_campo()->'aplicaciones') x where x ? 'objetivo_ids' and x->>'id' = pg_temp.uid(11)::text),
                   'estado: aplicaciones con objetivo_ids');
 

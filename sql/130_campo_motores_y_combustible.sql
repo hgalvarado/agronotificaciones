@@ -1096,7 +1096,7 @@ end $$;
 -- tipos válidos
 select pg_temp.parchar('public._fert_procesar(jsonb)',
     $p$'devolucion_bodega', 'anulacion',$p$,
-    $p$'devolucion_bodega', 'motor_asignar', 'motor_retiro', 'motor_registro_diario', 'motor_mantenimiento', 'diesel_recibir', 'anulacion',$p$,
+    $p$'devolucion_bodega', 'anulacion', 'motor_asignar', 'motor_retiro', 'motor_registro_diario', 'motor_mantenimiento', 'diesel_recibir',$p$,
     $p$'motor_asignar', 'motor_retiro'$p$);
 
 -- a qué función va cada operación (anclado en la línea de la 128, que la 129 no cambia)

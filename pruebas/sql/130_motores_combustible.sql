@@ -92,6 +92,12 @@ begin
         perform fn_fert_asignar_custodia(v_est, (select e1 from k), 'Prueba 130');
     end if;
     update fert_custodia set desde = now() - interval '30 days' where estacion_id = v_est;
+    -- la custodia «al registrar» sale de fert_relevos (sql/95): e1 la tiene desde hace 30 días y sin relevos posteriores
+    update fert_relevos set recibido_at = now() - interval '30 days', entregado_at = now() - interval '30 days'
+    where id = (select id from fert_relevos where estacion_id = v_est and recibe_id = (select e1 from k)
+                  and estado in ('RECIBIDO', 'ASIGNADO') order by recibido_at desc limit 1);
+    update fert_relevos set estado = 'CANCELADO'
+    where estacion_id = v_est and coalesce(recibido_at, entregado_at) > now() - interval '30 days' and estado <> 'CANCELADO';
 end $$;
 
 -- sin «configurar» no puede asignar (el estacionero e1 no es administrador)
@@ -289,13 +295,15 @@ select pg_temp.ok((select horas_desde_mant >= 0 from mot_motores where equipo_id
 select fn_mot_bajada_retencion('{"dias": 30}'::jsonb);
 -- fila cambiada entre lectura y confirmación
 select pg_temp.como((select adm from k));
-update mot_registros set comentario = 'cambiado' where id = pg_temp.uid(11);
+-- (el uid(11) ya se purgó arriba: se usa el último registro vigente, que nunca se purga)
+create temp table ult as select id from mot_registros where equipo_id = (select m1 from m) and anulado_at is null order by fecha desc, fecha_hora desc limit 1;
+update mot_registros set comentario = 'cambiado' where id = (select id from ult);
 create temp table b2 as select fn_mot_exportar('{"limite": 1000}'::jsonb) as x;
-update mot_registros set comentario = 'cambiado otra vez' where id = pg_temp.uid(11);
+update mot_registros set comentario = 'cambiado otra vez' where id = (select id from ult);
 create temp table cf2 as select jsonb_build_object(
     'lote', (select jsonb_agg(jsonb_build_object('cursor', f->>'cursor', 'id', f->>'id', 'huella', f->>'huella')) from b2, jsonb_array_elements(x->'filas') f),
     'cuantos', (select (x->>'cuantos')::integer from b2), 'sha256_lote', (select x->>'sha256_lote' from b2)) as p;
-select pg_temp.ok((select (fn_mot_confirmar_bajada(p)->'rechazadas') @> jsonb_build_array(jsonb_build_object('id', pg_temp.uid(11)::text)) from cf2),
+select pg_temp.ok((select (fn_mot_confirmar_bajada(p)->'rechazadas') @> jsonb_build_array(jsonb_build_object('id', (select id from ult)::text)) from cf2),
                   'fila cambiada entre lectura y confirmación: rechazada');
 
 -- ---------------------------------------------------------------- 12 · «Terminar ciclo» (102) ignora mot_*
@@ -335,7 +343,8 @@ declare
     v_ant numeric := (select disponible from mot_saldos where tanque_id = (select t from tk));
 begin
     perform pg_temp.como((select adm from k));
-    v_r := pg_temp.op(pg_temp.uid(p_n), 'diesel_recibir', jsonb_build_object('tanque_id', v_t, 'galones', 10, 'fecha_hora', now()));
+    -- desde la cola (1 día): en línea exige tener la estación a cargo; desde la cola solo marca FUERA_DE_CUSTODIA
+    v_r := pg_temp.op(pg_temp.uid(p_n), 'diesel_recibir', jsonb_build_object('tanque_id', v_t, 'galones', 10, 'fecha_hora', now()), 1);
     if v_r->>'estado' not like 'ACEPTADO%' then raise exception 'FALLA [%]: recibir: %', p_etiqueta, v_r; end if;
     if (select disponible from mot_saldos where tanque_id = v_t) <> v_ant + 10 then raise exception 'FALLA [%]: saldo', p_etiqueta; end if;
     v_r := pg_temp.op(pg_temp.uid(p_n + 1), 'anulacion', jsonb_build_object('documento_tipo', 'diesel_recepcion', 'documento_id', pg_temp.uid(p_n), 'motivo', 'prueba ' || p_etiqueta));

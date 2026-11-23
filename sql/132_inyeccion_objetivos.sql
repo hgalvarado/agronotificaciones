@@ -46,7 +46,7 @@ returns text language sql immutable set search_path = public, pg_temp as $$
                     when length(w) > 3 and w like '%s'  then left(w, length(w) - 1)
                     else w end
           from regexp_split_to_table(
-                 btrim(regexp_replace(translate(lower(coalesce(p, '')),
+                 btrim(regexp_replace(translate(lower(translate(coalesce(p, ''), 'ÁÀÄÂÃÉÈËÊÍÌÏÎÓÒÖÔÕÚÙÜÛÑÇ', 'AAAAAEEEEIIIIOOOOOUUUUNC')),
                        'áàäâãéèëêíìïîóòöôõúùüûñç', 'aaaaaeeeeiiiiooooouuuunc'), '[^a-z0-9]+', ' ', 'g')), ' ')
                with ordinality as t(w, n)
          where w <> ''
@@ -463,8 +463,11 @@ create or replace function pg_temp.parchar(p_fn text, p_viejo text, p_nuevo text
 returns void language plpgsql as $$
 declare
     v_def text := replace(pg_get_functiondef(p_fn::regprocedure), E'\r\n', E'\n');
-    v_n   integer := (length(v_def) - length(replace(v_def, p_viejo, ''))) / length(p_viejo);
+    v_n   integer;
 begin
+    p_viejo := replace(p_viejo, E'\r\n', E'\n');   -- el archivo puede venir con CRLF
+    p_nuevo := replace(p_nuevo, E'\r\n', E'\n');
+    v_n := (length(v_def) - length(replace(v_def, p_viejo, ''))) / length(p_viejo);
     if position(p_marca in v_def) > 0 then
         return;   -- ya estaba parchada (la migración se puede correr otra vez)
     end if;
@@ -505,17 +508,17 @@ select pg_temp.parchar('public._iny_op_aplicacion_lote(uuid,jsonb,timestamptz,bo
     $p$    v_dia := (v_fecha at time zone 'America/Tegucigalpa')::date;
 
     -- 132:lote · el lote tiene que ser del catálogo (nomenclatura normalizada) y de la temporada
-    select l.nomenclatura into v_canon from public.lotes l
-     where public._iny_norm_lote(l.nomenclatura) = public._iny_norm_lote(v_lote)
-     order by l.nomenclatura limit 1;
+    select lc.nomenclatura into v_canon from public.lotes lc
+     where public._iny_norm_lote(lc.nomenclatura) = public._iny_norm_lote(v_lote)
+     order by lc.nomenclatura limit 1;
     if v_canon is null then
         raise exception 'El lote «%» no existe en el catálogo de lotes. Elígelo de la lista.', v_lote;
     end if;
     select lt.id into v_lt
       from public.lotes_temporada lt
-      join public.lotes l on l.id = lt.lote_id
+      join public.lotes lc on lc.id = lt.lote_id
       join public.temporadas t on t.id = lt.temporada_id
-     where l.nomenclatura = v_canon
+     where lc.nomenclatura = v_canon
        and case when v_temp is null then t.activa else public._fert_llave(t.nombre) = public._fert_llave(v_temp) end
      order by lt.activo desc, t.activa desc, t.fecha_inicio desc
      limit 1;
