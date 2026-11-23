@@ -471,17 +471,19 @@ revoke execute on function public._iny_op_anulacion_aplicacion_lote(uuid, jsonb,
 create or replace function pg_temp.parchar(p_fn text, p_viejo text, p_nuevo text, p_marca text)
 returns void language plpgsql as $$
 declare
+    v_viejo text := replace(p_viejo, E'\r\n', E'\n');
+    v_nuevo text := replace(p_nuevo, E'\r\n', E'\n');
     v_def text := replace(pg_get_functiondef(p_fn::regprocedure), E'\r\n', E'\n');
-    v_n   integer := (length(v_def) - length(replace(v_def, p_viejo, ''))) / length(p_viejo);
+    v_n   integer := (length(v_def) - length(replace(v_def, v_viejo, ''))) / length(v_viejo);
 begin
     if position(p_marca in v_def) > 0 then
         return;   -- ya estaba parchada (la migración se puede correr otra vez)
     end if;
     if v_n <> 1 then
-        raise exception '129: en % se esperaba 1 aparición de «%» y hay % (¿falta correr la 128?)', p_fn, p_viejo, v_n;
+        raise exception '129: en % se esperaba 1 aparición de «%» y hay % (¿falta correr la 128?)', p_fn, v_viejo, v_n;
     end if;
     begin
-        execute replace(v_def, p_viejo, p_nuevo);
+        execute replace(v_def, v_viejo, v_nuevo);
     exception when others then
         raise exception '129: falló el parche de % -> % (%)', p_fn, sqlerrm, sqlstate;
     end;
