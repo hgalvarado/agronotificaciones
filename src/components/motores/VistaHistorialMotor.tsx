@@ -13,7 +13,7 @@ import { MarcoRegistro } from '@/components/fertirriego/MarcoRegistro'
 import { formatearFechaHora } from '@/lib/estados'
 import { cantidad } from '@/lib/fertirriego/calculos'
 import { crearOperacion } from '@/lib/fertirriego/operaciones'
-import { NOMBRE_OBSERVACION } from '@/lib/fertirriego/operaciones'
+import { NOMBRE_OBSERVACION, observacionesVisibles } from '@/lib/fertirriego/operaciones'
 import type { Estacion, Operacion, Persona } from '@/lib/fertirriego/tipos'
 import type { EstadoMotores, MotorEstacion } from '@/lib/motores/estado'
 
@@ -138,7 +138,7 @@ export function VistaHistorialMotor({
                     <td className="pr-2 text-right tabular-nums">{cantidad(r.gastado_gal)}</td>
                     <td className="pr-2 text-right tabular-nums">{r.rendimiento_gal_h === null ? '—' : cantidad(r.rendimiento_gal_h)}</td>
                     <td>
-                      {(r.observaciones ?? []).map((o) => NOMBRE_OBSERVACION[o] ?? o).join(', ')}
+                      {observacionesVisibles(r.observaciones).map((o) => NOMBRE_OBSERVACION[o] ?? o).join(', ')}
                       {puede && !r.anulado_at && (
                         <Boton tamano="sm" variante="peligro" className="ml-2 min-h-11" onClick={() => setAnulando({ tipo: 'motor_registro', id: r.id, texto: `Registro del ${r.fecha}` })} data-anular-registro-motor>
                           Anular

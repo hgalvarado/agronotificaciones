@@ -42,8 +42,12 @@ export function crearOperacion(
   }
 }
 
+/** Observaciones que se muestran: «sin ubicación» no se enseña (pedido del usuario 2026-11-22; la base la sigue guardando). */
+export function observacionesVisibles(lista: string[] | null | undefined): string[] {
+  return (lista ?? []).filter((o) => o !== 'SIN_UBICACION')
+}
+
 export const NOMBRE_OBSERVACION: Record<string, string> = {
-  SIN_UBICACION: 'sin ubicación',
   RELOJ: 'hora del teléfono distinta',
   FUERA_DE_CUSTODIA: 'la estación no estaba a su cargo',
   SALDO_NEGATIVO: 'dejó el saldo en negativo',

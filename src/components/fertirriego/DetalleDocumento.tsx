@@ -17,7 +17,7 @@ import { textoDdt } from '@/lib/fertirriego/ddt'
 import { formatearFechaHora } from '@/lib/estados'
 import { nombrePersona } from '@/lib/fertirriego/bitacora'
 import { NOMBRE_MOVIMIENTO, cantidad } from '@/lib/fertirriego/calculos'
-import { crearOperacion, nuevoId } from '@/lib/fertirriego/operaciones'
+import { crearOperacion, nuevoId, observacionesVisibles } from '@/lib/fertirriego/operaciones'
 import type { EstadoCampo, Estacion, InfoOperacion, Operacion, Persona } from '@/lib/fertirriego/tipos'
 import { esTipoEliminable } from '@/lib/fertirriego/eliminar'
 import { DESTINOS_DEVOLUCION, SIN_DATO_ANTERIOR, esDocumentoAnulable, rotuloDevolucion, vistaDevolucion } from '@/lib/fertirriego/devolucionBodega'
@@ -392,10 +392,10 @@ export function DetalleDocumento({
               <Dato etiqueta="Ubicación" data="ubicacion">
                 {operacion.lat != null && operacion.lon != null ? 'Sí (con GPS)' : 'No (sin ubicación)'}
               </Dato>
-              {(operacion.observaciones ?? []).length > 0 && (
+              {observacionesVisibles(operacion.observaciones).length > 0 && (
                 <Dato etiqueta="Observaciones" data="observaciones">
                   <ul className="list-disc pl-4 text-amber-800">
-                    {(operacion.observaciones ?? []).map((o, i) => (
+                    {observacionesVisibles(operacion.observaciones).map((o, i) => (
                       <li key={i}>{o}</li>
                     ))}
                   </ul>

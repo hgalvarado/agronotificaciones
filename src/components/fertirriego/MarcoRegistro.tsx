@@ -149,7 +149,7 @@ export function MarcoRegistro({
   }
 
   const MENSAJE_OK = 'Guardado en el teléfono. Se envía solo cuando haya señal.'
-  const MENSAJE_SIN_GPS = 'Guardado en el teléfono (sin ubicación: se guardó igual, marcado «sin ubicación»).'
+  const MENSAJE_SIN_GPS = 'Guardado en el teléfono. Se envía solo cuando haya señal.'
 
   async function guardar() {
     setError(null)
