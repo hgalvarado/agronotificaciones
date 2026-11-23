@@ -68,10 +68,10 @@ create or replace function pg_temp.pub(con_sin boolean, real boolean default fal
         || case when con_sin then jsonb_build_array(
             jsonb_build_object('temporada', 'Temp 26-27', 'ciclo', 'Ciclo 1',
                 'turno_agl_id', case when real then 'T-142-B' else 'SIN-TURNO|l142-b' end, 'turno', case when real then 'T-142-B' end,
-                'estacion', 'Papalon-1', 'lote', 'L142-B', 'categoria_clave', 'ferti-riego|inyeccion', 'ddt', 5,
+                'estacion', case when real then 'Papalon-1' end, 'lote', 'L142-B', 'categoria_clave', 'ferti-riego|inyeccion', 'ddt', 5,
                 'fecha_plan', pg_temp.hoy() + 2, 'fecha_estimada', not real, 'material', 'QA-SOLCA', 'dosis_mz', 2, 'area_mz', 5, 'cantidad_plan', 10),
             jsonb_build_object('temporada', 'Temp 26-27', 'ciclo', 'Ciclo 1', 'turno_agl_id', 'SIN-TURNO|l142-c', 'turno', null,
-                'estacion', 'Papalon-1', 'lote', 'L142-C', 'categoria_clave', 'ferti-riego|inyeccion', 'ddt', 5,
+                'estacion', null, 'lote', 'L142-C', 'categoria_clave', 'ferti-riego|inyeccion', 'ddt', 5,
                 'fecha_plan', null, 'fecha_estimada', true, 'material', 'QA-SOLCA', 'dosis_mz', 2, 'area_mz', 5, 'cantidad_plan', 10))
           else '[]'::jsonb end))
 $$;
@@ -123,8 +123,8 @@ select pg_temp.ok((select (x->>'fecha_estimada')::boolean = false from jsonb_arr
 
 -- ---------------------------------------------------------------- 2 · lotes sin turno: publicar y entregar
 select pg_temp.pub(true);
-select pg_temp.ok((select fecha_estimada is true and turno is null and estacion_id = (select est from k) and fecha_plan = pg_temp.hoy() + 2
-                     from iny_plan where turno_agl_id = 'SIN-TURNO|l142-b'), 'lote sin turno: línea con estación de su zona y fecha estimada');
+select pg_temp.ok((select fecha_estimada is true and turno is null and estacion_id is null and fecha_plan = pg_temp.hoy() + 2
+                     from iny_plan where turno_agl_id = 'SIN-TURNO|l142-b'), 'lote sin turno: línea SIN estación fija y con fecha estimada');
 select pg_temp.ok((select fecha_estimada is true and fecha_plan is null from iny_plan where turno_agl_id = 'SIN-TURNO|l142-c'), 'sin fecha de siembra: fecha_plan null y estimada');
 select pg_temp.ok((select fecha_estimada = false from iny_plan where turno_agl_id = 'T-142-A'), 'la línea con turno queda en fecha_estimada false');
 select pg_temp.ok((select count(*) = 3 from iny_plan where lote in ('L142-A', 'L142-B', 'L142-C')), 'publicar es idempotente: 3 líneas (con y sin turno)');
@@ -147,7 +147,7 @@ select pg_temp.ok((select r->>'estado' like 'ACEPTADO%' from s2)
 select pg_temp.como((select adm from k));
 select pg_temp.pub(true, true);
 select pg_temp.ok(not exists (select 1 from iny_plan where turno_agl_id = 'SIN-TURNO|l142-b'), 'con turno real la línea SIN-TURNO del lote desaparece');
-select pg_temp.ok((select fecha_estimada is false and turno_agl_id = 'T-142-B' from iny_plan where lote = 'L142-B'), 'queda la línea con su turno y fecha no estimada');
+select pg_temp.ok((select fecha_estimada is false and turno_agl_id = 'T-142-B' and estacion_id = (select est from k) from iny_plan where lote = 'L142-B'), 'queda la línea con su turno, su estación y fecha no estimada');
 select pg_temp.ok(exists (select 1 from iny_plan where turno_agl_id = 'SIN-TURNO|l142-c'), 'el otro lote sin turno se conserva');
 select pg_temp.pub(false);
 select pg_temp.ok(not exists (select 1 from iny_plan where turno_agl_id like 'SIN-TURNO|%'), 'una publicación completa sin esas líneas las quita');

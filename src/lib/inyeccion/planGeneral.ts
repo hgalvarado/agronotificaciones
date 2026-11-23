@@ -19,6 +19,10 @@ const redondear = (n: number, d = 2) => Math.round(n * 10 ** d) / 10 ** d
 const clave = (turno: string, ddt: number | null) => `${turno}|${ddt}`
 const claveLote = (f: FilaPlanInyeccion) => `${f.turno_agl_id}|${llave(f.lote)}`
 
+/** Marca de «hecho»: LOTE + DDT + PRODUCTO (no depende del turno: si el lote cambia de turno sigue hecho). */
+export const marcaHecho = (lote: string, ddt: number | null, material: string) => `${llave(lote)}|${ddt}|${material}`
+const esHecha = (hechos: Set<string>, f: FilaPlanInyeccion) => hechos.has(marcaHecho(f.lote, f.ddt, f.material_id))
+
 /** Las líneas del plan de la estación (plan sin estación = de todas) de categorías activas. */
 export function planDeEstacion(plan: FilaPlanInyeccion[], estacionId: string, activas: Set<string>): FilaPlanInyeccion[] {
   return plan.filter((p) => (p.estacion_id === null || p.estacion_id === estacionId) && activas.has(p.categoria_clave))
@@ -53,7 +57,7 @@ export type GrupoDdt = {
   completo: boolean
 }
 
-/** `hechos`: marcas «turno|ddt» ya aplicadas (estado.planesAplicados). */
+/** `hechos`: marcas «lote|ddt|producto» ya aplicadas (estado.planesAplicados). */
 export function planGeneralPorDdt(lineas: FilaPlanInyeccion[], hechos: Set<string>): GrupoDdt[] {
   const porDdt = new Map<string, FilaPlanInyeccion[]>()
   for (const l of lineas) porDdt.set(String(l.ddt), [...(porDdt.get(String(l.ddt)) ?? []), l])
@@ -81,12 +85,13 @@ export function planGeneralPorDdt(lineas: FilaPlanInyeccion[], hechos: Set<strin
           .map(([variedad, a]) => ({ variedad, area_mz: redondear(a), pct: area > 0 ? redondear((a / area) * 100, 1) : 0 }))
           .sort((x, y) => y.area_mz - x.area_mz || x.variedad.localeCompare(y.variedad, 'es')),
         lotes: [...new Set(fs.map((f) => f.lote))].sort((x, y) => x.localeCompare(y, 'es', { numeric: true })),
-        lotes_hechos: new Set(fs.filter((f) => hechos.has(clave(f.turno_agl_id, f.ddt))).map(claveLote)).size,
+        lotes_hechos: new Set(fs.filter((f) => esHecha(hechos, f)).map(claveLote)).size,
       }
     })
     productos.sort((a, b) => a.material_id.localeCompare(b.material_id))
     const lotes = new Set(filas.map(claveLote))
-    const lotesHechos = new Set(filas.filter((f) => hechos.has(clave(f.turno_agl_id, f.ddt))).map(claveLote))
+    // un lote está hecho en el DDT cuando TODOS sus productos del plan ya se aplicaron
+    const lotesHechos = new Set([...lotes].filter((c) => filas.filter((f) => claveLote(f) === c).every((f) => esHecha(hechos, f))))
     const fechas = filas.map((f) => f.fecha_plan).filter((x): x is string => Boolean(x)).sort()
     // el área de un grupo = la de cada lote una sola vez (un lote repite su área en cada producto)
     const areaPorLote = new Map<string, number>()
@@ -147,7 +152,7 @@ export function planDeLote(lineas: FilaPlanInyeccion[], lote: string, hechos: Se
   const salida: PlanDeLote[] = [...grupos.values()].map((fs) => {
     const f0 = fs[0]
     const dias = f0.fecha_plan ? diasEntre(f0.fecha_plan, hoy) : null
-    const hecho = hechos.has(clave(f0.turno_agl_id, f0.ddt))
+    const hecho = fs.every((f) => esHecha(hechos, f))
     const estado: EstadoPlanLote = hecho ? 'hecho' : dias === null ? 'sin_fecha' : dias < 0 ? 'atrasado' : dias === 0 ? 'hoy' : 'proximo'
     return {
       turno_agl_id: f0.turno_agl_id,

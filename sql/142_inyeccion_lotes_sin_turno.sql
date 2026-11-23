@@ -2,15 +2,16 @@
 -- 142 · INYECCIÓN · PLAN DE LOTES SIN TURNO (fecha estimada) PARA EL TELÉFONO
 -- =====================================================================
 -- Decisiones del usuario (2026-11-23): el plan de Inyección sale de la Ruta de siembra; los lotes que todavía NO tienen turno de
--- riego se publican igual al teléfono, por la estación de su zona (AGL decide la estación: solo cuando la zona tiene UNA estación),
--- con una fecha ESTIMADA (siembra de la Ruta + DDT) marcada como tal hasta que el lote tenga turno.
+-- riego se publican igual al teléfono SIN estación fija (estacion_id null: cada zona tiene varias estaciones): los ven todas las
+-- estaciones con acceso a la zona del lote (filtro de zonas de la 141, `_iny_plan_visible`), con una fecha ESTIMADA (siembra de la
+-- Ruta + DDT) marcada como tal hasta que el lote tenga turno; al recibir turno pasa a la estación del turno. Esa estación ya la
+-- soporta `iny_plan.estacion_id` (nullable) y `fn_iny_estado_campo` (`estacion_id is null or fn_fert_puede`): no hace falta cambiar tablas.
 --
 -- Contrato con AGL (sin cambiar tablas de clave): una línea de un lote sin turno llega con
---   turno_agl_id = 'SIN-TURNO|<lote normalizado>'  (un «turno» por lote: así la reposición del plan por turno y las marcas
---                                                    «turno|DDT» del teléfono siguen funcionando sin tocarlas),
---   turno = null, fecha_estimada = true, estacion = la de su zona, fecha_plan = siembra + DDT (null si la Ruta no trae fecha).
+--   turno_agl_id = 'SIN-TURNO|<lote normalizado>'  (un «turno» por lote: así la reposición del plan por turno sigue funcionando),
+--   turno = null, estacion = null, fecha_estimada = true, fecha_plan = siembra + DDT (null si la Ruta no trae fecha).
 -- Cuando el lote recibe turno en /TR02 AGL publica la línea con su turno real; la de SIN-TURNO desaparece sola (la publicación es
--- completa y reemplaza por turno).
+-- completa y reemplaza por turno). El «hecho» del teléfono es por lote + DDT + producto, así que no depende del turno.
 --
 -- Lo que NO cambia: el filtro de zonas de la 141 (`_iny_plan_visible`), `_iny_fila` y las huellas ya bajadas (la aplicación de un
 -- lote sin turno guarda turno_agl_id = 'SIN-TURNO|…' tal cual llegó del plan; AGL empareja por lote + producto, no por turno),
