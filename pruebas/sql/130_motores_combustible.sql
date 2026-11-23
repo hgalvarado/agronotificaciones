@@ -26,7 +26,10 @@ $$;
 create or replace function pg_temp.uid(n integer) returns uuid language sql as $$ select ('130a0000-0000-4000-8000-' || lpad(n::text, 12, '0'))::uuid $$;
 create or replace function pg_temp.hoy() returns date language sql as $$ select (now() at time zone 'America/Tegucigalpa')::date $$;
 create or replace function pg_temp.dia(p_atras integer) returns text language sql as $$ select (pg_temp.hoy() - p_atras)::text $$;
-create or replace function pg_temp.ts(p_atras integer) returns text language sql as $$ select ((pg_temp.hoy() - p_atras)::timestamp + time '12:00')::text || '-06' $$;
+-- hoy = nunca en el futuro (de madrugada las 12:00 de hoy todavía no llegan)
+create or replace function pg_temp.ts(p_atras integer) returns text language sql as $$
+    select case when p_atras = 0 then least(((pg_temp.hoy())::timestamp + time '12:00') at time zone 'America/Tegucigalpa', now() - interval '2 minutes')::text
+                else ((pg_temp.hoy() - p_atras)::timestamp + time '12:00')::text || '-06' end $$;
 set client_min_messages = notice;
 
 -- ---------------------------------------------------------------- datos
@@ -55,7 +58,7 @@ create temp table k as select
     '00000000-0000-0000-0000-000000013001'::uuid as adm, '00000000-0000-0000-0000-000000013002'::uuid as sin;
 
 -- ---------------------------------------------------------------- 0 · estructura
-select pg_temp.ok((select ruta = '/motores' and not en_menu and modulo = 'Campo' and acciones = array['ver', 'registrar', 'anular', 'configurar']
+select pg_temp.ok((select ruta = '/motores' and not en_menu and modulo = 'Campo' and acciones @> array['ver', 'registrar', 'anular', 'configurar']   -- 138/140 agregan acciones
                      from pantallas where codigo = 'motores'), 'la pantalla «motores» existe (módulo Campo, fuera del menú, 4 acciones)');
 select pg_temp.ok(not exists (select 1 from permisos where recurso = 'motores' and accion = 'configurar'), '«configurar» no se concede a ningún rol');
 select pg_temp.ok(not exists (select 1 from permisos pm where pm.recurso = 'fertirriego' and pm.accion = 'aplicar' and pm.permitido
@@ -210,7 +213,7 @@ select pg_temp.ok((select r->>'estado' = 'RECHAZADO' from an4), '2.ª anulación
 
 -- ---------------------------------------------------------------- 7 · mantenimiento
 create temp table mt0 as select horas_desde_mant as h from mot_motores where equipo_id = (select m1 from m);
-create temp table mt1 as select pg_temp.op(pg_temp.uid(51), 'motor_mantenimiento', jsonb_build_object('equipo_id', (select m1 from m), 'fecha_hora', pg_temp.ts(0),
+create temp table mt1 as select pg_temp.op(pg_temp.uid(51), 'motor_mantenimiento', jsonb_build_object('equipo_id', (select m1 from m), 'fecha_hora', (now() - interval '1 minute')::text,   -- ts(0) = 12:00 de hoy: «futuro» antes del mediodía
     'horometro', 19305, 'tipo', 'PREVENTIVO', 'nota', 'Aceite y filtros')) as r;
 select pg_temp.ok((select r->>'estado' like 'ACEPTADO%' from mt1), 'registrar mantenimiento: ' || (select r::text from mt1));
 select pg_temp.ok((select horas_desde_mant = 0 from mot_motores where equipo_id = (select m1 from m)), 'el contador vuelve a 0');
@@ -238,7 +241,7 @@ select pg_temp.ok((select r->>'estado' like 'ACEPTADO%' from t2) and (select tan
 select pg_temp.como((select e1 from k));
 create temp table t3 as select pg_temp.op(pg_temp.uid(63), 'motor_registro_diario', jsonb_build_object('equipo_id', (select m1 from m), 'fecha', pg_temp.dia(0),
     'horo_ini', 1, 'horo_fin', 2, 'visor_ini', 5, 'visor_fin', 4)) as r;
-select pg_temp.ok((select r->>'estado' = 'RECHAZADO' and r::text like '%taller%' from t3), 'un motor en el taller no acepta registros');
+select pg_temp.ok((select r->>'estado' = 'RECHAZADO' and (r::text like '%taller%' or r::text like '%no hay dónde asentar%') from t3), 'un motor en el taller (sin estación ni tanque) no acepta registros (136)');
 
 -- ---------------------------------------------------------------- 9 · fin de temporada con saldo
 select pg_temp.como((select adm from k));

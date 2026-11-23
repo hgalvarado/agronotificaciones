@@ -22,7 +22,7 @@ test('motivo: vacío, corto y suficiente', () => {
 })
 
 test('tipos eliminables', () => {
-  assert.equal(m.TIPOS_ELIMINABLES.length, 7)
+  assert.equal(m.TIPOS_ELIMINABLES.length, 12)   // 140: + inyección y motores
   assert.ok(m.esTipoEliminable('relevo'))
   assert.ok(!m.esTipoEliminable('archivo_turno'))
   assert.equal(m.NOMBRE_TIPO_ELIMINABLE.bitacora, 'Horas de riego')

@@ -62,7 +62,7 @@ create temp table k as select
     '00000000-0000-0000-0000-000000012901'::uuid as adm, '00000000-0000-0000-0000-000000012902'::uuid as sin;
 
 create or replace function pg_temp.l(p_mat uuid, p_cant numeric) returns jsonb language sql as $$
-    select jsonb_build_object('material_id', p_mat, 'cantidad', p_cant) $$;
+    select jsonb_build_object('material_id', p_mat, 'cantidad', p_cant, 'de_bodega', true) $$;   -- 139: sin de_bodega no descuenta
 -- publicación base: una categoría activa, un lote con plan de A y B (DDT 5, hoy), otro turno/cohorte del mismo lote (DDT 5, hace 20 días)
 create or replace function pg_temp.pub(p_categorias jsonb) returns jsonb language sql as $$
     select fn_iny_publicar(jsonb_build_object('temporada', 'Temp 26-27', 'completo', true, 'categorias', p_categorias,
@@ -87,7 +87,7 @@ create or replace function pg_temp.apl(p_id uuid, p_datos jsonb, p_dias_atras in
 $$;
 
 -- ---------------------------------------------------------------- 0 · estructura, pantalla y permisos
-select pg_temp.ok((select ruta = '/inyeccion' and not en_menu and modulo = 'Campo' and acciones = array['ver', 'registrar', 'anular', 'configurar']
+select pg_temp.ok((select ruta = '/inyeccion' and not en_menu and modulo = 'Campo' and acciones @> array['ver', 'registrar', 'anular', 'configurar']   -- 140 agrega eliminar_definitivo
                      from pantallas where codigo = 'inyeccion'), 'la pantalla «inyeccion» existe (módulo Campo, fuera del menú, 4 acciones)');
 select pg_temp.ok(not exists (select 1 from permisos pm where pm.recurso = 'fertirriego' and pm.accion = 'aplicar' and pm.permitido
                               and not exists (select 1 from permisos c where c.rol_id = pm.rol_id and c.recurso = 'inyeccion' and c.accion in ('ver') )),

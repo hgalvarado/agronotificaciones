@@ -215,7 +215,7 @@ declare
     v jsonb;
 begin
     perform public._fert_problemas_exigir();
-    select coalesce(jsonb_agg(x order by x.recibido_en desc), '[]'::jsonb) into v
+    select coalesce(jsonb_agg(q.x order by q.recibido_en desc), '[]'::jsonb) into v
       from (
         select jsonb_build_object(
                    'id', o.id, 'tipo', o.tipo, 'estacion_id', o.estacion_id, 'estacion', e.nombre,
