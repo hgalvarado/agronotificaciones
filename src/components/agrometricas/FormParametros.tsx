@@ -286,7 +286,7 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
     <>
       <RegistroServiceWorker rutas={RUTAS_SIN_SENAL} />
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <BotonLink href="/agrometricas" variante="secundario" tamano="md" className="self-start">← AgroMétricas</BotonLink>
+        <BotonLink href="/campo" variante="secundario" tamano="md" className="self-start">← Regresar a Campo</BotonLink>
         <BotonLink href="/agrometricas/registros" variante="secundario" tamano="md" data-enlace-registros>Registros de la temporada</BotonLink>
       </div>
 

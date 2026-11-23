@@ -189,7 +189,7 @@ export function RegistrosTemporada() {
 
   return (
     <div className="flex flex-col gap-3" data-registros-temporada>
-      <BotonLink href="/agrometricas" variante="secundario" tamano="md" className="self-start">← AgroMétricas</BotonLink>
+      <BotonLink href="/campo" variante="secundario" tamano="md" className="self-start">← Regresar a Campo</BotonLink>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-lg font-semibold text-slate-900">Registros de la temporada</h1>
