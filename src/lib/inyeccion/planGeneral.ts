@@ -76,11 +76,15 @@ export function planGeneralPorDdt(lineas: FilaPlanInyeccion[], hechos: Set<strin
       const area = fs.reduce((s, f) => s + Number(f.area_mz ?? 0), 0)
       const porVariedad = new Map<string, { area: number; pcts: Set<number> }>()
       for (const f of fs) {
-        const v = f.variedad?.trim() || SIN_VARIEDAD
-        const x = porVariedad.get(v) ?? { area: 0, pcts: new Set<number>() }
-        x.area += Number(f.area_mz ?? 0)
-        if (f.pct_aplicacion !== null && f.pct_aplicacion !== undefined) x.pcts.add(redondear(Number(f.pct_aplicacion), 2))
-        porVariedad.set(v, x)
+        // un lote con dos variedades en el mismo turno llega como «Valentina / Palo Verde»: cada variedad cuenta por separado,
+        // igual que en el LTP (nunca se muestra la combinación como si fuera una variedad)
+        const nombres = (f.variedad ?? '').split('/').map((n) => n.trim()).filter(Boolean)
+        for (const v of nombres.length ? nombres : [SIN_VARIEDAD]) {
+          const x = porVariedad.get(v) ?? { area: 0, pcts: new Set<number>() }
+          x.area += Number(f.area_mz ?? 0) / Math.max(nombres.length, 1)
+          if (f.pct_aplicacion !== null && f.pct_aplicacion !== undefined) x.pcts.add(redondear(Number(f.pct_aplicacion), 2))
+          porVariedad.set(v, x)
+        }
       }
       const dosis = fs.map((f) => f.dosis_mz).filter((d): d is number => d !== null && d !== undefined)
       return {

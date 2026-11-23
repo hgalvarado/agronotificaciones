@@ -324,3 +324,10 @@ test('143 · plan general por DDT separa los ciclos (el DDT 5 del Ciclo 1 no es 
   assert.equal(g[2].productos[0].area_mz, 5)
   assert.equal(g[0].productos[0].area_mz, 4)
 })
+
+test('144 · plan general: «Valentina / Palo Verde» cuenta cada variedad por separado, sin mostrar la combinación', () => {
+  const l = (id, lote, variedad) => ({ ...planDdt[0], id, lote, variedad, area_mz: 2, cantidad_plan: 4, pct_aplicacion: 100 })
+  const g = planGeneralPorDdt([l('a', 'L1', 'Valentina'), l('b', 'L2', 'Valentina / Palo Verde')], new Set())
+  const v = g[0].productos[0].variedades
+  assert.deepEqual(v.map((x) => [x.variedad, x.pct]).sort(), [['Palo Verde', 100], ['Valentina', 100]])
+})
