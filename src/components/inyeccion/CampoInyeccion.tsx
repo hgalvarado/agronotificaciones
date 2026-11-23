@@ -10,13 +10,15 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Alerta, Boton, Insignia, ListaEsqueleto, Tarjeta } from '@/components/ui/Primitivos'
 import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
 import { RegistroServiceWorker } from '@/components/fertirriego/RegistroServiceWorker'
-import { formatearFechaHora } from '@/lib/estados'
 import { hoyIso } from '@/lib/fechas/zona'
 import { conCustodiaLocal, saldosLocales } from '@/lib/fertirriego/calculos'
 import { EVENTO_GUARDADO_FALLIDO, type GuardadoFallido } from '@/lib/fertirriego/guardadoFondo'
 import { useCampo } from '@/lib/fertirriego/useCampo'
+import { EncabezadoEnvios } from '@/components/fertirriego/EncabezadoEnvios'
+import type { Operacion } from '@/lib/fertirriego/tipos'
 import { lotesConPlan } from '@/lib/inyeccion/estado'
 import { useInyeccion } from '@/lib/inyeccion/useInyeccion'
+import { permisoHistoricoDe, useCampoExtras } from '@/lib/campo/useCampoExtras'
 import { FormAplicacionLote } from './FormAplicacionLote'
 import { VistaHistorialInyeccion } from './VistaHistorialInyeccion'
 
@@ -25,6 +27,8 @@ const RUTAS_SW = ['/inyeccion']
 export function CampoInyeccion({ usuarioId }: { usuarioId: string }) {
   const campo = useCampo(usuarioId)
   const iny = useInyeccion(usuarioId)
+  // sql/140: permiso temporal de «Registro histórico» y «Eliminar por completo» (de Inyección)
+  const extras = useCampoExtras(usuarioId, 'inyeccion')
   const { estado, cola } = campo
   const [estacionId, setEstacionId] = useState('')
   const [ventana, setVentana] = useState<{ lote?: string; categoria?: string } | null>(null)
@@ -46,8 +50,6 @@ export function CampoInyeccion({ usuarioId }: { usuarioId: string }) {
   const saldos = useMemo(() => (estado && estacion ? saldosLocales(estado, cola, estacion.id) : new Map<string, number>()), [estado, cola, estacion])
 
   const pendientes = cola.filter((o) => o.estado_local === 'PENDIENTE').length
-  const rechazados = cola.filter((o) => o.estado_local === 'RECHAZADO').length
-  const enLinea = campo.conexion === 'en_linea'
 
   // Al terminar de enviar lo pendiente se trae lo nuevo de Inyección (una sola vez por transición)
   const antes = useRef(pendientes)
@@ -81,40 +83,21 @@ export function CampoInyeccion({ usuarioId }: { usuarioId: string }) {
   }
   const puedeRegistrar = iny.estado?.permisos?.registrar ?? false
 
+  /** «Corregir y reenviar» (Envíos): abre «Aplicar por lote» con el lote de ese envío. */
+  function corregirEnvio(o: Operacion) {
+    const lote = typeof o.datos.lote === 'string' ? o.datos.lote : undefined
+    const categoria = typeof o.datos.categoria_clave === 'string' ? o.datos.categoria_clave : undefined
+    setVentana({ lote, categoria })
+    guardado('Corrige los datos y guarda. Después, en «Envíos», quita el registro que no se aceptó.')
+  }
+
   if (campo.cargando && !estado) return <ListaEsqueleto filas={4} />
 
   return (
     <div className="flex flex-col gap-3 pb-24">
       <RegistroServiceWorker rutas={RUTAS_SW} />
 
-      <div
-        data-barra-estado={campo.conexion}
-        className={`flex flex-wrap items-center justify-between gap-2 rounded-xl px-3 py-2 text-xs ring-1 ring-inset ${
-          enLinea ? 'bg-brand-50 text-brand-800 ring-brand-600/20' : 'bg-amber-50 text-amber-800 ring-amber-600/20'
-        }`}
-      >
-        <span className="flex items-center gap-2 font-semibold">
-          <span className={`h-2 w-2 rounded-full ${enLinea ? 'bg-brand-600' : 'bg-amber-500'}`} />
-          {enLinea ? 'Con señal' : 'Sin señal: se guarda en el teléfono'}
-          {pendientes > 0 && <span data-pendientes-cuenta> · {pendientes} por enviar</span>}
-          {rechazados > 0 && <span className="text-red-700"> · {rechazados} rechazado(s)</span>}
-        </span>
-        <span className="flex items-center gap-2">
-          {campo.sincronizadoEn && <span className="text-slate-500">Actualizado {formatearFechaHora(campo.sincronizadoEn)}</span>}
-          <button
-            type="button"
-            onClick={() => {
-              void campo.sincronizarAhora()
-              iny.actualizar()
-            }}
-            disabled={campo.sincronizando || iny.cargando}
-            className="min-h-11 font-bold underline disabled:no-underline disabled:opacity-60"
-            data-actualizar
-          >
-            {campo.sincronizando || iny.cargando ? 'Actualizando…' : 'Actualizar'}
-          </button>
-        </span>
-      </div>
+      <EncabezadoEnvios campo={campo} onActualizar={iny.actualizar} actualizando={iny.cargando} onCorregir={corregirEnvio} />
 
       {campo.error && <Alerta>{campo.error}</Alerta>}
       {iny.error && <Alerta tono="ambar">{iny.error}</Alerta>}
@@ -197,9 +180,14 @@ export function CampoInyeccion({ usuarioId }: { usuarioId: string }) {
             estacion={estacion}
             yo={estado.yo}
             puedeAnular={iny.estado.permisos?.anular ?? false}
+            puedeEliminar={extras.eliminar_definitivo}
             nombreProducto={nombreProducto}
             registrar={campo.registrar}
             onGuardado={guardado}
+            onEliminado={(m) => {
+              guardado(m)
+              iny.actualizar()
+            }}
           />
 
           {!puedeRegistrar && <Alerta tono="ambar">Tu rol puede ver Inyección pero no registrar. Se configura en Permisos.</Alerta>}
@@ -222,6 +210,7 @@ export function CampoInyeccion({ usuarioId }: { usuarioId: string }) {
               saldos={saldos}
               loteInicial={ventana.lote}
               categoriaInicial={ventana.categoria}
+              historico={permisoHistoricoDe(extras, estacion.id)}
               registrar={campo.registrar}
               onCerrar={() => setVentana(null)}
               onGuardado={guardado}

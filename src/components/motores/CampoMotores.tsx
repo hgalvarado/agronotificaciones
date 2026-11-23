@@ -3,21 +3,24 @@
 /**
  * Motores y combustible (Campo, bloque 3). Funciona sin señal igual que Fertirriego e Inyección (misma cola, misma custodia):
  * tarjetas de los motores de la estación con el nivel del tanque y las horas para el mantenimiento, registro diario, recibir
- * diésel, historial y (solo con «configurar») mover, retirar y registrar mantenimiento. El consumo, el rendimiento y las
+ * diésel, historial y, cada uno con su permiso, recibir un motor («Asignar nuevo motor»), mover, retirar y registrar mantenimiento. El consumo, el rendimiento y las
  * alertas son de AGL: aquí no hay pantalla de reportes.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Alerta, ListaEsqueleto } from '@/components/ui/Primitivos'
+import { Alerta, Boton, ListaEsqueleto } from '@/components/ui/Primitivos'
+import { Modal } from '@/components/ui/Modal'
 import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
 import { RegistroServiceWorker } from '@/components/fertirriego/RegistroServiceWorker'
-import { formatearFechaHora } from '@/lib/estados'
 import { conCustodiaLocal } from '@/lib/fertirriego/calculos'
 import { EVENTO_GUARDADO_FALLIDO, type GuardadoFallido } from '@/lib/fertirriego/guardadoFondo'
 import { useCampo } from '@/lib/fertirriego/useCampo'
-import { motoresDeEstacion, motoresSinEstacion, saldoTanqueLocal, type MotorEstacion } from '@/lib/motores/estado'
+import { EncabezadoEnvios } from '@/components/fertirriego/EncabezadoEnvios'
+import type { Operacion } from '@/lib/fertirriego/tipos'
+import { motoresDeEstacion, motoresParaRecibir, saldoTanqueLocal, type MotorEstacion } from '@/lib/motores/estado'
 import { horasDesdeMantLocal } from '@/lib/motores/mantenimiento'
 import { useMotores } from '@/lib/motores/useMotores'
+import { permisoHistoricoDe, useCampoExtras } from '@/lib/campo/useCampoExtras'
 import { FormMantenimiento } from './FormMantenimiento'
 import { FormMoverMotor } from './FormMoverMotor'
 import { FormRecibirDiesel } from './FormRecibirDiesel'
@@ -27,11 +30,16 @@ import { VistaHistorialMotor } from './VistaHistorialMotor'
 
 const RUTAS_SW = ['/motores']
 
-type Ventana = { tipo: 'registro' | 'recibir' | 'mover' | 'mantenimiento' | 'historial'; equipoId: string }
+type Ventana = {
+  tipo: 'registro' | 'recibir' | 'mover' | 'retirar' | 'mantenimiento' | 'historial' | 'elegir_motor' | 'recibir_motor'
+  equipoId: string
+}
 
 export function CampoMotores({ usuarioId }: { usuarioId: string }) {
   const campo = useCampo(usuarioId)
   const mot = useMotores(usuarioId)
+  // sql/140: permiso temporal de «Registro histórico» y «Eliminar por completo» (de Motores)
+  const extras = useCampoExtras(usuarioId, 'motores')
   const { estado, cola } = campo
   const [estacionId, setEstacionId] = useState('')
   const [ventana, setVentana] = useState<Ventana | null>(null)
@@ -52,8 +60,6 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
   )
 
   const pendientes = cola.filter((o) => o.estado_local === 'PENDIENTE').length
-  const rechazados = cola.filter((o) => o.estado_local === 'RECHAZADO').length
-  const enLinea = campo.conexion === 'en_linea'
 
   // Al terminar de enviar lo pendiente se trae lo nuevo de Motores (una sola vez por transición)
   const antes = useRef(pendientes)
@@ -78,9 +84,23 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
 
   const me = mot.estado
   const puedeRegistrar = me?.permisos?.registrar ?? false
-  const puedeConfigurar = me?.permisos?.configurar ?? false
+  const p = me?.permisos
+  const puedeConfigurar = p?.configurar ?? false
+  const puedeRecibirMotor = puedeConfigurar || (p?.motor_recibir ?? false)
+  const puedeMover = puedeConfigurar || (p?.motor_mover ?? false)
+  const puedeRetirar = puedeConfigurar || (p?.motor_retirar ?? false)
+  const puedeMantenimiento = puedeConfigurar || (p?.motor_mantenimiento ?? false)
   const motores = useMemo(() => (me && estacion ? motoresDeEstacion(me, estacion.id) : []), [me, estacion])
-  const fuera = useMemo(() => (me && puedeConfigurar ? motoresSinEstacion(me) : []), [me, puedeConfigurar])
+  // Motores que se pueden recibir aquí (nunca se muestran como tarjetas: solo en el buscador de «Asignar nuevo motor»)
+  const elegibles = useMemo(
+    () =>
+      me && estacion
+        ? motoresParaRecibir(me, estacion.id, (id) => estaciones.find((e) => e.id === id)?.nombre ?? null).filter(
+            (m) => puedeRecibirMotor || (puedeMover && m.enEstacion)
+          )
+        : [],
+    [me, estacion, estaciones, puedeRecibirMotor, puedeMover]
+  )
   const motorVentana: MotorEstacion | null = me && ventana ? (me.motores.find((m) => m.equipo_id === ventana.equipoId) ?? null) : null
   const saldoDe = (m: MotorEstacion): number | null => (me && m.tanque ? saldoTanqueLocal(m.tanque.id, me, cola) : null)
   const horasDe = (m: MotorEstacion): number => horasDesdeMantLocal(m, cola)
@@ -92,14 +112,30 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
       saldoGal={saldoDe(m)}
       horasDesdeMant={horasDe(m)}
       puedeRegistrar={puedeRegistrar}
-      puedeConfigurar={puedeConfigurar}
+      puedeMover={puedeMover}
+      puedeRetirar={puedeRetirar}
+      puedeMantenimiento={puedeMantenimiento}
       onRegistro={() => setVentana({ tipo: 'registro', equipoId: m.equipo_id })}
       onRecibir={() => setVentana({ tipo: 'recibir', equipoId: m.equipo_id })}
       onMover={() => setVentana({ tipo: 'mover', equipoId: m.equipo_id })}
+      onRetirar={() => setVentana({ tipo: 'retirar', equipoId: m.equipo_id })}
       onMantenimiento={() => setVentana({ tipo: 'mantenimiento', equipoId: m.equipo_id })}
       onHistorial={() => setVentana({ tipo: 'historial', equipoId: m.equipo_id })}
     />
   )
+
+  /** «Corregir y reenviar» (Envíos): abre el formulario del motor de ese envío. */
+  function corregirEnvio(o: Operacion) {
+    const equipoId = typeof o.datos.equipo_id === 'string' ? o.datos.equipo_id : ''
+    const tipo: Ventana['tipo'] | null =
+      o.tipo === 'motor_registro_diario' ? 'registro'
+      : o.tipo === 'diesel_recibir' ? 'recibir'
+      : o.tipo === 'motor_asignar' || o.tipo === 'motor_retiro' ? 'mover'
+      : o.tipo === 'motor_mantenimiento' ? 'mantenimiento'
+      : null
+    if (tipo && equipoId) setVentana({ tipo, equipoId })
+    guardado(tipo && equipoId ? 'Corrige los datos y guarda. Después, en «Envíos», quita el registro que no se aceptó.' : 'Vuelve a hacer el registro desde su pantalla y después quita el que no se aceptó en «Envíos».')
+  }
 
   if (campo.cargando && !estado) return <ListaEsqueleto filas={4} />
 
@@ -107,34 +143,7 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
     <div className="flex flex-col gap-3 pb-24">
       <RegistroServiceWorker rutas={RUTAS_SW} />
 
-      <div
-        data-barra-estado={campo.conexion}
-        className={`flex flex-wrap items-center justify-between gap-2 rounded-xl px-3 py-2 text-xs ring-1 ring-inset ${
-          enLinea ? 'bg-brand-50 text-brand-800 ring-brand-600/20' : 'bg-amber-50 text-amber-800 ring-amber-600/20'
-        }`}
-      >
-        <span className="flex items-center gap-2 font-semibold">
-          <span className={`h-2 w-2 rounded-full ${enLinea ? 'bg-brand-600' : 'bg-amber-500'}`} />
-          {enLinea ? 'Con señal' : 'Sin señal: se guarda en el teléfono'}
-          {pendientes > 0 && <span data-pendientes-cuenta> · {pendientes} por enviar</span>}
-          {rechazados > 0 && <span className="text-red-700"> · {rechazados} rechazado(s)</span>}
-        </span>
-        <span className="flex items-center gap-2">
-          {campo.sincronizadoEn && <span className="text-slate-500">Actualizado {formatearFechaHora(campo.sincronizadoEn)}</span>}
-          <button
-            type="button"
-            onClick={() => {
-              void campo.sincronizarAhora()
-              mot.actualizar()
-            }}
-            disabled={campo.sincronizando || mot.cargando}
-            className="min-h-11 font-bold underline disabled:no-underline disabled:opacity-60"
-            data-actualizar
-          >
-            {campo.sincronizando || mot.cargando ? 'Actualizando…' : 'Actualizar'}
-          </button>
-        </span>
-      </div>
+      <EncabezadoEnvios campo={campo} onActualizar={mot.actualizar} actualizando={mot.cargando} onCorregir={corregirEnvio} />
 
       {campo.error && <Alerta>{campo.error}</Alerta>}
       {mot.error && <Alerta tono="ambar">{mot.error}</Alerta>}
@@ -180,11 +189,17 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
             <span className="text-xs text-slate-600">{estacion.zona}</span>
           </div>
 
+          {(puedeRecibirMotor || puedeMover) && (
+            <Boton className="min-h-14 w-full text-base" onClick={() => setVentana({ tipo: 'elegir_motor', equipoId: '' })} data-asignar-motor>
+              Asignar nuevo motor
+            </Boton>
+          )}
+
           <div data-motores className="flex flex-col gap-2">
             {motores.length === 0 ? (
               <p className="rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-500 ring-1 ring-inset ring-slate-200">
                 Esta estación no tiene motores conectados.
-                {puedeConfigurar ? ' Instala uno desde «Motores fuera de estación».' : ' Pide a quien configura que conecte uno.'}
+                {puedeRecibirMotor || puedeMover ? ' Toca «Asignar nuevo motor» para recibir uno.' : ' Pide a quien te corresponda que te dé el permiso de recibir motores.'}
               </p>
             ) : (
               motores.map(tarjeta)
@@ -204,13 +219,6 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
             </div>
           )}
 
-          {puedeConfigurar && fuera.length > 0 && (
-            <div className="flex flex-col gap-2" data-motores-fuera>
-              <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Motores fuera de estación</p>
-              {fuera.map(tarjeta)}
-            </div>
-          )}
-
           {!puedeRegistrar && <Alerta tono="ambar">Tu rol puede ver Motores pero no registrar. Se configura en Permisos.</Alerta>}
 
           {motorVentana && ventana?.tipo === 'registro' && (
@@ -220,6 +228,7 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
               pendientes={cola}
               estacion={estacion}
               yo={estado.yo}
+              historico={permisoHistoricoDe(extras, estacion.id)}
               registrar={campo.registrar}
               onAbrirRecibir={() => setVentana({ tipo: 'recibir', equipoId: motorVentana.equipo_id })}
               onCerrar={() => setVentana(null)}
@@ -238,8 +247,62 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
               onGuardado={guardado}
             />
           )}
-          {motorVentana && ventana?.tipo === 'mover' && (
+          {ventana?.tipo === 'elegir_motor' && (
+            <Modal abierto titulo="Asignar nuevo motor" onCerrar={() => setVentana(null)}>
+              <div className="flex flex-col gap-3" data-elegir-motor>
+                <p className="text-sm text-slate-600">
+                  Busca el motor por su código o nombre. Si está en otra estación, se mueve a <strong>{estacion.nombre}</strong>.
+                </p>
+                {elegibles.length === 0 ? (
+                  <Alerta tono="ambar">No hay motores disponibles para recibir en esta estación.</Alerta>
+                ) : (
+                  <div data-selector-motor>
+                    <SelectorBuscable
+                      valor=""
+                      opciones={elegibles.map((m) => ({
+                        id: m.equipo_id,
+                        titulo: m.codigo,
+                        subtitulo: [m.nombre, m.modelo, m.enEstacion ? `en estación ${m.enEstacion}` : m.estado === 'TALLER' ? 'en el taller' : 'disponible']
+                          .filter(Boolean)
+                          .join(' · '),
+                      }))}
+                      onCambiar={(id) => id && setVentana({ tipo: 'recibir_motor', equipoId: id })}
+                      placeholder="Buscar motor…"
+                      etiquetaBusqueda="Buscar motor"
+                      permitirVacio={false}
+                    />
+                  </div>
+                )}
+                <Boton variante="secundario" className="min-h-11" onClick={() => setVentana(null)}>
+                  Regresar
+                </Boton>
+              </div>
+            </Modal>
+          )}
+          {ventana?.tipo === 'recibir_motor' && (() => {
+            const el = elegibles.find((m) => m.equipo_id === ventana.equipoId)
+            const mt = me.motores.find((m) => m.equipo_id === ventana.equipoId)
+            const motorElegido: MotorEstacion | null = mt ?? (el ? { equipo_id: el.equipo_id, codigo: el.codigo, nombre: el.nombre, modelo: el.modelo, estado: el.estado, estacion_id: null, tanque: null, horo_ultimo: null, visor_ultimo: null, fecha_ultimo: null, intervalo_horas: null, aviso_horas: null, horas_desde_mant: 0, horas_para_mant: null } : null)
+            if (!motorElegido) return null
+            return (
+              <FormMoverMotor
+                modo="recibir"
+                onRegresar={() => setVentana({ tipo: 'elegir_motor', equipoId: '' })}
+                motor={motorElegido}
+                estado={me}
+                estaciones={estaciones}
+                saldoGal={saldoDe(motorElegido) ?? 0}
+                estacion={estacion}
+                yo={estado.yo}
+                registrar={campo.registrar}
+                onCerrar={() => setVentana(null)}
+                onGuardado={guardado}
+              />
+            )
+          })()}
+          {motorVentana && (ventana?.tipo === 'mover' || ventana?.tipo === 'retirar') && (
             <FormMoverMotor
+              modo={ventana.tipo}
               motor={motorVentana}
               estado={me}
               estaciones={estaciones}
@@ -269,8 +332,13 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
               estacion={estacion}
               yo={estado.yo}
               puedeAnular={me.permisos?.anular ?? false}
+              puedeEliminar={extras.eliminar_definitivo}
               registrar={campo.registrar}
               onGuardado={guardado}
+              onEliminado={(m) => {
+                guardado(m)
+                mot.actualizar()
+              }}
               onCerrar={() => setVentana(null)}
             />
           )}

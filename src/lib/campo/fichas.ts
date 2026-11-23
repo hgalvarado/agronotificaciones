@@ -3,11 +3,11 @@
  * pantalla (el menú nunca da permisos). Puro: ni React ni red.
  */
 
-export type FichaCampo = { codigo: string; nombre: string; descripcion: string; ruta: string; icono: string }
+export type FichaCampo = { codigo: string; nombre: string; descripcion: string; ruta: string; icono: string; proximamente?: boolean }
 
 type FichaConPantalla = FichaCampo & { pantalla: string }
 
-/** En orden de aparición. */
+/** En orden de aparición (por frecuencia de uso). */
 const FICHAS: FichaConPantalla[] = [
   {
     codigo: 'fertirriego',
@@ -36,10 +36,19 @@ const FICHAS: FichaConPantalla[] = [
   {
     codigo: 'agrometricas',
     pantalla: 'agrometricas',
-    nombre: 'AgroMétricas',
-    descripcion: 'Parámetros de riego, índice de crecimiento y registros de la temporada.',
-    ruta: '/agrometricas',
-    icono: 'chart',
+    nombre: 'Parámetros de riego',
+    descripcion: 'Tensiómetros, agua, suelo, clima e índice de crecimiento por turno; ahí mismo ves los registros de la temporada.',
+    ruta: '/agrometricas/parametros',
+    icono: 'gota',
+  },
+  {
+    codigo: 'analisis_savia',
+    pantalla: 'agrometricas',
+    nombre: 'Análisis de extractor y savia',
+    descripcion: 'Ca, K, Na, NO3, pH, CE y P. Próximamente.',
+    ruta: '',
+    icono: 'gauge',
+    proximamente: true,
   },
 ]
 

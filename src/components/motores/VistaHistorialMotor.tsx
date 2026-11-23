@@ -10,6 +10,8 @@ import { useState } from 'react'
 import { AreaTexto, Boton, Campo, Insignia } from '@/components/ui/Primitivos'
 import { Modal } from '@/components/ui/Modal'
 import { MarcoRegistro } from '@/components/fertirriego/MarcoRegistro'
+import { EliminarPorCompleto } from '@/components/fertirriego/EliminarPorCompleto'
+import type { TipoEliminable } from '@/lib/fertirriego/eliminar'
 import { formatearFechaHora } from '@/lib/estados'
 import { cantidad } from '@/lib/fertirriego/calculos'
 import { crearOperacion } from '@/lib/fertirriego/operaciones'
@@ -76,9 +78,11 @@ export function VistaHistorialMotor({
   estacion,
   yo,
   puedeAnular,
+  puedeEliminar = false,
   registrar,
   onGuardado,
   onCerrar,
+  onEliminado,
 }: {
   motor: MotorEstacion
   estado: EstadoMotores
@@ -86,11 +90,21 @@ export function VistaHistorialMotor({
   estacion: Estacion
   yo: Persona
   puedeAnular: boolean
+  /** sql/140: «Eliminar por completo» (solo con el permiso; en línea). */
+  puedeEliminar?: boolean
   registrar: (...ops: Operacion[]) => Promise<void>
   onGuardado: (m: string) => void
   onCerrar: () => void
+  onEliminado?: (mensaje: string) => void
 }) {
   const [anulando, setAnulando] = useState<Anulable | null>(null)
+  const [eliminando, setEliminando] = useState<{ tipo: TipoEliminable; id: string; texto: string } | null>(null)
+  const botonEliminar = (tipo: TipoEliminable, id: string, texto: string) =>
+    puedeEliminar && onEliminado ? (
+      <Boton tamano="sm" variante="peligro" className="ml-2 min-h-11" onClick={() => setEliminando({ tipo, id, texto })} data-eliminar-por-completo-motor={tipo}>
+        Eliminar por completo
+      </Boton>
+    ) : null
   const registros = estado.registros.filter((r) => r.equipo_id === motor.equipo_id)
   const tanqueId = motor.tanque?.id
   const recepciones = estado.recepciones.filter((r) => r.tanque_id === tanqueId)
@@ -144,6 +158,7 @@ export function VistaHistorialMotor({
                           Anular
                         </Boton>
                       )}
+                      {botonEliminar('mot_registro', r.id, `Registro del ${r.fecha}`)}
                     </td>
                   </tr>
                 ))}
@@ -164,6 +179,7 @@ export function VistaHistorialMotor({
                 Anular
               </Boton>
             )}
+            {botonEliminar('mot_recepcion', r.id, `Recepción de ${r.galones} gal`)}
           </div>
         ))}
 
@@ -179,9 +195,22 @@ export function VistaHistorialMotor({
                 Anular
               </Boton>
             )}
+            {botonEliminar('mot_asignacion', a.id, `${NOMBRE_MOV[a.tipo] ?? a.tipo} del ${a.fecha_hora.slice(0, 10)}`)}
           </div>
         ))}
 
+        {eliminando && (
+          <EliminarPorCompleto
+            tipo={eliminando.tipo}
+            documentoId={eliminando.id}
+            descripcion={`${motor.codigo} · ${eliminando.texto}`}
+            onCerrar={() => setEliminando(null)}
+            onEliminado={(m) => {
+              setEliminando(null)
+              onEliminado?.(m)
+            }}
+          />
+        )}
         {anulando && <FormAnular doc={anulando} estacion={estacion} yo={yo} registrar={registrar} onCerrar={() => setAnulando(null)} onGuardado={onGuardado} />}
       </div>
     </Modal>

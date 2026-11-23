@@ -194,6 +194,15 @@ export function destinoSugerido(motivoCodigo: string): { destino: DestinoSaldo |
   return { destino: null, fijo: false }
 }
 
+/** Etiquetas claras de los motivos (mover o retirar). */
+export const ETIQUETA_MOTIVO: Record<string, string> = {
+  FIN_TEMPORADA: 'Fin de temporada',
+  DANO_REEMPLAZO: 'Daño o reemplazo',
+  CAMBIO_ESTACION: 'Traslado a otra estación',
+  MANTENIMIENTO: 'Mantenimiento (al taller)',
+  OTRO: 'Otro',
+}
+
 export function armarMovimientoMotor(args: {
   equipoId: string
   tipo: TipoMovimientoMotor
@@ -206,14 +215,24 @@ export function armarMovimientoMotor(args: {
   destinoSaldo: DestinoSaldo | null
   destinoDevolucion: 'SUMINISTROS' | 'BODEGA' | 'TALLER' | null
   horasBase: number | null
+  /** Solo al recibir (sql/138). */
+  horometro?: number | null
+  dieselGal?: number | null
+  observacion?: string
   saldoActual: number
   /** El motor trae su propio tanque (viajó con él): no hace falta elegir otro. */
   traeTanque?: boolean
   estacionOrigen?: string | null
 }): { datos: Record<string, unknown>; operacion: 'motor_asignar' | 'motor_retiro' } | { error: string } {
-  if (!args.motivo.trim()) return { error: 'Escribe el motivo.' }
   const sale = args.tipo === 'TRASLADADO' || args.tipo === 'RETIRADO' || args.tipo === 'AL_TALLER'
   const entra = args.tipo === 'INSTALADO' || args.tipo === 'DE_VUELTA' || args.tipo === 'TRASLADADO'
+  // Recibir (INSTALADO, DE_VUELTA) no tiene motivo; mover o retirar piden uno (el código o lo escrito)
+  const recibe = args.tipo === 'INSTALADO' || args.tipo === 'DE_VUELTA'
+  const motivoTexto = args.motivo.trim() || (recibe ? '' : (ETIQUETA_MOTIVO[args.motivoCodigo] ?? ''))
+  if (!recibe && !motivoTexto) return { error: 'Elige el motivo.' }
+  if (!recibe && args.motivoCodigo === 'OTRO' && !args.motivo.trim()) return { error: 'Escribe cuál es el motivo.' }
+  if (args.horometro != null && (!esNum(args.horometro) || args.horometro < 0)) return { error: 'El horómetro no es válido.' }
+  if (args.dieselGal != null && (!esNum(args.dieselGal) || args.dieselGal < 0)) return { error: 'El diésel del tanque no es válido.' }
   let destino = args.destinoSaldo
   if (args.motivoCodigo === 'DANO_REEMPLAZO' && sale) destino = 'QUEDA_EN_TANQUE'
   if (sale && args.saldoActual > 0.0001 && !destino) return { error: `El tanque tiene ${r2(args.saldoActual)} gal de diésel: indica qué pasa con ese diésel.` }
@@ -232,8 +251,11 @@ export function armarMovimientoMotor(args: {
     tanque_nuevo: args.tanqueNuevo
       ? { nombre: args.tanqueNuevo.nombre.trim(), capacidad_gal: args.tanqueNuevo.capacidadGal, material_id: args.tanqueNuevo.materialId ?? undefined }
       : undefined,
-    motivo: args.motivo.trim(),
-    motivo_codigo: args.motivoCodigo || undefined,
+    motivo: recibe ? undefined : motivoTexto,
+    motivo_codigo: recibe ? undefined : args.motivoCodigo || undefined,
+    horometro: args.horometro ?? undefined,
+    diesel_gal: args.dieselGal ?? undefined,
+    observacion: args.observacion?.trim() || undefined,
     destino_saldo: sale ? destino ?? undefined : undefined,
     destino_devolucion: sale && destino === 'DEVUELTO' ? args.destinoDevolucion : undefined,
     horas_base: args.horasBase ?? undefined,

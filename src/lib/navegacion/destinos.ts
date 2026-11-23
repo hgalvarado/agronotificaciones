@@ -168,6 +168,14 @@ export function catalogoDestinos(pantallasMenu: PantallaDeMenu[], pantallasCatal
       seccion: adm,
     },
     {
+      clave: 'admin_fert_problemas',
+      href: '/admin/fertirriego-problemas',
+      etiqueta: 'Envíos con problemas (Fertirriego)',
+      icono: 'campana',
+      requiere: ['fertirriego:eliminar_definitivo'],
+      seccion: adm,
+    },
+    {
       clave: 'admin_errores',
       href: '/admin/errores',
       etiqueta: 'Bitácora de errores',

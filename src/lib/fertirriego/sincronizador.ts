@@ -13,6 +13,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { ahoraIso } from '@/lib/fechas/zona'
 import type { AlmacenLocal } from './almacenLocal'
 import { registrarFallaSync } from '@/lib/errores/registrador'
+import { CLAVE_BODEGA_GENERAL } from './bodegaGeneral'
 import { importarLlave, type LlavePersona } from './codigo'
 import type { EstadoCampo, Operacion } from './tipos'
 
@@ -101,6 +102,21 @@ async function sincronizarUnaVez(almacen: AlmacenLocal, supabase: SupabaseClient
     }
   }
 
+  // 1b · Lo rechazado: preguntar qué sabe la base (136). Si el administrador lo aceptó o lo resolvió, sale de la lista;
+  // si ya se pidió ayuda, se recuerda. Una base sin la 136 simplemente no responde y se ignora.
+  const rechazadosLocal = (await almacen.listarCola()).filter((o) => o.estado_local === 'RECHAZADO')
+  if (rechazadosLocal.length) {
+    const { data: estados, error: e1b } = await supabase.rpc('fn_fert_estado_envios', { p_ids: rechazadosLocal.map((o) => o.id) })
+    if (!e1b && Array.isArray(estados)) {
+      for (const x of estados as { id: string; resultado: string; revision_estado: string | null }[]) {
+        const o = rechazadosLocal.find((y) => y.id === x.id)
+        if (!o) continue
+        if (x.resultado !== 'RECHAZADO' || x.revision_estado === 'RESUELTO') await almacen.borrarOperacion(o.id)
+        else if (x.revision_estado === 'AYUDA' && !o.ayuda_pedida) await almacen.guardarOperacion({ ...o, ayuda_pedida: true })
+      }
+    }
+  }
+
   // 2 · Bajar el estado nuevo (saldos, movimientos, catálogos)
   const { data: estado, error: e2 } = await supabase.rpc('fn_fert_estado_campo', {})
   if (e2) {
@@ -110,6 +126,15 @@ async function sincronizarUnaVez(almacen: AlmacenLocal, supabase: SupabaseClient
   }
   await almacen.guardarEstado(estado as EstadoCampo, ahoraIso())
   r.estado = estado as EstadoCampo
+
+  // 2a · Bodega general (139): clasificación, última recepción, procedencia y diésel de los tanques. Una base sin la 139
+  // simplemente no responde: la bodega se arma solo con los saldos del estado (nunca impide sincronizar).
+  try {
+    const { data: bodega, error: eb } = await supabase.rpc('fn_fert_bodega_general')
+    if (!eb && bodega) await almacen.guardarPreferencia(CLAVE_BODEGA_GENERAL, bodega)
+  } catch {
+    /* sin 139, sin señal a medias o sin espacio: se queda lo último guardado */
+  }
 
   // 2b · Llaves del código de relevo (si su rol tiene «Relevo»). Se importan como no exportables.
   const { data: llaves, error: e3 } = await supabase.rpc('fn_fert_mis_llaves')

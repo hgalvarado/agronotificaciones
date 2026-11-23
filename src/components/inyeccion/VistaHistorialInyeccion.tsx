@@ -9,6 +9,7 @@
 import { useState } from 'react'
 import { AreaTexto, Boton, Campo, Insignia } from '@/components/ui/Primitivos'
 import { MarcoRegistro } from '@/components/fertirriego/MarcoRegistro'
+import { EliminarPorCompleto } from '@/components/fertirriego/EliminarPorCompleto'
 import { formatearFechaHora } from '@/lib/estados'
 import { cantidad } from '@/lib/fertirriego/calculos'
 import { crearOperacion } from '@/lib/fertirriego/operaciones'
@@ -70,20 +71,26 @@ export function VistaHistorialInyeccion({
   estacion,
   yo,
   puedeAnular,
+  puedeEliminar = false,
   nombreProducto,
   registrar,
   onGuardado,
+  onEliminado,
 }: {
   estado: EstadoInyeccion
   cola: Operacion[]
   estacion: Estacion
   yo: Persona
   puedeAnular: boolean
+  /** sql/140: «Eliminar por completo» (solo con el permiso; en línea). */
+  puedeEliminar?: boolean
   nombreProducto: (id: string) => string
   registrar: (...ops: Operacion[]) => Promise<void>
   onGuardado: (m: string) => void
+  onEliminado?: (mensaje: string) => void
 }) {
   const [anulando, setAnulando] = useState<AplicacionInyeccion | null>(null)
+  const [eliminando, setEliminando] = useState<AplicacionInyeccion | null>(null)
   const filas = historialDeEstacion(estado, estacion.id)
   const pendientes = cola.filter((o) => o.tipo === 'aplicacion_lote' && o.datos.estacion_id === estacion.id && o.estado_local !== 'ACEPTADO')
 
@@ -108,6 +115,7 @@ export function VistaHistorialInyeccion({
             <p className="text-sm font-bold text-slate-800">{a.lote}</p>
             <span className="flex flex-wrap gap-1">
               {a.anulado_at && <Insignia tono="rojo">Anulada</Insignia>}
+              {a.observaciones?.includes('REGISTRO_HISTORICO') && <Insignia tono="azul">Histórico</Insignia>}
               {a.lineas.some((l) => !l.en_plan) && <Insignia tono="ambar">Sin plan</Insignia>}
             </span>
           </div>
@@ -123,6 +131,11 @@ export function VistaHistorialInyeccion({
             ))}
           </ul>
           {a.anulado_at && a.motivo_anulacion && <p className="mt-1 text-xs text-red-700">Motivo: {a.motivo_anulacion}</p>}
+          {puedeEliminar && onEliminado && (
+            <Boton tamano="sm" variante="peligro" className="mt-2 ml-2" onClick={() => setEliminando(a)} data-eliminar-por-completo-iny>
+              Eliminar por completo
+            </Boton>
+          )}
           {puedeAnular && estacion.permisos.anular && !a.anulado_at && (
             <Boton tamano="sm" variante="peligro" className="mt-2" onClick={() => setAnulando(a)} data-anular-aplicacion-lote>
               Anular
@@ -130,6 +143,18 @@ export function VistaHistorialInyeccion({
           )}
         </div>
       ))}
+      {eliminando && (
+        <EliminarPorCompleto
+          tipo="iny_aplicacion"
+          documentoId={eliminando.id}
+          descripcion={`Inyección por lote · ${eliminando.lote} · ${eliminando.fecha}`}
+          onCerrar={() => setEliminando(null)}
+          onEliminado={(m) => {
+            setEliminando(null)
+            onEliminado?.(m)
+          }}
+        />
+      )}
       {anulando && (
         <FormAnular aplicacion={anulando} estacion={estacion} yo={yo} registrar={registrar} onCerrar={() => setAnulando(null)} onGuardado={onGuardado} />
       )}

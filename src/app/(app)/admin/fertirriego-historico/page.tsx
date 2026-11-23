@@ -3,10 +3,10 @@ import { createClient } from '@/lib/supabase/server'
 import { getPermisos, puede } from '@/lib/auth'
 import { RegistroHistoricoAdmin } from '@/components/fertirriego/RegistroHistoricoAdmin'
 
-/** Administración › Registro histórico de Fertirriego (migración 116). Solo quien configura Fertirriego. */
+/** Administración › Registro histórico (116 y 140: por pantalla). Solo quien configura alguna de esas pantallas; la base filtra cuáles. */
 export default async function RegistroHistoricoPage() {
   const permisos = await getPermisos()
-  if (!puede(permisos, 'fertirriego', 'configurar')) redirect('/')
+  if (!['fertirriego', 'inyeccion', 'motores'].some((p) => puede(permisos, p, 'configurar'))) redirect('/')
 
   const supabase = await createClient()
   const [estaciones, personas, tabla] = await Promise.all([
@@ -19,10 +19,10 @@ export default async function RegistroHistoricoPage() {
   return (
     <div className="anim-aparecer mx-auto flex max-w-3xl flex-col gap-4 p-4 lg:p-6">
       <div>
-        <h1 className="text-xl font-bold tracking-tight text-slate-900">Registro histórico de Fertirriego</h1>
+        <h1 className="text-xl font-bold tracking-tight text-slate-900">Registro histórico</h1>
         <p className="text-sm text-slate-400">
-          Para estaciones que ya operaban antes del sistema: una persona registra lo que ya se aplicó, sin mover el
-          inventario, durante un tiempo limitado.
+          Para estaciones que ya operaban antes del sistema: eliges la pantalla (Fertirriego, Inyección, Motores…) y una
+          persona registra lo que ya ocurrió, sin mover el inventario, durante un tiempo limitado.
         </p>
       </div>
       <RegistroHistoricoAdmin

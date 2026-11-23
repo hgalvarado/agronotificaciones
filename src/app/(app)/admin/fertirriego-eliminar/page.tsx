@@ -3,10 +3,10 @@ import { createClient } from '@/lib/supabase/server'
 import { getPermisos, puede } from '@/lib/auth'
 import { EliminarRegistrosAdmin } from '@/components/fertirriego/EliminarRegistrosAdmin'
 
-/** Administración › Eliminar registros de Fertirriego (migración 119). Solo quien tiene «Eliminar por completo». */
+/** Administración › Eliminar registros (migraciones 119 y 140: Fertirriego, Inyección y Motores). Solo quien tiene «Eliminar por completo». */
 export default async function EliminarRegistrosPage() {
   const permisos = await getPermisos()
-  if (!puede(permisos, 'fertirriego', 'eliminar_definitivo')) redirect('/')
+  if (!['fertirriego', 'inyeccion', 'motores'].some((p) => puede(permisos, p, 'eliminar_definitivo'))) redirect('/')
 
   const supabase = await createClient()
   const [estaciones, prueba] = await Promise.all([
@@ -19,9 +19,9 @@ export default async function EliminarRegistrosPage() {
   return (
     <div className="anim-aparecer mx-auto flex max-w-3xl flex-col gap-4 p-4 lg:p-6">
       <div>
-        <h1 className="text-xl font-bold tracking-tight text-slate-900">Eliminar registros de Fertirriego</h1>
+        <h1 className="text-xl font-bold tracking-tight text-slate-900">Eliminar registros</h1>
         <p className="text-sm text-slate-400">
-          Borra por completo registros hechos por error: desaparecen del inventario, de los informes y de AGL. Solo queda una
+          Borra por completo registros de Campo (Fertirriego, Inyección y Motores) hechos por error: desaparecen del inventario, de los informes y de AGL. Solo queda una
           copia privada de auditoría.
         </p>
       </div>

@@ -115,7 +115,8 @@ export type EntradaAplicacionLote = {
   objetivos: ObjetivoElegido[]
   comentario: string
   sinInventario: boolean
-  lineas: { material_id: string; cantidad: number }[]
+  /** `de_bodega`: true = «lo tomé de la bodega de la estación» (descuenta); false = «vino aparte» (no descuenta). */
+  lineas: { material_id: string; cantidad: number; de_bodega?: boolean }[]
   fechaHora: string
 }
 
@@ -150,9 +151,9 @@ export function armarAplicacionLote(a: EntradaAplicacionLote): { datos: Record<s
     area_mz: a.areaMz,
     objetivos,
     comentario: a.comentario.trim() || null,
-    lineas: lineas.map((l) => ({ material_id: l.material_id, cantidad: Number(l.cantidad) })),
+    lineas: lineas.map((l) => ({ material_id: l.material_id, cantidad: Number(l.cantidad), de_bodega: l.de_bodega === true })),
   }
-  // La base no rechaza por saldo cuando la persona confirmó la casilla (el sincronizador manda inmediato = false)
+  // Solo cuenta lo que se tomó de la bodega. La base no rechaza por saldo cuando la persona confirmó la casilla (el sincronizador manda inmediato = false)
   if (a.sinInventario) datos.acepta_negativo = true
   return { datos, avisos }
 }

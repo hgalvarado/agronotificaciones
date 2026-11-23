@@ -2,7 +2,9 @@
 
 /**
  * Aplicar por lote (Inyección / Drench / Aseguramiento de calidad): la persona con la estación a cargo registra un
- * lote completo (o una parte: área editable) con sus productos. Descuenta de la bodega de la estación. Sin señal:
+ * lote completo (o una parte: área editable) con sus productos. El producto se elige del catálogo AUNQUE la estación no lo
+ * tenga en bodega (no se exige saldo ni recepción). Si la estación sí tiene saldo de ese producto, se pregunta si se tomó de
+ * la bodega de la estación (descuenta) o vino aparte (no descuenta). Sin señal:
  * se guarda en el teléfono y se envía solo (operación `aplicacion_lote`, sql/129).
  *
  * Sin plan también se puede registrar: queda «Sin plan» y la base lo anota (SIN_PLAN).
@@ -15,7 +17,7 @@ import { aEntradaLocal, ahoraIso, deEntradaLocal, ayerIso, hoyIso } from '@/lib/
 import { claveBorrador, useAutoguardado, useBorrador } from '@/lib/fertirriego/borrador'
 import { cantidad } from '@/lib/fertirriego/calculos'
 import { crearOperacion, nuevoId } from '@/lib/fertirriego/operaciones'
-import type { Estacion, Material, Operacion, Persona } from '@/lib/fertirriego/tipos'
+import type { Estacion, Material, Operacion, Persona, PermisoHistorico } from '@/lib/fertirriego/tipos'
 import { areaPropuesta, armarAplicacionLote, dosisPorMz, lineasDelPlan } from '@/lib/inyeccion/aplicarLote'
 import { textoDato, type EstadoInyeccion } from '@/lib/inyeccion/estado'
 import { loteCanonico, normLote, opcionesDeLotes, temporadaDeLote } from '@/lib/inyeccion/lotes'
@@ -34,6 +36,8 @@ type Datos = {
   objetivos: string[]
   comentario: string
   editadas: LineaEditable[] | null
+  /** Por producto con saldo en la estación: true = lo tomé de la bodega, false = vino aparte (139). */
+  deBodega?: Record<string, boolean>
   /** Objetivos creados en este teléfono (sin señal) que aún no bajan con el catálogo. */
   objetivosNuevos?: ObjetivoCatalogo[]
 }
@@ -47,6 +51,7 @@ export function FormAplicacionLote({
   saldos,
   loteInicial,
   categoriaInicial,
+  historico,
   registrar,
   onCerrar,
   onGuardado,
@@ -58,6 +63,8 @@ export function FormAplicacionLote({
   saldos: Map<string, number>
   loteInicial?: string
   categoriaInicial?: string
+  /** sql/140: permiso temporal «Registro histórico» de esta estación (si lo tiene, se ofrece la casilla). */
+  historico?: PermisoHistorico | null
   registrar: (...ops: Operacion[]) => Promise<void>
   onCerrar: () => void
   onGuardado: (m: string) => void
@@ -80,9 +87,12 @@ export function FormAplicacionLote({
   })
   const [comentario, setComentario] = useState(b?.comentario ?? '')
   const [editadas, setEditadas] = useState<LineaEditable[] | null>(b?.editadas ?? null)
+  const [deBodega, setDeBodega] = useState<Record<string, boolean>>(b?.deBodega ?? {})
   const [aceptada, setAceptada] = useState<string | null>(null)
+  // sql/140 · Registro histórico: día pasado, sin custodia y SIN descontar la bodega (la base lo vuelve a validar)
+  const [esHistorico, setEsHistorico] = useState(false)
   const [ficha, setFicha] = useState<string | null>(null)
-  useAutoguardado(borrador, { lote, categoria, fechaHora, area, objetivos, comentario, editadas, objetivosNuevos })
+  useAutoguardado(borrador, { lote, categoria, fechaHora, area, objetivos, comentario, editadas, deBodega, objetivosNuevos })
 
   const planEstacion = useMemo(() => inyeccion.plan.filter((p) => p.estacion_id === null || p.estacion_id === estacion.id), [inyeccion.plan, estacion.id])
   // Los lotes con plan en la estación salen primero y marcados; se puede elegir cualquier lote del catálogo (sin plan = «sin plan»)
@@ -123,7 +133,13 @@ export function FormAplicacionLote({
   )
   const lineas = editadas ?? propuestas
 
-  const faltante = lineas.filter((l) => l.material_id && num(l.cantidad || '0') > (saldos.get(l.material_id) ?? 0))
+  // 139: solo se pregunta por los productos que la estación SÍ tiene en bodega; el resto no toca el inventario
+  const tieneSaldo = (id: string) => !esHistorico && (saldos.get(id) ?? 0) > 0
+  const usaLinea = (l: LineaEditable) => Boolean(l.material_id) && num(l.cantidad || '0') > 0
+  const deLaBodega = (l: LineaEditable) => tieneSaldo(l.material_id) && deBodega[l.material_id] === true
+  const sinResponder = lineas.filter((l) => usaLinea(l) && tieneSaldo(l.material_id) && deBodega[l.material_id] === undefined)
+  // Falta inventario solo cuando dijo «lo tomé de la bodega» y no alcanza
+  const faltante = lineas.filter((l) => usaLinea(l) && deLaBodega(l) && num(l.cantidad) > (saldos.get(l.material_id) ?? 0))
   const firmaFaltante = faltante.map((l) => `${l.material_id}:${l.cantidad.trim()}`).join('|')
   const aceptaNegativo = faltante.length > 0 && aceptada === firmaFaltante
   const nombre = (id: string) => tecnico(id)?.descripcion ?? 'producto'
@@ -151,13 +167,18 @@ export function FormAplicacionLote({
       borrador={borrador}
       rapido
       avisoPie={avisoPie}
+      permisoHistorico={esHistorico}
       construir={({ ubicacion, enNombreDe }) => {
         const fh = deEntradaLocal(fechaHora)
         if (!fh) return 'Indica la fecha y hora de la aplicación.'
         if (Date.parse(fh) > Date.now() + 5 * 60_000) return 'La aplicación no puede ser en el futuro.'
+        if (esHistorico && dia >= hoyIso()) return 'El registro histórico es solo de días pasados: elige un día anterior a hoy.'
         const r = leerLineas(lineas.map((l) => ({ ...l, cantidad: l.cantidad })))
         // Sin productos o con error de formato: el mismo texto que da la base
         if ('error' in r) return r.error.startsWith('Agrega') ? 'Indica al menos un producto.' : r.error
+        if (sinResponder.length) {
+          return `Responde si lo tomaste de la bodega de la estación: ${[...new Set(sinResponder.map((l) => nombre(l.material_id)))].join(', ')}.`
+        }
         if (faltante.length && !aceptaNegativo) {
           return 'No hay inventario suficiente para algún producto. Marca la casilla roja de abajo (sobre el botón Guardar) para confirmar que de verdad se aplicó, o corrige la cantidad.'
         }
@@ -177,15 +198,15 @@ export function FormAplicacionLote({
           objetivos: objetivosParaEnviar(objetivos, [...catalogoObjetivos, ...objetivosNuevos]),
           comentario,
           sinInventario: faltante.length > 0,
-          lineas: r.lineas,
+          lineas: r.lineas.map((l) => ({ ...l, de_bodega: tieneSaldo(l.material_id) && deBodega[l.material_id] === true })),
           fechaHora: fh,
         })
         if ('error' in a) return a.error === 'Indica el área cubierta' ? 'Indica el área cubierta.' : a.error
         return [
-          crearOperacion('aplicacion_lote', a.datos, {
+          crearOperacion('aplicacion_lote', esHistorico ? { ...a.datos, historica: true } : a.datos, {
             ubicacion,
             enNombreDe,
-            resumen: `Inyección por lote · ${lote} · ${r.lineas.length} producto(s)${sinPlan ? ' · sin plan' : ''}`,
+            resumen: `${esHistorico ? 'Inyección HISTÓRICA' : 'Inyección'} por lote · ${lote} · ${r.lineas.length} producto(s)${sinPlan ? ' · sin plan' : ''}`,
           }),
         ]
       }}
@@ -254,6 +275,26 @@ export function FormAplicacionLote({
         </Campo>
       )}
 
+      {historico && (
+        <label className="flex items-start gap-2 rounded-xl bg-sky-50 p-3 text-xs leading-snug text-slate-700 ring-1 ring-inset ring-sky-200" data-registro-historico-iny>
+          <input
+            type="checkbox"
+            className="mt-0.5 h-6 w-6 shrink-0"
+            checked={esHistorico}
+            onChange={(e) => {
+              setEsHistorico(e.target.checked)
+              if (e.target.checked && fechaHora.slice(0, 10) >= hoyIso()) setFechaHora(`${ayerIso()}T${fechaHora.split('T')[1] ?? '08:00'}`)
+            }}
+            data-casilla-historico
+          />
+          <span className="min-w-0 flex-1">
+            <strong>Registro histórico</strong> (lo que ya se aplicó antes de usar el sistema): día pasado y NO descuenta el inventario de la
+            estación. Permiso hasta el {historico.hasta}
+            {historico.dias_restantes <= 0 ? ' (vence hoy)' : ` · te quedan ${historico.dias_restantes} día(s)`}.
+          </span>
+        </label>
+      )}
+
       <Campo etiqueta="Fecha y hora" requerido>
         <div className="flex flex-wrap items-center gap-2">
           <Entrada type="datetime-local" value={fechaHora} onChange={(e) => { setFechaHora(e.target.value); if (area === null) setEditadas(null) }} className="w-60" data-fecha-hora />
@@ -318,7 +359,35 @@ export function FormAplicacionLote({
             if (!l.material_id) return null
             const t = tecnico(l.material_id)
             const dosis = l.cantidad.trim() ? dosisPorMz(num(l.cantidad), areaNum) : null
+            const pregunta = tieneSaldo(l.material_id) && num(l.cantidad || '0') > 0
+            const respuesta = deBodega[l.material_id]
             return (
+              <>
+              {pregunta && (
+                <div className="mt-2 rounded-xl bg-slate-50 p-2.5 ring-1 ring-inset ring-slate-200" role="group" aria-label="¿De dónde salió el producto?" data-pregunta-bodega={l.material_id}>
+                  <p className="mb-1.5 text-xs font-semibold text-slate-700">
+                    La estación tiene {cantidad(saldos.get(l.material_id) ?? 0)} {t?.unidad ?? ''} de este producto. ¿Lo tomaste de la bodega de la estación?
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {([[true, 'Sí, lo tomé de la bodega de la estación', 'si'], [false, 'No, vino aparte', 'no']] as const).map(([valor, texto, clave]) => (
+                      <button
+                        key={clave}
+                        type="button"
+                        aria-pressed={respuesta === valor}
+                        data-de-bodega={clave}
+                        onClick={() => setDeBodega((x) => ({ ...x, [l.material_id]: valor }))}
+                        className={`min-h-12 rounded-xl px-3 py-2 text-sm font-semibold leading-tight ring-1 ring-inset transition-colors ${
+                          respuesta === valor ? 'bg-brand-700 text-white ring-brand-700' : 'bg-white text-slate-700 ring-slate-300'
+                        }`}
+                      >
+                        {respuesta === valor ? '✓ ' : ''}
+                        {texto}
+                      </button>
+                    ))}
+                  </div>
+                  {respuesta === undefined && <p className="mt-1.5 text-xs font-semibold text-amber-700">Elige una respuesta para poder guardar.</p>}
+                </div>
+              )}
               <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
                 <span data-ingrediente-activo>
                   Ingrediente activo: <strong>{textoDato(t?.ingrediente_activo)}</strong>
@@ -333,6 +402,7 @@ export function FormAplicacionLote({
                   Ver ficha
                 </button>
               </div>
+              </>
             )
           }}
         />

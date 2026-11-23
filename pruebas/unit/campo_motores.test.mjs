@@ -144,7 +144,7 @@ test('armarMovimientoMotor: saldo sin destino, DEVUELTO sin destino, motivo vac�
   const base = { equipoId: 'M', tipo: 'RETIRADO', fechaHora: '2026-11-20T15:00:00Z', estacionDestino: null, tanqueId: null, tanqueNuevo: null, motivo: 'Fin de temporada', motivoCodigo: 'FIN_TEMPORADA', destinoSaldo: null, destinoDevolucion: null, horasBase: null, saldoActual: 120 }
   assert.match(armarMovimientoMotor(base).error, /indica qué pasa con ese diésel/)
   assert.match(armarMovimientoMotor({ ...base, destinoSaldo: 'DEVUELTO' }).error, /a dónde se devuelve/)
-  assert.equal(armarMovimientoMotor({ ...base, motivo: ' ' }).error, 'Escribe el motivo.')
+  assert.equal(armarMovimientoMotor({ ...base, motivo: ' ', motivoCodigo: '' }).error, 'Elige el motivo.')
   const ok = armarMovimientoMotor({ ...base, destinoSaldo: 'CON_EL_MOTOR' })
   assert.equal(ok.operacion, 'motor_retiro')
   assert.equal(ok.datos.destino_saldo, 'CON_EL_MOTOR')
@@ -214,5 +214,5 @@ test('ficha «Motores y combustible»: ruta /motores, entre Inyección y AgroMé
   assert.equal(f[0].ruta, '/motores')
   assert.equal(f[0].nombre, 'Motores y combustible')
   const todas = fichasCampo((p, a) => a === 'ver' && ['fertirriego', 'inyeccion', 'motores', 'agrometricas'].includes(p))
-  assert.deepEqual(todas.map((x) => x.ruta), ['/fertirriego', '/inyeccion', '/motores', '/agrometricas'])
+  assert.deepEqual(todas.map((x) => x.ruta), ['/fertirriego', '/inyeccion', '/motores', '/agrometricas/parametros', ''])
 })

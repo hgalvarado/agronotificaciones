@@ -25,7 +25,7 @@ export type ProductoInyeccion = {
   notas_tecnicas: string | null
 }
 
-export type LineaAplicacionInyeccion = { material_id: string; cantidad: number; dosis_mz: number | null; en_plan: boolean; ddt_plan: number | null }
+export type LineaAplicacionInyeccion = { material_id: string; cantidad: number; dosis_mz: number | null; en_plan: boolean; ddt_plan: number | null; de_bodega?: boolean | null }
 
 export type AplicacionInyeccion = {
   id: string

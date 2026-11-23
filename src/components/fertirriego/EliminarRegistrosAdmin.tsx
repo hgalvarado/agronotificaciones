@@ -1,9 +1,10 @@
 'use client'
 
 /**
- * Administración › Eliminar registros de Fertirriego (migración 119). Lista TODOS los tipos (aplicaciones, recepciones,
- * conteos, devoluciones, relevos, traslados y horas de riego) de las estaciones donde la persona tiene «Eliminar por
- * completo», con filtros, casillas para varios y UN motivo. Debajo, la auditoría (solo lectura; no restaura).
+ * Administración › Eliminar registros (migraciones 119 y 140). Lista TODO lo que se registra en Campo (Fertirriego:
+ * aplicaciones, recepciones, conteos, devoluciones, relevos, traslados y horas de riego; Inyección: aplicaciones por lote;
+ * Motores: registros diarios, diésel recibido, mantenimientos y movimientos) de las estaciones donde la persona tiene
+ * «Eliminar por completo», con filtro por módulo, casillas para varios y UN motivo. Debajo, la auditoría (solo lectura).
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -15,8 +16,12 @@ import { hoyIso } from '@/lib/fechas/zona'
 import {
   MINIMO_MOTIVO_ELIMINAR,
   NOMBRE_TIPO_ELIMINABLE,
+  NOMBRE_MODULO_ELIMINABLE,
   TIPOS_ELIMINABLES,
   errorMotivoEliminar,
+  moduloDeTipo,
+  rpcEliminar,
+  type ModuloEliminable,
   TEXTO_COPIA_EN_AGL,
   type ResultadoEliminar,
   type TipoEliminable,
@@ -24,6 +29,7 @@ import {
 
 type Fila = {
   tipo: TipoEliminable
+  modulo?: ModuloEliminable
   documento_id: string
   estacion_id: string
   estacion: string
@@ -36,6 +42,7 @@ type Fila = {
 }
 type Auditoria = {
   id: string
+  modulo?: string
   tipo: string
   estacion: string | null
   estacion2: string | null
@@ -54,6 +61,7 @@ const clave = (f: { tipo: string; documento_id: string }) => `${f.tipo}:${f.docu
 
 export function EliminarRegistrosAdmin({ estaciones, sinMigracion }: { estaciones: { id: string; nombre: string }[]; sinMigracion: boolean }) {
   const [estacion, setEstacion] = useState('')
+  const [modulo, setModulo] = useState('')
   const [tipo, setTipo] = useState('')
   const [quien, setQuien] = useState('')
   const [desde, setDesde] = useState('')
@@ -70,15 +78,27 @@ export function EliminarRegistrosAdmin({ estaciones, sinMigracion }: { estacione
 
   const cargar = useCallback(async () => {
     const sb = createClient()
-    const [l, a] = await Promise.all([
-      sb.rpc('fn_fert_eliminar_listar', { p_estacion: estacion || null, p_tipo: tipo || null, p_desde: desde || null, p_hasta: hasta || null, p_limite: 300 }),
-      sb.rpc('fn_fert_eliminaciones_listar', { p_limite: 100 }),
+    const conFert = (!modulo || modulo === 'fertirriego') && (!tipo || moduloDeTipo(tipo as TipoEliminable) === 'fertirriego')
+    const conCampo = (!modulo || modulo !== 'fertirriego') && (!tipo || moduloDeTipo(tipo as TipoEliminable) !== 'fertirriego')
+    const filtros = { p_estacion: estacion || null, p_tipo: tipo || null, p_desde: desde || null, p_hasta: hasta || null, p_limite: 300 }
+    const [lf, lc, a] = await Promise.all([
+      conFert ? sb.rpc('fn_fert_eliminar_listar', filtros) : Promise.resolve(null),
+      conCampo ? sb.rpc('fn_campo_eliminar_listar', { ...filtros, p_modulo: modulo || null }) : Promise.resolve(null),
+      sb.rpc('fn_campo_eliminaciones_listar', { p_limite: 100 }),
     ])
-    if (l.error) return setError(mensajeDeError(l.error, 'No se pudo leer la lista.'))
-    setLista((l.data as Fila[] | null) ?? [])
+    // Quien tiene el permiso solo en algunos módulos recibe rechazo de los demás: eso NO es un error de la lista
+    const permiso = (e: { code?: string } | null | undefined) => e?.code === '42501'
+    const malF = lf?.error && !permiso(lf.error) ? lf.error : null
+    const malC = lc?.error && !permiso(lc.error) ? lc.error : null
+    if (malF || malC) return setError(mensajeDeError((malF ?? malC) as never, 'No se pudo leer la lista.'))
+    const filas = [
+      ...(((lf?.data as Fila[] | null) ?? []).map((f) => ({ ...f, modulo: 'fertirriego' as ModuloEliminable }))),
+      ...(((lc?.data as Fila[] | null) ?? []).map((f) => ({ ...f, modulo: f.modulo ?? moduloDeTipo(f.tipo) }))),
+    ].sort((x, y) => (x.fecha < y.fecha ? 1 : -1))
+    setLista(filas)
     setMarcadas(new Set())
     if (!a.error) setAuditoria((a.data as Auditoria[] | null) ?? [])
-  }, [estacion, tipo, desde, hasta])
+  }, [estacion, modulo, tipo, desde, hasta])
 
   useEffect(() => {
     if (sinMigracion) return
@@ -108,13 +128,14 @@ export function EliminarRegistrosAdmin({ estaciones, sinMigracion }: { estacione
     let hechas = 0
     const avisos: string[] = []
     for (const f of elegidas) {
-      const { data, error: err } = await sb.rpc('fn_fert_eliminar_documento', { p_tipo: f.tipo, p_documento: f.documento_id, p_motivo: motivo.trim() })
+      const { data, error: err } = await sb.rpc(rpcEliminar(f.tipo), { p_tipo: f.tipo, p_documento: f.documento_id, p_motivo: motivo.trim() })
       if (err) {
         avisos.push(`${NOMBRE_TIPO_ELIMINABLE[f.tipo]} · ${f.resumen}: ${mensajeDeError(err, 'no se pudo eliminar')}`)
         continue
       }
       hechas++
       for (const n of (data as ResultadoEliminar).saldos_negativos ?? []) avisos.push(`Quedó saldo negativo de ${n.material} en ${n.estacion} (${n.saldo}).`)
+      for (const t of (data as ResultadoEliminar).avisos ?? []) avisos.push(t)
     }
     setTrabajando(false)
     setConfirmar(false)
@@ -128,13 +149,13 @@ export function EliminarRegistrosAdmin({ estaciones, sinMigracion }: { estacione
 
   async function verCopia(id: string) {
     if (copia?.id === id) return setCopia(null)
-    const { data, error: e } = await createClient().rpc('fn_fert_eliminacion_copia', { p_id: id })
+    const { data, error: e } = await createClient().rpc('fn_campo_eliminacion_copia', { p_id: id })
     if (e) return setError(mensajeDeError(e, 'No se pudo leer la copia.'))
     // la base devuelve null cuando la copia ya se bajó a AGL (sql/121)
     setCopia({ id, texto: data == null ? TEXTO_COPIA_EN_AGL : JSON.stringify(data, null, 2) })
   }
 
-  if (sinMigracion) return <Alerta>Falta correr la migración 119 (eliminar registros) en esta base.</Alerta>
+  if (sinMigracion) return <Alerta>Falta correr las migraciones 119 y 140 (eliminar registros) en esta base.</Alerta>
 
   return (
     <div className="flex flex-col gap-4" data-eliminar-registros-admin>
@@ -150,10 +171,22 @@ export function EliminarRegistrosAdmin({ estaciones, sinMigracion }: { estacione
         <Campo etiqueta="Estación">
           <SelectorBuscable valor={estacion} opciones={estaciones.map((e) => ({ id: e.id, titulo: e.nombre }))} onCambiar={setEstacion} placeholder="Todas las estaciones" etiquetaBusqueda="Buscar estación" />
         </Campo>
+        <Campo etiqueta="Módulo">
+          <SelectorBuscable
+            valor={modulo}
+            opciones={(Object.keys(NOMBRE_MODULO_ELIMINABLE) as ModuloEliminable[]).map((m) => ({ id: m, titulo: NOMBRE_MODULO_ELIMINABLE[m] }))}
+            onCambiar={(v) => {
+              setModulo(v)
+              setTipo('')
+            }}
+            placeholder="Todos los módulos"
+            etiquetaBusqueda="Buscar módulo"
+          />
+        </Campo>
         <Campo etiqueta="Tipo">
           <SelectorBuscable
             valor={tipo}
-            opciones={TIPOS_ELIMINABLES.map((t) => ({ id: t, titulo: NOMBRE_TIPO_ELIMINABLE[t] }))}
+            opciones={TIPOS_ELIMINABLES.filter((t) => !modulo || moduloDeTipo(t) === modulo).map((t) => ({ id: t, titulo: NOMBRE_TIPO_ELIMINABLE[t] }))}
             onCambiar={setTipo}
             placeholder="Todos los tipos"
             etiquetaBusqueda="Buscar tipo"
@@ -197,7 +230,7 @@ export function EliminarRegistrosAdmin({ estaciones, sinMigracion }: { estacione
                 <input type="checkbox" className="mt-1 h-6 w-6 shrink-0" checked={marcadas.has(clave(f))} onChange={() => alternar(f)} aria-label={`Marcar ${f.resumen}`} data-marcar-registro />
                 <div className="min-w-0 flex-1">
                   <p className="break-words text-sm font-semibold text-slate-800">
-                    {NOMBRE_TIPO_ELIMINABLE[f.tipo]} · {f.estacion}
+                    {NOMBRE_TIPO_ELIMINABLE[f.tipo] ?? f.tipo} · {f.estacion}
                   </p>
                   <p className="break-words text-xs text-slate-500">
                     {f.resumen} · {fecha(f.fecha)}
