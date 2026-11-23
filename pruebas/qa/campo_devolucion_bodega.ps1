@@ -35,6 +35,7 @@ function Abrir($estacion, $sufijo) {
 function SaldoBase($est, $mat) { $x = Lista "fert_saldos?select=disponible&estacion_id=eq.$est&material_id=eq.$mat"; if ($x.Count) { return [double]$x[0].disponible } else { return 0 } }
 function TextoDialogo { JS "(${ULTIMO_DIALOGO}?.innerText || '')" }
 function AbrirDevolver { ClicHasta "document.querySelector('[data-accion=devolver_bodega]')" "!!document.querySelector('[data-destinos-devolucion]')" }
+function ElegirChoferVehiculo { ElegirOpcion '[data-selector-chofer] button' $NOM_CH | Out-Null; ElegirOpcion '[data-selector-vehiculo] button' $PLACA | Out-Null }
 function Medir($nombre) {
     $m = JS "(() => { const v = [...document.querySelectorAll('button, a[href]')].filter(b => b.offsetParent !== null && !b.closest('nav, header, aside') ); const chicos = v.filter(b => { const r = b.getBoundingClientRect(); return r.height > 0 && r.height < 44 }).map(b => (b.innerText||b.getAttribute('aria-label')||'?').trim().slice(0,25) + ':' + Math.round(b.getBoundingClientRect().height)); return JSON.stringify({ancho: document.documentElement.scrollWidth, chicos}) })()" | ConvertFrom-Json
     OK ($m.ancho -le 420) "412 px · $nombre sin desborde lateral" "scrollWidth $($m.ancho)"
@@ -49,6 +50,7 @@ $idAdmin = (Lista 'roles?select=id&acceso_total=eq.true&limit=1')[0].id
 $z1 = (Lista 'zonas?select=id,nombre&activo=eq.true&order=nombre&limit=1')[0]
 $NOMBRE_EST = "QA Devolucion $s"; $TURNO = "TQD-$s"; $SOL = "QA-SOLD-$s"; $DESC = "SOLUCION D $s"
 $rolEst = $null; $est1 = $null; $solId = $null
+$chId = [guid]::NewGuid().ToString(); $veId = [guid]::NewGuid().ToString(); $NOM_CH = "QA Chofer D $s"; $PLACA = "QAD$s"
 
 try {
     # ============ Preparación ============
@@ -66,6 +68,8 @@ try {
         plan = @()
     } }
     $solId = (Lista "materiales?select=id&codigo=eq.$SOL")[0].id
+    Rest 'fert_choferes' 'Post' @{ id = $chId; nombre = $NOM_CH; validado = $true } -Servicio | Out-Null
+    Rest 'fert_vehiculos' 'Post' @{ id = $veId; placa = $PLACA; tipo = 'Camion'; validado = $true } -Servicio | Out-Null
     Rest 'rpc/fn_fert_asignar_persona' 'Post' @{ p_estacion = $est1; p_perfil = $qaId; p_asignar = $true } | Out-Null
     Rest 'rpc/fn_fert_asignar_custodia' 'Post' @{ p_estacion = $est1; p_perfil = $qaId; p_motivo = 'Arranque QA' } | Out-Null
     Rest 'rpc/fn_asignar_roles' 'Post' @{ p_perfil = $qaId; p_roles = @($rolEst); p_principal = $rolEst } -Servicio | Out-Null
@@ -119,6 +123,7 @@ try {
     OK ($t -ge 0) '(2) sin destino: lo pide'
     ClicEn "document.querySelector('[data-destino=BODEGA]')" | Out-Null
     ClicEn "document.querySelector('[data-motivo-sugerido]')" | Out-Null
+    ElegirChoferVehiculo
     ElegirOpcion '[data-linea="0"] button' $DESC | Out-Null
     Teclear "document.querySelector('[data-cantidad=""0""]')" '0'
     ClicEn "document.querySelector('[data-guardar-registro]')" | Out-Null
@@ -141,7 +146,7 @@ try {
 
     # Forzado por la base: más del saldo
     $opId = [guid]::NewGuid().ToString()
-    $op = @{ id = $opId; tipo = 'devolucion_bodega'; creado_en = (Get-Date).ToString('o'); dispositivo = 'QA'; datos = @{ estacion_id = $est1; fecha_hora = (Get-Date).ToString('o'); destino = 'TALLER'; motivo = 'forzado QA'; lineas = @(@{ material_id = $solId; cantidad = 9999 }) } }
+    $op = @{ id = $opId; tipo = 'devolucion_bodega'; creado_en = (Get-Date).ToString('o'); dispositivo = 'QA'; datos = @{ estacion_id = $est1; fecha_hora = (Get-Date).ToString('o'); destino = 'TALLER'; motivo = 'forzado QA'; chofer_id = $chId; vehiculo_id = $veId; lineas = @(@{ material_id = $solId; cantidad = 9999 }) } }
     $r = $null; $err = ''; try { $r = Rest 'rpc/fn_fert_sincronizar' 'Post' @{ p_ops = @($op) } -Token $tok } catch { $err = "$($_.ErrorDetails.Message)" }
     $fo = Lista "fert_operaciones?select=resultado,mensaje&id=eq.$opId"
     $txt = "$(($r | ConvertTo-Json -Depth 6 -Compress))$err"
@@ -154,6 +159,7 @@ try {
     AbrirDevolver | Out-Null
     ClicEn "document.querySelector('[data-destino=TALLER]')" | Out-Null
     Teclear "document.querySelector('[data-motivo-devolucion]')" 'Sobrante sin señal (QA)'
+    ElegirChoferVehiculo
     ElegirOpcion '[data-linea="0"] button' $DESC | Out-Null
     Teclear "document.querySelector('[data-cantidad=""0""]')" '30'
     ClicEn "document.querySelector('[data-guardar-registro]')" | Out-Null
@@ -232,6 +238,7 @@ finally {
         foreach ($x in (Lista "turnos_ciclo?select=id,turno_id&agl_id=eq.TR-QD-$s")) { Rest "fert_plan?turno_ciclo_id=eq.$($x.id)" 'Delete' -Servicio | Out-Null; Rest "turnos_ciclo?id=eq.$($x.id)" 'Delete' -Servicio | Out-Null; Rest "turnos?id=eq.$($x.turno_id)" 'Delete' -Servicio | Out-Null }
         if ($est1) { Rest "estaciones_riego?id=eq.$est1" 'Delete' -Servicio | Out-Null }
         Rest "materiales?codigo=eq.$SOL" 'Delete' -Servicio | Out-Null
+        Rest "fert_choferes?id=eq.$chId" 'Delete' -Servicio | Out-Null; Rest "fert_vehiculos?id=eq.$veId" 'Delete' -Servicio | Out-Null
         Rest "fert_publicaciones?temporada=eq.$([uri]::EscapeDataString("QA $s"))" 'Delete' -Servicio | Out-Null
     } catch { $script:Resultados.Add("LIMPIEZA datos: $($_.Exception.Message) $($_.ErrorDetails.Message)") }
     try { Rest 'rpc/fn_asignar_roles' 'Post' @{ p_perfil = $qaId; p_roles = $origRoles; p_principal = $orig.rol_id } -Servicio | Out-Null } catch { $script:Resultados.Add("LIMPIEZA roles QA: $($_.Exception.Message)") }

@@ -91,7 +91,7 @@ export function EnviosConProblemasAdmin({ estaciones, sinMigracion }: { estacion
       const { data, error: e } = await sb.rpc('fn_fert_problema_aceptar', { p_id: p.id, p_nota: nota })
       const r = data as { ok?: boolean; mensaje?: string } | null
       if (e) setError(mensajeDeError(e, 'No se pudo aceptar.'))
-      else if (!r?.ok) setError(`No se pudo aceptar: ${r?.mensaje ?? 'la base lo volvió a rechazar'}. Puedes marcarlo como resuelto o descartarlo.`)
+      else if (!r?.ok) setError(`No se pudo aceptar: ${(r?.mensaje ?? 'la base lo volvió a rechazar').replace(/\.+$/, '')}. Puedes marcarlo como resuelto o descartarlo.`)
       else setAviso('Aceptado: el registro quedó aplicado y marcado «lo aceptó el administrador».')
     } else {
       const { error: e } = await sb.rpc('fn_fert_problema_resolver', { p_id: p.id, p_accion: accion, p_nota: nota })

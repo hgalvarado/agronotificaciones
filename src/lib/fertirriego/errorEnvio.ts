@@ -103,6 +103,16 @@ const REGLAS: { cuando: (e: Entrada) => boolean; caso: ExplicacionEnvio }[] = [
       acciones: ['ayuda', 'descartar'],
     },
   },
+  {
+    cuando: (e) => /Registro histórico.*vigente/i.test(e.mensaje ?? ''),
+    caso: {
+      titulo: 'Permiso de registro histórico vencido',
+      quePaso: 'El servidor no aceptó el registro de un día anterior.',
+      porQue: 'El permiso temporal para registrar días anteriores ya venció o no existe.',
+      queHacer: 'Pide al administrador que lo renueve y vuelve a intentar.',
+      acciones: ['ayuda', 'descartar'],
+    },
+  },
 ]
 
 export function explicarEnvio(e: Entrada): ExplicacionEnvio {

@@ -47,7 +47,7 @@ export function EncabezadoEnvios({
 
   return (
     <>
-      <div className="flex flex-wrap items-center justify-between gap-2" data-encabezado-envios>
+      <div className="sticky top-0 z-30 -mx-1 flex flex-wrap items-center justify-between gap-2 bg-white/95 px-1 backdrop-blur" data-encabezado-envios>
         <Link href={volverHref} className="inline-flex min-h-11 items-center gap-1 rounded-lg px-1 text-sm font-bold text-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600" data-regresar>
           <span aria-hidden="true">←</span> {volverTexto}
         </Link>
