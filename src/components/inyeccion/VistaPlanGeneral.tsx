@@ -2,7 +2,7 @@
 
 /**
  * «Plan» de Inyección de la estación, agrupado por DDT como en AGL › Plan general: por cada DDT, sus productos con la
- * dosis por mz, qué controla, las observaciones del LTP, las variedades con su % del área y los lotes (con cuántos ya se
+ * dosis por mz, qué controla, las observaciones del LTP, las variedades con su % de aplicación del LTP y los lotes (con cuántos ya se
  * aplicaron). Para decidir en campo qué toca y qué falta. «Expandir todo / Contraer todo»; sin gráficas ni tablas.
  * Solo trae lo de las zonas de la persona (la base ya lo recorta).
  */
@@ -123,7 +123,8 @@ export function VistaPlanGeneral({
                       <div className="flex flex-wrap gap-1.5" data-plan-variedades>
                         {p.variedades.map((v) => (
                           <span key={v.variedad} className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                            {v.variedad} {cantidad(v.pct)} %
+                            {v.variedad}{' '}
+                            {v.pct === null ? 'sin % en el LTP' : v.pct_max !== null && v.pct_max !== v.pct ? `${cantidad(v.pct)}–${cantidad(v.pct_max)} % del área` : `${cantidad(v.pct)} % del área`}
                           </span>
                         ))}
                       </div>

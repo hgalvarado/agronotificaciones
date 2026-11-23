@@ -241,18 +241,18 @@ test('141 · un producto sin objetivo propio hereda el del registro; sin ninguno
 })
 
 const planDdt = [
-  { id: '1', estacion_id: 'E', temporada: 'T', ciclo: 'Ciclo 1', turno_agl_id: 'T1', turno: 'T1', lote: 'L1', categoria_clave: 'c', ddt: 5, fecha_plan: '2026-11-21', material_id: 'A', dosis_mz: 2, area_mz: 3, cantidad_plan: 6, variedad: 'Cavendish', observaciones: 'Aplicar temprano', controla: 'Trips' },
-  { id: '2', estacion_id: 'E', temporada: 'T', ciclo: 'Ciclo 1', turno_agl_id: 'T1', turno: 'T1', lote: 'L2', categoria_clave: 'c', ddt: 5, fecha_plan: '2026-11-21', material_id: 'A', dosis_mz: 2, area_mz: 1, cantidad_plan: 2, variedad: 'Otra', observaciones: null, controla: 'Trips' },
+  { id: '1', estacion_id: 'E', temporada: 'T', ciclo: 'Ciclo 1', turno_agl_id: 'T1', turno: 'T1', lote: 'L1', categoria_clave: 'c', ddt: 5, fecha_plan: '2026-11-21', material_id: 'A', dosis_mz: 2, area_mz: 3, cantidad_plan: 6, variedad: 'Cavendish', observaciones: 'Aplicar temprano', controla: 'Trips', pct_aplicacion: 100 },
+  { id: '2', estacion_id: 'E', temporada: 'T', ciclo: 'Ciclo 1', turno_agl_id: 'T1', turno: 'T1', lote: 'L2', categoria_clave: 'c', ddt: 5, fecha_plan: '2026-11-21', material_id: 'A', dosis_mz: 2, area_mz: 1, cantidad_plan: 2, variedad: 'Otra', observaciones: null, controla: 'Trips', pct_aplicacion: 50 },
   { id: '3', estacion_id: 'E', temporada: 'T', ciclo: 'Ciclo 1', turno_agl_id: 'T1', turno: 'T1', lote: 'L1', categoria_clave: 'c', ddt: 12, fecha_plan: '2026-11-28', material_id: 'B', dosis_mz: 1, area_mz: 3, cantidad_plan: 3, variedad: 'Cavendish' },
 ]
 
-test('141 · plan general por DDT: variedades con % del área, observaciones, lotes y avance', () => {
+test('141 · plan general por DDT: variedades con % de aplicación del LTP, observaciones, lotes y avance', () => {
   const g = planGeneralPorDdt(planDdt, new Set(['l1|12|B']))
   assert.deepEqual(g.map((x) => x.ddt), [5, 12])
   const p = g[0].productos[0]
   assert.equal(p.area_mz, 4)
   assert.equal(p.cantidad, 8)
-  assert.deepEqual(p.variedades.map((v) => [v.variedad, v.pct]), [['Cavendish', 75], ['Otra', 25]])
+  assert.deepEqual(p.variedades.map((v) => [v.variedad, v.pct, v.pct_max]), [['Cavendish', 100, 100], ['Otra', 50, 50]])
   assert.deepEqual(p.observaciones, ['Aplicar temprano'])
   assert.equal(p.controla, 'Trips')
   assert.equal(g[0].n_lotes, 2)

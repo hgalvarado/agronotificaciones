@@ -28,7 +28,8 @@ export function planDeEstacion(plan: FilaPlanInyeccion[], estacionId: string, ac
   return plan.filter((p) => (p.estacion_id === null || p.estacion_id === estacionId) && activas.has(p.categoria_clave))
 }
 
-export type VariedadPlan = { variedad: string; pct: number; area_mz: number }
+/** `pct`/`pct_max`: % de aplicación del LTP (a qué % del área de la variedad va este producto); null = el LTP no lo trae. */
+export type VariedadPlan = { variedad: string; pct: number | null; pct_max: number | null; area_mz: number }
 
 export type ProductoDeDdt = {
   material_id: string
@@ -68,10 +69,13 @@ export function planGeneralPorDdt(lineas: FilaPlanInyeccion[], hechos: Set<strin
     for (const f of filas) porProducto.set(f.material_id, [...(porProducto.get(f.material_id) ?? []), f])
     const productos: ProductoDeDdt[] = [...porProducto.entries()].map(([material_id, fs]) => {
       const area = fs.reduce((s, f) => s + Number(f.area_mz ?? 0), 0)
-      const porVariedad = new Map<string, number>()
+      const porVariedad = new Map<string, { area: number; pcts: Set<number> }>()
       for (const f of fs) {
         const v = f.variedad?.trim() || SIN_VARIEDAD
-        porVariedad.set(v, (porVariedad.get(v) ?? 0) + Number(f.area_mz ?? 0))
+        const x = porVariedad.get(v) ?? { area: 0, pcts: new Set<number>() }
+        x.area += Number(f.area_mz ?? 0)
+        if (f.pct_aplicacion !== null && f.pct_aplicacion !== undefined) x.pcts.add(redondear(Number(f.pct_aplicacion), 2))
+        porVariedad.set(v, x)
       }
       const dosis = fs.map((f) => f.dosis_mz).filter((d): d is number => d !== null && d !== undefined)
       return {
@@ -82,7 +86,10 @@ export function planGeneralPorDdt(lineas: FilaPlanInyeccion[], hechos: Set<strin
         controla: fs.map((f) => f.controla?.trim()).find(Boolean) ?? null,
         observaciones: [...new Set(fs.map((f) => f.observaciones?.trim()).filter((x): x is string => Boolean(x)))],
         variedades: [...porVariedad.entries()]
-          .map(([variedad, a]) => ({ variedad, area_mz: redondear(a), pct: area > 0 ? redondear((a / area) * 100, 1) : 0 }))
+          .map(([variedad, x]) => {
+            const pcts = [...x.pcts]
+            return { variedad, area_mz: redondear(x.area), pct: pcts.length ? Math.min(...pcts) : null, pct_max: pcts.length ? Math.max(...pcts) : null }
+          })
           .sort((x, y) => y.area_mz - x.area_mz || x.variedad.localeCompare(y.variedad, 'es')),
         lotes: [...new Set(fs.map((f) => f.lote))].sort((x, y) => x.localeCompare(y, 'es', { numeric: true })),
         lotes_hechos: new Set(fs.filter((f) => esHecha(hechos, f)).map(claveLote)).size,
