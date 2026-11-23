@@ -76,7 +76,7 @@ export function armarBodega(args: {
   const filas: FilaBodega[] = []
 
   for (const [id, v] of saldos) {
-    if (v === 0) continue
+    if (redondear(v) === 0) continue
     const m = material(id)
     const s = porClave.get(`P|${id}`)
     filas.push({
@@ -93,7 +93,7 @@ export function armarBodega(args: {
     })
   }
   for (const [id, v] of saldosEnvases) {
-    if (v === 0) continue
+    if (redondear(v) === 0) continue
     const s = porClave.get(`E|${id}`)
     filas.push({
       tipo: 'ENVASE',
