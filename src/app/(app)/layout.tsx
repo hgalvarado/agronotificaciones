@@ -56,6 +56,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <AppShell
       nombre={perfil.nombre}
       rolNombre={rol?.nombre ?? 'Sin rol'}
+      usuarioId={perfil.id}
       permisos={[...permisos]}
       navegacion={navegacion}
       pantallasMenu={pantallasMenu}

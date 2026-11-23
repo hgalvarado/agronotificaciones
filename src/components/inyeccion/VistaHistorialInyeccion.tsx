@@ -6,15 +6,17 @@
  * tendencia son de AGL.
  */
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { AreaTexto, Boton, Campo, Insignia } from '@/components/ui/Primitivos'
+import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
 import { MarcoRegistro } from '@/components/fertirriego/MarcoRegistro'
 import { EliminarPorCompleto } from '@/components/fertirriego/EliminarPorCompleto'
 import { formatearFechaHora } from '@/lib/estados'
 import { cantidad } from '@/lib/fertirriego/calculos'
 import { crearOperacion } from '@/lib/fertirriego/operaciones'
+import { hoyIso } from '@/lib/fechas/zona'
 import type { Estacion, Operacion, Persona } from '@/lib/fertirriego/tipos'
-import { type AplicacionInyeccion, type EstadoInyeccion, historialDeEstacion } from '@/lib/inyeccion/estado'
+import { type AplicacionInyeccion, type EstadoInyeccion, historialDeEstacion, objetivosDeLinea } from '@/lib/inyeccion/estado'
 
 
 function FormAnular({
@@ -91,12 +93,45 @@ export function VistaHistorialInyeccion({
 }) {
   const [anulando, setAnulando] = useState<AplicacionInyeccion | null>(null)
   const [eliminando, setEliminando] = useState<AplicacionInyeccion | null>(null)
-  const filas = historialDeEstacion(estado, estacion.id)
+  const [rango, setRango] = useState<'todo' | 'hoy' | '7' | '30'>('todo')
+  const [loteFiltro, setLoteFiltro] = useState('')
+  const todas = useMemo(() => historialDeEstacion(estado, estacion.id), [estado, estacion.id])
+  const filas = useMemo(() => {
+    const hoy = hoyIso()
+    const desde = rango === 'todo' ? '' : rango === 'hoy' ? hoy : new Date(Date.parse(`${hoy}T12:00:00Z`) - Number(rango) * 86_400_000).toISOString().slice(0, 10)
+    return todas.filter((a) => (!desde || a.fecha >= desde) && (!loteFiltro || a.lote === loteFiltro))
+  }, [todas, rango, loteFiltro])
+  const lotesEnHistorial = useMemo(() => [...new Set(todas.map((a) => a.lote))].sort((x, y) => x.localeCompare(y, 'es', { numeric: true })), [todas])
   const pendientes = cola.filter((o) => o.tipo === 'aplicacion_lote' && o.datos.estacion_id === estacion.id && o.estado_local !== 'ACEPTADO')
 
   return (
     <div className="flex flex-col gap-2" data-historial-inyeccion>
-      <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Historial (120 días)</p>
+      {todas.length > 0 && (
+        <div className="flex flex-col gap-2" data-filtros-historial>
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Periodo">
+            {([['todo', 'Todo'], ['hoy', 'Hoy'], ['7', '7 días'], ['30', '30 días']] as const).map(([v, t]) => (
+              <button
+                key={v}
+                type="button"
+                aria-pressed={rango === v}
+                onClick={() => setRango(v)}
+                data-rango-historial={v}
+                className={`min-h-11 rounded-full px-4 text-sm font-semibold ring-1 ring-inset ${rango === v ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-600 ring-slate-200'}`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+          <SelectorBuscable
+            valor={loteFiltro}
+            opciones={lotesEnHistorial.map((l) => ({ id: l, titulo: l }))}
+            onCambiar={setLoteFiltro}
+            placeholder="Todos los lotes"
+            etiquetaBusqueda="Buscar lote"
+            textoVacio="Todos los lotes"
+          />
+        </div>
+      )}
       {pendientes.map((o) => (
         <div key={o.id} className="rounded-xl bg-white p-3 ring-1 ring-inset ring-amber-300" data-aplicacion-pendiente>
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -107,7 +142,9 @@ export function VistaHistorialInyeccion({
         </div>
       ))}
       {filas.length === 0 && pendientes.length === 0 && (
-        <p className="rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-500 ring-1 ring-inset ring-slate-200">Todavía no hay aplicaciones por lote en esta estación.</p>
+        <p className="rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-500 ring-1 ring-inset ring-slate-200">
+          {todas.length === 0 ? 'Todavía no hay aplicaciones por lote en esta estación.' : 'No hay aplicaciones con ese filtro.'}
+        </p>
       )}
       {filas.map((a) => (
         <div key={a.id} className={`rounded-xl bg-white p-3 ring-1 ring-inset ${a.anulado_at ? 'ring-slate-200 opacity-70' : 'ring-slate-200'}`} data-aplicacion-lote={a.id}>
@@ -120,13 +157,14 @@ export function VistaHistorialInyeccion({
             </span>
           </div>
           <p className="text-xs text-slate-500">
-            {formatearFechaHora(a.fecha_hora)} · {cantidad(a.area_mz)} mz · {a.objetivos.join(', ')}
+            {formatearFechaHora(a.fecha_hora)} · {cantidad(a.area_mz)} mz
           </p>
           <ul className="mt-1 text-xs text-slate-700">
             {a.lineas.map((l) => (
               <li key={l.material_id}>
                 {nombreProducto(l.material_id)}: <strong>{cantidad(l.cantidad)}</strong>
                 {l.dosis_mz !== null ? ` (${cantidad(l.dosis_mz)}/mz)` : ''}
+                {objetivosDeLinea(a, l).length > 0 && <span className="text-slate-500"> · {objetivosDeLinea(a, l).join(', ')}</span>}
               </li>
             ))}
           </ul>

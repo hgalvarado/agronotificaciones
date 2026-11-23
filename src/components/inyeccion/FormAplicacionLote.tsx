@@ -8,6 +8,10 @@
  * se guarda en el teléfono y se envía solo (operación `aplicacion_lote`, sql/129).
  *
  * Sin plan también se puede registrar: queda «Sin plan» y la base lo anota (SIN_PLAN).
+ *
+ * Pantalla compacta (sql/141): lote → fecha y área → UNA fila por producto con su cantidad y SU objetivo (el objetivo se
+ * elige por producto, no por registro) → Guardar fijo abajo. Las observaciones solo si se piden. El lote es solo de las
+ * zonas de la persona (la base entrega solo esos y vuelve a validar).
  */
 
 import { useMemo, useState } from 'react'
@@ -32,8 +36,10 @@ type Datos = {
   categoria: string
   fechaHora: string
   area: string | null
-  /** Ids de los objetivos elegidos (un borrador anterior a la 132 trae textos como PLAGA: se mapean por nombre). */
-  objetivos: string[]
+  /** Borradores anteriores a la 141: un solo objetivo para todo el registro (ids, o textos como PLAGA: se mapean por nombre). */
+  objetivos?: string[]
+  /** 141: ids de los objetivos de CADA producto (material_id → ids). */
+  objetivosPorProducto?: Record<string, string[]>
   comentario: string
   editadas: LineaEditable[] | null
   /** Por producto con saldo en la estación: true = lo tomé de la bodega, false = vino aparte (139). */
@@ -72,7 +78,7 @@ export function FormAplicacionLote({
   const borrador = useBorrador<Datos>(claveBorrador('aplicacion_lote', yo.id, estacion.id, [loteInicial, categoriaInicial].filter(Boolean).join('@')))
   const b = borrador.inicial
   const categorias = inyeccion.categorias
-  // El lote es SOLO del catálogo de lotes (lotes + lotes_temporada): no se escribe ni se crea uno
+  // El lote es SOLO del catálogo de lotes (lotes + lotes_temporada) y de las zonas de la persona: no se escribe ni se crea uno
   const catalogoLotes = useMemo(() => inyeccion.lotes ?? [], [inyeccion.lotes])
   const [lote, setLote] = useState(() => loteCanonico(catalogoLotes, b?.lote ?? loteInicial ?? '') ?? '')
   const [categoria, setCategoria] = useState(b?.categoria ?? categoriaInicial ?? (categorias.length === 1 ? categorias[0].clave : ''))
@@ -80,22 +86,27 @@ export function FormAplicacionLote({
   const [area, setArea] = useState<string | null>(b?.area ?? null)
   const catalogoObjetivos = useMemo(() => inyeccion.objetivos ?? [], [inyeccion.objetivos])
   const [objetivosNuevos, setObjetivosNuevos] = useState<ObjetivoCatalogo[]>(b?.objetivosNuevos ?? [])
-  const [objetivos, setObjetivos] = useState<string[]>(() => {
+  const todosObjetivos = useMemo(() => [...catalogoObjetivos, ...objetivosNuevos], [catalogoObjetivos, objetivosNuevos])
+  // Objetivo POR PRODUCTO. El de un borrador viejo (uno para todo el registro) vale para los productos sin objetivo propio.
+  const [objetivosBase] = useState<string[]>(() => {
     const todos = [...catalogoObjetivos, ...(b?.objetivosNuevos ?? [])]
     const ids = (b?.objetivos ?? []).map((x) => todos.find((o) => o.id === x)?.id ?? todos.find((o) => normalizarObjetivo(o.nombre) === normalizarObjetivo(x))?.id)
     return [...new Set(ids.filter((x): x is string => Boolean(x)))]
   })
+  const [objProducto, setObjProducto] = useState<Record<string, string[]>>(b?.objetivosPorProducto ?? {})
+  const objetivosDe = (materialId: string) => objProducto[materialId] ?? objetivosBase
   const [comentario, setComentario] = useState(b?.comentario ?? '')
+  const [verObservaciones, setVerObservaciones] = useState(Boolean(b?.comentario))
   const [editadas, setEditadas] = useState<LineaEditable[] | null>(b?.editadas ?? null)
   const [deBodega, setDeBodega] = useState<Record<string, boolean>>(b?.deBodega ?? {})
   const [aceptada, setAceptada] = useState<string | null>(null)
   // sql/140 · Registro histórico: día pasado, sin custodia y SIN descontar la bodega (la base lo vuelve a validar)
   const [esHistorico, setEsHistorico] = useState(false)
   const [ficha, setFicha] = useState<string | null>(null)
-  useAutoguardado(borrador, { lote, categoria, fechaHora, area, objetivos, comentario, editadas, deBodega, objetivosNuevos })
+  useAutoguardado(borrador, { lote, categoria, fechaHora, area, objetivosPorProducto: objProducto, comentario, editadas, deBodega, objetivosNuevos })
 
   const planEstacion = useMemo(() => inyeccion.plan.filter((p) => p.estacion_id === null || p.estacion_id === estacion.id), [inyeccion.plan, estacion.id])
-  // Los lotes con plan en la estación salen primero y marcados; se puede elegir cualquier lote del catálogo (sin plan = «sin plan»)
+  // Los lotes con plan en la estación salen primero y marcados; se puede elegir cualquier lote de SUS zonas (sin plan = «sin plan»)
   const opcionesLote = useMemo(() => opcionesDeLotes(catalogoLotes, planEstacion.map((p) => p.lote)), [catalogoLotes, planEstacion])
 
   // La fecha de la aplicación es la que se escribió (hora de Honduras): no se pasa por UTC
@@ -124,6 +135,7 @@ export function FormAplicacionLote({
   )
   const tecnico = (id: string) => inyeccion.materiales.find((m) => m.id === id)
   const plan = useMemo(() => new Map(grupo.map((g) => [g.material_id, g.cantidad_plan])), [grupo])
+  const datosPlan = useMemo(() => new Map(grupo.map((g) => [g.material_id, g])), [grupo])
   const propuestas = useMemo<LineaEditable[]>(
     () =>
       grupo.length
@@ -176,6 +188,9 @@ export function FormAplicacionLote({
         const r = leerLineas(lineas.map((l) => ({ ...l, cantidad: l.cantidad })))
         // Sin productos o con error de formato: el mismo texto que da la base
         if ('error' in r) return r.error.startsWith('Agrega') ? 'Indica al menos un producto.' : r.error
+        // El objetivo es de CADA producto
+        const sinObjetivo = r.lineas.filter((l) => objetivosDe(l.material_id).length === 0)
+        if (sinObjetivo.length) return `Elige el objetivo de: ${[...new Set(sinObjetivo.map((l) => nombre(l.material_id)))].join(', ')}.`
         if (sinResponder.length) {
           return `Responde si lo tomaste de la bodega de la estación: ${[...new Set(sinResponder.map((l) => nombre(l.material_id)))].join(', ')}.`
         }
@@ -184,7 +199,7 @@ export function FormAplicacionLote({
         }
         // La base vuelve a validar; aquí se evita mandar algo que no es del catálogo
         const canonico = loteCanonico(catalogoLotes, lote)
-        if (!canonico) return 'Elige el lote de la lista del catálogo de lotes.'
+        if (!canonico) return 'Elige el lote de la lista (solo salen los lotes de tu zona).'
         const temporadaPlan = grupo[0]?.temporada ?? planEstacion.find((p) => normLote(p.lote) === normLote(canonico))?.temporada ?? null
         const a = armarAplicacionLote({
           estacionId: estacion.id,
@@ -195,10 +210,13 @@ export function FormAplicacionLote({
           turnoAglId: grupo[0]?.turno_agl_id ?? null,
           areaMz: areaNum,
           areaLote,
-          objetivos: objetivosParaEnviar(objetivos, [...catalogoObjetivos, ...objetivosNuevos]),
           comentario,
           sinInventario: faltante.length > 0,
-          lineas: r.lineas.map((l) => ({ ...l, de_bodega: tieneSaldo(l.material_id) && deBodega[l.material_id] === true })),
+          lineas: r.lineas.map((l) => ({
+            ...l,
+            de_bodega: tieneSaldo(l.material_id) && deBodega[l.material_id] === true,
+            objetivos: objetivosParaEnviar(objetivosDe(l.material_id), todosObjetivos),
+          })),
           fechaHora: fh,
         })
         if ('error' in a) return a.error === 'Indica el área cubierta' ? 'Indica el área cubierta.' : a.error
@@ -213,66 +231,62 @@ export function FormAplicacionLote({
     >
       {ficha && tecnico(ficha) && <FichaProducto producto={tecnico(ficha)!} onCerrar={() => setFicha(null)} />}
 
-      <Campo etiqueta="Lote" requerido>
-        <div data-selector-lote>
-          <SelectorBuscable
-            valor={lote}
-            opciones={opcionesLote}
-            onCambiar={(v) => {
-              setLote(v)
-              setEditadas(null)
-              setArea(null)
-            }}
-            placeholder="Elegir lote…"
-            etiquetaBusqueda="Buscar lote"
-            permitirVacio={false}
-          />
-        </div>
-        {catalogoLotes.length === 0 && (
-          <p className="mt-1.5 text-xs font-semibold text-amber-700" data-sin-catalogo-lotes>
-            No hay lotes del catálogo en el teléfono todavía. Conéctate y actualiza para poder elegir el lote.
-          </p>
-        )}
-        {sinPlan && (
-          <p className="mt-1.5 text-xs font-semibold text-amber-700" data-sin-plan>
-            Sin plan: se puede registrar igual, pero queda marcado «sin plan».
-          </p>
-        )}
-        {grupo[0] && (
-          <p className="mt-1.5 text-xs text-slate-600" data-plan-lote>
-            Plan: DDT <strong>{grupo[0].ddt ?? '—'}</strong>
-            {grupo[0].fecha_plan ? ` · ${grupo[0].fecha_plan}` : ''}
-            {areaLote !== null ? ` · lote ${cantidad(areaLote)} mz` : ''}
-          </p>
-        )}
-      </Campo>
+      <div data-selector-lote>
+        <SelectorBuscable
+          valor={lote}
+          opciones={opcionesLote}
+          onCambiar={(v) => {
+            setLote(v)
+            setEditadas(null)
+            setArea(null)
+          }}
+          placeholder="Elegir lote…"
+          etiquetaBusqueda="Buscar lote"
+          permitirVacio={false}
+        />
+      </div>
+      {catalogoLotes.length === 0 && (
+        <p className="-mt-2 text-xs font-semibold text-amber-700" data-sin-catalogo-lotes>
+          No hay lotes de tu zona en el teléfono todavía. Conéctate y actualiza para poder elegir el lote.
+        </p>
+      )}
+      {sinPlan && (
+        <p className="-mt-2 text-xs font-semibold text-amber-700" data-sin-plan>
+          Sin plan: se puede registrar igual, pero queda marcado «sin plan».
+        </p>
+      )}
+      {grupo[0] && (
+        <p className="-mt-2 text-xs text-slate-600" data-plan-lote>
+          Plan: DDT <strong>{grupo[0].ddt ?? '—'}</strong>
+          {grupo[0].fecha_plan ? ` · ${grupo[0].fecha_plan}` : ''}
+          {areaLote !== null ? ` · lote ${cantidad(areaLote)} mz` : ''}
+        </p>
+      )}
 
-      {categorias.length > 0 && (
-        <Campo etiqueta="Categoría">
-          <div className="flex flex-wrap gap-2" data-selector-categoria role="group" aria-label="Categoría">
-            {categorias.map((c) => {
-              const marcado = categoria === c.clave
-              return (
-                <button
-                  key={c.clave}
-                  type="button"
-                  aria-pressed={marcado}
-                  data-categoria={c.clave}
-                  onClick={() => {
-                    setCategoria(marcado ? '' : c.clave)
-                    setEditadas(null)
-                  }}
-                  className={`min-h-11 rounded-full px-4 py-2 text-sm font-semibold ring-1 ring-inset transition-colors ${
-                    marcado ? 'bg-brand-700 text-white ring-brand-700' : 'bg-white text-slate-700 ring-slate-300'
-                  }`}
-                >
-                  {marcado ? '✓ ' : ''}
-                  {c.etiqueta ?? c.categoria ?? c.clave}
-                </button>
-              )
-            })}
-          </div>
-        </Campo>
+      {categorias.length > 1 && (
+        <div className="flex flex-wrap gap-2" data-selector-categoria role="group" aria-label="Categoría">
+          {categorias.map((c) => {
+            const marcado = categoria === c.clave
+            return (
+              <button
+                key={c.clave}
+                type="button"
+                aria-pressed={marcado}
+                data-categoria={c.clave}
+                onClick={() => {
+                  setCategoria(marcado ? '' : c.clave)
+                  setEditadas(null)
+                }}
+                className={`min-h-11 rounded-full px-4 py-2 text-sm font-semibold ring-1 ring-inset transition-colors ${
+                  marcado ? 'bg-brand-700 text-white ring-brand-700' : 'bg-white text-slate-700 ring-slate-300'
+                }`}
+              >
+                {marcado ? '✓ ' : ''}
+                {c.etiqueta ?? c.categoria ?? c.clave}
+              </button>
+            )
+          })}
+        </div>
       )}
 
       {historico && (
@@ -295,21 +309,29 @@ export function FormAplicacionLote({
         </label>
       )}
 
-      <Campo etiqueta="Fecha y hora" requerido>
-        <div className="flex flex-wrap items-center gap-2">
-          <Entrada type="datetime-local" value={fechaHora} onChange={(e) => { setFechaHora(e.target.value); if (area === null) setEditadas(null) }} className="w-60" data-fecha-hora />
-          {[['Hoy', hoyIso()], ['Ayer', ayerIso()]].map(([txt, v]) => (
-            <button
-              key={txt}
-              type="button"
-              onClick={() => setFechaHora(`${v}T${fechaHora.split('T')[1] ?? '08:00'}`)}
-              className={`rounded-full px-3 py-1.5 text-xs font-semibold ring-1 ring-inset ${fechaHora.startsWith(v) ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-600 ring-slate-200'}`}
-            >
-              {txt}
-            </button>
-          ))}
-        </div>
-      </Campo>
+      <div className="flex flex-wrap items-center gap-2">
+        <Entrada
+          type="datetime-local"
+          aria-label="Fecha y hora de la aplicación"
+          value={fechaHora}
+          onChange={(e) => {
+            setFechaHora(e.target.value)
+            if (area === null) setEditadas(null)
+          }}
+          className="w-56 max-w-full"
+          data-fecha-hora
+        />
+        {[['Hoy', hoyIso()], ['Ayer', ayerIso()]].map(([txt, v]) => (
+          <button
+            key={txt}
+            type="button"
+            onClick={() => setFechaHora(`${v}T${fechaHora.split('T')[1] ?? '08:00'}`)}
+            className={`min-h-11 rounded-full px-3.5 text-sm font-semibold ring-1 ring-inset ${fechaHora.startsWith(v) ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-600 ring-slate-200'}`}
+          >
+            {txt}
+          </button>
+        ))}
+      </div>
 
       <Campo etiqueta="Área cubierta (mz)" requerido>
         <div className="flex flex-wrap items-center gap-2">
@@ -318,35 +340,25 @@ export function FormAplicacionLote({
             value={areaTexto}
             onChange={(e) => setArea(e.target.value.replace(/[^\d.,]/g, ''))}
             placeholder="0"
+            aria-label="Área cubierta en manzanas (si cubres solo una parte del lote, escribe esa área)"
             data-area-cubierta
-            className="w-32 rounded-lg border border-slate-200 bg-white px-3 py-2 text-right text-base font-semibold tabular-nums focus:border-brand-600 focus:outline-none"
+            className="w-28 rounded-lg border border-slate-200 bg-white px-3 py-2 text-right text-base font-semibold tabular-nums focus:border-brand-600 focus:outline-none"
           />
           {propuesta !== null && area !== null && (
             <button type="button" onClick={() => setArea(null)} className="min-h-11 rounded-lg px-2 text-xs font-semibold text-brand-700 hover:bg-brand-50" data-area-propuesta>
               Usar el área del lote ({cantidad(propuesta)})
             </button>
           )}
+          {avisoArea && (
+            <span className="text-xs font-semibold text-amber-700" data-aviso-area>
+              Es mayor que el lote ({cantidad(areaLote!)} mz): la base puede rechazarla.
+            </span>
+          )}
         </div>
-        <p className="mt-1 text-xs text-slate-500">Si cubres solo una parte del lote, escribe esa área.</p>
-        {avisoArea && (
-          <p className="mt-1 text-xs font-semibold text-amber-700" data-aviso-area>
-            El área es mayor que la del lote ({cantidad(areaLote!)} mz): la base puede rechazarla.
-          </p>
-        )}
       </Campo>
 
-      <Campo etiqueta="Objetivo (elige al menos uno)" requerido>
-        <SelectorObjetivos
-          catalogo={catalogoObjetivos}
-          locales={objetivosNuevos}
-          seleccion={objetivos}
-          onCambiar={setObjetivos}
-          onAgregado={(o) => setObjetivosNuevos((x) => (x.some((y) => y.id === o.id) || catalogoObjetivos.some((y) => y.id === o.id) ? x : [...x, o]))}
-        />
-      </Campo>
-
-      <Campo etiqueta="Productos" requerido>
-        {grupo.length > 0 && <p className="mb-2 text-xs text-slate-500">Vienen las cantidades del plan. Corrige lo que cambió y deja vacío lo que no se aplicó.</p>}
+      <div className="flex flex-col gap-2" data-productos-aplicacion>
+        <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Productos y su objetivo</p>
         {inyeccion.materiales.length === 0 && <Alerta tono="ambar">No hay productos de inyección publicados desde AGL todavía.</Alerta>}
         <EditorLineas
           materiales={productos}
@@ -361,56 +373,92 @@ export function FormAplicacionLote({
             const dosis = l.cantidad.trim() ? dosisPorMz(num(l.cantidad), areaNum) : null
             const pregunta = tieneSaldo(l.material_id) && num(l.cantidad || '0') > 0
             const respuesta = deBodega[l.material_id]
+            const propios = objetivosDe(l.material_id)
+            const otrosSinObjetivo = lineas.filter((x) => x.material_id && x.material_id !== l.material_id && objetivosDe(x.material_id).length === 0).length
+            const delPlan = datosPlan.get(l.material_id)
+            const controla = delPlan?.controla ?? t?.plagas_controla ?? null
             return (
               <>
-              {pregunta && (
-                <div className="mt-2 rounded-xl bg-slate-50 p-2.5 ring-1 ring-inset ring-slate-200" role="group" aria-label="¿De dónde salió el producto?" data-pregunta-bodega={l.material_id}>
-                  <p className="mb-1.5 text-xs font-semibold text-slate-700">
-                    La estación tiene {cantidad(saldos.get(l.material_id) ?? 0)} {t?.unidad ?? ''} de este producto. ¿Lo tomaste de la bodega de la estación?
-                  </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {([[true, 'Sí, lo tomé de la bodega de la estación', 'si'], [false, 'No, vino aparte', 'no']] as const).map(([valor, texto, clave]) => (
-                      <button
-                        key={clave}
-                        type="button"
-                        aria-pressed={respuesta === valor}
-                        data-de-bodega={clave}
-                        onClick={() => setDeBodega((x) => ({ ...x, [l.material_id]: valor }))}
-                        className={`min-h-12 rounded-xl px-3 py-2 text-sm font-semibold leading-tight ring-1 ring-inset transition-colors ${
-                          respuesta === valor ? 'bg-brand-700 text-white ring-brand-700' : 'bg-white text-slate-700 ring-slate-300'
-                        }`}
-                      >
-                        {respuesta === valor ? '✓ ' : ''}
-                        {texto}
-                      </button>
-                    ))}
-                  </div>
-                  {respuesta === undefined && <p className="mt-1.5 text-xs font-semibold text-amber-700">Elige una respuesta para poder guardar.</p>}
+                <div className="mt-2" data-objetivo-producto={l.material_id}>
+                  <SelectorObjetivos
+                    compacto
+                    titulo={`Objetivo de ${nombre(l.material_id)}`}
+                    catalogo={catalogoObjetivos}
+                    locales={objetivosNuevos}
+                    seleccion={propios}
+                    onCambiar={(ids) => setObjProducto((x) => ({ ...x, [l.material_id]: ids }))}
+                    onAgregado={(o) => setObjetivosNuevos((x) => (x.some((y) => y.id === o.id) || catalogoObjetivos.some((y) => y.id === o.id) ? x : [...x, o]))}
+                  />
+                  {propios.length > 0 && otrosSinObjetivo > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setObjProducto((x) => Object.fromEntries([...Object.entries(x), ...lineas.filter((y) => y.material_id && objetivosDe(y.material_id).length === 0).map((y) => [y.material_id, propios])]))}
+                      className="min-h-11 text-xs font-semibold text-brand-700 underline"
+                      data-objetivo-igual-en-todos
+                    >
+                      Usar este objetivo en los otros {otrosSinObjetivo} producto(s)
+                    </button>
+                  )}
                 </div>
-              )}
-              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
-                <span data-ingrediente-activo>
-                  Ingrediente activo: <strong>{textoDato(t?.ingrediente_activo)}</strong>
-                </span>
-                {dosis !== null && (
-                  <span data-dosis-mz>
-                    Dosis: <strong>{cantidad(dosis)}</strong> {t?.unidad ?? ''}/mz
-                  </span>
+                {pregunta && (
+                  <div className="mt-2 rounded-xl bg-slate-50 p-2.5 ring-1 ring-inset ring-slate-200" role="group" aria-label="¿De dónde salió el producto?" data-pregunta-bodega={l.material_id}>
+                    <p className="mb-1.5 text-xs font-semibold text-slate-700">
+                      Hay {cantidad(saldos.get(l.material_id) ?? 0)} {t?.unidad ?? ''} en la estación. ¿Lo tomaste de ahí?
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {([[true, 'Sí, de la bodega', 'si'], [false, 'No, vino aparte', 'no']] as const).map(([valor, texto, clave]) => (
+                        <button
+                          key={clave}
+                          type="button"
+                          aria-pressed={respuesta === valor}
+                          data-de-bodega={clave}
+                          onClick={() => setDeBodega((x) => ({ ...x, [l.material_id]: valor }))}
+                          className={`min-h-11 rounded-xl px-3 py-2 text-sm font-semibold leading-tight ring-1 ring-inset transition-colors ${
+                            respuesta === valor ? 'bg-brand-700 text-white ring-brand-700' : 'bg-white text-slate-700 ring-slate-300'
+                          }`}
+                        >
+                          {respuesta === valor ? '✓ ' : ''}
+                          {texto}
+                        </button>
+                      ))}
+                    </div>
+                    {respuesta === undefined && <p className="mt-1.5 text-xs font-semibold text-amber-700">Elige una respuesta para poder guardar.</p>}
+                  </div>
                 )}
-                {grupo.length > 0 && !plan.has(l.material_id) && <span className="font-semibold text-amber-700">fuera del plan</span>}
-                <button type="button" onClick={() => setFicha(l.material_id)} className="min-h-11 rounded-lg px-2 font-semibold text-brand-700 underline" data-abrir-ficha>
-                  Ver ficha
-                </button>
-              </div>
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-slate-600">
+                  {dosis !== null && (
+                    <span data-dosis-mz>
+                      Dosis: <strong>{cantidad(dosis)}</strong> {t?.unidad ?? ''}/mz
+                    </span>
+                  )}
+                  <span data-ingrediente-activo>
+                    I.A.: <strong>{textoDato(t?.ingrediente_activo)}</strong>
+                  </span>
+                  {grupo.length > 0 && !plan.has(l.material_id) && <span className="font-semibold text-amber-700">fuera del plan</span>}
+                  <button type="button" onClick={() => setFicha(l.material_id)} className="min-h-11 rounded-lg px-1 font-semibold text-brand-700 underline" data-abrir-ficha>
+                    Ver ficha
+                  </button>
+                </div>
+                {(controla || delPlan?.observaciones) && (
+                  <p className="text-xs text-slate-500" data-plan-controla>
+                    {controla ? `Controla: ${controla}` : ''}
+                    {controla && delPlan?.observaciones ? ' · ' : ''}
+                    {delPlan?.observaciones ? `Plan: ${delPlan.observaciones}` : ''}
+                  </p>
+                )}
               </>
             )
           }}
         />
-      </Campo>
+      </div>
 
-      <Campo etiqueta="Observaciones">
-        <AreaTexto value={comentario} onChange={(e) => setComentario(e.target.value)} rows={2} placeholder="Opcional" data-comentario />
-      </Campo>
+      {verObservaciones ? (
+        <AreaTexto value={comentario} onChange={(e) => setComentario(e.target.value)} rows={2} placeholder="Observaciones (opcional)" aria-label="Observaciones" data-comentario />
+      ) : (
+        <button type="button" onClick={() => setVerObservaciones(true)} className="min-h-11 w-fit rounded-lg px-1 text-sm font-semibold text-brand-700" data-agregar-observacion>
+          ＋ Agregar observaciones
+        </button>
+      )}
     </MarcoRegistro>
   )
 }

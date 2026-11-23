@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useState } from 'react'
+import { EVENTO_COLA_CAMBIO } from '@/lib/campo/eventos'
 import { AlmacenLocal } from './almacenLocal'
 
 export function useNavegadorEnLinea(): boolean {
@@ -25,11 +26,13 @@ export function useNavegadorEnLinea(): boolean {
   return enLinea
 }
 
-export function useEstadoConexion(usuarioId: string) {
+/** `usuarioId` null = sin cola local (la persona no usa Campo): solo se sabe si hay señal. */
+export function useEstadoConexion(usuarioId: string | null) {
   const enLinea = useNavegadorEnLinea()
   const [cuentas, setCuentas] = useState({ pendientes: 0, rechazados: 0 })
 
   useEffect(() => {
+    if (!usuarioId) return
     let vivo = true
     const leer = async () => {
       try {
@@ -50,10 +53,13 @@ export function useEstadoConexion(usuarioId: string) {
     }
     void leer()
     window.addEventListener('online', leer)
+    // «campo:cola»: lo emite useCampo cada vez que cambia la cola (registrar, enviar, descartar): el número se mantiene al día
+    window.addEventListener(EVENTO_COLA_CAMBIO, leer)
     document.addEventListener('visibilitychange', alVolver)
     return () => {
       vivo = false
       window.removeEventListener('online', leer)
+      window.removeEventListener(EVENTO_COLA_CAMBIO, leer)
       document.removeEventListener('visibilitychange', alVolver)
     }
   }, [usuarioId, enLinea])

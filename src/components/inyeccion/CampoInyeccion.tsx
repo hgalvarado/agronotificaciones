@@ -1,28 +1,38 @@
 'use client'
 
 /**
- * Inyección / Drench / Aseguramiento de calidad por lote (Campo, bloque 2). Funciona sin señal igual que Fertirriego
- * (misma cola, misma custodia, misma bodega): lista los lotes con plan de la estación, «Aplicar por lote» y el
- * historial. El cumplimiento y la tendencia son de AGL: aquí no hay pantalla de reportes.
+ * Inyección / Drench / Aseguramiento de calidad por lote (Campo). Funciona sin señal igual que Fertirriego (misma cola,
+ * misma custodia, misma bodega). Lo principal es REGISTRAR: tras elegir la estación sale arriba, grande, «Aplicar por
+ * lote»; debajo, tres pestañas: «Historial» (lo registrado, la que abre), «Plan» (plan general por DDT, como en AGL) y
+ * «Por lote» (qué le toca a cada lote). Solo se ve lo de las zonas de la persona. El cumplimiento y la tendencia son de AGL.
+ * El estado de la conexión y los envíos están en el encabezado de toda la app.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Alerta, Boton, Insignia, ListaEsqueleto, Tarjeta } from '@/components/ui/Primitivos'
+import { Alerta, Boton, ListaEsqueleto } from '@/components/ui/Primitivos'
 import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
 import { RegistroServiceWorker } from '@/components/fertirriego/RegistroServiceWorker'
-import { hoyIso } from '@/lib/fechas/zona'
 import { conCustodiaLocal, saldosLocales } from '@/lib/fertirriego/calculos'
 import { EVENTO_GUARDADO_FALLIDO, type GuardadoFallido } from '@/lib/fertirriego/guardadoFondo'
 import { useCampo } from '@/lib/fertirriego/useCampo'
 import { EncabezadoEnvios } from '@/components/fertirriego/EncabezadoEnvios'
 import type { Operacion } from '@/lib/fertirriego/tipos'
-import { lotesConPlan } from '@/lib/inyeccion/estado'
 import { useInyeccion } from '@/lib/inyeccion/useInyeccion'
 import { permisoHistoricoDe, useCampoExtras } from '@/lib/campo/useCampoExtras'
+import { FichaProducto } from './FichaProducto'
 import { FormAplicacionLote } from './FormAplicacionLote'
 import { VistaHistorialInyeccion } from './VistaHistorialInyeccion'
+import { VistaPlanGeneral } from './VistaPlanGeneral'
+import { VistaPorLote } from './VistaPorLote'
 
 const RUTAS_SW = ['/inyeccion']
+
+type Pestana = 'historial' | 'plan' | 'lote'
+const PESTANAS: [Pestana, string][] = [
+  ['historial', 'Historial'],
+  ['plan', 'Plan'],
+  ['lote', 'Por lote'],
+]
 
 export function CampoInyeccion({ usuarioId }: { usuarioId: string }) {
   const campo = useCampo(usuarioId)
@@ -31,7 +41,9 @@ export function CampoInyeccion({ usuarioId }: { usuarioId: string }) {
   const extras = useCampoExtras(usuarioId, 'inyeccion')
   const { estado, cola } = campo
   const [estacionId, setEstacionId] = useState('')
+  const [pestana, setPestana] = useState<Pestana>('historial')
   const [ventana, setVentana] = useState<{ lote?: string; categoria?: string } | null>(null)
+  const [ficha, setFicha] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
   const [fallo, setFallo] = useState<GuardadoFallido | null>(null)
 
@@ -72,15 +84,7 @@ export function CampoInyeccion({ usuarioId }: { usuarioId: string }) {
     setTimeout(() => setAviso((a) => (a === m ? null : a)), 6000)
   }
 
-  const lotes = useMemo(
-    () => (iny.estado && estacion ? lotesConPlan(iny.estado, cola, estacion.id, hoyIso()) : []),
-    [iny.estado, cola, estacion]
-  )
   const nombreProducto = (id: string) => iny.estado?.materiales.find((m) => m.id === id)?.descripcion ?? 'un producto'
-  const categoriaNombre = (clave: string) => {
-    const c = iny.estado?.categorias.find((x) => x.clave === clave)
-    return c?.etiqueta ?? c?.categoria ?? clave
-  }
   const puedeRegistrar = iny.estado?.permisos?.registrar ?? false
 
   /** «Corregir y reenviar» (Envíos): abre «Aplicar por lote» con el lote de ese envío. */
@@ -94,7 +98,7 @@ export function CampoInyeccion({ usuarioId }: { usuarioId: string }) {
   if (campo.cargando && !estado) return <ListaEsqueleto filas={4} />
 
   return (
-    <div className="flex flex-col gap-3 pb-24">
+    <div className="flex flex-col gap-3 pb-6">
       <RegistroServiceWorker rutas={RUTAS_SW} />
 
       <EncabezadoEnvios campo={campo} onActualizar={iny.actualizar} actualizando={iny.cargando} onCorregir={corregirEnvio} />
@@ -143,63 +147,60 @@ export function CampoInyeccion({ usuarioId }: { usuarioId: string }) {
             <span className="text-xs text-slate-600">{estacion.zona}</span>
           </div>
 
-          <div data-lotes-con-plan className="flex flex-col gap-2">
-            <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Lotes con plan</p>
-            {lotes.length === 0 ? (
-              <p className="rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-500 ring-1 ring-inset ring-slate-200">
-                Esta estación no tiene lotes con plan de inyección. Igual puedes registrar una aplicación (quedará «sin plan»).
-              </p>
-            ) : (
-              lotes.map((l) => (
-                <button
-                  key={`${l.lote}|${l.categoria_clave}`}
-                  type="button"
-                  disabled={!puedeRegistrar}
-                  onClick={() => setVentana({ lote: l.lote, categoria: l.categoria_clave })}
-                  data-lote-plan={l.lote}
-                  className="block min-h-11 rounded-2xl text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 disabled:opacity-60"
-                >
-                  <Tarjeta className="p-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-sm font-bold text-slate-800">{l.lote}</p>
-                      <Insignia tono={l.hecho ? 'verde' : 'ambar'}>{l.hecho ? 'Hecho' : 'Pendiente'}</Insignia>
-                    </div>
-                    <p className="text-xs text-slate-500">
-                      {categoriaNombre(l.categoria_clave)} · DDT {l.ddt ?? '—'}
-                      {l.fecha_plan ? ` · ${l.fecha_plan}` : ''}
-                    </p>
-                  </Tarjeta>
-                </button>
-              ))
-            )}
+          {puedeRegistrar ? (
+            <Boton className="min-h-14 w-full text-lg" onClick={() => setVentana({})} data-aplicar-por-lote>
+              Aplicar por lote
+            </Boton>
+          ) : (
+            <Alerta tono="ambar">Tu rol puede ver Inyección pero no registrar. Se configura en Permisos.</Alerta>
+          )}
+
+          <div role="tablist" aria-label="Inyección" className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1" data-pestanas-inyeccion>
+            {PESTANAS.map(([id, texto]) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={pestana === id}
+                onClick={() => setPestana(id)}
+                data-pestana-iny={id}
+                className={`min-h-11 rounded-lg px-2 text-sm font-bold transition-colors ${pestana === id ? 'bg-white text-brand-700 shadow-[var(--shadow-card)]' : 'text-slate-600'}`}
+              >
+                {texto}
+              </button>
+            ))}
           </div>
 
-          <VistaHistorialInyeccion
-            estado={iny.estado}
-            cola={cola}
-            estacion={estacion}
-            yo={estado.yo}
-            puedeAnular={iny.estado.permisos?.anular ?? false}
-            puedeEliminar={extras.eliminar_definitivo}
-            nombreProducto={nombreProducto}
-            registrar={campo.registrar}
-            onGuardado={guardado}
-            onEliminado={(m) => {
-              guardado(m)
-              iny.actualizar()
-            }}
-          />
+          {pestana === 'historial' && (
+            <VistaHistorialInyeccion
+              estado={iny.estado}
+              cola={cola}
+              estacion={estacion}
+              yo={estado.yo}
+              puedeAnular={iny.estado.permisos?.anular ?? false}
+              puedeEliminar={extras.eliminar_definitivo}
+              nombreProducto={nombreProducto}
+              registrar={campo.registrar}
+              onGuardado={guardado}
+              onEliminado={(m) => {
+                guardado(m)
+                iny.actualizar()
+              }}
+            />
+          )}
+          {pestana === 'plan' && <VistaPlanGeneral estado={iny.estado} cola={cola} estacionId={estacion.id} onFicha={setFicha} />}
+          {pestana === 'lote' && (
+            <VistaPorLote
+              estado={iny.estado}
+              cola={cola}
+              estacionId={estacion.id}
+              puedeRegistrar={puedeRegistrar}
+              onAplicar={(lote, categoria) => setVentana({ lote, categoria })}
+            />
+          )}
 
-          {!puedeRegistrar && <Alerta tono="ambar">Tu rol puede ver Inyección pero no registrar. Se configura en Permisos.</Alerta>}
-
-          {puedeRegistrar && (
-            <div className="fixed inset-x-0 bottom-0 z-10 border-t border-slate-200 bg-white/95 p-3 backdrop-blur">
-              <div className="mx-auto max-w-2xl">
-                <Boton className="min-h-12 w-full" onClick={() => setVentana({})} data-aplicar-por-lote>
-                  Aplicar por lote
-                </Boton>
-              </div>
-            </div>
+          {ficha && iny.estado.materiales.find((m) => m.id === ficha) && (
+            <FichaProducto producto={iny.estado.materiales.find((m) => m.id === ficha)!} onCerrar={() => setFicha(null)} />
           )}
 
           {ventana && (

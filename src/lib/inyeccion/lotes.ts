@@ -10,6 +10,9 @@ export type LoteCatalogo = {
   nombre: string | null
   temporada: string
   activa: boolean
+  /** sql/141: zona del lote en esa temporada (la base ya entrega solo los de las zonas de la persona). */
+  zona_id?: string | null
+  zona?: string | null
 }
 
 /** Nomenclatura normalizada: sin espacios y en minúsculas («1002-010 » = «1002-010»). Igual a `_iny_norm_lote` (SQL). */
@@ -53,7 +56,7 @@ export function opcionesDeLotes(catalogo: LoteCatalogo[], lotesConPlan: string[]
     const k = normLote(l.nomenclatura)
     if (vistos.has(k)) continue
     const plan = conPlan.has(k)
-    vistos.set(k, { id: l.nomenclatura, titulo: l.nomenclatura, subtitulo: l.nombre ?? undefined, grupo: plan ? GRUPO_CON_PLAN : GRUPO_CATALOGO, destacado: plan })
+    vistos.set(k, { id: l.nomenclatura, titulo: l.nomenclatura, subtitulo: [l.nombre, l.zona].filter(Boolean).join(' · ') || undefined, grupo: plan ? GRUPO_CON_PLAN : GRUPO_CATALOGO, destacado: plan })
   }
   return [...vistos.values()].sort(
     (a, b) => Number(b.destacado ?? false) - Number(a.destacado ?? false) || a.titulo.localeCompare(b.titulo, 'es', { numeric: true })

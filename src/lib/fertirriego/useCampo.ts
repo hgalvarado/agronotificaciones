@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { AlmacenLocal } from './almacenLocal'
+import { EVENTO_COLA_CAMBIO } from '@/lib/campo/eventos'
 import { esperaMs } from '@/lib/errores/cola'
 import { enviarLatido, registrarError } from '@/lib/errores/registrador'
 import { quitarDocumentoDelEstado } from './eliminar'
@@ -42,7 +43,11 @@ export function useCampo(usuarioId: string) {
   }, [])
 
   const recargarCola = useCallback(async () => {
-    if (almacen.current) setCola(await almacen.current.listarCola())
+    if (almacen.current) {
+      setCola(await almacen.current.listarCola())
+      // El indicador del encabezado global (IndicadorConexion) cuenta lo pendiente leyendo la misma cola
+      if (typeof window !== 'undefined') window.dispatchEvent(new Event(EVENTO_COLA_CAMBIO))
+    }
   }, [])
 
   const sincronizarAhora = useCallback(async () => {

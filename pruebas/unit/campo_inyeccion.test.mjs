@@ -214,3 +214,56 @@ test('la ficha Inyección aparece con su permiso y el orden queda Fertirriego, I
   const todas = fichasCampo((p, a) => a === 'ver' && ['fertirriego', 'inyeccion', 'agrometricas'].includes(p))
   assert.deepEqual(todas.map((x) => x.ruta), ['/fertirriego', '/inyeccion', '/agrometricas/parametros', ''])
 })
+
+// ---------------------------------------------------------------- 141: objetivo por producto y plan para decidir
+const { planGeneralPorDdt, planDeLote, siguientePlanDeLote, lotesDelPlan } = await import(pathToFileURL(resolve('src/lib/inyeccion/planGeneral.ts')).href)
+
+test('141 · el objetivo se manda POR PRODUCTO y el del registro es la unión (compatibilidad)', () => {
+  const r = armarAplicacionLote({
+    ...base,
+    objetivos: undefined,
+    lineas: [
+      { material_id: 'A', cantidad: 10, objetivos: [{ id: 'O1', nombre: 'Plaga' }] },
+      { material_id: 'B', cantidad: 2, objetivos: [{ id: 'O2', nombre: 'Maleza' }, { id: 'O1', nombre: 'Plaga' }] },
+    ],
+  })
+  assert.ok('datos' in r)
+  assert.deepEqual(r.datos.lineas[0].objetivos, [{ id: 'O1', nombre: 'Plaga' }])
+  assert.deepEqual(r.datos.lineas[1].objetivos.map((o) => o.id), ['O2', 'O1'])
+  assert.deepEqual(r.datos.objetivos.map((o) => o.id).sort(), ['O1', 'O2'])
+})
+
+test('141 · un producto sin objetivo propio hereda el del registro; sin ninguno, error', () => {
+  const r = armarAplicacionLote({ ...base, lineas: [{ material_id: 'A', cantidad: 1, objetivos: [{ id: 'O2', nombre: 'Maleza' }] }, { material_id: 'B', cantidad: 1 }] })
+  assert.ok('datos' in r)
+  assert.deepEqual(r.datos.lineas[1].objetivos, undefined)   // hereda el del registro: no viaja por línea
+  assert.deepEqual(armarAplicacionLote({ ...base, objetivos: [], lineas: [{ material_id: 'A', cantidad: 1, objetivos: [{ id: 'O1', nombre: 'Plaga' }] }, { material_id: 'B', cantidad: 1 }] }), { error: 'Elige al menos un objetivo' })
+})
+
+const planDdt = [
+  { id: '1', estacion_id: 'E', temporada: 'T', ciclo: 'Ciclo 1', turno_agl_id: 'T1', turno: 'T1', lote: 'L1', categoria_clave: 'c', ddt: 5, fecha_plan: '2026-11-21', material_id: 'A', dosis_mz: 2, area_mz: 3, cantidad_plan: 6, variedad: 'Cavendish', observaciones: 'Aplicar temprano', controla: 'Trips' },
+  { id: '2', estacion_id: 'E', temporada: 'T', ciclo: 'Ciclo 1', turno_agl_id: 'T1', turno: 'T1', lote: 'L2', categoria_clave: 'c', ddt: 5, fecha_plan: '2026-11-21', material_id: 'A', dosis_mz: 2, area_mz: 1, cantidad_plan: 2, variedad: 'Otra', observaciones: null, controla: 'Trips' },
+  { id: '3', estacion_id: 'E', temporada: 'T', ciclo: 'Ciclo 1', turno_agl_id: 'T1', turno: 'T1', lote: 'L1', categoria_clave: 'c', ddt: 12, fecha_plan: '2026-11-28', material_id: 'B', dosis_mz: 1, area_mz: 3, cantidad_plan: 3, variedad: 'Cavendish' },
+]
+
+test('141 · plan general por DDT: variedades con % del área, observaciones, lotes y avance', () => {
+  const g = planGeneralPorDdt(planDdt, new Set(['T1|12']))
+  assert.deepEqual(g.map((x) => x.ddt), [5, 12])
+  const p = g[0].productos[0]
+  assert.equal(p.area_mz, 4)
+  assert.equal(p.cantidad, 8)
+  assert.deepEqual(p.variedades.map((v) => [v.variedad, v.pct]), [['Cavendish', 75], ['Otra', 25]])
+  assert.deepEqual(p.observaciones, ['Aplicar temprano'])
+  assert.equal(p.controla, 'Trips')
+  assert.equal(g[0].n_lotes, 2)
+  assert.equal(g[0].completo, false)
+  assert.equal(g[1].completo, true)
+})
+
+test('141 · plan de un lote: estados hecho / atrasado / próximo y el que toca ahora', () => {
+  const planes = planDeLote(planDdt, 'L1', new Set(['T1|12']), '2026-11-23')
+  assert.deepEqual(planes.map((p) => [p.ddt, p.estado]), [[5, 'atrasado'], [12, 'hecho']])
+  assert.equal(siguientePlanDeLote(planes).ddt, 5)
+  assert.deepEqual(lotesDelPlan(planDdt), ['L1', 'L2'])
+  assert.equal(planDeLote(planDdt, 'L2', new Set(), '2026-11-21')[0].estado, 'hoy')
+})

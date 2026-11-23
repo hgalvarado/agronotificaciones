@@ -25,7 +25,22 @@ export type ProductoInyeccion = {
   notas_tecnicas: string | null
 }
 
-export type LineaAplicacionInyeccion = { material_id: string; cantidad: number; dosis_mz: number | null; en_plan: boolean; ddt_plan: number | null; de_bodega?: boolean | null }
+export type LineaAplicacionInyeccion = {
+  material_id: string
+  cantidad: number
+  dosis_mz: number | null
+  en_plan: boolean
+  ddt_plan: number | null
+  de_bodega?: boolean | null
+  /** sql/141: objetivos de ESTE producto (nombres). Registros anteriores: vacío → se usan los del registro. */
+  objetivos?: string[] | null
+  objetivo_ids?: string[] | null
+}
+
+/** Los objetivos de un producto: los suyos (141) o, si el registro es anterior, los del registro. */
+export function objetivosDeLinea(a: Pick<AplicacionInyeccion, 'objetivos'>, l: LineaAplicacionInyeccion): string[] {
+  return l.objetivos && l.objetivos.length > 0 ? l.objetivos : a.objetivos
+}
 
 export type AplicacionInyeccion = {
   id: string
