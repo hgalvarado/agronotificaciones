@@ -27,6 +27,16 @@ export type MotorEstacion = {
   horas_para_mant: number | null
 }
 
+export type MotorOtraEstacion = {
+  equipo_id: string
+  codigo: string
+  nombre: string
+  modelo: string | null
+  estado: EstadoMotor
+  estacion_id: string
+  estacion_nombre: string
+}
+
 export type TanqueEstacion = { id: string; nombre: string; estacion_id: string | null; capacidad_gal: number | null; saldo_gal: number }
 
 export type RegistroMotor = {
@@ -97,9 +107,21 @@ export type AsignacionMotor = {
 
 export type EstadoMotores = {
   servidor_en: string
-  permisos: { ver: boolean; registrar: boolean; anular: boolean; configurar: boolean }
+  permisos: {
+    ver: boolean
+    registrar: boolean
+    anular: boolean
+    configurar: boolean
+    /** sql/138: un permiso por trabajo (configurar los incluye a todos). */
+    motor_recibir?: boolean
+    motor_mover?: boolean
+    motor_retirar?: boolean
+    motor_mantenimiento?: boolean
+  }
   material_diesel_id: string | null
   motores: MotorEstacion[]
+  /** Motores instalados en estaciones que la persona no ve: solo para elegirlos al recibir o mover (sql/138). */
+  otras_estaciones?: MotorOtraEstacion[]
   tanques_sin_motor: TanqueEstacion[]
   registros: RegistroMotor[]
   recepciones: RecepcionMotor[]
@@ -151,4 +173,32 @@ export function motoresDeEstacion(estado: EstadoMotores, estacionId: string): Mo
 /** Motores fuera de una estación (taller, retirados, sin asignar): solo los ve quien tiene «configurar». */
 export function motoresSinEstacion(estado: EstadoMotores): MotorEstacion[] {
   return estado.motores.filter((m) => m.estado !== 'EN_ESTACION').sort((a, b) => a.codigo.localeCompare(b.codigo, 'es', { numeric: true }))
+}
+
+/**
+ * Motores que se pueden recibir en una estación: los que no están en ella (sin asignar, taller, retirados, o instalados
+ * en otra estación). Los de otra estación llevan `enEstacion` para marcarlos «en estación X» y moverlos desde ahí.
+ */
+export type MotorElegible = { equipo_id: string; codigo: string; nombre: string; modelo: string | null; estado: EstadoMotor; enEstacion: string | null }
+
+export function motoresParaRecibir(estado: EstadoMotores, estacionId: string, nombreEstacion: (id: string) => string | null): MotorElegible[] {
+  const vistos = new Set<string>()
+  const lista: MotorElegible[] = []
+  for (const m of estado.motores) {
+    if (m.estado === 'EN_ESTACION' && m.estacion_id === estacionId) continue
+    vistos.add(m.equipo_id)
+    lista.push({
+      equipo_id: m.equipo_id,
+      codigo: m.codigo,
+      nombre: m.nombre,
+      modelo: m.modelo,
+      estado: m.estado,
+      enEstacion: m.estado === 'EN_ESTACION' && m.estacion_id ? (nombreEstacion(m.estacion_id) ?? 'otra estación') : null,
+    })
+  }
+  for (const o of estado.otras_estaciones ?? []) {
+    if (vistos.has(o.equipo_id) || o.estacion_id === estacionId) continue
+    lista.push({ equipo_id: o.equipo_id, codigo: o.codigo, nombre: o.nombre, modelo: o.modelo, estado: o.estado, enEstacion: o.estacion_nombre })
+  }
+  return lista.sort((a, b) => a.codigo.localeCompare(b.codigo, 'es', { numeric: true }))
 }

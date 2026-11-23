@@ -158,3 +158,8 @@ de la 128 y la 129 asumen el diseño anterior (devolución sin chofer/vehículo;
 ## Resultado QA 2026-11-22 (Opus, 2 vueltas)
 - Corregido: alias `l` en 132, CRLF en parchar 132, orden de tipos en 130, `lotes_del_catalogo` por id de temporada y canónico = ubicación técnica (AGL, sin commit), normalización de mayúsculas con tilde en 132.
 - Pendiente: pruebas SQL 128/129 con el diseño viejo (actualizar); saldo antes/después y GPS de la devolución en AGL; `mot_movimientos` no se exporta; clics de Inyección/Motores; verificar el cambio de canónico con datos reales de AGL.
+
+## Motores: permisos por acción y «Asignar nuevo motor» (2026-11-23, sql/138, escrita sin correr)
+- Acciones nuevas en pantalla `motores`: `motor_recibir`, `motor_mover`, `motor_retirar`, `motor_mantenimiento` (nivel Operar; «registrar» = horas y combustible). `configurar` sigue valiendo para todo. No se otorgó nada a ningún rol: se asignan en Permisos.
+- Recibir motor: sin motivo (guarda horómetro, diésel en tanque como SALDO_INICIAL y observación). Motivo solo al mover o retirar. Pantalla: botón «Asignar nuevo motor» -> buscador -> formulario; la lista completa de motores ya no se muestra.
+- Si se vuelve a correr la 130, correr la 138 después.

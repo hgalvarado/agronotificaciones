@@ -2,8 +2,8 @@
 
 /**
  * Tarjeta de un motor de riego: nivel del tanque, horas para el próximo mantenimiento y los botones del día. No hace
- * cuentas: todo viene de lib/motores (puro). Los botones de configuración (mover, taller, retirar, mantenimiento) solo
- * salen con «configurar»; un motor fuera de la estación se muestra atenuado y sin botones de registro.
+ * cuentas: todo viene de lib/motores (puro). Cada botón sale solo con su permiso (sql/138): Mover, Retirar, Mantenimiento
+ * y, para las horas y el combustible, «registrar». Solo se muestran los motores asignados a la estación.
  */
 
 import { Boton, Insignia, Tarjeta } from '@/components/ui/Primitivos'
@@ -25,10 +25,13 @@ export function TarjetaMotor({
   saldoGal,
   horasDesdeMant,
   puedeRegistrar,
-  puedeConfigurar,
+  puedeMover,
+  puedeRetirar,
+  puedeMantenimiento,
   onRegistro,
   onRecibir,
   onMover,
+  onRetirar,
   onMantenimiento,
   onHistorial,
 }: {
@@ -38,10 +41,13 @@ export function TarjetaMotor({
   /** Horas desde el último mantenimiento con lo pendiente de enviar. */
   horasDesdeMant: number
   puedeRegistrar: boolean
-  puedeConfigurar: boolean
+  puedeMover: boolean
+  puedeRetirar: boolean
+  puedeMantenimiento: boolean
   onRegistro: () => void
   onRecibir: () => void
   onMover: () => void
+  onRetirar: () => void
   onMantenimiento: () => void
   onHistorial: () => void
 }) {
@@ -113,15 +119,20 @@ export function TarjetaMotor({
           <Boton tamano="sm" variante="fantasma" className="min-h-11" onClick={onHistorial} data-historial-motor>
             Historial
           </Boton>
-          {puedeConfigurar && (
-            <>
-              <Boton tamano="sm" variante="fantasma" className="min-h-11" onClick={onMover} data-mover-motor>
-                {instalado ? 'Mover o retirar' : 'Instalar'}
-              </Boton>
-              <Boton tamano="sm" variante="fantasma" className="min-h-11" onClick={onMantenimiento} data-registrar-mantenimiento>
-                Registrar mantenimiento
-              </Boton>
-            </>
+          {instalado && puedeMover && (
+            <Boton tamano="sm" variante="fantasma" className="min-h-11" onClick={onMover} data-mover-motor>
+              Mover
+            </Boton>
+          )}
+          {instalado && puedeRetirar && (
+            <Boton tamano="sm" variante="fantasma" className="min-h-11" onClick={onRetirar} data-retirar-motor>
+              Retirar
+            </Boton>
+          )}
+          {puedeMantenimiento && (
+            <Boton tamano="sm" variante="fantasma" className="min-h-11" onClick={onMantenimiento} data-registrar-mantenimiento>
+              Mantenimiento
+            </Boton>
           )}
         </div>
       </Tarjeta>
