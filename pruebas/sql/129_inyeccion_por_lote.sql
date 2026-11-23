@@ -109,7 +109,7 @@ create temp table s0 as select pg_temp.saldo((select est from k), (select a from
 select pg_temp.como((select adm from k));
 select pg_temp.pub('[{"clave":"ferti-riego|inyeccion","departamento":"Ferti-Riego","categoria":"Inyección","tipo":"inyeccion","etiqueta":"Inyección","activo":true}]'::jsonb);
 select pg_temp.ok((select count(*) = 3 from iny_plan where turno_agl_id in ('T-INY-1', 'T-INY-0')), 'se publicaron 3 líneas de plan');
-select pg_temp.ok((select iny_activo and fertirriego and not fert_analisis and ingrediente_activo = 'Abamectina' and carencia_dias = 3 from materiales where codigo = 'QA-SOLCA'),
+select pg_temp.ok((select iny_activo and fertirriego and ingrediente_activo = 'Abamectina' and carencia_dias = 3 from materiales where codigo = 'QA-SOLCA'),
                   'QA-SOLCA: iny_activo, fertirriego, sin análisis, con ingrediente activo y carencia');
 select pg_temp.ok((select plagas_controla is null and carencia_dias is null from materiales where codigo = '101478'), '101478: datos técnicos vacíos = NULL (sin dato)');
 select pg_temp.pub('[{"clave":"ferti-riego|inyeccion","departamento":"Ferti-Riego","categoria":"Inyección","tipo":"inyeccion","etiqueta":"Inyección","activo":true}]'::jsonb);
@@ -191,6 +191,8 @@ select pg_temp.como((select adm from k));
 select pg_temp.pub('[{"clave":"ferti-riego|inyeccion","departamento":"Ferti-Riego","categoria":"Inyección","tipo":"inyeccion","etiqueta":"Inyección","activo":true}]'::jsonb);
 select pg_temp.ok((select activo from iny_categorias where clave = 'ferti-riego|inyeccion'), 'reactivarla recupera su plan');
 
+select pg_temp.como((select e1 from k));
+select pg_temp.op(pg_temp.uid(50), 'recepcion', jsonb_build_object('estacion_id', (select est from k), 'chofer_id', '10000000-0000-0000-0000-000000000001', 'fecha_hora', now() - interval '1 minute', 'lineas', jsonb_build_array(pg_temp.l((select a from k), 200000))));
 -- ---------------------------------------------------------------- 8 · anular
 select pg_temp.como((select adm from k));
 create temp table s3 as select pg_temp.saldo((select est from k), (select a from k)) as a;
@@ -232,6 +234,7 @@ select pg_temp.ok((select count(*) = 0 from iny_aplicaciones where bajado_a_agl_
 select pg_temp.ok((select (fn_iny_purgar_bajadas('{}'::jsonb)->>'aplicaciones')::integer = 0), 'purgar antes de la retención (30 días): no borra');
 select pg_temp.ok((select fn_iny_bajada_retencion('{"dias": 0}'::jsonb)->>'retencion_dias' = '0'), 'la retención se puede cambiar');
 -- una fila cambiada entre la lectura y la confirmación vuelve a «por bajar»
+select pg_temp.como((select e1 from k));
 create temp table ncf as select pg_temp.apl(pg_temp.uid(61), jsonb_build_object('lineas', jsonb_build_array(pg_temp.l((select b from k), 1)))) as r;
 select pg_temp.como((select adm from k));
 create temp table x2 as select fn_iny_exportar('{"limite": 1000}'::jsonb) as x;

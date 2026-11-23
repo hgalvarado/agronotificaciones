@@ -52,8 +52,8 @@ export function CampoInyeccion({ usuarioId }: { usuarioId: string }) {
   // Al terminar de enviar lo pendiente se trae lo nuevo de Inyección (una sola vez por transición)
   const antes = useRef(pendientes)
   const { actualizar } = iny
+  // bucle-ok: «actualizar» es estable (useCallback sobre un cliente memorizado), solo corre al pasar de pendientes a 0 y la bajada pasa por el freno de useInyeccion
   useEffect(() => {
-    // bucle-ok: «actualizar» es estable (useCallback sobre un cliente memorizado), solo corre al pasar de pendientes a 0 y la bajada pasa por el freno de useInyeccion
     if (antes.current > 0 && pendientes === 0) actualizar()
     antes.current = pendientes
   }, [pendientes, actualizar])
