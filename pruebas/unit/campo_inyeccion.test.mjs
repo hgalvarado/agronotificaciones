@@ -184,15 +184,16 @@ test('lineasDelPlan pedido por DDT y vacío para un lote sin plan', () => {
   assert.deepEqual(lineasDelPlan(plan, { lote: 'L1', categoriaClave: 'otra', fecha: '2026-11-22' }), [])
 })
 
-test('el saldo local NO resta si la línea no es de bodega (139)', () => {
+test('el saldo local resta aunque la línea no traiga de_bodega (143); el histórico no resta', () => {
   const estado = {
     yo: { id: 'U', nombre: 'Yo' }, estaciones: [], relevos: [], traslados: [], plan: [], aplicaciones: [], movimientos: [],
     saldos: [{ estacion_id: 'E', material_id: 'A', disponible: 100, en_transito: 0 }],
   }
   const op = { id: 'P', tipo: 'aplicacion_lote', estado_local: 'PENDIENTE', creado_en: '2026-11-22T15:00:00Z', en_nombre_de: null,
     datos: { estacion_id: 'E', lote: 'L1', lineas: [{ material_id: 'A', cantidad: 30 }] } }
-  assert.deepEqual(efectosDe(op, estado, () => 0), [])
-  assert.equal(saldosLocales(estado, [op], 'E').get('A'), 100)
+  assert.equal(efectosDe(op, estado, () => 0).length, 1)
+  assert.equal(saldosLocales(estado, [op], 'E').get('A'), 70)
+  assert.equal(efectosDe({ ...op, datos: { ...op.datos, historica: true } }, estado, () => 0).length, 0)
 })
 
 test('el saldo local resta APLICACION_LOTE de bodega: 100 → 70', () => {

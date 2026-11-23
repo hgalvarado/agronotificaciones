@@ -141,9 +141,6 @@ test('armarRegistroDiario: el suministro baja gastado y viaja con el producto di
   assert.equal(armarRegistroDiario(base).datos.suministro_gal, undefined)
 })
 
-test(r.aviso))
-  assert.equal(armarRecepcionDiesel({ ...base, capacidadGal: 100, saldoActual: 10 }).aviso, undefined)
-})
 
 test('armarMovimientoMotor: saldo sin destino, DEVUELTO sin destino, motivo vacío', () => {
   const base = { equipoId: 'M', tipo: 'RETIRADO', fechaHora: '2026-11-20T15:00:00Z', estacionDestino: null, tanqueId: null, tanqueNuevo: null, motivo: 'Fin de temporada', motivoCodigo: 'FIN_TEMPORADA', destinoSaldo: null, destinoDevolucion: null, horasBase: null, saldoActual: 120 }

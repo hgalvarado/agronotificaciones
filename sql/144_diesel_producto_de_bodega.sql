@@ -28,8 +28,8 @@
 --   · AGL: mot_registros.recibido_gal = suministro del día; las recepciones bajan con tanque_id null (nivel estación).
 --
 -- Correr DESPUÉS de la 140 (y de 130, 136, 138, 139). Idempotente. Todo UPDATE/DELETE lleva WHERE.
--- ORDEN: si se vuelve a correr 130, 136, 138, 139 o 140 (redefinen o parchan _mot_op_registro_diario, _mot_op_anulacion,
--- fn_campo_eliminar_documento o fn_fert_bodega_general), CORRER LA 144 OTRA VEZ. La 144 antes de esas converge al volver a correrla.
+-- ORDEN: si se vuelve a correr 139 → correr 141, 142, 143 y 144; si se vuelve a correr 130, 136, 138 o 140 → correr 144
+-- (redefinen o parchan _mot_op_registro_diario, _mot_op_anulacion, fn_campo_eliminar_documento o fn_fert_bodega_general).
 -- Cada parche tiene marca propia «144:» y se salta si ya está puesto.
 -- =====================================================================
 
