@@ -20,7 +20,7 @@ import { NOMBRE_MOVIMIENTO, cantidad } from '@/lib/fertirriego/calculos'
 import { crearOperacion, nuevoId } from '@/lib/fertirriego/operaciones'
 import type { EstadoCampo, Estacion, InfoOperacion, Operacion, Persona } from '@/lib/fertirriego/tipos'
 import { esTipoEliminable } from '@/lib/fertirriego/eliminar'
-import { esDocumentoAnulable } from '@/lib/fertirriego/devolucionBodega'
+import { DESTINOS_DEVOLUCION, SIN_DATO_ANTERIOR, esDocumentoAnulable, rotuloDevolucion, vistaDevolucion } from '@/lib/fertirriego/devolucionBodega'
 import { EditorLineas, leerLineas, type LineaEditable } from './EditorLineas'
 import { EliminarPorCompleto } from './EliminarPorCompleto'
 import { MarcoRegistro } from './MarcoRegistro'
@@ -37,6 +37,10 @@ const NOMBRE_OTRO: Record<string, string> = {
   traslado: 'Traslado',
   devolucion_bodega: 'Devolución a bodega',
   aplicacion_lote: 'Aplicación por lote',
+  motor_registro: 'Registro diario del motor',
+  diesel_recepcion: 'Diésel recibido',
+  motor_mantenimiento: 'Mantenimiento de motor',
+  motor_asignacion: 'Movimiento de motor',
   // 102: lo que aplicó un turno terminado, en un solo renglón (el detalle quedó en AGL)
   archivo_turno: 'Turno terminado (archivado en AGL)',
 }
@@ -67,6 +71,7 @@ export function DetalleDocumento({
   yo,
   documentoTipo,
   documentoId,
+  cola,
   registrar,
   onCerrar,
   onGuardado,
@@ -77,6 +82,8 @@ export function DetalleDocumento({
   yo: Persona
   documentoTipo: string
   documentoId: string
+  /** Lo pendiente de enviar: una devolución a bodega sin señal se muestra con lo que el teléfono ya tiene. */
+  cola?: Operacion[]
   registrar: (...ops: Operacion[]) => Promise<void>
   onCerrar: () => void
   onGuardado: (m: string) => void
@@ -97,12 +104,14 @@ export function DetalleDocumento({
   const aplicacion = estado.aplicaciones.find((a) => a.id === documentoId)
   const conteo = (estado.conteos ?? []).find((c) => c.id === documentoId)
   const envasesMovs = (estado.envases_movimientos ?? []).filter((m) => m.documento_id === documentoId)
+  const dev = documentoTipo === 'devolucion_bodega' ? vistaDevolucion(estado, cola ?? [], documentoId, persona) : null
   const anulado =
+    Boolean(dev?.anulado_at) ||
     movs.some((m) => estado.movimientos.some((x) => x.anula_id === m.id)) || Boolean(recepcion?.anulado_at || aplicacion?.anulado_at || conteo?.anulado_at)
-  const motivoAnulacion = recepcion?.motivo_anulacion ?? aplicacion?.motivo_anulacion ?? conteo?.motivo_anulacion ?? null
-  const autor = recepcion?.registrado_por ?? aplicacion?.registrado_por ?? conteo?.registrado_por ?? movs[0]?.registrado_por ?? envasesMovs[0]?.registrado_por ?? null
-  const fechaHora = recepcion?.fecha_hora ?? aplicacion?.fecha_hora ?? conteo?.fecha_hora ?? movs[0]?.fecha_hora ?? envasesMovs[0]?.fecha_hora ?? null
-  const operacion: InfoOperacion | null | undefined = recepcion?.operacion ?? aplicacion?.operacion ?? conteo?.operacion
+  const motivoAnulacion = dev?.motivo_anulacion ?? recepcion?.motivo_anulacion ?? aplicacion?.motivo_anulacion ?? conteo?.motivo_anulacion ?? null
+  const autor = dev?.registrado_por ?? recepcion?.registrado_por ?? aplicacion?.registrado_por ?? conteo?.registrado_por ?? movs[0]?.registrado_por ?? envasesMovs[0]?.registrado_por ?? null
+  const fechaHora = dev?.fecha_hora ?? recepcion?.fecha_hora ?? aplicacion?.fecha_hora ?? conteo?.fecha_hora ?? movs[0]?.fecha_hora ?? envasesMovs[0]?.fecha_hora ?? null
+  const operacion: InfoOperacion | null | undefined = dev?.operacion ?? recepcion?.operacion ?? aplicacion?.operacion ?? conteo?.operacion
   const suyo = autor === yo.id
   const soloEnvases = Boolean(recepcion && (recepcion.solo_envases || (movs.length === 0 && (recepcion.envases?.length ?? 0) > 0)))
 
@@ -119,7 +128,7 @@ export function DetalleDocumento({
     (aplicacion?.lineas ?? []).map((l) => ({ clave: nuevoId(), material_id: l.material_id, cantidad: '' }))
   )
 
-  const titulo = soloEnvases ? 'Envases' : (NOMBRE_DOC[documentoTipo] ?? NOMBRE_OTRO[documentoTipo] ?? 'Registro')
+  const titulo = dev ? rotuloDevolucion(dev.destino) : soloEnvases ? 'Envases' : (NOMBRE_DOC[documentoTipo] ?? NOMBRE_OTRO[documentoTipo] ?? 'Registro')
 
   // Envases del registro: los movimientos de la base (100) o lo que trae la recepción
   const envasesFilas: { envase_id: string; recibidos: number; entregados: number }[] =
@@ -192,6 +201,7 @@ export function DetalleDocumento({
         {anulado && (
           <p className="font-semibold text-red-700" data-detalle-anulado>
             Anulado{motivoAnulacion ? `: ${motivoAnulacion}` : ''}
+            {dev?.anulado_at ? ` · por ${dev.anulado_por_nombre ?? 'persona sin nombre en este teléfono'} el ${formatearFechaHora(dev.anulado_at)}` : ''}
           </p>
         )}
         <dl>
@@ -201,6 +211,30 @@ export function DetalleDocumento({
           <Dato etiqueta="Fecha y hora" data="fecha">
             {fechaHora ? formatearFechaHora(fechaHora) : null}
           </Dato>
+
+          {dev && (
+            <>
+              <Dato etiqueta="Destino" data="destino">
+                <strong data-detalle-destino>{DESTINOS_DEVOLUCION.find((d) => d.id === dev.destino)?.nombre.toUpperCase() ?? 'Sin dato'}</strong>
+              </Dato>
+              <Dato etiqueta="Retiró" data="retiro">
+                <span data-detalle-retiro>{dev.chofer ?? SIN_DATO_ANTERIOR}</span>
+              </Dato>
+              <Dato etiqueta="Vehículo" data="vehiculo">
+                <span data-detalle-vehiculo-dev>
+                  {dev.vehiculo || dev.vehiculo_tipo ? [dev.vehiculo_tipo, dev.vehiculo].filter(Boolean).join(' · ') : SIN_DATO_ANTERIOR}
+                </span>
+              </Dato>
+              <Dato etiqueta="Motivo" data="motivo-devolucion">
+                {dev.motivo}
+              </Dato>
+              {dev.origen === 'local' && (
+                <Dato etiqueta="Estado" data="estado-local">
+                  Pendiente de enviar: se verá completo al llegar al servidor.
+                </Dato>
+              )}
+            </>
+          )}
 
           {recepcion && (
             <>
@@ -271,6 +305,29 @@ export function DetalleDocumento({
           </Seccion>
         ) : null}
 
+        {dev && dev.lineas.length > 0 && (
+          <Seccion titulo="Productos devueltos" data="devolucion">
+            <ul className="flex flex-col text-xs" data-detalle-devolucion>
+              {dev.lineas.map((l) => (
+                <li key={l.material_id} className="border-t border-slate-100 py-1.5" data-detalle-devolucion-linea>
+                  <p className="break-words font-semibold text-slate-800">{material(l.material_id)?.descripcion ?? '—'}</p>
+                  <p className="flex flex-wrap gap-x-3 gap-y-0.5 tabular-nums">
+                    <span className="text-red-700">
+                      Devuelto <strong>{cantidad(l.cantidad)}</strong> {material(l.material_id)?.unidad ?? ''}
+                    </span>
+                    <span className="text-slate-500">
+                      Saldo antes <strong>{l.saldo_antes != null ? cantidad(l.saldo_antes) : '—'}</strong>
+                    </span>
+                    <span className="text-slate-500">
+                      Después <strong>{l.saldo_despues != null ? cantidad(l.saldo_despues) : '—'}</strong>
+                    </span>
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </Seccion>
+        )}
+
         {conteo?.lineas?.length ? (
           <Seccion titulo="Lo contado" data="conteo">
             <ul className="flex flex-col text-xs" data-detalle-conteo>
@@ -291,7 +348,7 @@ export function DetalleDocumento({
           </Seccion>
         ) : null}
 
-        {movs.length > 0 && (
+        {movs.length > 0 && !dev && (
           <Seccion titulo="Movimientos en bodega" data="movimientos">
             <ul data-detalle-movimientos>
               {movs.map((m) => (

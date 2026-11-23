@@ -3,15 +3,9 @@
  * La base (`_iny_op_aplicacion_lote`, sql/129) vuelve a validar todo.
  */
 
-export type Objetivo = 'PLAGA' | 'MALEZA' | 'BACTERIA' | 'ENFERMEDAD' | 'HONGO'
+import type { ObjetivoElegido } from './objetivos'
 
-export const OBJETIVOS: { id: Objetivo; nombre: string }[] = [
-  { id: 'PLAGA', nombre: 'Plaga' },
-  { id: 'MALEZA', nombre: 'Maleza' },
-  { id: 'BACTERIA', nombre: 'Bacteria' },
-  { id: 'ENFERMEDAD', nombre: 'Enfermedad' },
-  { id: 'HONGO', nombre: 'Hongo' },
-]
+export type { ObjetivoElegido } from './objetivos'
 
 /** Una línea del plan por lote publicada por AGL (fn_iny_estado_campo). */
 export type FilaPlanInyeccion = {
@@ -45,7 +39,8 @@ export type LineaDelPlan = {
 
 const DIA_MS = 86_400_000
 const num = (v: unknown) => Number(v ?? 0) || 0
-const llave = (s: string) => s.trim().toLowerCase()
+/** Lote normalizado (sin espacios, minúsculas): igual a `_iny_norm_lote` de la base. */
+const llave = (s: string) => s.replace(/\s+/g, '').toLowerCase()
 
 /** Días de diferencia entre dos fechas AAAA-MM-DD (al mediodía UTC: ninguna zona mueve el día). */
 function dias(a: string, b: string): number {
@@ -117,7 +112,7 @@ export type EntradaAplicacionLote = {
   turnoAglId: string | null
   areaMz: number
   areaLote: number | null
-  objetivos: Objetivo[]
+  objetivos: ObjetivoElegido[]
   comentario: string
   sinInventario: boolean
   lineas: { material_id: string; cantidad: number }[]
@@ -136,7 +131,7 @@ export const ERR_SIN_PRODUCTOS = 'Indica al menos un producto'
 export function armarAplicacionLote(a: EntradaAplicacionLote): { datos: Record<string, unknown>; avisos: string[] } | { error: string } {
   if (!a.lote.trim()) return { error: ERR_SIN_LOTE }
   if (!Number.isFinite(a.areaMz) || a.areaMz <= 0) return { error: ERR_SIN_AREA }
-  const objetivos = [...new Set(a.objetivos)].filter((o) => OBJETIVOS.some((x) => x.id === o))
+  const objetivos = [...new Map(a.objetivos.filter((o) => o.id && o.nombre.trim()).map((o) => [o.id, { id: o.id, nombre: o.nombre.trim(), ...(o.tipo ? { tipo: o.tipo } : {}) }])).values()]
   if (objetivos.length === 0) return { error: ERR_SIN_OBJETIVO }
   const lineas = a.lineas.filter((l) => l.material_id && Number.isFinite(Number(l.cantidad)) && Number(l.cantidad) > 0)
   if (lineas.length === 0) return { error: ERR_SIN_PRODUCTOS }

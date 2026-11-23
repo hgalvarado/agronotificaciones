@@ -26,6 +26,12 @@ test('solo cuenta la acción «ver»', () => {
   assert.deepEqual(fichasCampo((_p, a) => a === 'editar'), [])
 })
 
+test('Motores y combustible: ficha propia, entre Inyección y AgroMétricas', () => {
+  const f = fichasCampo((p, a) => a === 'ver' && ['fertirriego', 'inyeccion', 'motores', 'agrometricas'].includes(p))
+  assert.deepEqual(f.map((x) => x.ruta), ['/fertirriego', '/inyeccion', '/motores', '/agrometricas'])
+  assert.equal(f[2].nombre, 'Motores y combustible')
+})
+
 test('Inyección: ficha propia, entre Fertirriego y AgroMétricas', () => {
   const f = fichasCampo((p, a) => a === 'ver' && ['fertirriego', 'inyeccion', 'agrometricas'].includes(p))
   assert.deepEqual(f.map((x) => x.ruta), ['/fertirriego', '/inyeccion', '/agrometricas'])

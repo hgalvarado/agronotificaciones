@@ -4,7 +4,9 @@
  */
 
 import type { Operacion } from '@/lib/fertirriego/tipos'
-import { lineasDelPlan, type FilaPlanInyeccion, type Objetivo } from './aplicarLote'
+import { lineasDelPlan, type FilaPlanInyeccion } from './aplicarLote'
+import type { LoteCatalogo } from './lotes'
+import type { ObjetivoCatalogo } from './objetivos'
 
 export type CategoriaInyeccion = { clave: string; departamento: string | null; categoria: string | null; tipo: string; etiqueta: string | null }
 
@@ -36,7 +38,9 @@ export type AplicacionInyeccion = {
   fecha: string
   fecha_hora: string
   area_mz: number
-  objetivos: Objetivo[]
+  /** Nombres de los objetivos (sql/132); las filas de la 129 traen los textos viejos. */
+  objetivos: string[]
+  objetivo_ids?: string[] | null
   comentario: string | null
   registrado_por: string | null
   anulado_at: string | null
@@ -52,9 +56,13 @@ export type EstadoInyeccion = {
   plan: FilaPlanInyeccion[]
   materiales: ProductoInyeccion[]
   aplicaciones: AplicacionInyeccion[]
+  /** sql/132: catálogo de objetivos (activos, inactivos y fusionados: para revisar duplicados sin señal). */
+  objetivos?: ObjetivoCatalogo[]
+  /** sql/132: lotes del catálogo (lotes + lotes_temporada) de la temporada activa y de las del plan. */
+  lotes?: LoteCatalogo[]
 }
 
-const llave = (s: string) => s.trim().toLowerCase()
+const llave = (s: string) => s.replace(/\s+/g, '').toLowerCase()
 const DIA_MS = 86_400_000
 const dia = (iso: string) => iso.slice(0, 10)
 const entre = (a: string, b: string) => Math.abs(Math.round((Date.parse(`${dia(a)}T12:00:00Z`) - Date.parse(`${dia(b)}T12:00:00Z`)) / DIA_MS))

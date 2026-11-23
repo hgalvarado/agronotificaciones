@@ -200,6 +200,30 @@ export type Conteo = {
   operacion?: InfoOperacion | null
 }
 
+/** sql/131: devolución a bodega con todo el detalle (las anteriores a la 131 traen chofer y vehículo en null). */
+export type DevolucionBodega = {
+  id: string
+  estacion_id: string
+  fecha_hora: string
+  destino: 'SUMINISTROS' | 'BODEGA' | 'TALLER'
+  motivo: string
+  registrado_por: string | null
+  registrado_por_nombre?: string | null
+  chofer_id?: string | null
+  chofer?: string | null
+  vehiculo_id?: string | null
+  /** Placa o identificación (un tractor puede no tener placa). */
+  vehiculo?: string | null
+  /** Tipo según el catálogo de vehículos (copia de ese día). */
+  vehiculo_tipo?: string | null
+  anulado_at: string | null
+  anulado_por?: string | null
+  anulado_por_nombre?: string | null
+  motivo_anulacion: string | null
+  operacion?: InfoOperacion | null
+  lineas: { material_id: string; cantidad: number; saldo_antes?: number | null; saldo_despues?: number | null }[] | null
+}
+
 /** sql/100: movimiento de envases (+ entra / − sale). */
 export type MovimientoEnvase = {
   id: string
@@ -324,6 +348,8 @@ export type EstadoCampo = {
   conteos?: Conteo[]
   /** sql/116 (puede faltar si la base aún no tiene la 116) */
   historico_permisos?: PermisoHistorico[]
+  /** sql/131 (puede faltar si la base aún no tiene la 131) */
+  devoluciones_bodega?: DevolucionBodega[]
 }
 
 export type TipoOperacion =
@@ -337,6 +363,12 @@ export type TipoOperacion =
   | 'devolucion_bodega'
   /** sql/129: Inyección / Drench / Calidad por lote. */
   | 'aplicacion_lote'
+  /** sql/130: motores de riego y combustible. */
+  | 'motor_asignar'
+  | 'motor_retiro'
+  | 'motor_registro_diario'
+  | 'motor_mantenimiento'
+  | 'diesel_recibir'
   | 'anulacion'
   | 'chofer'
   | 'vehiculo'

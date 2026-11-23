@@ -16,21 +16,26 @@ import { claveBorrador, useAutoguardado, useBorrador } from '@/lib/fertirriego/b
 import { cantidad } from '@/lib/fertirriego/calculos'
 import { crearOperacion, nuevoId } from '@/lib/fertirriego/operaciones'
 import type { Estacion, Material, Operacion, Persona } from '@/lib/fertirriego/tipos'
-import { areaPropuesta, armarAplicacionLote, dosisPorMz, lineasDelPlan, OBJETIVOS, type Objetivo } from '@/lib/inyeccion/aplicarLote'
+import { areaPropuesta, armarAplicacionLote, dosisPorMz, lineasDelPlan } from '@/lib/inyeccion/aplicarLote'
 import { textoDato, type EstadoInyeccion } from '@/lib/inyeccion/estado'
+import { loteCanonico, normLote, opcionesDeLotes, temporadaDeLote } from '@/lib/inyeccion/lotes'
+import { normalizarObjetivo, objetivosParaEnviar, type ObjetivoCatalogo } from '@/lib/inyeccion/objetivos'
 import { EditorLineas, leerLineas, type LineaEditable } from '@/components/fertirriego/EditorLineas'
 import { MarcoRegistro } from '@/components/fertirriego/MarcoRegistro'
 import { FichaProducto } from './FichaProducto'
+import { SelectorObjetivos } from './SelectorObjetivos'
 
 type Datos = {
   lote: string
   categoria: string
   fechaHora: string
   area: string | null
-  objetivos: Objetivo[]
+  /** Ids de los objetivos elegidos (un borrador anterior a la 132 trae textos como PLAGA: se mapean por nombre). */
+  objetivos: string[]
   comentario: string
   editadas: LineaEditable[] | null
-  lotesExtra: string[]
+  /** Objetivos creados en este teléfono (sin señal) que aún no bajan con el catálogo. */
+  objetivosNuevos?: ObjetivoCatalogo[]
 }
 
 const num = (t: string) => Number(t.replace(',', '.'))
@@ -60,26 +65,28 @@ export function FormAplicacionLote({
   const borrador = useBorrador<Datos>(claveBorrador('aplicacion_lote', yo.id, estacion.id, [loteInicial, categoriaInicial].filter(Boolean).join('@')))
   const b = borrador.inicial
   const categorias = inyeccion.categorias
-  const [lote, setLote] = useState(b?.lote ?? loteInicial ?? '')
+  // El lote es SOLO del catálogo de lotes (lotes + lotes_temporada): no se escribe ni se crea uno
+  const catalogoLotes = useMemo(() => inyeccion.lotes ?? [], [inyeccion.lotes])
+  const [lote, setLote] = useState(() => loteCanonico(catalogoLotes, b?.lote ?? loteInicial ?? '') ?? '')
   const [categoria, setCategoria] = useState(b?.categoria ?? categoriaInicial ?? (categorias.length === 1 ? categorias[0].clave : ''))
   const [fechaHora, setFechaHora] = useState(b?.fechaHora ?? aEntradaLocal(ahoraIso()))
   const [area, setArea] = useState<string | null>(b?.area ?? null)
-  const [objetivos, setObjetivos] = useState<Objetivo[]>(b?.objetivos ?? [])
+  const catalogoObjetivos = useMemo(() => inyeccion.objetivos ?? [], [inyeccion.objetivos])
+  const [objetivosNuevos, setObjetivosNuevos] = useState<ObjetivoCatalogo[]>(b?.objetivosNuevos ?? [])
+  const [objetivos, setObjetivos] = useState<string[]>(() => {
+    const todos = [...catalogoObjetivos, ...(b?.objetivosNuevos ?? [])]
+    const ids = (b?.objetivos ?? []).map((x) => todos.find((o) => o.id === x)?.id ?? todos.find((o) => normalizarObjetivo(o.nombre) === normalizarObjetivo(x))?.id)
+    return [...new Set(ids.filter((x): x is string => Boolean(x)))]
+  })
   const [comentario, setComentario] = useState(b?.comentario ?? '')
   const [editadas, setEditadas] = useState<LineaEditable[] | null>(b?.editadas ?? null)
-  const [lotesExtra, setLotesExtra] = useState<string[]>(b?.lotesExtra ?? [])
   const [aceptada, setAceptada] = useState<string | null>(null)
   const [ficha, setFicha] = useState<string | null>(null)
-  useAutoguardado(borrador, { lote, categoria, fechaHora, area, objetivos, comentario, editadas, lotesExtra })
+  useAutoguardado(borrador, { lote, categoria, fechaHora, area, objetivos, comentario, editadas, objetivosNuevos })
 
   const planEstacion = useMemo(() => inyeccion.plan.filter((p) => p.estacion_id === null || p.estacion_id === estacion.id), [inyeccion.plan, estacion.id])
-  const lotes = useMemo(() => {
-    const s = new Map<string, string>()
-    for (const p of planEstacion) s.set(p.lote.trim().toLowerCase(), p.lote)
-    for (const l of lotesExtra) s.set(l.trim().toLowerCase(), l)
-    if (lote) s.set(lote.trim().toLowerCase(), lote)
-    return [...s.values()].sort((a, c) => a.localeCompare(c, 'es', { numeric: true }))
-  }, [planEstacion, lotesExtra, lote])
+  // Los lotes con plan en la estación salen primero y marcados; se puede elegir cualquier lote del catálogo (sin plan = «sin plan»)
+  const opcionesLote = useMemo(() => opcionesDeLotes(catalogoLotes, planEstacion.map((p) => p.lote)), [catalogoLotes, planEstacion])
 
   // La fecha de la aplicación es la que se escribió (hora de Honduras): no se pasa por UTC
   const dia = fechaHora.slice(0, 10) || hoyIso()
@@ -91,7 +98,7 @@ export function FormAplicacionLote({
   // Área del lote (todas las cohortes del plan): solo para avisar; la base decide
   const areaLote = useMemo(() => {
     const porTurno = new Map<string, number>()
-    for (const p of planEstacion) if (p.lote.trim().toLowerCase() === lote.trim().toLowerCase()) porTurno.set(p.turno_agl_id, Math.max(porTurno.get(p.turno_agl_id) ?? 0, Number(p.area_mz ?? 0)))
+    for (const p of planEstacion) if (normLote(p.lote) === normLote(lote)) porTurno.set(p.turno_agl_id, Math.max(porTurno.get(p.turno_agl_id) ?? 0, Number(p.area_mz ?? 0)))
     const t = [...porTurno.values()].reduce((x, y) => x + y, 0)
     return t > 0 ? t : null
   }, [planEstacion, lote])
@@ -154,16 +161,20 @@ export function FormAplicacionLote({
         if (faltante.length && !aceptaNegativo) {
           return 'No hay inventario suficiente para algún producto. Marca la casilla roja de abajo (sobre el botón Guardar) para confirmar que de verdad se aplicó, o corrige la cantidad.'
         }
+        // La base vuelve a validar; aquí se evita mandar algo que no es del catálogo
+        const canonico = loteCanonico(catalogoLotes, lote)
+        if (!canonico) return 'Elige el lote de la lista del catálogo de lotes.'
+        const temporadaPlan = grupo[0]?.temporada ?? planEstacion.find((p) => normLote(p.lote) === normLote(canonico))?.temporada ?? null
         const a = armarAplicacionLote({
           estacionId: estacion.id,
-          lote,
+          lote: canonico,
           categoriaClave: categoria || null,
-          temporada: grupo[0]?.temporada ?? planEstacion.find((p) => p.lote.trim().toLowerCase() === lote.trim().toLowerCase())?.temporada ?? '',
+          temporada: temporadaDeLote(catalogoLotes, canonico, temporadaPlan) ?? '',
           ciclo: grupo[0]?.ciclo ?? null,
           turnoAglId: grupo[0]?.turno_agl_id ?? null,
           areaMz: areaNum,
           areaLote,
-          objetivos,
+          objetivos: objetivosParaEnviar(objetivos, [...catalogoObjetivos, ...objetivosNuevos]),
           comentario,
           sinInventario: faltante.length > 0,
           lineas: r.lineas,
@@ -185,7 +196,7 @@ export function FormAplicacionLote({
         <div data-selector-lote>
           <SelectorBuscable
             valor={lote}
-            opciones={lotes.map((l) => ({ id: l, titulo: l }))}
+            opciones={opcionesLote}
             onCambiar={(v) => {
               setLote(v)
               setEditadas(null)
@@ -194,17 +205,13 @@ export function FormAplicacionLote({
             placeholder="Elegir lote…"
             etiquetaBusqueda="Buscar lote"
             permitirVacio={false}
-            creacionRapida={{
-              etiqueta: 'Lote que no está en el plan',
-              campos: [{ key: 'lote', label: 'Código del lote', requerido: true }],
-              onCrear: async (v) => {
-                const l = v.lote.trim()
-                setLotesExtra((x) => (x.includes(l) ? x : [...x, l]))
-                return { id: l, titulo: l, subtitulo: 'sin plan' }
-              },
-            }}
           />
         </div>
+        {catalogoLotes.length === 0 && (
+          <p className="mt-1.5 text-xs font-semibold text-amber-700" data-sin-catalogo-lotes>
+            No hay lotes del catálogo en el teléfono todavía. Conéctate y actualiza para poder elegir el lote.
+          </p>
+        )}
         {sinPlan && (
           <p className="mt-1.5 text-xs font-semibold text-amber-700" data-sin-plan>
             Sin plan: se puede registrar igual, pero queda marcado «sin plan».
@@ -288,26 +295,13 @@ export function FormAplicacionLote({
       </Campo>
 
       <Campo etiqueta="Objetivo (elige al menos uno)" requerido>
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Objetivo" data-objetivos>
-          {OBJETIVOS.map((o) => {
-            const marcado = objetivos.includes(o.id)
-            return (
-              <button
-                key={o.id}
-                type="button"
-                aria-pressed={marcado}
-                data-objetivo={o.id}
-                onClick={() => setObjetivos((x) => (x.includes(o.id) ? x.filter((y) => y !== o.id) : [...x, o.id]))}
-                className={`min-h-11 rounded-full px-4 py-2 text-sm font-semibold ring-1 ring-inset transition-colors ${
-                  marcado ? 'bg-brand-700 text-white ring-brand-700' : 'bg-white text-slate-700 ring-slate-300'
-                }`}
-              >
-                {marcado ? '✓ ' : ''}
-                {o.nombre}
-              </button>
-            )
-          })}
-        </div>
+        <SelectorObjetivos
+          catalogo={catalogoObjetivos}
+          locales={objetivosNuevos}
+          seleccion={objetivos}
+          onCambiar={setObjetivos}
+          onAgregado={(o) => setObjetivosNuevos((x) => (x.some((y) => y.id === o.id) || catalogoObjetivos.some((y) => y.id === o.id) ? x : [...x, o]))}
+        />
       </Campo>
 
       <Campo etiqueta="Productos" requerido>

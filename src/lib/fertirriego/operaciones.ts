@@ -54,4 +54,10 @@ export const NOMBRE_OBSERVACION: Record<string, string> = {
   CUSTODIA_POSTERIOR: 'el jefe asignó la estación después',
   DDT_SIN_PLAN: 'el DDT elegido no está en el plan',
   POSIBLE_DUPLICADO: 'posible duplicado (ya había una aplicación igual ese día)',
+  HOROMETRO_NO_CONTINUA: 'el horómetro inicial no continuaba el registro anterior',
+  VISOR_NO_CONTINUA: 'el visor inicial no coincidía con el final anterior',
+  VISOR_SUBE_SIN_RECEPCION: 'el visor subió y no había diésel recibido',
+  CONSUMO_SIN_HORAS: 'gastó diésel sin horas de trabajo',
+  SIN_REGISTRO_PREVIO: 'primer registro del motor',
+  FUERA_DE_ORDEN: 'registro de un día anterior a otros ya hechos',
 }

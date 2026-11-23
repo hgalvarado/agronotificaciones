@@ -521,7 +521,7 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
               <FormConteo estado={estado} estacion={estacion} yo={estado.yo} saldos={saldos} saldosEnvases={saldosEnvases} registrar={campo.registrar} onCerrar={() => setVentana(null)} onGuardado={guardado} />
             )}
             {ventana?.tipo === 'devolver_bodega' && (
-              <FormDevolucionBodega estado={estado} estacion={estacion} yo={estado.yo} saldos={saldos} registrar={campo.registrar} onCerrar={() => setVentana(null)} onGuardado={guardado} />
+              <FormDevolucionBodega estado={estado} estacion={estacion} yo={estado.yo} saldos={saldos} choferesPendientes={choferesPendientes} vehiculosPendientes={vehiculosPendientes} registrar={campo.registrar} onCerrar={() => setVentana(null)} onGuardado={guardado} />
             )}
             {ventana?.tipo === 'horas' && (
               <FormBitacora
@@ -537,6 +537,7 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
             )}
             {ventana?.tipo === 'documento' && (
               <DetalleDocumento
+                cola={cola}
                 estado={estado}
                 estacion={estacion}
                 yo={estado.yo}

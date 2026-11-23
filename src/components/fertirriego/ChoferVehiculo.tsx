@@ -55,6 +55,9 @@ export function SelectorVehiculo({
   chofer,
   choferesVehiculos,
   onNuevo,
+  obligatorio = false,
+  etiquetaPlaca = 'Placa',
+  tipoRequerido = false,
 }: {
   valor: string
   onCambiar: (id: string) => void
@@ -63,6 +66,12 @@ export function SelectorVehiculo({
   chofer: string
   choferesVehiculos: EstadoCampo['choferes_vehiculos']
   onNuevo: (op: Operacion, vehiculo: Vehiculo) => void
+  /** Sin la opción «Sin vehículo» (devolución a bodega: siempre se anota en qué se llevan el producto). */
+  obligatorio?: boolean
+  /** «Placa» o «Placa o identificación» (un tractor puede no tener placa). */
+  etiquetaPlaca?: string
+  /** El tipo (camión, carro, tractor...) es obligatorio al crear el vehículo. */
+  tipoRequerido?: boolean
 }) {
   const deEsteChofer = new Set(choferesVehiculos.filter((cv) => cv.chofer_id === chofer).map((cv) => cv.vehiculo_id))
   return (
@@ -78,14 +87,14 @@ export function SelectorVehiculo({
           }))}
         onCambiar={onCambiar}
         placeholder="Elegir vehículo…"
-        etiquetaBusqueda="Buscar placa"
-        permitirVacio
+        etiquetaBusqueda={`Buscar ${etiquetaPlaca.toLowerCase()}`}
+        permitirVacio={!obligatorio}
         textoVacio="Sin vehículo"
         creacionRapida={{
           etiqueta: 'Agregar vehículo',
           campos: [
-            { key: 'placa', label: 'Placa', requerido: true },
-            { key: 'tipo', label: 'Tipo (camión, pick-up…)' },
+            { key: 'placa', label: etiquetaPlaca, requerido: true },
+            { key: 'tipo', label: 'Tipo (camión, carro, tractor…)', requerido: tipoRequerido },
             { key: 'marca', label: 'Marca' },
             { key: 'color', label: 'Color' },
           ],

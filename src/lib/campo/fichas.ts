@@ -7,7 +7,7 @@ export type FichaCampo = { codigo: string; nombre: string; descripcion: string; 
 
 type FichaConPantalla = FichaCampo & { pantalla: string }
 
-/** En orden de aparición. Motores y combustible se agrega aquí después. */
+/** En orden de aparición. */
 const FICHAS: FichaConPantalla[] = [
   {
     codigo: 'fertirriego',
@@ -24,6 +24,14 @@ const FICHAS: FichaConPantalla[] = [
     descripcion: 'Inyección, drench y aseguramiento de calidad por lote.',
     ruta: '/inyeccion',
     icono: 'gota',
+  },
+  {
+    codigo: 'motores',
+    pantalla: 'motores',
+    nombre: 'Motores y combustible',
+    descripcion: 'Horas, diésel y mantenimiento de los motores de riego.',
+    ruta: '/motores',
+    icono: 'tractor',
   },
   {
     codigo: 'agrometricas',

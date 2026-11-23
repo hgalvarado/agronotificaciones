@@ -12,12 +12,14 @@ const dir = mkdtempSync(join(tmpdir(), 'iny-'))
 const copia = join(dir, 'calculos.ts')
 writeFileSync(copia, readFileSync(resolve('src/lib/fertirriego/calculos.ts'), 'utf8').replace("'@/lib/fechas/zona'", `'${zona}'`))
 const { efectosDe, saldosLocales, NOMBRE_MOVIMIENTO } = await import(pathToFileURL(copia).href)
-const { dosisPorMz, areaPropuesta, armarAplicacionLote, lineasDelPlan, OBJETIVOS } = await import(pathToFileURL(resolve('src/lib/inyeccion/aplicarLote.ts')).href)
+const { dosisPorMz, areaPropuesta, armarAplicacionLote, lineasDelPlan } = await import(pathToFileURL(resolve('src/lib/inyeccion/aplicarLote.ts')).href)
+const { normalizarObjetivo, buscarDuplicado, destinoVigente, objetivosElegibles, objetivosParaEnviar, crearObjetivoLocal, validarNombreObjetivo } = await import(pathToFileURL(resolve('src/lib/inyeccion/objetivos.ts')).href)
+const { normLote, loteCanonico, temporadaDeLote, opcionesDeLotes } = await import(pathToFileURL(resolve('src/lib/inyeccion/lotes.ts')).href)
 const { fichasCampo } = await import(pathToFileURL(resolve('src/lib/campo/fichas.ts')).href)
 
 const base = {
   estacionId: 'E', lote: '1002-010', categoriaClave: 'ferti-riego|inyeccion', temporada: 'Temp 26-27', ciclo: 'Ciclo 1', turnoAglId: 'T1',
-  areaMz: 5, areaLote: 5, objetivos: ['PLAGA'], comentario: '', sinInventario: false,
+  areaMz: 5, areaLote: 5, objetivos: [{ id: 'O1', nombre: 'Plaga' }], comentario: '', sinInventario: false,
   lineas: [{ material_id: 'A', cantidad: 10 }], fechaHora: '2026-11-22T15:00:00Z',
 }
 
@@ -35,8 +37,96 @@ test('areaPropuesta usa el plan y cae al lote', () => {
   assert.equal(areaPropuesta({ areaPlan: null, areaLote: null }), null)
 })
 
-test('los objetivos son los cinco acordados', () => {
-  assert.deepEqual(OBJETIVOS.map((o) => o.id), ['PLAGA', 'MALEZA', 'BACTERIA', 'ENFERMEDAD', 'HONGO'])
+const obj = (id, nombre, extra = {}) => ({ id, nombre, tipo: 'Plaga', origen: 'AGL', activo: true, revisado: true, fusionado_en: null, ...extra })
+const catalogo = [obj('O1', 'Plaga'), obj('O2', 'Maleza'), obj('O3', 'Ácaro rojo', { activo: false }), obj('O4', 'Trips'), obj('O5', 'Gallina ciega', { fusionado_en: 'O4' })]
+
+test('normalización de objetivos: tildes, mayúsculas, signos, espacios y plural simple (igual que SQL y Python)', () => {
+  assert.equal(normalizarObjetivo('  Ácaro  '), 'acaro')
+  assert.equal(normalizarObjetivo('MOSCAS  BLANCAS!'), normalizarObjetivo('Mosca blanca'))
+  assert.equal(normalizarObjetivo('Enfermedades'), normalizarObjetivo('enfermedad'))
+  assert.equal(normalizarObjetivo('Hongos'), 'hongo')
+  assert.equal(normalizarObjetivo('Trips'), 'trip')
+  assert.equal(normalizarObjetivo('???'), '')
+})
+
+test('duplicado: compara normalizado contra activos, inactivos y fusionados y devuelve el vigente', () => {
+  assert.deepEqual(buscarDuplicado('PLAGAS', catalogo), { duplicado: true, existente: catalogo[0] })
+  const inactivo = buscarDuplicado(' acaros  ROJOS ', catalogo)
+  assert.equal(inactivo.duplicado, true)
+  assert.equal(inactivo.existente.id, 'O3')
+  const fusionado = buscarDuplicado('gallinas ciegas', catalogo)
+  assert.equal(fusionado.existente.id, 'O4') // el fusionado apunta a su destino
+  assert.deepEqual(buscarDuplicado('Nematodos', catalogo), { duplicado: false })
+  assert.deepEqual(buscarDuplicado('   ', catalogo), { duplicado: false })
+})
+
+test('duplicado: también contra lo creado sin señal que aún no sube (alta sin señal)', () => {
+  const local = crearObjetivoLocal('  Gusano   cogollero ', 'Plaga', 'LOCAL-1')
+  assert.equal(local.origen, 'CAMPO')
+  assert.equal(local.revisado, false)
+  assert.equal(local.nombre, 'Gusano cogollero')
+  const r = buscarDuplicado('gusanos cogollero', catalogo, [local])
+  assert.equal(r.duplicado, true)
+  assert.equal(r.existente.id, 'LOCAL-1')
+})
+
+test('solo se pueden elegir activos y no fusionados; nombre inválido o largo se rechaza', () => {
+  assert.deepEqual(objetivosElegibles(catalogo).map((o) => o.nombre), ['Maleza', 'Plaga', 'Trips'])
+  assert.equal(validarNombreObjetivo('   '), 'Escribe el nombre del objetivo')
+  assert.equal(validarNombreObjetivo('...'), 'Escribe el nombre del objetivo')
+  assert.ok(validarNombreObjetivo('x'.repeat(81)))
+  assert.equal(validarNombreObjetivo('Mildiu'), null)
+})
+
+test('objetivos para enviar: sin repetir y los fusionados van a su destino, con id y nombre', () => {
+  assert.deepEqual(objetivosParaEnviar(['O1', 'O5', 'O4', 'O1'], catalogo), [
+    { id: 'O1', nombre: 'Plaga', tipo: 'Plaga' },
+    { id: 'O4', nombre: 'Trips', tipo: 'Plaga' },
+  ])
+  assert.equal(destinoVigente(catalogo, 'O5').id, 'O4')
+})
+
+test('armarAplicacionLote manda los objetivos por id y nombre, sin repetir, y exige al menos uno', () => {
+  const r = armarAplicacionLote({ ...base, objetivos: [{ id: 'O1', nombre: 'Plaga' }, { id: 'O1', nombre: 'Plaga' }, { id: 'N1', nombre: ' Mildiu ', tipo: 'Hongo' }] })
+  assert.deepEqual(r.datos.objetivos, [{ id: 'O1', nombre: 'Plaga' }, { id: 'N1', nombre: 'Mildiu', tipo: 'Hongo' }])
+  assert.deepEqual(armarAplicacionLote({ ...base, objetivos: [{ id: 'O1', nombre: '  ' }] }), { error: 'Elige al menos un objetivo' })
+})
+
+const lotes = [
+  { lote_temporada_id: 'LT1', nomenclatura: '1002-010', nombre: 'Lote A', temporada: 'Temp. 26-27', activa: true },
+  { lote_temporada_id: 'LT2', nomenclatura: '1002-010', nombre: 'Lote A', temporada: 'Temp 25-26', activa: false },
+  { lote_temporada_id: 'LT3', nomenclatura: '1003-020', nombre: null, temporada: 'Temp. 26-27', activa: true },
+]
+
+test('lote: solo del catálogo; nomenclatura normalizada; lo que no está no se acepta', () => {
+  assert.equal(normLote(' 1002-010 '), '1002-010')
+  assert.equal(loteCanonico(lotes, '1002-010 '), '1002-010')
+  assert.equal(loteCanonico(lotes, ' 1002 - 010'), '1002-010')
+  assert.equal(loteCanonico(lotes, '9999-999'), null)
+  assert.equal(loteCanonico(lotes, '   '), null)
+  assert.equal(loteCanonico([], '1002-010'), null)
+})
+
+test('lote: la temporada es la del plan si el lote está asignado a ella; si no, la activa', () => {
+  assert.equal(temporadaDeLote(lotes, '1002-010', 'Temp 25-26'), 'Temp 25-26')
+  assert.equal(temporadaDeLote(lotes, '1002-010', null), 'Temp. 26-27')
+  assert.equal(temporadaDeLote(lotes, '1003-020', 'Temp 25-26'), 'Temp. 26-27')
+  assert.equal(temporadaDeLote(lotes, 'NO-EXISTE', null), null)
+})
+
+test('selector de lote: con plan primero y marcados; todo el catálogo disponible; sin repetir', () => {
+  const o = opcionesDeLotes(lotes, ['1003-020 '])
+  assert.deepEqual(o.map((x) => x.id), ['1003-020', '1002-010'])
+  assert.equal(o[0].destacado, true)
+  assert.equal(o[1].destacado ?? false, false)
+})
+
+test('el formulario no ofrece escribir ni crear lotes (sin creación rápida ni lotesExtra)', () => {
+  const src = readFileSync(resolve('src/components/inyeccion/FormAplicacionLote.tsx'), 'utf8')
+  assert.equal(/lotesExtra/.test(src), false)
+  assert.equal(/Lote que no está en el plan/.test(src), false)
+  const ini = src.indexOf('data-selector-lote')
+  assert.equal(/creacionRapida/.test(src.slice(ini, ini + 900)), false)
 })
 
 test('errores con el texto exacto: sin lote, área 0, sin objetivo, todo en 0', () => {
@@ -54,7 +144,7 @@ test('descarta la línea en 0 y devuelve los datos de la operación', () => {
   assert.equal(r.datos.estacion_id, 'E')
   assert.equal(r.datos.lote, '1002-010')
   assert.equal(r.datos.area_mz, 5)
-  assert.deepEqual(r.datos.objetivos, ['PLAGA'])
+  assert.deepEqual(r.datos.objetivos, [{ id: 'O1', nombre: 'Plaga' }])
   assert.equal('acepta_negativo' in r.datos, false)
   assert.deepEqual(r.avisos, [])
 })

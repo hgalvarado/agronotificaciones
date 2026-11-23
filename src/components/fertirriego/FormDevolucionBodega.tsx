@@ -4,9 +4,12 @@
  * Devolver a bodega: sacar producto de la estación hacia Suministros, Bodega o Taller (fin de temporada, sobrante,
  * producto que no se usará). Es una salida del inventario que NO es consumo. Solo se puede devolver lo que hay en
  * la estación (la base rechaza lo que pase del saldo).
+ * sql/131: es producto (dinero) que sale, así que queda TODO el detalle: destino exacto, quién lo retiró y en qué
+ * vehículo (los MISMOS catálogos de choferes y vehículos de la recepción, por id; el tipo de vehículo sale del
+ * catálogo, no se escribe aparte), motivo y cantidades.
  */
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/Primitivos'
 import { aEntradaLocal, ahoraIso, deEntradaLocal } from '@/lib/fechas/zona'
 import { claveBorrador, useAutoguardado, useBorrador } from '@/lib/fertirriego/borrador'
@@ -19,7 +22,8 @@ import {
   type DestinoDevolucion,
 } from '@/lib/fertirriego/devolucionBodega'
 import { crearOperacion, nuevoId } from '@/lib/fertirriego/operaciones'
-import type { EstadoCampo, Estacion, Operacion, Persona } from '@/lib/fertirriego/tipos'
+import type { Chofer, EstadoCampo, Estacion, Operacion, Persona, Vehiculo } from '@/lib/fertirriego/tipos'
+import { SelectorChofer, SelectorVehiculo } from './ChoferVehiculo'
 import { EditorLineas, leerLineas, SIN_LINEAS, type LineaEditable } from './EditorLineas'
 import { MarcoRegistro } from './MarcoRegistro'
 
@@ -28,6 +32,8 @@ export function FormDevolucionBodega({
   estacion,
   yo,
   saldos,
+  choferesPendientes,
+  vehiculosPendientes,
   registrar,
   onCerrar,
   onGuardado,
@@ -37,22 +43,42 @@ export function FormDevolucionBodega({
   yo: Persona
   /** Saldo por producto de la estación (con lo pendiente de enviar). */
   saldos: Map<string, number>
+  /** Los creados en el teléfono que aún no llegan al servidor. */
+  choferesPendientes: Chofer[]
+  vehiculosPendientes: Vehiculo[]
   registrar: (...ops: Operacion[]) => Promise<void>
   onCerrar: () => void
   onGuardado: (m: string) => void
 }) {
-  const borrador = useBorrador<{ fechaHora: string; destino: DestinoDevolucion | ''; motivo: string; lineas: LineaEditable[] }>(
-    claveBorrador('devolucion_bodega', yo.id, estacion.id)
-  )
+  const borrador = useBorrador<{
+    fechaHora: string
+    destino: DestinoDevolucion | ''
+    motivo: string
+    lineas: LineaEditable[]
+    chofer?: string
+    vehiculo?: string
+    nuevos?: Operacion[]
+    choferesAqui?: Chofer[]
+    vehiculosAqui?: Vehiculo[]
+  }>(claveBorrador('devolucion_bodega', yo.id, estacion.id))
   const b = borrador.inicial
   const [fechaHora, setFechaHora] = useState(b?.fechaHora ?? aEntradaLocal(ahoraIso()))
   const [destino, setDestino] = useState<DestinoDevolucion | ''>(b?.destino ?? '')
   const [motivo, setMotivo] = useState(b?.motivo ?? '')
   const [lineas, setLineas] = useState<LineaEditable[]>(b?.lineas ?? [{ clave: nuevoId(), material_id: '', cantidad: '' }])
-  useAutoguardado(borrador, { fechaHora, destino, motivo, lineas })
+  const [chofer, setChofer] = useState(b?.chofer ?? '')
+  const [vehiculo, setVehiculo] = useState(b?.vehiculo ?? '')
+  // Choferes y vehículos nuevos creados aquí (se mandan junto con la devolución, en orden)
+  const [nuevos, setNuevos] = useState<Operacion[]>(b?.nuevos ?? [])
+  const [choferesAqui, setChoferesAqui] = useState<Chofer[]>(b?.choferesAqui ?? [])
+  const [vehiculosAqui, setVehiculosAqui] = useState<Vehiculo[]>(b?.vehiculosAqui ?? [])
+  useAutoguardado(borrador, { fechaHora, destino, motivo, lineas, chofer, vehiculo, nuevos, choferesAqui, vehiculosAqui })
+  const choferes = useMemo(() => [...estado.choferes, ...choferesPendientes, ...choferesAqui], [estado.choferes, choferesPendientes, choferesAqui])
+  const vehiculos = useMemo(() => [...estado.vehiculos, ...vehiculosPendientes, ...vehiculosAqui], [estado.vehiculos, vehiculosPendientes, vehiculosAqui])
   // Solo se devuelve lo que hay en la estación
   const conSaldo = estado.materiales.filter((m) => (saldos.get(m.id) ?? 0) > 0)
   const nombre = (id: string) => estado.materiales.find((m) => m.id === id)?.descripcion ?? 'un producto'
+  const vehiculoElegido = vehiculos.find((v) => v.id === vehiculo)
 
   return (
     <MarcoRegistro
@@ -73,16 +99,27 @@ export function FormDevolucionBodega({
         if ('error' in r) return r.error === SIN_LINEAS ? SIN_PRODUCTOS_DEVOLUCION : r.error
         const exceso = primerExceso(r.lineas, saldos)
         if (exceso) return `No puedes devolver más de lo que hay de ${nombre(exceso.material_id)}: en la estación hay ${cantidad(exceso.disponible)}.`
-        const a = armarDevolucionBodega({ estacionId: estacion.id, destino, motivo, lineas: r.lineas, fechaHora: fh })
+        const a = armarDevolucionBodega({
+          estacionId: estacion.id,
+          destino,
+          motivo,
+          lineas: r.lineas,
+          fechaHora: fh,
+          choferId: chofer,
+          vehiculoId: vehiculo,
+          vehiculoTipo: vehiculoElegido?.tipo ?? null,
+          choferNombre: choferes.find((c) => c.id === chofer)?.nombre,
+          vehiculoPlaca: vehiculoElegido?.placa,
+        })
         if ('error' in a) return a.error
         const destinoNombre = DESTINOS_DEVOLUCION.find((d) => d.id === destino)?.nombre ?? destino
-        return [
-          crearOperacion('devolucion_bodega', a.datos, {
-            ubicacion,
-            enNombreDe,
-            resumen: `Devolución a ${destinoNombre.toLowerCase()} · ${r.lineas.length} producto(s)`,
-          }),
-        ]
+        const devolucion = crearOperacion('devolucion_bodega', a.datos, {
+          ubicacion,
+          enNombreDe,
+          resumen: `Devolución a ${destinoNombre.toUpperCase()} · ${r.lineas.length} producto(s) · retiró ${String(a.datos.chofer_nombre ?? '')}`,
+        })
+        // Chofer o vehículo nuevos van ANTES (la devolución los necesita), con la misma ubicación
+        return [...nuevos, devolucion].map((n) => ({ ...n, ubicacion }))
       }}
     >
       <Campo etiqueta="¿A dónde se devuelve?" requerido>
@@ -109,6 +146,38 @@ export function FormDevolucionBodega({
       </Campo>
       <Campo etiqueta="Fecha y hora" requerido>
         <Entrada type="datetime-local" value={fechaHora} onChange={(e) => setFechaHora(e.target.value)} data-fecha-hora />
+      </Campo>
+      <Campo etiqueta="¿Quién retiró el producto? (chofer o persona)" requerido>
+        <SelectorChofer
+          valor={chofer}
+          onCambiar={setChofer}
+          choferes={choferes}
+          onNuevo={(op, c) => {
+            setNuevos((n) => [...n, op])
+            setChoferesAqui((x) => [...x, c])
+          }}
+        />
+      </Campo>
+      <Campo etiqueta="¿En qué vehículo se lo llevan?" requerido>
+        <SelectorVehiculo
+          valor={vehiculo}
+          onCambiar={setVehiculo}
+          vehiculos={vehiculos}
+          chofer={chofer}
+          choferesVehiculos={estado.choferes_vehiculos}
+          obligatorio
+          tipoRequerido
+          etiquetaPlaca="Placa o identificación"
+          onNuevo={(op, v) => {
+            setNuevos((n) => [...n, op])
+            setVehiculosAqui((x) => [...x, v])
+          }}
+        />
+        {vehiculoElegido && (
+          <p className="mt-1 text-xs text-slate-500" data-vehiculo-elegido>
+            {vehiculoElegido.tipo ? `${vehiculoElegido.tipo} · ${vehiculoElegido.placa}` : `${vehiculoElegido.placa} · sin tipo en el catálogo (complétalo en Administración › Choferes y catálogos de campo)`}
+          </p>
+        )}
       </Campo>
       <Campo etiqueta="Motivo" requerido>
         <AreaTexto value={motivo} onChange={(e) => setMotivo(e.target.value)} rows={2} placeholder="Ej. Fin de temporada" data-motivo-devolucion />

@@ -13,10 +13,8 @@ import { formatearFechaHora } from '@/lib/estados'
 import { cantidad } from '@/lib/fertirriego/calculos'
 import { crearOperacion } from '@/lib/fertirriego/operaciones'
 import type { Estacion, Operacion, Persona } from '@/lib/fertirriego/tipos'
-import { OBJETIVOS } from '@/lib/inyeccion/aplicarLote'
 import { type AplicacionInyeccion, type EstadoInyeccion, historialDeEstacion } from '@/lib/inyeccion/estado'
 
-const nombreObjetivo = (id: string) => OBJETIVOS.find((o) => o.id === id)?.nombre ?? id
 
 function FormAnular({
   aplicacion,
@@ -114,7 +112,7 @@ export function VistaHistorialInyeccion({
             </span>
           </div>
           <p className="text-xs text-slate-500">
-            {formatearFechaHora(a.fecha_hora)} · {cantidad(a.area_mz)} mz · {a.objetivos.map(nombreObjetivo).join(', ')}
+            {formatearFechaHora(a.fecha_hora)} · {cantidad(a.area_mz)} mz · {a.objetivos.join(', ')}
           </p>
           <ul className="mt-1 text-xs text-slate-700">
             {a.lineas.map((l) => (
