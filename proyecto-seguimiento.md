@@ -1,7 +1,7 @@
 # Seguimiento del proyecto · punto de partida para cualquier conversación nueva
 
 > **Actualizado: 2026-11-22.** Lo escribe y mantiene Claude. Detalle técnico e historial: `agronotificaciones/MEMORIA_CLAUDE.md`.
-> **AL ABRIR UNA CONVERSACIÓN NUEVA, LEER EN ESTE ORDEN: (1) este archivo; (2) `C:\HENRYALVARADO2022gronotificaciones\docs\campo-estado-y-traspaso.md` (trabajo «Campo»: Inyección por lote, motores y combustible, devolución con detalle, objetivos; es el estado más reciente y detallado); (3) `MEMORIA_CLAUDE.md` y la memoria `agl-ordenes-sap-procesos.md`.**
+> **AL ABRIR UNA CONVERSACIÓN NUEVA, LEER EN ESTE ORDEN: (1) este archivo; (2) `C:/HENRYALVARADO2022/agronotificaciones/docs/campo-estado-y-traspaso.md` (trabajo «Campo»: Inyección por lote, motores y combustible, devolución con detalle, objetivos; es el estado más reciente y detallado); (3) `MEMORIA_CLAUDE.md` y la memoria `agl-ordenes-sap-procesos.md`.**
 > Hay una copia idéntica en `C:\HENRYALVARADO2022\AGLGestion_App\proyecto-seguimiento.md`: **actualizar las dos al terminar cada bloque.**
 > Responder siempre al usuario **en español, claro y sin jerga**.
 
@@ -207,7 +207,7 @@ SAP es la única fuente de verdad: /OS01 replica la COHV (órdenes) y la KOB1 (s
 ---
 
 ## 7. Al empezar una conversación nueva (lista corta)
-1. Leer este archivo, luego **`C:\HENRYALVARADO2022gronotificaciones\docs\campo-estado-y-traspaso.md`** (estado y pendientes de «Campo»), y `MEMORIA_CLAUDE.md`.
+1. Leer este archivo, luego **`C:/HENRYALVARADO2022/agronotificaciones/docs/campo-estado-y-traspaso.md`** (estado y pendientes de «Campo»), y `MEMORIA_CLAUDE.md`.
 2. `git status` y `git log -3` en los dos proyectos; no tocar el `CLAUDE.md` local del usuario.
 3. Confirmar que se trabaja en desarrollo y que nada va a producción sin «pasa a producción».
 4. Seguir con el primer pendiente de §4, o con lo que el usuario pida.
