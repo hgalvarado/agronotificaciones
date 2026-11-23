@@ -5,6 +5,7 @@
 
 import type { Operacion } from '@/lib/fertirriego/tipos'
 import { lineasDelPlan, type FilaPlanInyeccion } from './aplicarLote'
+import { marcaHecho } from './planGeneral'
 import type { LoteCatalogo } from './lotes'
 import type { ObjetivoCatalogo } from './objetivos'
 
@@ -107,12 +108,12 @@ export type LoteConPlan = {
   hecho: boolean
 }
 
-/** Marcas «turno|ddt» de lo ya aplicado (servidor + lo pendiente de enviar) para saber si un plan está «hecho». */
+/** Marcas «lote|ddt|producto» (marcaHecho) de lo ya aplicado (servidor + lo pendiente de enviar) para saber si un plan está «hecho». */
 export function planesAplicados(plan: FilaPlanInyeccion[], aplicaciones: AplicacionInyeccion[], cola: Operacion[]): Set<string> {
   const hechos = new Set<string>()
   for (const a of aplicaciones) {
     if (a.anulado_at) continue
-    for (const l of a.lineas) if (l.ddt_plan !== null && a.turno_agl_id) hechos.add(`${a.turno_agl_id}|${l.ddt_plan}`)
+    for (const l of a.lineas) if (l.ddt_plan !== null) hechos.add(marcaHecho(a.lote, l.ddt_plan, l.material_id))
   }
   for (const op of cola) {
     if (op.estado_local !== 'PENDIENTE' || op.tipo !== 'aplicacion_lote') continue
@@ -122,7 +123,8 @@ export function planesAplicados(plan: FilaPlanInyeccion[], aplicaciones: Aplicac
       categoriaClave: (d.categoria_clave as string | null) ?? null,
       fecha: dia(String(d.fecha_hora ?? op.creado_en)),
     })
-    if (g[0]) hechos.add(`${g[0].turno_agl_id}|${g[0].ddt}`)
+    const enviados = new Set(((d.lineas as { material_id?: string }[] | undefined) ?? []).map((x) => String(x.material_id)))
+    for (const x of g) if (enviados.has(x.material_id)) hechos.add(marcaHecho(String(d.lote ?? ''), x.ddt, x.material_id))
   }
   return hechos
 }
@@ -150,7 +152,7 @@ export function lotesConPlan(estado: EstadoInyeccion, cola: Operacion[], estacio
       fecha_plan: g[0].fecha_plan,
       area_mz: g[0].area_mz,
       turno: fila?.turno ?? null,
-      hecho: hechos.has(`${g[0].turno_agl_id}|${g[0].ddt}`),
+      hecho: g.every((x) => hechos.has(marcaHecho(lote, x.ddt, x.material_id))),
     })
   }
   return salida.sort(

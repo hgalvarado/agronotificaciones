@@ -81,7 +81,7 @@ export function VistaPorLote({
       </div>
       {siguiente && siguiente.estado !== 'hecho' && (
         <p className="text-sm text-slate-700" data-por-lote-resumen>
-          {siguiente.estado === 'atrasado' ? 'Pendiente' : 'Sigue'}: <strong>DDT {siguiente.ddt ?? '—'}</strong> · {fechaCorta(siguiente.fecha_plan)} ({ETIQUETA[siguiente.estado].texto(siguiente.dias).toLowerCase()})
+          {siguiente.estado === 'atrasado' ? 'Pendiente' : 'Sigue'}: <strong>DDT {siguiente.ddt ?? '—'}</strong> · {siguiente.fecha_estimada ? '≈ ' : ''}{fechaCorta(siguiente.fecha_plan)} ({ETIQUETA[siguiente.estado].texto(siguiente.dias).toLowerCase()})
         </p>
       )}
       {planes.map((p) => {
@@ -90,7 +90,8 @@ export function VistaPorLote({
           <div key={`${p.turno_agl_id}|${p.ddt}`} className="rounded-xl bg-white p-3 ring-1 ring-inset ring-slate-200" data-plan-lote-ddt={p.ddt ?? ''} data-estado-plan={p.estado}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-base font-bold text-slate-900">
-                DDT {p.ddt ?? '—'} <span className="text-sm font-semibold text-slate-500">· {fechaCorta(p.fecha_plan)}</span>
+                DDT {p.ddt ?? '—'} <span className="text-sm font-semibold text-slate-500">· {p.fecha_estimada ? '≈ ' : ''}{fechaCorta(p.fecha_plan)}</span>
+                {p.fecha_estimada && <span className="ml-1 text-xs font-medium text-slate-500" data-fecha-estimada>(fecha estimada: aún sin turno)</span>}
               </p>
               <Insignia tono={e.tono}>{e.texto(p.dias)}</Insignia>
             </div>

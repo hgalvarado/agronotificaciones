@@ -247,7 +247,7 @@ const planDdt = [
 ]
 
 test('141 · plan general por DDT: variedades con % del área, observaciones, lotes y avance', () => {
-  const g = planGeneralPorDdt(planDdt, new Set(['T1|12']))
+  const g = planGeneralPorDdt(planDdt, new Set(['l1|12|B']))
   assert.deepEqual(g.map((x) => x.ddt), [5, 12])
   const p = g[0].productos[0]
   assert.equal(p.area_mz, 4)
@@ -261,9 +261,58 @@ test('141 · plan general por DDT: variedades con % del área, observaciones, lo
 })
 
 test('141 · plan de un lote: estados hecho / atrasado / próximo y el que toca ahora', () => {
-  const planes = planDeLote(planDdt, 'L1', new Set(['T1|12']), '2026-11-23')
+  const planes = planDeLote(planDdt, 'L1', new Set(['l1|12|B']), '2026-11-23')
   assert.deepEqual(planes.map((p) => [p.ddt, p.estado]), [[5, 'atrasado'], [12, 'hecho']])
   assert.equal(siguientePlanDeLote(planes).ddt, 5)
   assert.deepEqual(lotesDelPlan(planDdt), ['L1', 'L2'])
   assert.equal(planDeLote(planDdt, 'L2', new Set(), '2026-11-21')[0].estado, 'hoy')
+})
+
+// 142 · lotes sin turno: clave 'SIN-TURNO|<lote>', fecha estimada y compatibilidad con lo anterior
+const sinTurno = [
+  { id: '1', estacion_id: 'E', temporada: 'T', ciclo: 'Ciclo 1', turno_agl_id: 'SIN-TURNO|l9', turno: null, lote: 'L9', categoria_clave: 'c', ddt: 5, fecha_plan: '2026-11-25', fecha_estimada: true, material_id: 'A', dosis_mz: 2, area_mz: 2, cantidad_plan: 4, variedad: 'Cavendish' },
+  { id: '2', estacion_id: 'E', temporada: 'T', ciclo: 'Ciclo 1', turno_agl_id: 'SIN-TURNO|l8', turno: null, lote: 'L8', categoria_clave: 'c', ddt: 5, fecha_plan: null, fecha_estimada: true, material_id: 'A', dosis_mz: 2, area_mz: 1, cantidad_plan: 2 },
+  { id: '3', estacion_id: 'E', temporada: 'T', ciclo: 'Ciclo 1', turno_agl_id: 'T1', turno: 'T1', lote: 'L1', categoria_clave: 'c', ddt: 5, fecha_plan: '2026-11-25', material_id: 'A', dosis_mz: 2, area_mz: 3, cantidad_plan: 6 },
+]
+
+test('142 · plan de un lote sin turno: aparece normal, con fecha estimada marcada', () => {
+  const p = planDeLote(sinTurno, 'L9', new Set(), '2026-11-23')
+  assert.equal(p.length, 1)
+  assert.equal(p[0].fecha_estimada, true)
+  assert.equal(p[0].estado, 'proximo')
+  assert.equal(p[0].turno, null)
+  assert.equal('fecha_estimada' in planDeLote(sinTurno, 'L1', new Set(), '2026-11-23')[0], false) // lo anterior no cambia de forma
+})
+
+test('142 · lote sin turno y sin fecha: estado sin_fecha; lotes sin turno son lotes distintos aunque tengan el mismo DDT', () => {
+  assert.equal(planDeLote(sinTurno, 'L8', new Set(), '2026-11-23')[0].estado, 'sin_fecha')
+  // «hecho» = lote + DDT + producto: no marca a otro lote con el mismo DDT
+  assert.equal(planDeLote(sinTurno, 'L8', new Set(['l9|5|A']), '2026-11-23')[0].estado, 'sin_fecha')
+  assert.equal(planDeLote(sinTurno, 'L9', new Set(['l9|5|A']), '2026-11-23')[0].estado, 'hecho')
+})
+
+test('142 · plan general por DDT: marca fecha estimada solo si alguna línea lo es', () => {
+  const g = planGeneralPorDdt(sinTurno, new Set())
+  assert.equal(g[0].fecha_estimada, true)
+  assert.equal(g[0].n_lotes, 3)
+  assert.equal('fecha_estimada' in planGeneralPorDdt(sinTurno.slice(2), new Set())[0], false)
+})
+
+test('142 · lineasDelPlan de un lote sin turno devuelve su clave de plan y la marca de fecha estimada', () => {
+  const l = lineasDelPlan(sinTurno, { lote: 'L9', categoriaClave: 'c', fecha: '2026-11-23' })
+  assert.equal(l[0].turno_agl_id, 'SIN-TURNO|l9')
+  assert.equal(l[0].fecha_estimada, true)
+  assert.equal('fecha_estimada' in lineasDelPlan(sinTurno, { lote: 'L1', categoriaClave: 'c' })[0], false)
+})
+
+test('142 · «hecho» por lote + DDT + producto: sobrevive al cambio de turno y exige todos los productos', () => {
+  const dos = [
+    { ...sinTurno[0], id: 'a', material_id: 'A' },
+    { ...sinTurno[0], id: 'b', material_id: 'B' },
+  ]
+  assert.equal(planDeLote(dos, 'L9', new Set(['l9|5|A']), '2026-11-23')[0].estado, 'proximo') // falta B
+  assert.equal(planDeLote(dos, 'L9', new Set(['l9|5|A', 'l9|5|B']), '2026-11-23')[0].estado, 'hecho')
+  // mismo lote, ahora con turno real: sigue hecho
+  const conTurno = dos.map((x) => ({ ...x, turno_agl_id: 'T7', turno: 'T7', fecha_estimada: false }))
+  assert.equal(planDeLote(conTurno, 'L9', new Set(['l9|5|A', 'l9|5|B']), '2026-11-23')[0].estado, 'hecho')
 })

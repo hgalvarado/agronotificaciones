@@ -258,7 +258,7 @@ export function FormAplicacionLote({
       {grupo[0] && (
         <p className="-mt-2 text-xs text-slate-600" data-plan-lote>
           Plan: DDT <strong>{grupo[0].ddt ?? '—'}</strong>
-          {grupo[0].fecha_plan ? ` · ${grupo[0].fecha_plan}` : ''}
+          {grupo[0].fecha_plan ? ` · ${grupo[0].fecha_estimada ? '≈ ' : ''}${grupo[0].fecha_plan}` : ''}
           {areaLote !== null ? ` · lote ${cantidad(areaLote)} mz` : ''}
         </p>
       )}
