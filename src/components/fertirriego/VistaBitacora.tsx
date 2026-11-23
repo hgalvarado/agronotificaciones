@@ -26,6 +26,7 @@ import {
   type FiltrosBitacora,
   type TipoFila,
 } from '@/lib/fertirriego/bitacora'
+import { lineaRetiro, rotuloDevolucion, vistaDevolucion } from '@/lib/fertirriego/devolucionBodega'
 import { ordenarPorClase } from '@/lib/fertirriego/productos'
 import type { EstadoCampo, Operacion } from '@/lib/fertirriego/tipos'
 
@@ -77,6 +78,9 @@ export function VistaBitacora({
   const filas = filtrarBitacora(todos, f)
   const activos = filtrosActivos(f)
 
+  // Devolución a bodega: el destino CONCRETO y quién retiró (nunca «suministros / bodega / taller» juntos)
+  const devDe = (x: { tipo: string; documento_id: string | null }) =>
+    x.tipo === 'DEVOLUCION_BODEGA' && x.documento_id ? vistaDevolucion(estado, cola, x.documento_id, (id) => nombrePersona(estado, id)) : null
   const material = (id: string | null) => (id ? estado.materiales.find((m) => m.id === id) : undefined)
   const envase = (id: string | null) => (id ? (estado.envases_tipos ?? []).find((e) => e.id === id)?.nombre : undefined) ?? 'Envase'
   const turno = (id: string) => estado.turnos.find((t) => t.id === id)?.turno
@@ -271,7 +275,10 @@ export function VistaBitacora({
                 ? (NOMBRE_MOTIVO_ENVASE[primero.motivo ?? ''] ?? 'Envases')
                 : primero.tipo === 'HISTORICO'
                   ? 'Aplicación histórica'
-                  : NOMBRE_MOVIMIENTO[primero.tipo as keyof typeof NOMBRE_MOVIMIENTO]
+                  : devDe(primero)
+                    ? rotuloDevolucion(devDe(primero)!.destino)
+                    : NOMBRE_MOVIMIENTO[primero.tipo as keyof typeof NOMBRE_MOVIMIENTO]
+              const devB = devDe(primero)
               const turnos = primero.turnos.map(turno).filter(Boolean).join(', ')
               const quien = nombrePersona(estado, primero.registrado_por)
               return (
@@ -290,6 +297,11 @@ export function VistaBitacora({
                         {turnos ? ` · ${turnos}` : ''}
                       </span>
                       <span className="block break-words text-xs text-slate-400">{quien ?? 'Persona sin nombre en este teléfono'}</span>
+                      {devB && (
+                        <span className="block break-words text-xs text-slate-500" data-retiro-devolucion>
+                          {lineaRetiro(devB)}
+                        </span>
+                      )}
                       <span className="block break-words text-xs font-semibold text-slate-500">
                         <span aria-hidden="true">{abierto ? '▾' : '▸'}</span> {b.filas.length} {esEnvase ? 'envases' : 'productos'} · hecho junto
                       </span>
@@ -313,7 +325,10 @@ export function VistaBitacora({
       ? (NOMBRE_MOTIVO_ENVASE[x.motivo ?? ''] ?? 'Envases')
       : esHistorico
         ? 'Aplicación histórica'
-        : NOMBRE_MOVIMIENTO[x.tipo as keyof typeof NOMBRE_MOVIMIENTO]
+        : devDe(x)
+          ? rotuloDevolucion(devDe(x)!.destino)
+          : NOMBRE_MOVIMIENTO[x.tipo as keyof typeof NOMBRE_MOVIMIENTO]
+    const dev = devDe(x)
     const turnos = x.turnos.map(turno).filter(Boolean).join(', ')
     const quien = nombrePersona(estado, x.registrado_por)
     const articulo = esEnvase ? envase(x.envase_id) : material(x.material_id)?.descripcion
@@ -321,7 +336,7 @@ export function VistaBitacora({
       <button
         key={x.clave}
         type="button"
-        disabled={x.pendiente}
+        disabled={x.pendiente && x.tipo !== 'DEVOLUCION_BODEGA'}
         onClick={() => onAbrir(x.documento_tipo, x.documento_id)}
         data-movimiento={x.tipo}
         data-historico={esHistorico ? '' : undefined}
@@ -342,6 +357,11 @@ export function VistaBitacora({
               <span className="block break-words text-xs text-slate-400" data-quien-movimiento>
                 {quien ?? 'Persona sin nombre en este teléfono'}
               </span>
+              {dev && (
+                <span className="block break-words text-xs text-slate-500" data-retiro-devolucion>
+                  {lineaRetiro(dev)}
+                </span>
+              )}
             </>
           )}
           {esHistorico && (

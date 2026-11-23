@@ -9,7 +9,7 @@
 import { Alerta, Boton, Insignia } from '@/components/ui/Primitivos'
 import { formatearFechaHora } from '@/lib/estados'
 import { diagnosticar } from '@/lib/errores/diagnostico'
-import { NOMBRE_OBSERVACION } from '@/lib/fertirriego/operaciones'
+import { NOMBRE_OBSERVACION, observacionesVisibles } from '@/lib/fertirriego/operaciones'
 import type { EstadoCampo, Operacion } from '@/lib/fertirriego/tipos'
 
 const NOMBRE_TIPO: Record<string, string> = {
@@ -19,6 +19,13 @@ const NOMBRE_TIPO: Record<string, string> = {
   bitacora: 'Bitácora de riego',
   conteo: 'Conteo',
   devolucion: 'Devolución',
+  devolucion_bodega: 'Devolución a bodega',
+  aplicacion_lote: 'Aplicación por lote',
+  motor_asignar: 'Movimiento de motor',
+  motor_retiro: 'Retiro de motor',
+  motor_registro_diario: 'Registro diario del motor',
+  motor_mantenimiento: 'Mantenimiento de motor',
+  diesel_recibir: 'Diésel recibido',
   anulacion: 'Anulación',
   chofer: 'Chofer nuevo',
   vehiculo: 'Vehículo nuevo',
@@ -123,7 +130,7 @@ export function VistaEnvios({
                 <p className="text-sm font-semibold text-slate-800">
                   {NOMBRE_TIPO[o.tipo] ?? o.tipo} · {formatearFechaHora(o.recibido_en)}
                 </p>
-                <p className="text-xs text-amber-700">{(o.observaciones ?? []).map((x) => NOMBRE_OBSERVACION[x] ?? x).join(' · ')}</p>
+                <p className="text-xs text-amber-700">{observacionesVisibles(o.observaciones).map((x) => NOMBRE_OBSERVACION[x] ?? x).join(' · ')}</p>
               </li>
             ))}
           </ul>

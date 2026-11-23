@@ -18,7 +18,7 @@ const PAGINAS = `agn-fert-paginas-${VERSION}`
 const ESTATICOS = `agn-fert-estaticos-${VERSION}`
 const CAMPO = '/fertirriego'
 /** Únicas pantallas que se guardan para abrir sin señal. Lo demás sigue igual que siempre. */
-const RUTAS_CAMPO = [CAMPO, '/agrometricas', '/agrometricas/parametros']
+const RUTAS_CAMPO = [CAMPO, '/agrometricas', '/agrometricas/parametros', '/inyeccion']
 const ESPERA_RED_MS = 4000
 
 /** Una pantalla de campo (por su ruta) y los archivos que ella pide (scripts y estilos). */

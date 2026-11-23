@@ -42,8 +42,12 @@ export function crearOperacion(
   }
 }
 
+/** Observaciones que se muestran: «sin ubicación» no se enseña (pedido del usuario 2026-11-22; la base la sigue guardando). */
+export function observacionesVisibles(lista: string[] | null | undefined): string[] {
+  return (lista ?? []).filter((o) => o !== 'SIN_UBICACION')
+}
+
 export const NOMBRE_OBSERVACION: Record<string, string> = {
-  SIN_UBICACION: 'sin ubicación',
   RELOJ: 'hora del teléfono distinta',
   FUERA_DE_CUSTODIA: 'la estación no estaba a su cargo',
   SALDO_NEGATIVO: 'dejó el saldo en negativo',
@@ -54,4 +58,10 @@ export const NOMBRE_OBSERVACION: Record<string, string> = {
   CUSTODIA_POSTERIOR: 'el jefe asignó la estación después',
   DDT_SIN_PLAN: 'el DDT elegido no está en el plan',
   POSIBLE_DUPLICADO: 'posible duplicado (ya había una aplicación igual ese día)',
+  HOROMETRO_NO_CONTINUA: 'el horómetro inicial no continuaba el registro anterior',
+  VISOR_NO_CONTINUA: 'el visor inicial no coincidía con el final anterior',
+  VISOR_SUBE_SIN_RECEPCION: 'el visor subió y no había diésel recibido',
+  CONSUMO_SIN_HORAS: 'gastó diésel sin horas de trabajo',
+  SIN_REGISTRO_PREVIO: 'primer registro del motor',
+  FUERA_DE_ORDEN: 'registro de un día anterior a otros ya hechos',
 }

@@ -61,7 +61,10 @@ export function EditorLineas({
   etiquetaPlan = 'Plan',
   etiquetaCantidad = 'Cantidad',
   crearProducto,
+  pie,
 }: {
+  /** Contenido bajo cada fila (Inyección: ingrediente activo y dosis/mz). */
+  pie?: (linea: LineaEditable) => React.ReactNode
   /**
    * «Agregar producto que no está en la lista» (sin señal; queda «por validar»). El formulario guarda la operación
    * y la manda antes del registro (useProductosNuevos). Sin esto, no se ofrece.
@@ -146,6 +149,7 @@ export function EditorLineas({
                 )}
               </span>
             </div>
+            {pie?.(l)}
           </div>
         )
       })}

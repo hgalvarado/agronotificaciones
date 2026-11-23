@@ -18,6 +18,8 @@
   usuario. Ahí viven ahora Trasplante, Turnos de Riego y Líneas Telefónicas (/LN01-03). Su publicación
   (`Publicar_Produccion.bat` → `arranque.py`) **nunca debe modificar** `data/sistema/menu_schema.json`.
 
+**Trabajo «Campo» (2026-11-22, Inyección por lote, motores y combustible, devolución con detalle, objetivos): estado, reglas, archivos y pendientes en `docs/campo-estado-y-traspaso.md` (leer primero).** Regla dura nueva: **catálogos únicos** (nunca crear listas paralelas ni texto libre donde ya hay catálogo). sql 128–132 (128 y 129 corridas en desarrollo; 130–132 escritas, ver ese archivo); próximo libre 133.
+
 ## 2. Reglas de trabajo (acordadas con el usuario)
 
 - Ramas: commits en `desarrollo`. **Nunca** push ni merge a `main` sin que el usuario diga «pasa a producción».
