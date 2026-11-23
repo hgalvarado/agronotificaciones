@@ -107,12 +107,13 @@ export function VistaHistorialMotor({
     ) : null
   const registros = estado.registros.filter((r) => r.equipo_id === motor.equipo_id)
   const tanqueId = motor.tanque?.id
-  const recepciones = estado.recepciones.filter((r) => r.tanque_id === tanqueId)
+  // sql/144: el diésel se recibe en la estación (bodega): se listan las recepciones de la estación; las anteriores iban al tanque
+  const recepciones = estado.recepciones.filter((r) => (r.tanque_id ? r.tanque_id === tanqueId : r.estacion_id === estacion.id))
   const movimientos = estado.asignaciones.filter((a) => a.equipo_id === motor.equipo_id)
   const pendientes = cola.filter(
     (o) =>
       ['motor_registro_diario', 'diesel_recibir', 'motor_mantenimiento', 'motor_asignar', 'motor_retiro'].includes(o.tipo) &&
-      (o.datos.equipo_id === motor.equipo_id || o.datos.tanque_id === tanqueId) &&
+      (o.datos.equipo_id === motor.equipo_id || o.datos.tanque_id === tanqueId || (o.tipo === 'diesel_recibir' && o.datos.estacion_id === estacion.id)) &&
       o.estado_local !== 'ACEPTADO'
   )
   const puede = puedeAnular && estacion.permisos.anular
@@ -167,7 +168,7 @@ export function VistaHistorialMotor({
           )}
         </div>
 
-        <p className="mt-2 text-xs font-bold uppercase tracking-wide text-slate-400">Diésel recibido</p>
+        <p className="mt-2 text-xs font-bold uppercase tracking-wide text-slate-400">Diésel recibido en la estación</p>
         {recepciones.length === 0 && <p className="text-sm text-slate-500">Sin recepciones.</p>}
         {recepciones.map((r) => (
           <div key={r.id} className={`flex flex-wrap items-center justify-between gap-2 text-sm ${r.anulado_at ? 'opacity-50 line-through' : ''}`}>

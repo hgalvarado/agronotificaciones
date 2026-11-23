@@ -43,6 +43,17 @@ export function efectosDe(op: Operacion, estado: EstadoCampo, saldo: (est: strin
       return lineasDe(d).map((l) => ({ estacion_id: est, material_id: l.material_id, cantidad: -num(l.cantidad), tipo: 'APLICACION_LOTE' }))
     case 'devolucion_bodega':
       return lineasDe(d).map((l) => ({ estacion_id: est, material_id: l.material_id, cantidad: -num(l.cantidad), tipo: 'DEVOLUCION_BODEGA' }))
+    case 'diesel_recibir': {
+      // 144: el diésel recibido entra a la bodega de la estación (producto diésel que publica AGL)
+      const mat = String(d.diesel_material_id ?? '')
+      return mat ? [{ estacion_id: est, material_id: mat, cantidad: num(d.galones), tipo: 'RECEPCION_DIESEL' as TipoMovimiento }] : []
+    }
+    case 'motor_registro_diario': {
+      // 144: el suministro de combustible del día baja la bodega (el registro histórico no mueve inventario)
+      const mat = String(d.diesel_material_id ?? '')
+      const gal = num(d.suministro_gal)
+      return mat && gal > 0 && d.historica !== true ? [{ estacion_id: est, material_id: mat, cantidad: -gal, tipo: 'SUMINISTRO_MOTOR' as TipoMovimiento }] : []
+    }
     case 'conteo':
       return ((d.lineas as { material_id: string; cantidad_real: number }[] | undefined) ?? [])
         .filter((l) => l.cantidad_real !== null && l.cantidad_real !== undefined && String(l.cantidad_real) !== '')
@@ -158,6 +169,8 @@ export const NOMBRE_MOVIMIENTO: Record<TipoMovimiento, string> = {
   APLICACION: 'Aplicación',
   DEVOLUCION: 'Devolución a bodega',
   APLICACION_LOTE: 'Aplicación por lote',
+  RECEPCION_DIESEL: 'Diésel recibido',
+  SUMINISTRO_MOTOR: 'Suministro de diésel al motor',
   DEVOLUCION_BODEGA: 'Devuelto a suministros / bodega / taller',
   AJUSTE_CONTEO: 'Ajuste por conteo',
   DIFERENCIA_RELEVO: 'Diferencia en relevo',

@@ -96,6 +96,9 @@ export type TipoMovimiento =
   | 'DEVOLUCION_BODEGA'
   /** sql/129: aplicación por lote (Inyección/Drench/Calidad), sin turno. */
   | 'APLICACION_LOTE'
+  /** sql/144: el diésel recibido entra a la bodega de la estación; el suministro al motor la rebaja. */
+  | 'RECEPCION_DIESEL'
+  | 'SUMINISTRO_MOTOR'
   | 'AJUSTE_CONTEO'
   | 'DIFERENCIA_RELEVO'
   | 'TRASLADO_SALIDA'

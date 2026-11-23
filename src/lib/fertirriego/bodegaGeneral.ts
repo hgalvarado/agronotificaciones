@@ -1,9 +1,10 @@
 /**
  * Bodega general de la estación (sql/139): UNA lista con todo lo que hay en la estación (fertilizantes, productos de
- * inyección/drench/calidad, envases y el diésel de los tanques). Puro: ni React, ni IndexedDB, ni red.
+ * inyección/drench/calidad, envases y el diésel). Puro: ni React, ni IndexedDB, ni red.
  *
  * Los saldos de productos y envases se calculan en el teléfono (servidor + lo pendiente de enviar); de la base solo
- * vienen la clasificación, la última recepción, de dónde vino y el diésel (que vive en el libro de Motores).
+ * vienen la clasificación, la última recepción y de dónde vino. Desde la sql/144 el diésel es un producto más de la bodega
+ * (tipo DIESEL, mismo libro que los demás); el diésel dentro de los tanques de los motores se ve en la ficha del motor.
  */
 
 import type { Material } from './tipos'
@@ -26,7 +27,7 @@ export type FilaBodegaServidor = {
   detalle?: string | null
 }
 
-export type BodegaGeneral = { servidor_en: string; filas: FilaBodegaServidor[] }
+export type BodegaGeneral = { servidor_en: string; filas: FilaBodegaServidor[]; /** sql/144: el producto diésel que publica AGL. */ material_diesel_id?: string | null }
 
 /** Clave con la que se guarda en el teléfono (preferencias del almacén de la persona). */
 export const CLAVE_BODEGA_GENERAL = 'bodega_general'
@@ -60,7 +61,7 @@ const redondear = (n: number) => Math.round(n * 10000) / 10000
 /**
  * Arma la lista de la estación. Productos y envases salen del saldo local (con lo pendiente); la base aporta tipo,
  * última recepción y procedencia (sin ella, un producto se clasifica por su marca de análisis y no tiene procedencia).
- * El diésel sale de la base (sin señal queda lo último que se bajó).
+ * El diésel es un producto como los demás: su saldo local (con lo pendiente) y su clasificación DIESEL vienen del mismo mapa.
  */
 export function armarBodega(args: {
   estacionId: string
@@ -72,7 +73,7 @@ export function armarBodega(args: {
 }): FilaBodega[] {
   const { estacionId, saldos, saldosEnvases, material, nombreEnvase, servidor } = args
   const delServidor = (servidor?.filas ?? []).filter((f) => f.estacion_id === estacionId)
-  const porClave = new Map(delServidor.map((f) => [`${f.tipo === 'ENVASE' ? 'E' : f.tipo === 'DIESEL' ? 'D' : 'P'}|${f.clave}`, f]))
+  const porClave = new Map(delServidor.map((f) => [`${f.tipo === 'ENVASE' ? 'E' : 'P'}|${f.clave}`, f]))
   const filas: FilaBodega[] = []
 
   for (const [id, v] of saldos) {
@@ -80,7 +81,7 @@ export function armarBodega(args: {
     const m = material(id)
     const s = porClave.get(`P|${id}`)
     filas.push({
-      tipo: s && s.tipo !== 'ENVASE' && s.tipo !== 'DIESEL' ? s.tipo : m?.analisis ? 'FERTILIZANTE' : 'OTRO',
+      tipo: s && s.tipo !== 'ENVASE' ? s.tipo : id === servidor?.material_diesel_id ? 'DIESEL' : m?.analisis ? 'FERTILIZANTE' : 'OTRO',
       clave: id,
       materialId: id,
       codigo: m?.codigo ?? s?.codigo ?? null,
@@ -106,21 +107,6 @@ export function armarBodega(args: {
       ultimaRecepcion: s?.ultima_recepcion ?? null,
       procedencia: s?.procedencia ?? null,
       detalle: null,
-    })
-  }
-  for (const s of delServidor) {
-    if (s.tipo !== 'DIESEL') continue
-    filas.push({
-      tipo: 'DIESEL',
-      clave: s.clave,
-      materialId: null,
-      codigo: s.codigo,
-      nombre: s.nombre,
-      unidad: s.unidad,
-      saldo: redondear(Number(s.saldo) || 0),
-      ultimaRecepcion: s.ultima_recepcion,
-      procedencia: s.procedencia,
-      detalle: s.detalle ?? null,
     })
   }
   const orden = (t: TipoBodega) => ORDEN_TIPOS.indexOf(t)
