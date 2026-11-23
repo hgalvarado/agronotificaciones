@@ -28,11 +28,22 @@ export function FiltrosRegistrosPanel({ filtros, opciones, onCambiar, turnosDeLo
     if (espera.current) clearTimeout(espera.current)
     espera.current = setTimeout(() => onCambiar({ texto: v }), 400)
   }
+  const [abierto, setAbierto] = useState(false)   // contraídos por defecto: no ocupan pantalla
   const hayFiltros = Boolean(filtros.temporada.length || filtros.zona.length || filtros.turno.length || filtros.lotes.length || filtros.desde || filtros.hasta || filtros.texto)
+
+  const activos = [filtros.temporada.length, filtros.zona.length, filtros.turno.length, filtros.lotes.length, filtros.desde || filtros.hasta ? 1 : 0, filtros.texto ? 1 : 0].filter(Boolean).length
 
   return (
     <Tarjeta className="p-3.5" >
-      <div data-filtros className="flex flex-col gap-3">
+      <button type="button" onClick={() => setAbierto((a) => !a)} aria-expanded={abierto} data-filtros-alternar
+        className="flex min-h-11 w-full items-center justify-between gap-2 text-left">
+        <span className="flex items-center gap-2 text-base font-bold text-slate-900">
+          Filtros
+          {activos > 0 && <span className="rounded-full bg-brand-600 px-2 py-0.5 text-xs font-bold text-white" data-filtros-activos>{activos} activo{activos === 1 ? '' : 's'}</span>}
+        </span>
+        <span className="text-sm font-semibold text-brand-700">{abierto ? 'Ocultar ▲' : 'Mostrar ▼'}</span>
+      </button>
+      <div data-filtros hidden={!abierto} className="mt-3 flex flex-col gap-3">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <SelectorMultiple etiqueta="Temporada" opciones={opciones.temporadas} valores={filtros.temporada} onCambiar={(v) => onCambiar({ temporada: v })} />
           <SelectorMultiple etiqueta="Zona" opciones={opciones.zonas} valores={filtros.zona} onCambiar={(v) => onCambiar({ zona: v })} />
