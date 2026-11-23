@@ -4,7 +4,7 @@
  * Fertirriego · la app de campo (Etapa B). Funciona sin señal: muestra lo último que se bajó, guarda cada
  * registro en el teléfono y lo envía solo cuando vuelve la conexión.
  *
- * Pestañas: Estación (bodega y acciones) · Por turno (plan contra aplicado, horas) · Bitácora (kardex) ·
+ * Pestañas: Bodega (TODO lo que hay en la estación, con filtros, y las acciones) · Por turno (plan contra aplicado, horas) · Bitácora (kardex) ·
  * Relevos (cambio de jornada con código) · Traslados (entre estaciones) · Envíos (pendientes, rechazados, observaciones).
  */
 
@@ -13,6 +13,7 @@ import { Alerta, Boton, ListaEsqueleto } from '@/components/ui/Primitivos'
 import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
 import { formatearFechaHora } from '@/lib/estados'
 import { hoyIso } from '@/lib/fechas/zona'
+import { CLAVE_BODEGA_GENERAL, armarBodega, type BodegaGeneral } from '@/lib/fertirriego/bodegaGeneral'
 import { conCustodiaLocal, saldosLocales } from '@/lib/fertirriego/calculos'
 import { envasesPendientes, saldosEnvasesLocales } from '@/lib/fertirriego/envases'
 import {
@@ -74,7 +75,7 @@ type Ventana =
   | null
 
 const PESTANAS: { clave: Pestana; nombre: string }[] = [
-  { clave: 'estacion', nombre: 'Estación' },
+  { clave: 'estacion', nombre: 'Bodega' },
   { clave: 'turnos', nombre: 'Por turno' },
   { clave: 'bitacora', nombre: 'Bitácora' },
   { clave: 'relevos', nombre: 'Relevos' },
@@ -179,6 +180,31 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
   const saldosEnvases = useMemo(
     () => (estado && estacion ? saldosEnvasesLocales(estado, cola, estacion.id) : new Map<string, number>()),
     [estado, cola, estacion]
+  )
+
+  // Bodega general (139): lo último que bajó la sincronización; se relee solo cuando termina una sincronización
+  const [bodegaServidor, setBodegaServidor] = useState<BodegaGeneral | null>(null)
+  const { preferencia: leerPreferencia, sincronizadoEn } = campo
+  useEffect(() => {
+    let vivo = true
+    void leerPreferencia<BodegaGeneral>(CLAVE_BODEGA_GENERAL).then((b) => vivo && setBodegaServidor(b))
+    return () => {
+      vivo = false
+    }
+  }, [leerPreferencia, sincronizadoEn])
+  const filasBodega = useMemo(
+    () =>
+      estado && estacion
+        ? armarBodega({
+            estacionId: estacion.id,
+            saldos,
+            saldosEnvases,
+            material: (id) => estado.materiales.find((m) => m.id === id),
+            nombreEnvase: (id) => estado.envases_tipos?.find((e) => e.id === id)?.nombre ?? '',
+            servidor: bodegaServidor,
+          })
+        : [],
+    [estado, estacion, saldos, saldosEnvases, bodegaServidor]
   )
 
   /** «Reintentar»: vuelve a abrir ese formulario (con su borrador) en su estación. */
@@ -367,7 +393,7 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
                 estacion={estacion}
                 yo={estado.yo}
                 saldos={saldos}
-                saldosEnvases={saldosEnvases}
+                filasBodega={filasBodega}
                 enLinea={enLinea}
                 tieneEntregaPendiente={Boolean(entregaPendiente)}
                 permisoHistorico={permisoHistorico}
@@ -385,6 +411,8 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
                           ? { tipo: 'contar' }
                           : a === 'devolver_bodega'
                           ? { tipo: 'devolver_bodega' }
+                          : a === 'trasladar'
+                          ? { tipo: 'traslado' }
                           : a === 'entregar'
                             ? { tipo: 'entregar' }
                             : a === 'recibir_relevo'

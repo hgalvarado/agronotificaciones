@@ -13,6 +13,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { ahoraIso } from '@/lib/fechas/zona'
 import type { AlmacenLocal } from './almacenLocal'
 import { registrarFallaSync } from '@/lib/errores/registrador'
+import { CLAVE_BODEGA_GENERAL } from './bodegaGeneral'
 import { importarLlave, type LlavePersona } from './codigo'
 import type { EstadoCampo, Operacion } from './tipos'
 
@@ -125,6 +126,15 @@ async function sincronizarUnaVez(almacen: AlmacenLocal, supabase: SupabaseClient
   }
   await almacen.guardarEstado(estado as EstadoCampo, ahoraIso())
   r.estado = estado as EstadoCampo
+
+  // 2a · Bodega general (139): clasificación, última recepción, procedencia y diésel de los tanques. Una base sin la 139
+  // simplemente no responde: la bodega se arma solo con los saldos del estado (nunca impide sincronizar).
+  try {
+    const { data: bodega, error: eb } = await supabase.rpc('fn_fert_bodega_general')
+    if (!eb && bodega) await almacen.guardarPreferencia(CLAVE_BODEGA_GENERAL, bodega)
+  } catch {
+    /* sin 139, sin señal a medias o sin espacio: se queda lo último guardado */
+  }
 
   // 2b · Llaves del código de relevo (si su rol tiene «Relevo»). Se importan como no exportables.
   const { data: llaves, error: e3 } = await supabase.rpc('fn_fert_mis_llaves')

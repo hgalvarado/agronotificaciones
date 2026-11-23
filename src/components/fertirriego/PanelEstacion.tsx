@@ -5,14 +5,52 @@
  * de enviar), más lo planificado para hoy en sus turnos.
  */
 
+import { useState } from 'react'
 import { Boton, Insignia } from '@/components/ui/Primitivos'
 import { formatearFechaHora } from '@/lib/estados'
 import { hoyIso } from '@/lib/fechas/zona'
 import { cantidad, planDelDia } from '@/lib/fertirriego/calculos'
 import type { EstadoCampo, Estacion, Persona, PermisoHistorico } from '@/lib/fertirriego/tipos'
 import { NOMBRE_BORRADOR, useBorradoresEstacion } from '@/lib/fertirriego/borrador'
-import { agruparPorClase } from '@/lib/fertirriego/productos'
+import { NOMBRE_TIPO, ORDEN_TIPOS, conteoPorTipo, type FilaBodega, type TipoBodega } from '@/lib/fertirriego/bodegaGeneral'
 import { puedeRegistrar } from './MarcoRegistro'
+
+/** Un renglón de la bodega: nombre, saldo, de dónde vino. Los productos abren su bitácora. */
+function FilaDeBodega({ fila: f, onVerProducto }: { fila: FilaBodega; onVerProducto: (materialId: string) => void }) {
+  const cuerpo = (
+    <>
+      <span className="min-w-0">
+        <span className="block break-words text-sm font-semibold text-slate-800">{f.nombre}</span>
+        <span className="block text-xs text-slate-400">{f.detalle ?? f.codigo ?? ''}</span>
+        {(f.ultimaRecepcion || f.procedencia) && (
+          <span className="mt-0.5 block text-xs text-slate-500" data-procedencia>
+            {f.ultimaRecepcion ? `Última recepción ${formatearFechaHora(f.ultimaRecepcion)}` : ''}
+            {f.ultimaRecepcion && f.procedencia ? ' · ' : ''}
+            {f.procedencia ?? ''}
+          </span>
+        )}
+      </span>
+      <span className={`shrink-0 text-lg font-bold tabular-nums ${f.saldo < 0 ? 'text-red-600' : 'text-slate-900'}`}>
+        {cantidad(f.saldo)} <span className="text-xs font-semibold text-slate-500">{f.unidad}</span>
+      </span>
+    </>
+  )
+  const clase = 'flex min-h-14 items-center justify-between gap-2 rounded-xl bg-white p-3 text-left ring-1 ring-inset ring-slate-200'
+  const atributos = f.tipo === 'ENVASE' ? { 'data-saldo-envase': f.nombre } : f.tipo === 'DIESEL' ? { 'data-saldo-diesel': f.clave } : { 'data-saldo': f.codigo ?? '' }
+  if (f.materialId) {
+    const id = f.materialId
+    return (
+      <button type="button" onClick={() => onVerProducto(id)} {...atributos} className={`${clase} hover:ring-brand-300`}>
+        {cuerpo}
+      </button>
+    )
+  }
+  return (
+    <div {...atributos} className={clase}>
+      {cuerpo}
+    </div>
+  )
+}
 
 /** «Borrador» bajo el texto del botón cuando hay un registro a medias de ese tipo. */
 function MarcaBorrador({ si }: { si: boolean }) {
@@ -24,14 +62,14 @@ function MarcaBorrador({ si }: { si: boolean }) {
   )
 }
 
-export type Accion = 'recibir' | 'envases' | 'aplicar' | 'historico' | 'contar' | 'custodia' | 'entregar' | 'recibir_relevo' | 'codigo' | 'devolver_bodega'
+export type Accion = 'recibir' | 'envases' | 'aplicar' | 'historico' | 'contar' | 'custodia' | 'entregar' | 'recibir_relevo' | 'codigo' | 'devolver_bodega' | 'trasladar'
 
 export function PanelEstacion({
   estado,
   estacion,
   yo,
   saldos,
-  saldosEnvases,
+  filasBodega,
   enLinea,
   tieneEntregaPendiente = false,
   permisoHistorico = null,
@@ -43,8 +81,8 @@ export function PanelEstacion({
   estacion: Estacion
   yo: Persona
   saldos: Map<string, number>
-  /** Envases por tipo en esta estación (con lo pendiente de enviar). */
-  saldosEnvases?: Map<string, number>
+  /** Bodega general de la estación (sql/139): productos, envases y diésel, con lo pendiente de enviar. */
+  filasBodega: FilaBodega[]
   enLinea: boolean
   /** Otra persona ya entregó la estación (está en la base): se ofrece recibirla. */
   tieneEntregaPendiente?: boolean
@@ -60,13 +98,17 @@ export function PanelEstacion({
   const turnos = estado.turnos.filter((t) => t.estacion_id === estacion.id)
   const planHoy = turnos.map((t) => ({ t, plan: planDelDia(estado.plan, t.id, hoy) })).filter((x) => x.plan.size > 0)
   const material = (id: string) => estado.materiales.find((m) => m.id === id)
-  const nombreEnvase = (id: string) => estado.envases_tipos?.find((e) => e.id === id)?.nombre ?? 'Envase'
-  const envases = [...(saldosEnvases ?? new Map<string, number>()).entries()]
-    .filter(([, v]) => v !== 0)
-    .sort((a, b) => nombreEnvase(a[0]).localeCompare(nombreEnvase(b[0]), 'es'))
   const productos = [...saldos.entries()].filter(([, v]) => v !== 0)
-  // Piloto 2, punto 5: por grupo, Fertilizantes primero y destacados
-  const grupos = agruparPorClase(productos, ([id]) => material(id))
+  const [filtro, setFiltro] = useState<TipoBodega | 'TODO'>('TODO')
+  const conteo = conteoPorTipo(filasBodega)
+  // Si el filtro elegido ya no tiene nada (p. ej. se vació), se muestra todo
+  const filtroActivo = filtro !== 'TODO' && !conteo.has(filtro) ? 'TODO' : filtro
+  const visibles = filasBodega.filter((f) => filtroActivo === 'TODO' || f.tipo === filtroActivo)
+  const tipos = ORDEN_TIPOS.filter((t) => visibles.some((f) => f.tipo === t))
+  const opcionesFiltro: [TipoBodega | 'TODO', string, number][] = [
+    ['TODO', 'Todo', filasBodega.length],
+    ...ORDEN_TIPOS.filter((t) => conteo.has(t)).map((t): [TipoBodega, string, number] => [t, NOMBRE_TIPO[t], conteo.get(t) ?? 0]),
+  ]
   // La base tiene la 99 (envases) y la persona puede recibir: se ofrece «Envases» sin producto
   const conEnvases = estacion.permisos.recibir && Array.isArray(estado.envases_tipos)
 
@@ -189,79 +231,69 @@ export function PanelEstacion({
         </div>
       )}
 
-      {/* ---- Bodega ---- */}
-      <div>
-        <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-slate-400">En bodega</p>
-        {productos.length === 0 ? (
+      {/* ---- Bodega general (139): todo lo que hay en la estación, en un solo lugar ---- */}
+      <div data-bodega-general>
+        <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs font-bold uppercase tracking-wide text-slate-400">En bodega</p>
+          {estacion.permisos.trasladar && (
+            <Boton tamano="sm" variante="secundario" onClick={() => onAccion('trasladar')} disabled={!regla.si} data-accion="trasladar">
+              Trasladar
+            </Boton>
+          )}
+        </div>
+        {filasBodega.length === 0 ? (
           <p className="rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-500 ring-1 ring-inset ring-slate-200">
             Sin saldo registrado. Empieza con un <strong>Conteo</strong> (saldo inicial) o una <strong>Recepción</strong>.
           </p>
         ) : (
-          <div className="flex flex-col gap-3" data-saldos>
-            {grupos.map((g) => (
-              <div
-                key={g.clase}
-                data-grupo-bodega={g.clase}
-                className={g.fertilizantes ? 'rounded-2xl bg-brand-50/60 p-2 ring-1 ring-inset ring-brand-200' : ''}
-              >
-                <p className={`mb-1 px-1 text-xs font-bold uppercase tracking-wide ${g.fertilizantes ? 'text-brand-800' : 'text-slate-400'}`}>
-                  {g.fertilizantes ? '★ ' : ''}
-                  {g.clase}
-                </p>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {g.items.map(([id, v]) => (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => onVerProducto(id)}
-                      data-saldo={material(id)?.codigo}
-                      className="flex min-h-14 items-center justify-between gap-2 rounded-xl bg-white p-3 text-left ring-1 ring-inset ring-slate-200 hover:ring-brand-300"
-                    >
-                      <span className="min-w-0">
-                        <span className="block break-words text-sm font-semibold text-slate-800">{material(id)?.descripcion ?? '—'}</span>
-                        <span className="text-xs text-slate-400">{material(id)?.codigo}</span>
-                      </span>
-                      <span className={`shrink-0 text-lg font-bold tabular-nums ${v < 0 ? 'text-red-600' : 'text-slate-900'}`}>
-                        {cantidad(v)} <span className="text-xs font-semibold text-slate-500">{material(id)?.unidad}</span>
-                      </span>
-                    </button>
-                  ))}
-                </div>
+          <>
+            {opcionesFiltro.length > 2 && (
+              <div className="mb-2 flex flex-wrap gap-2" role="group" aria-label="Filtrar la bodega" data-filtros-bodega>
+                {opcionesFiltro.map(([clave, nombre, n]) => (
+                  <button
+                    key={clave}
+                    type="button"
+                    aria-pressed={filtroActivo === clave}
+                    data-filtro-bodega={clave}
+                    onClick={() => setFiltro(clave)}
+                    className={`min-h-11 rounded-full px-4 py-2 text-sm font-semibold ring-1 ring-inset transition-colors ${
+                      filtroActivo === clave ? 'bg-brand-700 text-white ring-brand-700' : 'bg-white text-slate-700 ring-slate-300'
+                    }`}
+                  >
+                    {nombre} <span className="tabular-nums opacity-80">{n}</span>
+                  </button>
+                ))}
               </div>
-            ))}
-          </div>
+            )}
+            <div className="flex flex-col gap-3" data-saldos>
+              {tipos.map((t) => (
+                <div
+                  key={t}
+                  data-grupo-bodega={NOMBRE_TIPO[t]}
+                  className={t === 'FERTILIZANTE' ? 'rounded-2xl bg-brand-50/60 p-2 ring-1 ring-inset ring-brand-200' : ''}
+                >
+                  <p className={`mb-1 px-1 text-xs font-bold uppercase tracking-wide ${t === 'FERTILIZANTE' ? 'text-brand-800' : 'text-slate-400'}`}>
+                    {t === 'FERTILIZANTE' ? '★ ' : ''}
+                    {NOMBRE_TIPO[t]}
+                  </p>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {visibles
+                      .filter((f) => f.tipo === t)
+                      .map((f) => (
+                        <FilaDeBodega key={`${f.tipo}|${f.clave}`} fila={f} onVerProducto={onVerProducto} />
+                      ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
-        {productos.some(([, v]) => v < 0) && (
+        {filasBodega.some((f) => f.saldo < 0) && (
           <div className="mt-2">
             <Insignia tono="rojo">Hay productos en negativo: falta registrar una entrega o un conteo.</Insignia>
           </div>
         )}
       </div>
-
-      {/* ---- Envases (sql/99; sin la 99 no se muestra) ---- */}
-      {(estado.envases_tipos?.length ?? 0) > 0 && (
-        <div data-envases-estacion>
-          <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-slate-400">Envases en la estación</p>
-          {envases.length === 0 ? (
-            <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500 ring-1 ring-inset ring-slate-200">
-              Sin envases registrados. Se cuentan al recibir producto, con «Envases» (cuando el camión solo lleva o trae envases) y en el conteo.
-            </p>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              {envases.map(([id, v]) => (
-                <span
-                  key={id}
-                  data-saldo-envase={nombreEnvase(id)}
-                  className={`inline-flex items-baseline gap-1.5 rounded-xl bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 ${v < 0 ? 'text-red-700' : 'text-slate-800'}`}
-                >
-                  <span className="font-semibold">{nombreEnvase(id)}</span>
-                  <span className="text-base font-bold tabular-nums">{v}</span>
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   )
 }
