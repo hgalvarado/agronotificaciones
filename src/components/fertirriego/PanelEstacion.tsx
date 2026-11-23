@@ -16,7 +16,7 @@ import { NOMBRE_TIPO, ORDEN_TIPOS, conteoPorTipo, type FilaBodega, type TipoBode
 import { puedeRegistrar } from './MarcoRegistro'
 
 /** Un renglón de la bodega: nombre, saldo, de dónde vino. Los productos abren su bitácora. */
-function FilaDeBodega({ fila: f, onVerProducto }: { fila: FilaBodega; onVerProducto: (materialId: string) => void }) {
+export function FilaDeBodega({ fila: f, onVerProducto }: { fila: FilaBodega; onVerProducto: (materialId: string) => void }) {
   const cuerpo = (
     <>
       <span className="min-w-0">

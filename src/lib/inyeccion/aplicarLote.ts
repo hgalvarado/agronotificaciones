@@ -134,7 +134,7 @@ export type EntradaAplicacionLote = {
   comentario: string
   sinInventario: boolean
   /**
-   * `de_bodega`: true = «lo tomé de la bodega de la estación» (descuenta); false = «vino aparte» (no descuenta).
+   * `de_bodega` (143): true = descuenta de la bodega de la estación (siempre, salvo registro histórico → false).
    * `objetivos` (sql/141): el objetivo de ESTE producto.
    */
   lineas: { material_id: string; cantidad: number; de_bodega?: boolean; objetivos?: ObjetivoElegido[] }[]
@@ -183,12 +183,12 @@ export function armarAplicacionLote(a: EntradaAplicacionLote): { datos: Record<s
     lineas: lineas.map((l, i) => ({
       material_id: l.material_id,
       cantidad: Number(l.cantidad),
-      de_bodega: l.de_bodega === true,
+      de_bodega: l.de_bodega !== false,
       // solo cuando el producto tiene objetivo propio (el envío viejo, con uno solo para todo, no lo trae)
       ...(limpiar(l.objetivos).length > 0 ? { objetivos: porLinea[i] } : {}),
     })),
   }
-  // Solo cuenta lo que se tomó de la bodega. La base no rechaza por saldo cuando la persona confirmó la casilla (el sincronizador manda inmediato = false)
+  // Todo se descuenta de la bodega (143). La base no rechaza por saldo cuando la persona confirmó la casilla (el sincronizador manda inmediato = false)
   if (a.sinInventario) datos.acepta_negativo = true
   return { datos, avisos }
 }

@@ -38,8 +38,9 @@ export function efectosDe(op: Operacion, estado: EstadoCampo, saldo: (est: strin
       return lineasDe(d).map((l) => ({ estacion_id: e, material_id: l.material_id, cantidad: num(l.cantidad), tipo: 'DEVOLUCION' }))
     }
     case 'aplicacion_lote':
-      // 139: solo descuenta lo que la persona dijo que tomó de la bodega de la estación (sin respuesta = no descuenta)
-      return lineasDe(d).filter((l) => (l as { de_bodega?: boolean }).de_bodega === true).map((l) => ({ estacion_id: est, material_id: l.material_id, cantidad: -num(l.cantidad), tipo: 'APLICACION_LOTE' }))
+      // 143: siempre descuenta de la bodega de la estación, salvo el registro histórico (como lo hace la base)
+      if (d.historica === true) return []
+      return lineasDe(d).map((l) => ({ estacion_id: est, material_id: l.material_id, cantidad: -num(l.cantidad), tipo: 'APLICACION_LOTE' }))
     case 'devolucion_bodega':
       return lineasDe(d).map((l) => ({ estacion_id: est, material_id: l.material_id, cantidad: -num(l.cantidad), tipo: 'DEVOLUCION_BODEGA' }))
     case 'conteo':

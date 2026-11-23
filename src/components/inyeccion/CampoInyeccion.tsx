@@ -3,8 +3,8 @@
 /**
  * Inyección / Drench / Aseguramiento de calidad por lote (Campo). Funciona sin señal igual que Fertirriego (misma cola,
  * misma custodia, misma bodega). Lo principal es REGISTRAR: tras elegir la estación sale arriba, grande, «Aplicar por
- * lote»; debajo, tres pestañas: «Historial» (lo registrado, la que abre), «Plan» (plan general por DDT, como en AGL) y
- * «Por lote» (qué le toca a cada lote). Solo se ve lo de las zonas de la persona. El cumplimiento y la tendencia son de AGL.
+ * lote»; debajo, cuatro pestañas: «Historial» (lo registrado, la que abre), «Plan» (plan general por DDT, como en AGL) y
+ * «Por lote» (qué le toca a cada lote) y «Bodega» (saldo de los productos de la estación). Solo se ve lo de las zonas de la persona. El cumplimiento y la tendencia son de AGL.
  * El estado de la conexión y los envíos están en el encabezado de toda la app.
  */
 
@@ -12,6 +12,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Alerta, Boton, ListaEsqueleto } from '@/components/ui/Primitivos'
 import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
 import { RegistroServiceWorker } from '@/components/fertirriego/RegistroServiceWorker'
+import { CLAVE_BODEGA_GENERAL, type BodegaGeneral } from '@/lib/fertirriego/bodegaGeneral'
 import { conCustodiaLocal, saldosLocales } from '@/lib/fertirriego/calculos'
 import { EVENTO_GUARDADO_FALLIDO, type GuardadoFallido } from '@/lib/fertirriego/guardadoFondo'
 import { useCampo } from '@/lib/fertirriego/useCampo'
@@ -24,14 +25,16 @@ import { FormAplicacionLote } from './FormAplicacionLote'
 import { VistaHistorialInyeccion } from './VistaHistorialInyeccion'
 import { VistaPlanGeneral } from './VistaPlanGeneral'
 import { VistaPorLote } from './VistaPorLote'
+import { VistaBodegaInyeccion } from './VistaBodegaInyeccion'
 
 const RUTAS_SW = ['/inyeccion']
 
-type Pestana = 'historial' | 'plan' | 'lote'
+type Pestana = 'historial' | 'plan' | 'lote' | 'bodega'
 const PESTANAS: [Pestana, string][] = [
   ['historial', 'Historial'],
   ['plan', 'Plan'],
   ['lote', 'Por lote'],
+  ['bodega', 'Bodega'],
 ]
 
 export function CampoInyeccion({ usuarioId }: { usuarioId: string }) {
@@ -60,6 +63,17 @@ export function CampoInyeccion({ usuarioId }: { usuarioId: string }) {
     [estacionServidor, estado, cola]
   )
   const saldos = useMemo(() => (estado && estacion ? saldosLocales(estado, cola, estacion.id) : new Map<string, number>()), [estado, cola, estacion])
+
+  // Bodega general: lo último que bajó la sincronización (solo se relee al terminar una sincronización)
+  const [bodegaServidor, setBodegaServidor] = useState<BodegaGeneral | null>(null)
+  const { preferencia: leerPreferencia, sincronizadoEn } = campo
+  useEffect(() => {
+    let vivo = true
+    void leerPreferencia<BodegaGeneral>(CLAVE_BODEGA_GENERAL).then((b) => vivo && setBodegaServidor(b))
+    return () => {
+      vivo = false
+    }
+  }, [leerPreferencia, sincronizadoEn])
 
   const pendientes = cola.filter((o) => o.estado_local === 'PENDIENTE').length
 
@@ -155,7 +169,7 @@ export function CampoInyeccion({ usuarioId }: { usuarioId: string }) {
             <Alerta tono="ambar">Tu rol puede ver Inyección pero no registrar. Se configura en Permisos.</Alerta>
           )}
 
-          <div role="tablist" aria-label="Inyección" className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1" data-pestanas-inyeccion>
+          <div role="tablist" aria-label="Inyección" className="grid grid-cols-4 gap-1 rounded-xl bg-slate-100 p-1" data-pestanas-inyeccion>
             {PESTANAS.map(([id, texto]) => (
               <button
                 key={id}
@@ -197,6 +211,10 @@ export function CampoInyeccion({ usuarioId }: { usuarioId: string }) {
               puedeRegistrar={puedeRegistrar}
               onAplicar={(lote, categoria) => setVentana({ lote, categoria })}
             />
+          )}
+
+          {pestana === 'bodega' && (
+            <VistaBodegaInyeccion estacionId={estacion.id} campoEstado={estado} inyeccion={iny.estado} saldos={saldos} servidor={bodegaServidor} />
           )}
 
           {ficha && iny.estado.materiales.find((m) => m.id === ficha) && (
