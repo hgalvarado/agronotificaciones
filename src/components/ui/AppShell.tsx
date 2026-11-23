@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/client'
 import { marcarSalidaVoluntaria } from '@/components/auth/GuardiaSesion'
 import { IconChevronDown, IconLogout, IconMas } from './Icons'
 import { CampanaNotificaciones } from './CampanaNotificaciones'
+import { IndicadorConexion } from '@/components/campo/IndicadorConexion'
 import { Logo } from './Logo'
 import { SelectorTema } from './SelectorTema'
 import { IconoMenu } from './iconosMenu'
@@ -49,6 +50,7 @@ const aItem = (e: EntradaMenu): ItemNav => ({
 export function AppShell({
   nombre,
   rolNombre,
+  usuarioId,
 
   permisos,
   navegacion = [],
@@ -62,6 +64,8 @@ export function AppShell({
   menusRol?: MenuDeRol[]
   nombre: string
   rolNombre: string
+  /** Quién es (el indicador «En línea» del encabezado lee la cola de envíos de ESTA persona). */
+  usuarioId: string
 
   /** Claves «pantalla:accion» que el usuario tiene concedidas. */
   permisos: string[]
@@ -97,6 +101,9 @@ export function AppShell({
   // Los avisos son para quien revisa: quien puede corregir un ticket es
   // quien necesita enterarse de que le cerraron uno.
   const verAvisos = sinMigracion || concedidos.has('tickets:editar')
+  // El indicador «En línea / Sin señal» va en el encabezado de todas las pantallas; con cola de envíos y panel solo
+  // para quien usa Campo (el menú nunca da permisos: se mira la matriz)
+  const usaCampo = sinMigracion || ['campo', 'fertirriego', 'inyeccion', 'motores', 'agrometricas'].some((p) => concedidos.has(`${p}:ver`))
 
   // En el celular los grupos se aplanan: cada avance es su propia
   // entrada, que es más directo que un desplegable dentro de una hoja.
@@ -222,6 +229,9 @@ export function AppShell({
         </nav>
 
         <div className="border-t border-slate-100 p-3">
+          <div className="px-2 pb-1">
+            <IndicadorConexion usuarioId={usuarioId} conCola={usaCampo} variante="lateral" />
+          </div>
           <div className="flex items-center gap-2.5 rounded-xl px-2 py-2">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-500">
               {iniciales}
@@ -256,6 +266,7 @@ export function AppShell({
             </div>
           </Link>
           <div className="flex items-center gap-0.5">
+            <IndicadorConexion usuarioId={usuarioId} conCola={usaCampo} />
             <SelectorTema compacto />
             {verAvisos && <CampanaNotificaciones compacta />}
             <button

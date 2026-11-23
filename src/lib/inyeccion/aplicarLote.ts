@@ -23,6 +23,11 @@ export type FilaPlanInyeccion = {
   dosis_mz: number | null
   area_mz: number | null
   cantidad_plan: number | null
+  /** sql/141: para decidir en campo. Todos opcionales (planes publicados antes de la 141 no los traen). */
+  variedad?: string | null
+  observaciones?: string | null
+  controla?: string | null
+  pct_aplicacion?: number | null
 }
 
 export type LineaDelPlan = {
@@ -35,6 +40,8 @@ export type LineaDelPlan = {
   area_mz: number | null
   dosis_mz: number
   cantidad_plan: number
+  observaciones: string | null
+  controla: string | null
 }
 
 const DIA_MS = 86_400_000
@@ -100,6 +107,8 @@ export function lineasDelPlan(
     area_mz: p.area_mz,
     dosis_mz: num(p.dosis_mz),
     cantidad_plan: num(p.cantidad_plan),
+    observaciones: p.observaciones ?? null,
+    controla: p.controla ?? null,
   }))
 }
 
@@ -112,11 +121,18 @@ export type EntradaAplicacionLote = {
   turnoAglId: string | null
   areaMz: number
   areaLote: number | null
-  objetivos: ObjetivoElegido[]
+  /**
+   * Objetivos del REGISTRO (envíos anteriores a la 141). Con objetivos por producto (`lineas[].objetivos`) se calcula
+   * solo como la unión de los de sus productos; el de un producto sin objetivo propio es este.
+   */
+  objetivos?: ObjetivoElegido[]
   comentario: string
   sinInventario: boolean
-  /** `de_bodega`: true = «lo tomé de la bodega de la estación» (descuenta); false = «vino aparte» (no descuenta). */
-  lineas: { material_id: string; cantidad: number; de_bodega?: boolean }[]
+  /**
+   * `de_bodega`: true = «lo tomé de la bodega de la estación» (descuenta); false = «vino aparte» (no descuenta).
+   * `objetivos` (sql/141): el objetivo de ESTE producto.
+   */
+  lineas: { material_id: string; cantidad: number; de_bodega?: boolean; objetivos?: ObjetivoElegido[] }[]
   fechaHora: string
 }
 
@@ -132,10 +148,18 @@ export const ERR_SIN_PRODUCTOS = 'Indica al menos un producto'
 export function armarAplicacionLote(a: EntradaAplicacionLote): { datos: Record<string, unknown>; avisos: string[] } | { error: string } {
   if (!a.lote.trim()) return { error: ERR_SIN_LOTE }
   if (!Number.isFinite(a.areaMz) || a.areaMz <= 0) return { error: ERR_SIN_AREA }
-  const objetivos = [...new Map(a.objetivos.filter((o) => o.id && o.nombre.trim()).map((o) => [o.id, { id: o.id, nombre: o.nombre.trim(), ...(o.tipo ? { tipo: o.tipo } : {}) }])).values()]
-  if (objetivos.length === 0) return { error: ERR_SIN_OBJETIVO }
+  const limpiar = (xs: ObjetivoElegido[] | undefined) => [...new Map((xs ?? []).filter((o) => o.id && o.nombre.trim()).map((o) => [o.id, { id: o.id, nombre: o.nombre.trim(), ...(o.tipo ? { tipo: o.tipo } : {}) }])).values()]
+  const delRegistro = limpiar(a.objetivos)
   const lineas = a.lineas.filter((l) => l.material_id && Number.isFinite(Number(l.cantidad)) && Number(l.cantidad) > 0)
   if (lineas.length === 0) return { error: ERR_SIN_PRODUCTOS }
+  // Objetivo por producto: el suyo; si no trae, el del registro; si ninguno, error
+  const porLinea = lineas.map((l) => {
+    const propios = limpiar(l.objetivos)
+    return propios.length > 0 ? propios : delRegistro
+  })
+  if (porLinea.some((o) => o.length === 0)) return { error: ERR_SIN_OBJETIVO }
+  // Unión (compatibilidad con la base y con AGL): sin repetir, en el orden en que se eligieron
+  const objetivos = delRegistro.length > 0 && lineas.every((l) => limpiar(l.objetivos).length === 0) ? delRegistro : limpiar(porLinea.flat())
   const avisos: string[] = []
   if (a.areaLote !== null && a.areaLote > 0 && a.areaMz > a.areaLote + 0.0001) {
     avisos.push(`El área cubierta (${a.areaMz}) es mayor que el área del lote (${a.areaLote}).`)
@@ -151,7 +175,13 @@ export function armarAplicacionLote(a: EntradaAplicacionLote): { datos: Record<s
     area_mz: a.areaMz,
     objetivos,
     comentario: a.comentario.trim() || null,
-    lineas: lineas.map((l) => ({ material_id: l.material_id, cantidad: Number(l.cantidad), de_bodega: l.de_bodega === true })),
+    lineas: lineas.map((l, i) => ({
+      material_id: l.material_id,
+      cantidad: Number(l.cantidad),
+      de_bodega: l.de_bodega === true,
+      // solo cuando el producto tiene objetivo propio (el envío viejo, con uno solo para todo, no lo trae)
+      ...(limpiar(l.objetivos).length > 0 ? { objetivos: porLinea[i] } : {}),
+    })),
   }
   // Solo cuenta lo que se tomó de la bodega. La base no rechaza por saldo cuando la persona confirmó la casilla (el sincronizador manda inmediato = false)
   if (a.sinInventario) datos.acepta_negativo = true

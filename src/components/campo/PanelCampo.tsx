@@ -1,16 +1,15 @@
 import Link from 'next/link'
 import { Tarjeta } from '@/components/ui/Primitivos'
 import type { FichaCampo } from '@/lib/campo/fichas'
-import { IndicadorConexion } from './IndicadorConexion'
+import { PanelEnviosCampo } from './PanelEnviosCampo'
 
 /** Una tarjeta por ficha de Campo; cada una es un enlace de al menos 44 px de alto. */
 export function PanelCampo({ fichas, usuarioId }: { fichas: FichaCampo[]; usuarioId: string }) {
-  const rutaEnvios = fichas.find((f) => !f.proximamente && ['/fertirriego', '/inyeccion', '/motores'].includes(f.ruta))?.ruta ?? null
   return (
     <div className="flex flex-col gap-3" data-panel-campo>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-bold text-slate-900">Campo</h1>
-        <IndicadorConexion usuarioId={usuarioId} rutaEnvios={rutaEnvios} />
+        <PanelEnviosCampo usuarioId={usuarioId} />
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {fichas.map((f) => f.proximamente ? (

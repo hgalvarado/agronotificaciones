@@ -31,6 +31,8 @@ export function SelectorObjetivos({
   seleccion,
   onCambiar,
   onAgregado,
+  compacto = false,
+  titulo = 'Objetivos',
 }: {
   /** Catálogo bajado de la base (todos: activos, inactivos y fusionados). */
   catalogo: ObjetivoCatalogo[]
@@ -39,6 +41,10 @@ export function SelectorObjetivos({
   seleccion: string[]
   onCambiar: (ids: string[]) => void
   onAgregado: (o: ObjetivoCatalogo) => void
+  /** Una sola línea dentro de la fila de un producto (el objetivo se elige POR PRODUCTO). */
+  compacto?: boolean
+  /** Título de la ventana (p. ej. «Objetivo de Abamectina»). */
+  titulo?: string
 }) {
   const [abierto, setAbierto] = useState(false)
   const [busqueda, setBusqueda] = useState('')
@@ -134,14 +140,19 @@ export function SelectorObjetivos({
         type="button"
         onClick={() => setAbierto(true)}
         data-abrir-objetivos
-        className="flex min-h-11 w-full items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-left text-base shadow-[var(--shadow-card)] focus:border-brand-600 focus:outline-none focus:ring-4 focus:ring-brand-600/10"
+        className={`flex min-h-11 w-full items-center justify-between gap-2 border bg-white text-left focus:border-brand-600 focus:outline-none focus:ring-4 focus:ring-brand-600/10 ${
+          compacto
+            ? `rounded-lg px-3 py-2 text-sm ${seleccion.length === 0 ? 'border-amber-300 bg-amber-50/50' : 'border-slate-200'}`
+            : 'rounded-xl border-slate-200 px-3.5 py-3 text-base shadow-[var(--shadow-card)]'
+        }`}
       >
         <span className="min-w-0 flex-1 break-words">
-          {resumen ? <span className="text-slate-900">{resumen}</span> : <span className="text-slate-400">Elegir objetivos…</span>}
+          {compacto && <span className="mr-1.5 text-xs font-bold uppercase tracking-wide text-slate-400">Objetivo</span>}
+          {resumen ? <span className="font-semibold text-slate-900">{resumen}</span> : <span className="text-slate-500">{compacto ? 'Elegir…' : 'Elegir objetivos…'}</span>}
         </span>
         <IconChevronDown className="h-5 w-5 shrink-0 text-slate-300" />
       </button>
-      {seleccion.length > 0 && (
+      {!compacto && seleccion.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1.5" data-objetivos-elegidos>
           {seleccion.map((id) => (
             <span key={id} data-objetivo={id} className="rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-800 ring-1 ring-inset ring-brand-200">
@@ -154,7 +165,7 @@ export function SelectorObjetivos({
       <Modal
         abierto={abierto}
         onCerrar={cerrar}
-        titulo={agregando ? 'Agregar objetivo' : 'Objetivos'}
+        titulo={agregando ? 'Agregar objetivo' : titulo}
         pie={
           agregando ? (
             <div className="flex gap-2">
