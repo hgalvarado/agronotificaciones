@@ -5,6 +5,9 @@
 > Hay una copia idéntica en `C:\HENRYALVARADO2022\AGLGestion_App\proyecto-seguimiento.md`: **actualizar las dos al terminar cada bloque.**
 > Responder siempre al usuario **en español, claro y sin jerga**.
 
+
+> **ESTADO AL CIERRE DE SESIÓN (2026-11-22 noche):** sql 130, 131 y 132 CORRIDAS EN DESARROLLO (2 veces; producción NO). AgroNoti `desarrollo` = `54fa503`, AGL `main` local = `c56f536` (sin publicar). QA Opus 2 vueltas OK; detalle y pendientes en `docs/campo-estado-y-traspaso.md` (sección «Resultado QA»). Siguiente: (1) revisar en Chrome localhost:3000 `/campo`, `/inyeccion`, `/motores`, devolución con detalle; (2) saldo antes/después + GPS de la devolución en AGL; (3) actualizar pruebas SQL 128/129; (4) exportar `mot_movimientos`; (5) QA con clics Inyección/Motores; (6) verificar con datos reales el lote canónico (ubicación técnica). Nada a producción sin «pasa a producción». Devolución con detalle y objetivos esperan aprobación del usuario.
+
 ---
 
 ## 1. Qué hace cada proyecto
