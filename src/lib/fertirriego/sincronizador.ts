@@ -101,6 +101,21 @@ async function sincronizarUnaVez(almacen: AlmacenLocal, supabase: SupabaseClient
     }
   }
 
+  // 1b · Lo rechazado: preguntar qué sabe la base (136). Si el administrador lo aceptó o lo resolvió, sale de la lista;
+  // si ya se pidió ayuda, se recuerda. Una base sin la 136 simplemente no responde y se ignora.
+  const rechazadosLocal = (await almacen.listarCola()).filter((o) => o.estado_local === 'RECHAZADO')
+  if (rechazadosLocal.length) {
+    const { data: estados, error: e1b } = await supabase.rpc('fn_fert_estado_envios', { p_ids: rechazadosLocal.map((o) => o.id) })
+    if (!e1b && Array.isArray(estados)) {
+      for (const x of estados as { id: string; resultado: string; revision_estado: string | null }[]) {
+        const o = rechazadosLocal.find((y) => y.id === x.id)
+        if (!o) continue
+        if (x.resultado !== 'RECHAZADO' || x.revision_estado === 'RESUELTO') await almacen.borrarOperacion(o.id)
+        else if (x.revision_estado === 'AYUDA' && !o.ayuda_pedida) await almacen.guardarOperacion({ ...o, ayuda_pedida: true })
+      }
+    }
+  }
+
   // 2 · Bajar el estado nuevo (saldos, movimientos, catálogos)
   const { data: estado, error: e2 } = await supabase.rpc('fn_fert_estado_campo', {})
   if (e2) {

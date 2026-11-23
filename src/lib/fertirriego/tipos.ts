@@ -403,6 +403,8 @@ export type Operacion = {
   mensaje?: string | null
   observaciones?: string[]
   intentos: number
+  /** 136: ya se pidió ayuda al administrador sobre este envío rechazado */
+  ayuda_pedida?: boolean
   /** Texto corto para listas: «Recepción · 3 productos». */
   resumen: string
 }

@@ -67,7 +67,7 @@ export function MarcoRegistro({
   borrador,
   rapido = false,
   soloLectura = false,
-  textoCancelar = 'Cancelar',
+  textoCancelar = 'Regresar',
   onCancelar,
   permisoHistorico = false,
   avisoPie,

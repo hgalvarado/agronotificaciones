@@ -14,6 +14,7 @@ import { AlmacenLocal } from './almacenLocal'
 import { esperaMs } from '@/lib/errores/cola'
 import { enviarLatido, registrarError } from '@/lib/errores/registrador'
 import { quitarDocumentoDelEstado } from './eliminar'
+import { nuevoId } from './operaciones'
 import { sincronizar } from './sincronizador'
 import type { LlavePersona } from './codigo'
 import type { EstadoCampo, Operacion } from './tipos'
@@ -155,6 +156,46 @@ export function useCampo(usuarioId: string) {
     [recargarCola]
   )
 
+  /**
+   * «Reintentar» un envío rechazado (136): se vuelve a mandar con un identificador NUEVO (el viejo ya quedó como rechazado
+   * en la base) y el mismo contenido. El viejo sale de la lista y se deja constancia en la base.
+   */
+  const reintentar = useCallback(
+    async (id: string) => {
+      const o = (await almacen.current?.listarCola())?.find((x) => x.id === id)
+      if (!o || !almacen.current) return
+      await almacen.current.guardarOperacion({ ...o, id: nuevoId(), estado_local: 'PENDIENTE', mensaje: null, observaciones: [], intentos: 0, ayuda_pedida: false })
+      await almacen.current.borrarOperacion(id)
+      void supabase.rpc('fn_fert_problema_resolver', { p_id: id, p_accion: 'DESCARTADO_POR_USUARIO', p_nota: 'Reenviado de nuevo por la persona' }).then(() => undefined, () => undefined)
+      await recargarCola()
+      void sincronizarAhora()
+    },
+    [supabase, recargarCola, sincronizarAhora]
+  )
+
+  /** «Descartar» con constancia: sale del teléfono y, si hay señal, la base lo anota como descartado por la persona. */
+  const descartarConConstancia = useCallback(
+    async (id: string) => {
+      await almacen.current?.borrarOperacion(id)
+      await recargarCola()
+      void supabase.rpc('fn_fert_problema_resolver', { p_id: id, p_accion: 'DESCARTADO_POR_USUARIO', p_nota: 'Descartado por la persona' }).then(() => undefined, () => undefined)
+    },
+    [supabase, recargarCola]
+  )
+
+  /** «Pedir ayuda al administrador»: marca el envío en la base para que lo vea. Devuelve false si no hay señal. */
+  const pedirAyuda = useCallback(
+    async (id: string, nota?: string) => {
+      const { data, error: e } = await supabase.rpc('fn_fert_problema_ayuda', { p_id: id, p_nota: nota ?? null })
+      if (e || !(data as { ok?: boolean } | null)?.ok) return false
+      const o = (await almacen.current?.listarCola())?.find((x) => x.id === id)
+      if (o) await almacen.current?.guardarOperacion({ ...o, ayuda_pedida: true })
+      await recargarCola()
+      return true
+    },
+    [supabase, recargarCola]
+  )
+
   const preferencia = useCallback(async <T,>(clave: string) => (await almacen.current?.leerPreferencia<T>(clave)) ?? null, [])
   const guardarPreferencia = useCallback(async <T,>(clave: string, valor: T) => {
     await almacen.current?.guardarPreferencia(clave, valor)
@@ -172,6 +213,9 @@ export function useCampo(usuarioId: string) {
     error,
     registrar,
     descartar,
+    reintentar,
+    descartarConConstancia,
+    pedirAyuda,
     sincronizarAhora,
     quitarDocumento,
     preferencia,

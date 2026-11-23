@@ -25,11 +25,12 @@ import {
 import { productosPendientes } from '@/lib/fertirriego/productos'
 import { crearOperacion } from '@/lib/fertirriego/operaciones'
 import { obtenerUbicacion } from '@/lib/fertirriego/ubicacion'
-import type { Chofer, Estacion, PermisoHistorico, Relevo, Traslado, Vehiculo } from '@/lib/fertirriego/tipos'
+import type { Chofer, Estacion, Operacion, PermisoHistorico, Relevo, Traslado, Vehiculo } from '@/lib/fertirriego/tipos'
 import { useCampo } from '@/lib/fertirriego/useCampo'
 import { AsignarCustodia } from './AsignarCustodia'
 import { AyudaFertirriego } from './AyudaFertirriego'
 import { DetalleDocumento } from './DetalleDocumento'
+import { EncabezadoEnvios } from './EncabezadoEnvios'
 import { FormAnularDiferencia } from './FormAnularDiferencia'
 import { FormAplicacion } from './FormAplicacion'
 import { FormBitacora } from './FormBitacora'
@@ -52,7 +53,7 @@ import { VistaRelevos } from './VistaRelevos'
 import { VistaTraslados } from './VistaTraslados'
 import { VistaTurnos } from './VistaTurnos'
 
-type Pestana = 'estacion' | 'turnos' | 'bitacora' | 'relevos' | 'traslados' | 'envios'
+type Pestana = 'estacion' | 'turnos' | 'bitacora' | 'relevos' | 'traslados'
 type Ventana =
   | { tipo: 'recibir' }
   | { tipo: 'envases' }
@@ -78,7 +79,6 @@ const PESTANAS: { clave: Pestana; nombre: string }[] = [
   { clave: 'bitacora', nombre: 'Bitácora' },
   { clave: 'relevos', nombre: 'Relevos' },
   { clave: 'traslados', nombre: 'Traslados' },
-  { clave: 'envios', nombre: 'Envíos' },
 ]
 
 export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; manual?: string | null }) {
@@ -188,8 +188,6 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
     if (f.ventana) setVentana(f.ventana)
     else guardado(`Abre otra vez «${f.formulario}»: tu borrador sigue ahí.`)
   }
-  const pendientes = cola.filter((o) => o.estado_local === 'PENDIENTE').length
-  const rechazados = cola.filter((o) => o.estado_local === 'RECHAZADO').length
   const choferesPendientes: Chofer[] = cola
     .filter((o) => o.tipo === 'chofer' && o.estado_local === 'PENDIENTE')
     .map((o) => ({ id: o.id, nombre: String(o.datos.nombre), validado: false, pendiente: true }))
@@ -221,32 +219,29 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
     setTimeout(() => setAviso((a) => (a === m ? null : a)), 6000)
   }
 
+  /** «Corregir y reenviar» (Envíos): abre el formulario de ese tipo, en su estación, para registrarlo bien. */
+  function corregirEnvio(o: Operacion) {
+    const est = typeof o.datos.estacion_id === 'string' ? o.datos.estacion_id : ''
+    if (est && est !== estacion?.id && estaciones.some((e) => e.id === est)) setEstacionId(est)
+    const v: Ventana =
+      o.tipo === 'recepcion' ? { tipo: 'recibir' }
+      : o.tipo === 'aplicacion' ? { tipo: 'aplicar' }
+      : o.tipo === 'aplicacion_historica' && permisoHistorico ? { tipo: 'historico' }
+      : o.tipo === 'conteo' ? { tipo: 'contar' }
+      : o.tipo === 'devolucion_bodega' ? { tipo: 'devolver_bodega' }
+      : null
+    if (v) setVentana(v)
+    guardado(v ? 'Corrige los datos y guarda. Después, en «Envíos», quita el registro que no se aceptó.' : 'Vuelve a hacer el registro desde su pantalla y después quita el que no se aceptó en «Envíos».')
+  }
+
   if (campo.cargando && !estado) return <ListaEsqueleto filas={4} />
 
   return (
     <div className="flex flex-col gap-3">
       <RegistroServiceWorker />
 
-      {/* ---- Barra de estado: señal, pendientes, última sincronización ---- */}
-      <div
-        data-barra-estado={campo.conexion}
-        className={`flex flex-wrap items-center justify-between gap-2 rounded-xl px-3 py-2 text-xs ring-1 ring-inset ${
-          enLinea ? 'bg-brand-50 text-brand-800 ring-brand-600/20' : 'bg-amber-50 text-amber-800 ring-amber-600/20'
-        }`}
-      >
-        <span className="flex items-center gap-2 font-semibold">
-          <span className={`h-2 w-2 rounded-full ${enLinea ? 'bg-brand-600' : 'bg-amber-500'}`} />
-          {enLinea ? 'Con señal' : 'Sin señal: se guarda en el teléfono'}
-          {pendientes > 0 && <span data-pendientes-cuenta> · {pendientes} por enviar</span>}
-          {rechazados > 0 && <span className="text-red-700"> · {rechazados} rechazado(s)</span>}
-        </span>
-        <span className="flex items-center gap-2">
-          {campo.sincronizadoEn && <span className="text-slate-500">Actualizado {formatearFechaHora(campo.sincronizadoEn)}</span>}
-          <button type="button" onClick={() => void campo.sincronizarAhora()} disabled={campo.sincronizando} className="font-bold underline disabled:no-underline disabled:opacity-60" data-actualizar>
-            {campo.sincronizando ? 'Actualizando…' : 'Actualizar'}
-          </button>
-        </span>
-      </div>
+      {/* ---- Regresar + estado de conexión (como WhatsApp) + panel Envíos ---- */}
+      <EncabezadoEnvios campo={campo} onCorregir={corregirEnvio} />
 
       {manual && <AyudaFertirriego manual={manual} />}
       {campo.error && <Alerta>{campo.error}</Alerta>}
@@ -362,7 +357,6 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
                   }`}
                 >
                   {p.nombre}
-                  {p.clave === 'envios' && pendientes + rechazados > 0 && ` (${pendientes + rechazados})`}
                 </button>
               ))}
             </div>
@@ -448,16 +442,6 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
                 puedeRegistrar={puedeRegistrar(estacion, estado.yo).si}
                 onNuevo={() => setVentana({ tipo: 'traslado' })}
                 onAccion={(traslado, accion) => setVentana({ tipo: 'resolver_traslado', traslado, accion })}
-              />
-            )}
-            {pestana === 'envios' && (
-              <VistaEnvios
-                estado={estado}
-                cola={cola}
-                enLinea={enLinea}
-                sincronizando={campo.sincronizando}
-                onSincronizar={() => void campo.sincronizarAhora()}
-                onDescartar={(id) => void campo.descartar(id)}
               />
             )}
 
@@ -639,11 +623,6 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
         )
       )}
 
-      {estado && pestana !== 'envios' && (pendientes > 0 || rechazados > 0) && (
-        <Boton variante="secundario" tamano="sm" onClick={() => setPestana('envios')} className="self-start">
-          Ver envíos
-        </Boton>
-      )}
     </div>
   )
 }

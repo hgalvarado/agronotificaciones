@@ -64,4 +64,8 @@ export const NOMBRE_OBSERVACION: Record<string, string> = {
   CONSUMO_SIN_HORAS: 'gastó diésel sin horas de trabajo',
   SIN_REGISTRO_PREVIO: 'primer registro del motor',
   FUERA_DE_ORDEN: 'registro de un día anterior a otros ya hechos',
+  MOTOR_NO_ASIGNADO_EN_FECHA: 'el motor no estaba asignado a la estación en esa fecha (registro histórico)',
+  MOTOR_EN_TALLER_EN_FECHA: 'el motor estaba en el taller en esa fecha',
+  MOTOR_RETIRADO_EN_FECHA: 'el motor estaba retirado en esa fecha',
+  ACEPTADO_POR_ADMIN: 'lo aceptó el administrador aunque la base lo había rechazado',
 }
