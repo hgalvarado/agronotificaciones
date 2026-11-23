@@ -45,6 +45,8 @@ export type ProductoDeDdt = {
 }
 
 export type GrupoDdt = {
+  /** Ciclo del plan (el plan del Ciclo 1 no es el del Ciclo 2); null = sin ciclo. */
+  ciclo: string | null
   ddt: number | null
   fecha_desde: string | null
   fecha_hasta: string | null
@@ -61,7 +63,10 @@ export type GrupoDdt = {
 /** `hechos`: marcas «lote|ddt|producto» ya aplicadas (estado.planesAplicados). */
 export function planGeneralPorDdt(lineas: FilaPlanInyeccion[], hechos: Set<string>): GrupoDdt[] {
   const porDdt = new Map<string, FilaPlanInyeccion[]>()
-  for (const l of lineas) porDdt.set(String(l.ddt), [...(porDdt.get(String(l.ddt)) ?? []), l])
+  for (const l of lineas) {
+    const k = `${l.ciclo ?? ''}|${l.ddt}`
+    porDdt.set(k, [...(porDdt.get(k) ?? []), l])
+  }
   const grupos: GrupoDdt[] = []
   for (const filas of porDdt.values()) {
     const ddt = filas[0].ddt
@@ -104,6 +109,7 @@ export function planGeneralPorDdt(lineas: FilaPlanInyeccion[], hechos: Set<strin
     const areaPorLote = new Map<string, number>()
     for (const f of filas) areaPorLote.set(claveLote(f), Number(f.area_mz ?? 0))
     grupos.push({
+      ciclo: filas[0].ciclo ?? null,
       ddt,
       fecha_desde: fechas[0] ?? null,
       fecha_hasta: fechas[fechas.length - 1] ?? null,
@@ -115,7 +121,7 @@ export function planGeneralPorDdt(lineas: FilaPlanInyeccion[], hechos: Set<strin
       completo: lotes.size > 0 && lotesHechos.size === lotes.size,
     })
   }
-  return grupos.sort((a, b) => (a.ddt === null ? 1 : b.ddt === null ? -1 : a.ddt - b.ddt))
+  return grupos.sort((a, b) => (a.ciclo ?? '').localeCompare(b.ciclo ?? '', 'es', { numeric: true }) || (a.ddt === null ? 1 : b.ddt === null ? -1 : a.ddt - b.ddt))
 }
 
 export type EstadoPlanLote = 'hecho' | 'atrasado' | 'hoy' | 'proximo' | 'sin_fecha'

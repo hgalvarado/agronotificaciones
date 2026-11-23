@@ -28,15 +28,19 @@ export function VistaPlanGeneral({
   /** Abre la ficha técnica de un producto. */
   onFicha: (materialId: string) => void
 }) {
-  const grupos = useMemo<GrupoDdt[]>(() => {
+  const [ciclo, setCiclo] = useState<string>('')   // '' = todos los ciclos
+  const todos = useMemo<GrupoDdt[]>(() => {
     const activas = new Set(estado.categorias.map((c) => c.clave))
     const plan = planDeEstacion(estado.plan, estacionId, activas)
     return planGeneralPorDdt(plan, planesAplicados(plan, estado.aplicaciones, cola))
   }, [estado, cola, estacionId])
+  const ciclos = useMemo(() => [...new Set(todos.map((g) => g.ciclo ?? ''))], [todos])
+  const grupos = useMemo(() => (ciclo ? todos.filter((g) => (g.ciclo ?? '') === ciclo) : todos), [todos, ciclo])
+  const claveDe = (g: GrupoDdt) => `${g.ciclo ?? ''}|${g.ddt}`
   const material = (id: string) => estado.materiales.find((m) => m.id === id)
   // Por defecto: con pocos grupos todos abiertos; con muchos, solo el primero que aún tiene lotes por aplicar
   const primero = grupos.findIndex((g) => !g.completo)
-  const inicial = useMemo(() => new Set(grupos.filter((g, i) => grupos.length <= 3 || i === Math.max(primero, 0)).map((g) => String(g.ddt))), [grupos, primero])
+  const inicial = useMemo(() => new Set(grupos.filter((g, i) => grupos.length <= 3 || i === Math.max(primero, 0)).map((g) => `${g.ciclo ?? ''}|${g.ddt}`)), [grupos, primero])
   const [abiertos, setAbiertos] = useState<Set<string> | null>(null)
   const actual = abiertos ?? inicial
 
@@ -51,7 +55,7 @@ export function VistaPlanGeneral({
   return (
     <div className="flex flex-col gap-2" data-plan-general>
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" onClick={() => setAbiertos(new Set(grupos.map((g) => String(g.ddt))))} className="min-h-11 rounded-lg px-3 text-sm font-semibold text-brand-700 ring-1 ring-inset ring-brand-600/30" data-plan-expandir>
+        <button type="button" onClick={() => setAbiertos(new Set(grupos.map(claveDe)))} className="min-h-11 rounded-lg px-3 text-sm font-semibold text-brand-700 ring-1 ring-inset ring-brand-600/30" data-plan-expandir>
           Expandir todo
         </button>
         <button type="button" onClick={() => setAbiertos(new Set())} className="min-h-11 rounded-lg px-3 text-sm font-semibold text-slate-700 ring-1 ring-inset ring-slate-300" data-plan-contraer>
@@ -61,12 +65,30 @@ export function VistaPlanGeneral({
           {grupos.length} DDT · {actual.size} abierto(s)
         </span>
       </div>
-      {grupos.map((g) => {
-        const clave = String(g.ddt)
+      {ciclos.length > 1 && (
+        <div className="flex flex-wrap items-center gap-2" data-plan-ciclos>
+          {['', ...ciclos].map((c) => (
+            <button
+              key={c || 'todos'}
+              type="button"
+              onClick={() => setCiclo(c)}
+              aria-pressed={ciclo === c}
+              className={`min-h-11 rounded-full px-4 text-sm font-semibold ring-1 ring-inset ${ciclo === c ? 'bg-brand-600 text-white ring-brand-600' : 'text-slate-700 ring-slate-300'}`}
+              data-plan-ciclo={c || 'todos'}
+            >
+              {c === '' ? 'Todos los ciclos' : c || 'Sin ciclo'}
+            </button>
+          ))}
+        </div>
+      )}
+      {grupos.map((g, i) => {
+        const clave = claveDe(g)
+        const encabezadoCiclo = ciclos.length > 1 && (i === 0 || (grupos[i - 1].ciclo ?? '') !== (g.ciclo ?? ''))
         const fechas = g.fecha_desde ? `${g.fecha_estimada ? '≈ ' : ''}${g.fecha_desde === g.fecha_hasta ? fechaCorta(g.fecha_desde) : `${fechaCorta(g.fecha_desde)} – ${fechaCorta(g.fecha_hasta)}`}` : ''
         return (
+          <div key={clave} className="flex flex-col gap-2">
+          {encabezadoCiclo && <h3 className="pt-1 text-base font-extrabold text-brand-700" data-plan-ciclo-titulo>{g.ciclo ?? 'Sin ciclo'}</h3>}
           <details
-            key={clave}
             open={actual.has(clave)}
             onToggle={(e) => {
               const abierto = (e.currentTarget as HTMLDetailsElement).open
@@ -78,7 +100,7 @@ export function VistaPlanGeneral({
               })
             }}
             className="rounded-xl bg-white ring-1 ring-inset ring-slate-200"
-            data-plan-ddt={clave}
+            data-plan-ddt={g.ddt}
           >
             <summary className="flex min-h-11 cursor-pointer list-none flex-wrap items-center justify-between gap-x-3 gap-y-1 px-3 py-2">
               <span className="text-base font-bold text-slate-900">DDT {g.ddt ?? 'sin dato'}</span>
@@ -142,6 +164,7 @@ export function VistaPlanGeneral({
                 })}
             </div>
           </details>
+          </div>
         )
       })}
     </div>
