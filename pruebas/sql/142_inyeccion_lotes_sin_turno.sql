@@ -56,8 +56,8 @@ create temp table e1_antes as select todas_las_zonas from perfiles where id = (s
 create temp table e1_zonas_antes as select zona_id from perfiles_zonas where perfil_id = (select e1 from k);
 
 -- plan: con_sin = incluir las líneas de lotes sin turno; viejo = sin la clave fecha_estimada (AGL antes de la 142);
--- real = el lote L142-B ya tiene turno real
-create or replace function pg_temp.pub(con_sin boolean, real boolean default false) returns jsonb language sql as $$
+-- p_real = el lote L142-B ya tiene turno p_real
+create or replace function pg_temp.pub(con_sin boolean, p_real boolean default false) returns jsonb language sql as $$
     select fn_iny_publicar(jsonb_build_object('temporada', 'Temp 26-27', 'completo', true,
         'categorias', '[{"clave":"ferti-riego|inyeccion","departamento":"Ferti-Riego","categoria":"Inyección","tipo":"inyeccion","etiqueta":"Inyección","activo":true}]'::jsonb,
         'materiales', jsonb_build_array(jsonb_build_object('codigo', 'QA-SOLCA')),
@@ -67,9 +67,9 @@ create or replace function pg_temp.pub(con_sin boolean, real boolean default fal
                 'fecha_plan', pg_temp.hoy(), 'material', 'QA-SOLCA', 'dosis_mz', 2, 'area_mz', 5, 'cantidad_plan', 10))
         || case when con_sin then jsonb_build_array(
             jsonb_build_object('temporada', 'Temp 26-27', 'ciclo', 'Ciclo 1',
-                'turno_agl_id', case when real then 'T-142-B' else 'SIN-TURNO|l142-b' end, 'turno', case when real then 'T-142-B' end,
-                'estacion', case when real then 'Papalon-1' end, 'lote', 'L142-B', 'categoria_clave', 'ferti-riego|inyeccion', 'ddt', 5,
-                'fecha_plan', pg_temp.hoy() + 2, 'fecha_estimada', not real, 'material', 'QA-SOLCA', 'dosis_mz', 2, 'area_mz', 5, 'cantidad_plan', 10),
+                'turno_agl_id', case when p_real then 'T-142-B' else 'SIN-TURNO|l142-b' end, 'turno', case when p_real then 'T-142-B' end,
+                'estacion', case when p_real then 'Papalon-1' end, 'lote', 'L142-B', 'categoria_clave', 'ferti-riego|inyeccion', 'ddt', 5,
+                'fecha_plan', pg_temp.hoy() + 2, 'fecha_estimada', not p_real, 'material', 'QA-SOLCA', 'dosis_mz', 2, 'area_mz', 5, 'cantidad_plan', 10),
             jsonb_build_object('temporada', 'Temp 26-27', 'ciclo', 'Ciclo 1', 'turno_agl_id', 'SIN-TURNO|l142-c', 'turno', null,
                 'estacion', null, 'lote', 'L142-C', 'categoria_clave', 'ferti-riego|inyeccion', 'ddt', 5,
                 'fecha_plan', null, 'fecha_estimada', true, 'material', 'QA-SOLCA', 'dosis_mz', 2, 'area_mz', 5, 'cantidad_plan', 10))
