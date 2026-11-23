@@ -63,7 +63,7 @@ export function VistaPlanGeneral({
       </div>
       {grupos.map((g) => {
         const clave = String(g.ddt)
-        const fechas = g.fecha_desde ? (g.fecha_desde === g.fecha_hasta ? fechaCorta(g.fecha_desde) : `${fechaCorta(g.fecha_desde)} – ${fechaCorta(g.fecha_hasta)}`) : ''
+        const fechas = g.fecha_desde ? `${g.fecha_estimada ? '≈ ' : ''}${g.fecha_desde === g.fecha_hasta ? fechaCorta(g.fecha_desde) : `${fechaCorta(g.fecha_desde)} – ${fechaCorta(g.fecha_hasta)}`}` : ''
         return (
           <details
             key={clave}

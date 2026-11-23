@@ -267,3 +267,40 @@ test('141 · plan de un lote: estados hecho / atrasado / próximo y el que toca 
   assert.deepEqual(lotesDelPlan(planDdt), ['L1', 'L2'])
   assert.equal(planDeLote(planDdt, 'L2', new Set(), '2026-11-21')[0].estado, 'hoy')
 })
+
+// 142 · lotes sin turno: clave 'SIN-TURNO|<lote>', fecha estimada y compatibilidad con lo anterior
+const sinTurno = [
+  { id: '1', estacion_id: 'E', temporada: 'T', ciclo: 'Ciclo 1', turno_agl_id: 'SIN-TURNO|l9', turno: null, lote: 'L9', categoria_clave: 'c', ddt: 5, fecha_plan: '2026-11-25', fecha_estimada: true, material_id: 'A', dosis_mz: 2, area_mz: 2, cantidad_plan: 4, variedad: 'Cavendish' },
+  { id: '2', estacion_id: 'E', temporada: 'T', ciclo: 'Ciclo 1', turno_agl_id: 'SIN-TURNO|l8', turno: null, lote: 'L8', categoria_clave: 'c', ddt: 5, fecha_plan: null, fecha_estimada: true, material_id: 'A', dosis_mz: 2, area_mz: 1, cantidad_plan: 2 },
+  { id: '3', estacion_id: 'E', temporada: 'T', ciclo: 'Ciclo 1', turno_agl_id: 'T1', turno: 'T1', lote: 'L1', categoria_clave: 'c', ddt: 5, fecha_plan: '2026-11-25', material_id: 'A', dosis_mz: 2, area_mz: 3, cantidad_plan: 6 },
+]
+
+test('142 · plan de un lote sin turno: aparece normal, con fecha estimada marcada', () => {
+  const p = planDeLote(sinTurno, 'L9', new Set(), '2026-11-23')
+  assert.equal(p.length, 1)
+  assert.equal(p[0].fecha_estimada, true)
+  assert.equal(p[0].estado, 'proximo')
+  assert.equal(p[0].turno, null)
+  assert.equal('fecha_estimada' in planDeLote(sinTurno, 'L1', new Set(), '2026-11-23')[0], false) // lo anterior no cambia de forma
+})
+
+test('142 · lote sin turno y sin fecha: estado sin_fecha; lotes sin turno son lotes distintos aunque tengan el mismo DDT', () => {
+  assert.equal(planDeLote(sinTurno, 'L8', new Set(), '2026-11-23')[0].estado, 'sin_fecha')
+  // «hecho» de un lote sin turno no marca a otro lote sin turno con el mismo DDT (clave por lote)
+  assert.equal(planDeLote(sinTurno, 'L8', new Set(['SIN-TURNO|l9|5']), '2026-11-23')[0].estado, 'sin_fecha')
+  assert.equal(planDeLote(sinTurno, 'L9', new Set(['SIN-TURNO|l9|5']), '2026-11-23')[0].estado, 'hecho')
+})
+
+test('142 · plan general por DDT: marca fecha estimada solo si alguna línea lo es', () => {
+  const g = planGeneralPorDdt(sinTurno, new Set())
+  assert.equal(g[0].fecha_estimada, true)
+  assert.equal(g[0].n_lotes, 3)
+  assert.equal('fecha_estimada' in planGeneralPorDdt(sinTurno.slice(2), new Set())[0], false)
+})
+
+test('142 · lineasDelPlan de un lote sin turno devuelve su clave de plan y la marca de fecha estimada', () => {
+  const l = lineasDelPlan(sinTurno, { lote: 'L9', categoriaClave: 'c', fecha: '2026-11-23' })
+  assert.equal(l[0].turno_agl_id, 'SIN-TURNO|l9')
+  assert.equal(l[0].fecha_estimada, true)
+  assert.equal('fecha_estimada' in lineasDelPlan(sinTurno, { lote: 'L1', categoriaClave: 'c' })[0], false)
+})

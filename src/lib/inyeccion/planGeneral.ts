@@ -43,6 +43,8 @@ export type GrupoDdt = {
   ddt: number | null
   fecha_desde: string | null
   fecha_hasta: string | null
+  /** Alguna fecha es estimada (lote sin turno: siembra de la Ruta + DDT). */
+  fecha_estimada?: boolean
   productos: ProductoDeDdt[]
   n_lotes: number
   n_lotes_hechos: number
@@ -93,6 +95,7 @@ export function planGeneralPorDdt(lineas: FilaPlanInyeccion[], hechos: Set<strin
       ddt,
       fecha_desde: fechas[0] ?? null,
       fecha_hasta: fechas[fechas.length - 1] ?? null,
+      ...(filas.some((f) => f.fecha_estimada) ? { fecha_estimada: true } : {}),
       productos,
       n_lotes: lotes.size,
       n_lotes_hechos: lotesHechos.size,
@@ -121,6 +124,8 @@ export type PlanDeLote = {
   variedad: string | null
   ddt: number | null
   fecha_plan: string | null
+  /** Fecha estimada (lote sin turno). */
+  fecha_estimada?: boolean
   estado: EstadoPlanLote
   /** Días hasta la fecha del plan (negativo = pasó). */
   dias: number | null
@@ -151,6 +156,7 @@ export function planDeLote(lineas: FilaPlanInyeccion[], lote: string, hechos: Se
       variedad: f0.variedad?.trim() || null,
       ddt: f0.ddt,
       fecha_plan: f0.fecha_plan,
+      ...(fs.some((f) => f.fecha_estimada) ? { fecha_estimada: true } : {}),
       estado,
       dias,
       productos: fs

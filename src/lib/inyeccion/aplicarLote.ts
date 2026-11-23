@@ -28,12 +28,16 @@ export type FilaPlanInyeccion = {
   observaciones?: string | null
   controla?: string | null
   pct_aplicacion?: number | null
+  /** sql/142: lote sin turno; la fecha es la siembra de la Ruta + DDT (estimada) hasta que tenga turno. */
+  fecha_estimada?: boolean | null
 }
 
 export type LineaDelPlan = {
   material_id: string
   ddt: number | null
   fecha_plan: string | null
+  /** true = fecha estimada (lote sin turno). */
+  fecha_estimada?: boolean
   turno_agl_id: string
   ciclo: string | null
   temporada: string
@@ -101,6 +105,7 @@ export function lineasDelPlan(
     material_id: p.material_id,
     ddt: p.ddt,
     fecha_plan: p.fecha_plan,
+    ...(p.fecha_estimada ? { fecha_estimada: true } : {}),
     turno_agl_id: p.turno_agl_id,
     ciclo: p.ciclo,
     temporada: p.temporada,
