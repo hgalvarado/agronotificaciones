@@ -316,3 +316,11 @@ test('142 · «hecho» por lote + DDT + producto: sobrevive al cambio de turno y
   const conTurno = dos.map((x) => ({ ...x, turno_agl_id: 'T7', turno: 'T7', fecha_estimada: false }))
   assert.equal(planDeLote(conTurno, 'L9', new Set(['l9|5|A', 'l9|5|B']), '2026-11-23')[0].estado, 'hecho')
 })
+
+test('143 · plan general por DDT separa los ciclos (el DDT 5 del Ciclo 1 no es el del Ciclo 2)', () => {
+  const c2 = { ...planDdt[0], id: '9', ciclo: 'Ciclo 2', lote: 'L9', area_mz: 5, cantidad_plan: 10 }
+  const g = planGeneralPorDdt([...planDdt, c2], new Set())
+  assert.deepEqual(g.map((x) => [x.ciclo, x.ddt]), [['Ciclo 1', 5], ['Ciclo 1', 12], ['Ciclo 2', 5]])
+  assert.equal(g[2].productos[0].area_mz, 5)
+  assert.equal(g[0].productos[0].area_mz, 4)
+})
