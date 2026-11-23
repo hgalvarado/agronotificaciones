@@ -52,7 +52,7 @@ export default async function CatalogosPage() {
   ] = await Promise.all([
     supabase.from('zonas').select('*').order('nombre'),
     supabase.from('familias_equipo').select('*').order('nombre'),
-    supabase.from('equipos').select('*').order('codigo'),
+    supabase.from('equipos').select('*').not('codigo', 'like', 'PRUEBA-M-%').order('codigo'),
     supabase.from('implementos').select('*').order('nombre'),
     supabase.from('operadores').select('*').order('nombre'),
     supabase.from('categorias_labor').select('*').order('nombre'),

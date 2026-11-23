@@ -88,7 +88,7 @@ create temp table m as select (select id from equipos where codigo = 'T145-M1') 
 create temp table base as select
     (select md5(coalesce(string_agg(mo::text, '|' order by mo.equipo_id), '')) from mot_motores mo where mo.prueba_de is null) as motores,
     (select count(*) from iny_aplicaciones) as iny,
-    (select count(*) from mot_registros) as regs,
+    (select count(*) from mot_registros) as regs, (select count(*) from mot_registros where estacion_id = (select est from k)) as regs_real,
     (select count(*) from equipos) as equipos,
     (select coalesce(sum(disponible), 0) from fert_saldos where estacion_id = (select est from k)) as bodega_real;
 
@@ -171,7 +171,7 @@ select pg_temp.ok((select r->>'estado' like 'ACEPTADO%' from mt), 'mantenimiento
 -- lo REAL no cambió
 select pg_temp.ok((select md5(coalesce(string_agg(mo::text, '|' order by mo.equipo_id), '')) from mot_motores mo where mo.prueba_de is null) = (select motores from base),
                   'motores REALES: contadores y estado idénticos (md5)');
-select pg_temp.ok((select count(*) from mot_registros where estacion_id = (select est from k)) = 0 and (select coalesce(sum(disponible), 0) from fert_saldos where estacion_id = (select est from k)) = (select bodega_real from base),
+select pg_temp.ok((select count(*) from mot_registros where estacion_id = (select est from k)) = (select regs_real from base) and (select coalesce(sum(disponible), 0) from fert_saldos where estacion_id = (select est from k)) = (select bodega_real from base),
                   'la estación real: sin registros de motor nuevos y su bodega igual');
 -- AGL no ve nada de prueba
 select pg_temp.ok(not exists (select 1 from jsonb_array_elements(fn_mot_exportar()->'filas') x
@@ -187,6 +187,7 @@ begin
     perform pg_temp.ok((select activo from mot_motores where equipo_id = (select m from pm)), 'publicar «completo» desde AGL no desactiva el motor de práctica');
     update mot_motores set activo = true where equipo_id = any(v_prev);          -- devolver el estado a la base de pruebas
 end $$;
+update base set motores = (select md5(coalesce(string_agg(mo::text, '|' order by mo.equipo_id), '')) from mot_motores mo where mo.prueba_de is null);
 
 -- ---------------------------------------------------------------- 4 · apagar conserva; borrar limpia todo
 select fn_fert_pruebas_desactivar();
