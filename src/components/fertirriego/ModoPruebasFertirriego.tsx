@@ -120,7 +120,8 @@ export function ModoPruebasFertirriego({
         <h2 className="text-sm font-bold text-slate-800">1 · Estaciones donde se prueba</h2>
         <p className="text-xs text-slate-500">
           Por cada una se crea «PRUEBA · nombre», con los mismos turnos y plan, pero bodega, encargado, relevos y
-          traslados propios.
+          traslados propios. El modo cubre Fertirriego, Inyección y Motores (diésel, un motor de práctica y mantenimiento):
+          todo lo registrado en esas estaciones es de práctica, AGL no lo ve y se borra con «Borrar lo de prueba».
         </p>
         <ListaCasillasBuscable
           nombre="estaciones-prueba"

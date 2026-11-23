@@ -24,6 +24,7 @@ import { permisoHistoricoDe, useCampoExtras } from '@/lib/campo/useCampoExtras'
 import { FormMantenimiento } from './FormMantenimiento'
 import { FormMoverMotor } from './FormMoverMotor'
 import { FormRecibirDiesel } from './FormRecibirDiesel'
+import { AvisoModoPruebas } from '@/components/campo/AvisoModoPruebas'
 import { FormRegistroMotor } from './FormRegistroMotor'
 import { TarjetaMotor } from './TarjetaMotor'
 import { VistaHistorialMotor } from './VistaHistorialMotor'
@@ -188,6 +189,7 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
               />
             </div>
           )}
+          <AvisoModoPruebas estacionNombre={estacion.nombre} />
           <div className="flex flex-wrap items-baseline justify-between gap-x-2">
             <h1 className="text-xl font-bold tracking-tight text-slate-900" data-estacion={estacion.nombre}>
               Motores · {estacion.nombre}
