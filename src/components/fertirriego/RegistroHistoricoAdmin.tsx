@@ -1,10 +1,12 @@
 'use client'
 
 /**
- * Administración › Registro histórico de Fertirriego (migración 116). Pedido del usuario (2026-11-18): hay estaciones
+ * Administración › Registro histórico (migraciones 116 y 140). Pedido del usuario (2026-11-18): hay estaciones
  * que ya operaban antes de poner el sistema en marcha. El administrador da a UNA persona, en UNA o varias estaciones y
  * hasta una fecha límite, el permiso de registrar lo que ya se aplicó SIN mover el inventario. Se revoca antes si hace
  * falta; vencido o revocado, la persona vuelve al proceso normal.
+ * 140 (pedido 2026-11-23): el permiso es POR PANTALLA («¿En qué pantalla?»). El catálogo de pantallas sale de la base
+ * (`pantallas.registra_historico`, solo las que quien llama puede administrar): no hay lista fija en el código.
  */
 
 import { useCallback, useEffect, useState } from 'react'
@@ -21,6 +23,8 @@ type Permiso = {
   persona: string
   estacion_id: string
   estacion: string
+  pantalla?: string
+  pantalla_nombre?: string | null
   hasta: string
   dias_restantes: number
   otorgado_por: string | null
@@ -47,6 +51,8 @@ export function RegistroHistoricoAdmin({
   const [lista, setLista] = useState<Permiso[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
+  const [pantallas, setPantallas] = useState<{ codigo: string; nombre: string }[] | null>(null)
+  const [pantalla, setPantalla] = useState('')
   const [persona, setPersona] = useState('')
   const [elegidas, setElegidas] = useState<string[]>([])
   const [hasta, setHasta] = useState(() => sumarDias(hoyIso(), 7))
@@ -55,9 +61,14 @@ export function RegistroHistoricoAdmin({
   const [soloVigentes, setSoloVigentes] = useState(true)
 
   const cargar = useCallback(async () => {
-    const { data, error: e } = await createClient().rpc('fn_fert_historico_listar', { p_solo_vigentes: false })
-    if (e) return setError(mensajeDeError(e, 'No se pudo leer la lista.'))
-    setLista((data as Permiso[] | null) ?? [])
+    const sb = createClient()
+    const [p, l] = await Promise.all([sb.rpc('fn_campo_historico_pantallas'), sb.rpc('fn_campo_historico_listar', { p_solo_vigentes: false })])
+    if (p.error) return setError(mensajeDeError(p.error, 'No se pudo leer las pantallas.'))
+    const pant = (p.data as { codigo: string; nombre: string }[] | null) ?? []
+    setPantallas(pant)
+    setPantalla((actual) => actual || (pant.length === 1 ? pant[0].codigo : (pant.find((x) => x.codigo === 'fertirriego')?.codigo ?? '')))
+    if (l.error) return setError(mensajeDeError(l.error, 'No se pudo leer la lista.'))
+    setLista((l.data as Permiso[] | null) ?? [])
   }, [])
 
   useEffect(() => {
@@ -69,11 +80,13 @@ export function RegistroHistoricoAdmin({
   async function otorgar() {
     setError(null)
     setAviso(null)
+    if (!pantalla) return setError('Elige en qué pantalla.')
     if (!persona) return setError('Elige la persona.')
     if (elegidas.length === 0) return setError('Elige al menos una estación.')
     if (!hasta || hasta < hoyIso()) return setError('La fecha límite no puede ser anterior a hoy.')
     setTrabajando(true)
-    const { data, error: e } = await createClient().rpc('fn_fert_historico_otorgar', {
+    const { data, error: e } = await createClient().rpc('fn_campo_historico_otorgar', {
+      p_pantalla: pantalla,
       p_persona: persona,
       p_estaciones: elegidas,
       p_hasta: hasta,
@@ -81,7 +94,7 @@ export function RegistroHistoricoAdmin({
     })
     setTrabajando(false)
     if (e) return setError(mensajeDeError(e, 'No se pudo otorgar.'))
-    setAviso(`Permiso guardado en ${data as number} estación(es) hasta el ${hasta}. La persona debe tocar «Actualizar» en Fertirriego (con señal).`)
+    setAviso(`Permiso guardado en ${data as number} estación(es) hasta el ${hasta}. La persona debe tocar «Actualizar» en esa pantalla (con señal).`)
     setElegidas([])
     setNota('')
     await cargar()
@@ -91,14 +104,14 @@ export function RegistroHistoricoAdmin({
     setError(null)
     setAviso(null)
     setTrabajando(true)
-    const { error: e } = await createClient().rpc('fn_fert_historico_revocar', { p_id: p.id })
+    const { error: e } = await createClient().rpc('fn_campo_historico_revocar', { p_id: p.id })
     setTrabajando(false)
     if (e) return setError(mensajeDeError(e, 'No se pudo revocar.'))
     setAviso(`Permiso revocado: ${p.persona} · ${p.estacion}.`)
     await cargar()
   }
 
-  if (sinMigracion) return <Alerta>Falta correr la migración 116 (registro histórico) en esta base.</Alerta>
+  if (sinMigracion) return <Alerta>Falta correr las migraciones 116 y 140 (registro histórico por pantalla) en esta base.</Alerta>
 
   const visibles = (lista ?? []).filter((p) => !soloVigentes || p.estado === 'VIGENTE')
 
@@ -115,9 +128,20 @@ export function RegistroHistoricoAdmin({
       <Tarjeta className="flex flex-col gap-3 p-4">
         <h2 className="text-sm font-bold text-slate-800">Dar permiso de registro histórico</h2>
         <p className="text-xs text-slate-500">
-          La persona podrá registrar aplicaciones de días pasados en las estaciones que elijas, hasta la fecha límite. Esos
-          registros NO mueven el inventario. Pasada la fecha (o si lo revocas) vuelve al proceso normal.
+          La persona podrá registrar días pasados en la pantalla y las estaciones que elijas, hasta la fecha límite. Esos
+          registros NO mueven el inventario ni el diésel. Pasada la fecha (o si lo revocas) vuelve al proceso normal.
         </p>
+        <Campo etiqueta="¿En qué pantalla?" requerido>
+          <div data-sel-pantalla>
+            <SelectorBuscable
+              valor={pantalla}
+              opciones={(pantallas ?? []).map((x) => ({ id: x.codigo, titulo: x.nombre }))}
+              onCambiar={setPantalla}
+              placeholder="Elige la pantalla"
+              etiquetaBusqueda="Buscar pantalla"
+            />
+          </div>
+        </Campo>
         <Campo etiqueta="Persona" requerido>
           <div data-sel-persona>
             <SelectorBuscable
@@ -170,6 +194,7 @@ export function RegistroHistoricoAdmin({
                 <div className="min-w-0 flex-1">
                   <p className="break-words text-sm font-semibold text-slate-800">
                     {p.persona} · {p.estacion}
+                    {p.pantalla_nombre ? ` · ${p.pantalla_nombre}` : ''}
                   </p>
                   <p className="text-xs text-slate-500">
                     {p.estado === 'VIGENTE'

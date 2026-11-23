@@ -12,7 +12,7 @@ import { AreaTexto, Campo } from '@/components/ui/Primitivos'
 import { ayerIso, deEntradaLocal, ahoraIso, hoyIso } from '@/lib/fechas/zona'
 import { claveBorrador, useAutoguardado, useBorrador } from '@/lib/fertirriego/borrador'
 import { crearOperacion } from '@/lib/fertirriego/operaciones'
-import type { Estacion, Operacion, Persona } from '@/lib/fertirriego/tipos'
+import type { Estacion, Operacion, Persona, PermisoHistorico } from '@/lib/fertirriego/tipos'
 import type { EstadoMotores, MotorEstacion, OperacionPendienteMotor } from '@/lib/motores/estado'
 import { armarRegistroDiario, avisosContinuidad, calcularRegistro, proponerInicial, recibidoDelDia } from '@/lib/motores/registroDiario'
 import { MarcoRegistro } from '@/components/fertirriego/MarcoRegistro'
@@ -70,6 +70,7 @@ export function FormRegistroMotor({
   pendientes,
   estacion,
   yo,
+  historico,
   registrar,
   onAbrirRecibir,
   onCerrar,
@@ -80,6 +81,8 @@ export function FormRegistroMotor({
   pendientes: OperacionPendienteMotor[]
   estacion: Estacion
   yo: Persona
+  /** sql/140: permiso temporal «Registro histórico» de esta estación (si lo tiene, se ofrece la casilla). */
+  historico?: PermisoHistorico | null
   registrar: (...ops: Operacion[]) => Promise<void>
   /** «Recibí diésel hoy»: abre la misma operación de recibir. */
   onAbrirRecibir: () => void
@@ -98,6 +101,8 @@ export function FormRegistroMotor({
   const [visorCambiado, setVisorCambiado] = useState(b?.visorCambiado ?? false)
   const [noTrabajo, setNoTrabajo] = useState(b?.noTrabajo ?? false)
   const [comentario, setComentario] = useState(b?.comentario ?? '')
+  // sql/140 · Registro histórico: día pasado, sin custodia y SIN mover el diésel del tanque (la base lo vuelve a validar)
+  const [esHistorico, setEsHistorico] = useState(false)
   useAutoguardado(borrador, { fecha, horoIni, horoFin, visorIni, visorFin, rpm, horoCambiado, visorCambiado, noTrabajo, comentario })
 
   // El inicial propuesto es la lectura final del último registro ANTERIOR a esta fecha (cola incluida)
@@ -153,8 +158,10 @@ export function FormRegistroMotor({
       borrador={borrador}
       rapido
       avisoPie={avisoPie}
+      permisoHistorico={esHistorico}
       construir={({ ubicacion, enNombreDe }) => {
         if (!fecha) return 'Indica la fecha del registro.'
+        if (esHistorico && fecha >= hoy) return 'El registro histórico es solo de días pasados: elige un día anterior a hoy.'
         if (!completo) return 'Escribe un número válido.'
         const rpmNum = rpm.trim() ? num(rpm) : null
         if (rpm.trim() && rpmNum === null) return 'Las revoluciones deben estar entre 0 y 6000.'
@@ -177,14 +184,37 @@ export function FormRegistroMotor({
         })
         if ('error' in a) return a.error
         return [
-          crearOperacion('motor_registro_diario', a.datos, {
+          crearOperacion('motor_registro_diario', esHistorico ? { ...a.datos, historica: true } : a.datos, {
             ubicacion,
             enNombreDe,
-            resumen: `Registro diario · ${motor.codigo} · ${fmtFecha(fecha).slice(0, 5)}${calc.horas !== null ? ` · ${calc.horas} h` : ''}`,
+            resumen: `${esHistorico ? 'Registro HISTÓRICO' : 'Registro diario'} · ${motor.codigo} · ${fmtFecha(fecha).slice(0, 5)}${calc.horas !== null ? ` · ${calc.horas} h` : ''}`,
           }),
         ]
       }}
     >
+      {historico && (
+        <label className="flex items-start gap-2 rounded-xl bg-sky-50 p-3 text-xs leading-snug text-slate-700 ring-1 ring-inset ring-sky-200" data-registro-historico-motor>
+          <input
+            type="checkbox"
+            className="mt-0.5 h-6 w-6 shrink-0"
+            checked={esHistorico}
+            onChange={(e) => {
+              setEsHistorico(e.target.checked)
+              if (e.target.checked && fecha >= hoy) {
+                setFecha(ayerIso())
+                setHoroIni(null)
+                setVisorIni(null)
+              }
+            }}
+            data-casilla-historico
+          />
+          <span className="min-w-0 flex-1">
+            <strong>Registro histórico</strong> (una lectura de antes de usar el sistema): día pasado y NO mueve el diésel del tanque; solo
+            guarda horómetro, visor y horas. Permiso hasta el {historico.hasta}
+            {historico.dias_restantes <= 0 ? ' (vence hoy)' : ` · te quedan ${historico.dias_restantes} día(s)`}.
+          </span>
+        </label>
+      )}
       <Campo etiqueta="Fecha" requerido>
         <div className="flex flex-wrap items-center gap-2">
           <input

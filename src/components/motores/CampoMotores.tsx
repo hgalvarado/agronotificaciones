@@ -20,6 +20,7 @@ import type { Operacion } from '@/lib/fertirriego/tipos'
 import { motoresDeEstacion, motoresParaRecibir, saldoTanqueLocal, type MotorEstacion } from '@/lib/motores/estado'
 import { horasDesdeMantLocal } from '@/lib/motores/mantenimiento'
 import { useMotores } from '@/lib/motores/useMotores'
+import { permisoHistoricoDe, useCampoExtras } from '@/lib/campo/useCampoExtras'
 import { FormMantenimiento } from './FormMantenimiento'
 import { FormMoverMotor } from './FormMoverMotor'
 import { FormRecibirDiesel } from './FormRecibirDiesel'
@@ -37,6 +38,8 @@ type Ventana = {
 export function CampoMotores({ usuarioId }: { usuarioId: string }) {
   const campo = useCampo(usuarioId)
   const mot = useMotores(usuarioId)
+  // sql/140: permiso temporal de «Registro histórico» y «Eliminar por completo» (de Motores)
+  const extras = useCampoExtras(usuarioId, 'motores')
   const { estado, cola } = campo
   const [estacionId, setEstacionId] = useState('')
   const [ventana, setVentana] = useState<Ventana | null>(null)
@@ -225,6 +228,7 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
               pendientes={cola}
               estacion={estacion}
               yo={estado.yo}
+              historico={permisoHistoricoDe(extras, estacion.id)}
               registrar={campo.registrar}
               onAbrirRecibir={() => setVentana({ tipo: 'recibir', equipoId: motorVentana.equipo_id })}
               onCerrar={() => setVentana(null)}
@@ -328,8 +332,13 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
               estacion={estacion}
               yo={estado.yo}
               puedeAnular={me.permisos?.anular ?? false}
+              puedeEliminar={extras.eliminar_definitivo}
               registrar={campo.registrar}
               onGuardado={guardado}
+              onEliminado={(m) => {
+                guardado(m)
+                mot.actualizar()
+              }}
               onCerrar={() => setVentana(null)}
             />
           )}

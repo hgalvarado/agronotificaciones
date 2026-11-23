@@ -68,4 +68,5 @@ export const NOMBRE_OBSERVACION: Record<string, string> = {
   MOTOR_EN_TALLER_EN_FECHA: 'el motor estaba en el taller en esa fecha',
   MOTOR_RETIRADO_EN_FECHA: 'el motor estaba retirado en esa fecha',
   ACEPTADO_POR_ADMIN: 'lo aceptó el administrador aunque la base lo había rechazado',
+  REGISTRO_HISTORICO: 'registro histórico (no movió el inventario ni el diésel)',
 }

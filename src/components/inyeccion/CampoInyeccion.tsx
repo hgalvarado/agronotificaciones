@@ -18,6 +18,7 @@ import { EncabezadoEnvios } from '@/components/fertirriego/EncabezadoEnvios'
 import type { Operacion } from '@/lib/fertirriego/tipos'
 import { lotesConPlan } from '@/lib/inyeccion/estado'
 import { useInyeccion } from '@/lib/inyeccion/useInyeccion'
+import { permisoHistoricoDe, useCampoExtras } from '@/lib/campo/useCampoExtras'
 import { FormAplicacionLote } from './FormAplicacionLote'
 import { VistaHistorialInyeccion } from './VistaHistorialInyeccion'
 
@@ -26,6 +27,8 @@ const RUTAS_SW = ['/inyeccion']
 export function CampoInyeccion({ usuarioId }: { usuarioId: string }) {
   const campo = useCampo(usuarioId)
   const iny = useInyeccion(usuarioId)
+  // sql/140: permiso temporal de «Registro histórico» y «Eliminar por completo» (de Inyección)
+  const extras = useCampoExtras(usuarioId, 'inyeccion')
   const { estado, cola } = campo
   const [estacionId, setEstacionId] = useState('')
   const [ventana, setVentana] = useState<{ lote?: string; categoria?: string } | null>(null)
@@ -177,9 +180,14 @@ export function CampoInyeccion({ usuarioId }: { usuarioId: string }) {
             estacion={estacion}
             yo={estado.yo}
             puedeAnular={iny.estado.permisos?.anular ?? false}
+            puedeEliminar={extras.eliminar_definitivo}
             nombreProducto={nombreProducto}
             registrar={campo.registrar}
             onGuardado={guardado}
+            onEliminado={(m) => {
+              guardado(m)
+              iny.actualizar()
+            }}
           />
 
           {!puedeRegistrar && <Alerta tono="ambar">Tu rol puede ver Inyección pero no registrar. Se configura en Permisos.</Alerta>}
@@ -202,6 +210,7 @@ export function CampoInyeccion({ usuarioId }: { usuarioId: string }) {
               saldos={saldos}
               loteInicial={ventana.lote}
               categoriaInicial={ventana.categoria}
+              historico={permisoHistoricoDe(extras, estacion.id)}
               registrar={campo.registrar}
               onCerrar={() => setVentana(null)}
               onGuardado={guardado}

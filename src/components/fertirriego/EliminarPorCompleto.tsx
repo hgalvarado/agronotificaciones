@@ -2,8 +2,8 @@
 
 /**
  * Confirmación de «Eliminar por completo» (sql/119). Es una acción administrativa EN LÍNEA: no pasa por la cola sin
- * señal. Pide el motivo (mínimo 15 letras) y llama a fn_fert_eliminar_documento; la base decide permiso, turno
- * terminado y saldo.
+ * señal. Pide el motivo (mínimo 15 letras) y llama a fn_fert_eliminar_documento (Fertirriego, 119) o a
+ * fn_campo_eliminar_documento (Inyección y Motores, 140); la base decide permiso, turno terminado y saldo.
  */
 
 import { useState } from 'react'
@@ -17,6 +17,7 @@ import {
   errorMotivoEliminar,
   esFaltaDeSenal,
   resumenEliminado,
+  rpcEliminar,
   type ResultadoEliminar,
   type TipoEliminable,
 } from '@/lib/fertirriego/eliminar'
@@ -44,7 +45,7 @@ export function EliminarPorCompleto({
     if (e) return setError(e)
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return setError('Necesitas señal para eliminar.')
     setTrabajando(true)
-    const { data, error: err } = await createClient().rpc('fn_fert_eliminar_documento', {
+    const { data, error: err } = await createClient().rpc(rpcEliminar(tipo), {
       p_tipo: tipo,
       p_documento: documentoId,
       p_motivo: motivo.trim(),
