@@ -1,6 +1,7 @@
 # Seguimiento del proyecto · punto de partida para cualquier conversación nueva
 
 > **Actualizado: 2026-11-22.** Lo escribe y mantiene Claude. Detalle técnico e historial: `agronotificaciones/MEMORIA_CLAUDE.md`.
+> **Trabajo «Campo» (Inyección, motores, devolución con detalle): leer `agronotificaciones/docs/campo-estado-y-traspaso.md`.**
 > Al abrir una conversación nueva: **leer este archivo primero**, después `MEMORIA_CLAUDE.md` y la memoria `agl-ordenes-sap-procesos.md`.
 > Hay una copia idéntica en `C:\HENRYALVARADO2022\AGLGestion_App\proyecto-seguimiento.md`: **actualizar las dos al terminar cada bloque.**
 > Responder siempre al usuario **en español, claro y sin jerga**.
