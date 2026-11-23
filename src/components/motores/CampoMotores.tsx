@@ -12,7 +12,7 @@ import { Alerta, Boton, ListaEsqueleto } from '@/components/ui/Primitivos'
 import { Modal } from '@/components/ui/Modal'
 import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
 import { RegistroServiceWorker } from '@/components/fertirriego/RegistroServiceWorker'
-import { conCustodiaLocal } from '@/lib/fertirriego/calculos'
+import { conCustodiaLocal, saldosLocales } from '@/lib/fertirriego/calculos'
 import { EVENTO_GUARDADO_FALLIDO, type GuardadoFallido } from '@/lib/fertirriego/guardadoFondo'
 import { useCampo } from '@/lib/fertirriego/useCampo'
 import { EncabezadoEnvios } from '@/components/fertirriego/EncabezadoEnvios'
@@ -102,6 +102,12 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
     [me, estacion, estaciones, puedeRecibirMotor, puedeMover]
   )
   const motorVentana: MotorEstacion | null = me && ventana ? (me.motores.find((m) => m.equipo_id === ventana.equipoId) ?? null) : null
+  // sql/144: el diésel es un producto de la bodega de la estación (saldo del servidor + lo pendiente de enviar)
+  const dieselId = me?.material_diesel_id ?? null
+  const bodegaDiesel: number | null = useMemo(() => {
+    if (!estado || !estacion || !dieselId) return null
+    return Math.round((saldosLocales(estado, cola, estacion.id).get(dieselId) ?? 0) * 100) / 100
+  }, [estado, estacion, cola, dieselId])
   const saldoDe = (m: MotorEstacion): number | null => (me && m.tanque ? saldoTanqueLocal(m.tanque.id, me, cola) : null)
   const horasDe = (m: MotorEstacion): number => horasDesdeMantLocal(m, cola)
 
@@ -116,7 +122,6 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
       puedeRetirar={puedeRetirar}
       puedeMantenimiento={puedeMantenimiento}
       onRegistro={() => setVentana({ tipo: 'registro', equipoId: m.equipo_id })}
-      onRecibir={() => setVentana({ tipo: 'recibir', equipoId: m.equipo_id })}
       onMover={() => setVentana({ tipo: 'mover', equipoId: m.equipo_id })}
       onRetirar={() => setVentana({ tipo: 'retirar', equipoId: m.equipo_id })}
       onMantenimiento={() => setVentana({ tipo: 'mantenimiento', equipoId: m.equipo_id })}
@@ -133,8 +138,9 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
       : o.tipo === 'motor_asignar' || o.tipo === 'motor_retiro' ? 'mover'
       : o.tipo === 'motor_mantenimiento' ? 'mantenimiento'
       : null
-    if (tipo && equipoId) setVentana({ tipo, equipoId })
-    guardado(tipo && equipoId ? 'Corrige los datos y guarda. Después, en «Envíos», quita el registro que no se aceptó.' : 'Vuelve a hacer el registro desde su pantalla y después quita el que no se aceptó en «Envíos».')
+    if (tipo === 'recibir') setVentana({ tipo, equipoId: '' })
+    else if (tipo && equipoId) setVentana({ tipo, equipoId })
+    guardado(tipo && (equipoId || tipo === 'recibir') ? 'Corrige los datos y guarda. Después, en «Envíos», quita el registro que no se aceptó.' : 'Vuelve a hacer el registro desde su pantalla y después quita el que no se aceptó en «Envíos».')
   }
 
   if (campo.cargando && !estado) return <ListaEsqueleto filas={4} />
@@ -189,6 +195,12 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
             <span className="text-xs text-slate-600">{estacion.zona}</span>
           </div>
 
+          {puedeRegistrar && (
+            <Boton variante="secundario" className="min-h-14 w-full text-base" onClick={() => setVentana({ tipo: 'recibir', equipoId: '' })} data-recibir-diesel>
+              Recibir diésel{bodegaDiesel !== null ? ` · en bodega ${bodegaDiesel} gal` : ''}
+            </Boton>
+          )}
+
           {(puedeRecibirMotor || puedeMover) && (
             <Boton className="min-h-14 w-full text-base" onClick={() => setVentana({ tipo: 'elegir_motor', equipoId: '' })} data-asignar-motor>
               Asignar nuevo motor
@@ -229,16 +241,18 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
               estacion={estacion}
               yo={estado.yo}
               historico={permisoHistoricoDe(extras, estacion.id)}
+              bodegaDiesel={bodegaDiesel}
+              dieselMaterialId={dieselId}
               registrar={campo.registrar}
-              onAbrirRecibir={() => setVentana({ tipo: 'recibir', equipoId: motorVentana.equipo_id })}
+              onAbrirRecibir={() => setVentana({ tipo: 'recibir', equipoId: '' })}
               onCerrar={() => setVentana(null)}
               onGuardado={guardado}
             />
           )}
-          {motorVentana && ventana?.tipo === 'recibir' && (
+          {ventana?.tipo === 'recibir' && (
             <FormRecibirDiesel
-              motor={motorVentana}
-              saldoGal={saldoDe(motorVentana)}
+              dieselMaterialId={dieselId}
+              saldoGal={bodegaDiesel}
               campo={estado}
               estacion={estacion}
               yo={estado.yo}

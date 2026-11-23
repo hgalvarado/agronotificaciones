@@ -29,7 +29,6 @@ export function TarjetaMotor({
   puedeRetirar,
   puedeMantenimiento,
   onRegistro,
-  onRecibir,
   onMover,
   onRetirar,
   onMantenimiento,
@@ -45,7 +44,6 @@ export function TarjetaMotor({
   puedeRetirar: boolean
   puedeMantenimiento: boolean
   onRegistro: () => void
-  onRecibir: () => void
   onMover: () => void
   onRetirar: () => void
   onMantenimiento: () => void
@@ -105,12 +103,9 @@ export function TarjetaMotor({
         </p>
 
         {instalado && puedeRegistrar && (
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <Boton className="min-h-12" onClick={onRegistro} data-registro-diario>
+          <div className="mt-3">
+            <Boton className="min-h-12 w-full" onClick={onRegistro} data-registro-diario>
               Registro diario
-            </Boton>
-            <Boton className="min-h-12" variante="secundario" onClick={onRecibir} data-recibir-diesel>
-              Recibir diésel
             </Boton>
           </div>
         )}

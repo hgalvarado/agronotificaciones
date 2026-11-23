@@ -140,7 +140,7 @@ test('errores con el texto exacto: sin lote, área 0, sin objetivo, todo en 0', 
 test('descarta la línea en 0 y devuelve los datos de la operación', () => {
   const r = armarAplicacionLote({ ...base, lineas: [{ material_id: 'A', cantidad: 10 }, { material_id: 'B', cantidad: 0 }, { material_id: 'C', cantidad: 2.5 }] })
   assert.ok('datos' in r)
-  assert.deepEqual(r.datos.lineas, [{ material_id: 'A', cantidad: 10, de_bodega: false }, { material_id: 'C', cantidad: 2.5, de_bodega: false }])   // 139
+  assert.deepEqual(r.datos.lineas, [{ material_id: 'A', cantidad: 10, de_bodega: true }, { material_id: 'C', cantidad: 2.5, de_bodega: true }])   // 143: siempre de bodega
   assert.equal(r.datos.estacion_id, 'E')
   assert.equal(r.datos.lote, '1002-010')
   assert.equal(r.datos.area_mz, 5)
@@ -184,15 +184,16 @@ test('lineasDelPlan pedido por DDT y vacío para un lote sin plan', () => {
   assert.deepEqual(lineasDelPlan(plan, { lote: 'L1', categoriaClave: 'otra', fecha: '2026-11-22' }), [])
 })
 
-test('el saldo local NO resta si la línea no es de bodega (139)', () => {
+test('el saldo local resta aunque la línea no traiga de_bodega (143); el histórico no resta', () => {
   const estado = {
     yo: { id: 'U', nombre: 'Yo' }, estaciones: [], relevos: [], traslados: [], plan: [], aplicaciones: [], movimientos: [],
     saldos: [{ estacion_id: 'E', material_id: 'A', disponible: 100, en_transito: 0 }],
   }
   const op = { id: 'P', tipo: 'aplicacion_lote', estado_local: 'PENDIENTE', creado_en: '2026-11-22T15:00:00Z', en_nombre_de: null,
     datos: { estacion_id: 'E', lote: 'L1', lineas: [{ material_id: 'A', cantidad: 30 }] } }
-  assert.deepEqual(efectosDe(op, estado, () => 0), [])
-  assert.equal(saldosLocales(estado, [op], 'E').get('A'), 100)
+  assert.equal(efectosDe(op, estado, () => 0).length, 1)
+  assert.equal(saldosLocales(estado, [op], 'E').get('A'), 70)
+  assert.equal(efectosDe({ ...op, datos: { ...op.datos, historica: true } }, estado, () => 0).length, 0)
 })
 
 test('el saldo local resta APLICACION_LOTE de bodega: 100 → 70', () => {
@@ -202,6 +203,9 @@ test('el saldo local resta APLICACION_LOTE de bodega: 100 → 70', () => {
   }
   const op = { id: 'P', tipo: 'aplicacion_lote', estado_local: 'PENDIENTE', creado_en: '2026-11-22T15:00:00Z', en_nombre_de: null,
     datos: { estacion_id: 'E', lote: 'L1', lineas: [{ material_id: 'A', cantidad: 30, de_bodega: true }, { material_id: 'B', cantidad: 0, de_bodega: true }] } }
+  // 143: sin la marca también descuenta; el histórico no
+  assert.equal(efectosDe({ ...op, datos: { ...op.datos, lineas: [{ material_id: 'A', cantidad: 30 }] } }, estado, () => 0).length, 1)
+  assert.equal(efectosDe({ ...op, datos: { ...op.datos, historica: true } }, estado, () => 0).length, 0)
   assert.deepEqual(efectosDe(op, estado, () => 0), [{ estacion_id: 'E', material_id: 'A', cantidad: -30, tipo: 'APLICACION_LOTE' }])
   assert.equal(saldosLocales(estado, [op], 'E').get('A'), 70)
   assert.ok(NOMBRE_MOVIMIENTO.APLICACION_LOTE)
@@ -330,4 +334,12 @@ test('144 · plan general: «Valentina / Palo Verde» cuenta cada variedad por s
   const g = planGeneralPorDdt([l('a', 'L1', 'Valentina'), l('b', 'L2', 'Valentina / Palo Verde')], new Set())
   const v = g[0].productos[0].variedades
   assert.deepEqual(v.map((x) => [x.variedad, x.pct]).sort(), [['Palo Verde', 100], ['Valentina', 100]])
+})
+
+test('143 · de_bodega=false solo para el registro histórico; el formulario ya no pregunta de dónde salió', () => {
+  const r = armarAplicacionLote({ ...base, lineas: [{ material_id: 'A', cantidad: 10, de_bodega: false }] })
+  assert.ok('datos' in r)
+  assert.equal(r.datos.lineas[0].de_bodega, false)
+  const src = readFileSync(resolve('src/components/inyeccion/FormAplicacionLote.tsx'), 'utf8')
+  assert.equal(/data-pregunta-bodega|Sí, de la bodega|vino aparte/.test(src), false)
 })

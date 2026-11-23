@@ -66,7 +66,8 @@ export type RegistroMotor = {
 
 export type RecepcionMotor = {
   id: string
-  tanque_id: string
+  /** null = recepción a nivel estación (sql/144: entra a la bodega, no al tanque). */
+  tanque_id: string | null
   estacion_id: string
   galones: number
   chofer_id: string | null
@@ -144,8 +145,9 @@ export function diaLocal(iso: string): string {
 }
 
 /**
- * Saldo del tanque contando lo pendiente de enviar: saldo bajado + recepciones pendientes − consumos pendientes.
- * El consumo de un registro pendiente es `gastado_local` (lo calculó el teléfono al guardar) o, si falta, visor inicial − final.
+ * Saldo del tanque contando lo pendiente de enviar: saldo bajado + suministros pendientes − consumos pendientes (sql/144: el diésel
+ * recibido ya NO va al tanque, va a la bodega de la estación). El consumo de un registro pendiente es `gastado_local` (lo calculó el
+ * teléfono al guardar) o, si falta, visor inicial − final.
  * No reproduce el ajuste por visor de la base (esa es la verdad al sincronizar); es solo para que el nivel baje sin señal.
  */
 export function saldoTanqueLocal(tanqueId: string, estado: EstadoMotores, pendientes: OperacionPendienteMotor[]): number {
@@ -155,11 +157,10 @@ export function saldoTanqueLocal(tanqueId: string, estado: EstadoMotores, pendie
   for (const op of pendientes) {
     if (op.estado_local !== 'PENDIENTE') continue
     const d = op.datos
-    if (op.tipo === 'diesel_recibir' && d.tanque_id === tanqueId) saldo += num(d.galones)
     if (op.tipo === 'motor_registro_diario') {
       const delMotor = estado.motores.find((m) => m.equipo_id === d.equipo_id)
       const tanque = (d.tanque_id as string | undefined) ?? delMotor?.tanque?.id
-      if (tanque === tanqueId) saldo -= Math.max(d.gastado_local !== undefined ? num(d.gastado_local) : num(d.visor_ini) - num(d.visor_fin), 0)
+      if (tanque === tanqueId) saldo += num(d.suministro_gal) - Math.max(d.gastado_local !== undefined ? num(d.gastado_local) : num(d.visor_ini) - num(d.visor_fin), 0)
     }
   }
   return Math.round(saldo * 100) / 100

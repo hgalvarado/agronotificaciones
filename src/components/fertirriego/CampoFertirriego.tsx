@@ -37,6 +37,7 @@ import { FormAplicacion } from './FormAplicacion'
 import { FormBitacora } from './FormBitacora'
 import { FormConteo } from './FormConteo'
 import { FormDevolucionBodega } from './FormDevolucionBodega'
+import { FormRecibirDiesel } from '@/components/motores/FormRecibirDiesel'
 import { FormEntregarRelevo } from './FormEntregarRelevo'
 import { FormEnvases } from './FormEnvases'
 import { FormRecibirRelevo } from './FormRecibirRelevo'
@@ -57,6 +58,7 @@ import { VistaTurnos } from './VistaTurnos'
 type Pestana = 'estacion' | 'turnos' | 'bitacora' | 'relevos' | 'traslados'
 type Ventana =
   | { tipo: 'recibir' }
+  | { tipo: 'recibir_diesel' }
   | { tipo: 'envases' }
   | { tipo: 'aplicar'; turno?: string; fecha?: string; eleccion?: string }
   | { tipo: 'historico' }
@@ -255,6 +257,7 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
       : o.tipo === 'aplicacion_historica' && permisoHistorico ? { tipo: 'historico' }
       : o.tipo === 'conteo' ? { tipo: 'contar' }
       : o.tipo === 'devolucion_bodega' ? { tipo: 'devolver_bodega' }
+      : o.tipo === 'diesel_recibir' ? { tipo: 'recibir_diesel' }
       : null
     if (v) setVentana(v)
     guardado(v ? 'Corrige los datos y guarda. Después, en «Envíos», quita el registro que no se aceptó.' : 'Vuelve a hacer el registro desde su pantalla y después quita el que no se aceptó en «Envíos».')
@@ -397,10 +400,13 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
                 enLinea={enLinea}
                 tieneEntregaPendiente={Boolean(entregaPendiente)}
                 permisoHistorico={permisoHistorico}
+                puedeRecibirDiesel={Boolean(bodegaServidor?.material_diesel_id)}
                 onAccion={(a) =>
                   setVentana(
                     a === 'recibir'
                       ? { tipo: 'recibir' }
+                      : a === 'recibir_diesel'
+                        ? { tipo: 'recibir_diesel' }
                       : a === 'envases'
                         ? { tipo: 'envases' }
                       : a === 'aplicar'
@@ -531,6 +537,18 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
             )}
             {ventana?.tipo === 'contar' && (
               <FormConteo estado={estado} estacion={estacion} yo={estado.yo} saldos={saldos} saldosEnvases={saldosEnvases} registrar={campo.registrar} onCerrar={() => setVentana(null)} onGuardado={guardado} />
+            )}
+            {ventana?.tipo === 'recibir_diesel' && (
+              <FormRecibirDiesel
+                dieselMaterialId={bodegaServidor?.material_diesel_id ?? null}
+                saldoGal={bodegaServidor?.material_diesel_id ? Math.round((saldos.get(bodegaServidor.material_diesel_id) ?? 0) * 100) / 100 : null}
+                campo={estado}
+                estacion={estacion}
+                yo={estado.yo}
+                registrar={campo.registrar}
+                onCerrar={() => setVentana(null)}
+                onGuardado={guardado}
+              />
             )}
             {ventana?.tipo === 'devolver_bodega' && (
               <FormDevolucionBodega estado={estado} estacion={estacion} yo={estado.yo} saldos={saldos} choferesPendientes={choferesPendientes} vehiculosPendientes={vehiculosPendientes} registrar={campo.registrar} onCerrar={() => setVentana(null)} onGuardado={guardado} />

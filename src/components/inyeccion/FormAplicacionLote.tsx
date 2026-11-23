@@ -2,9 +2,7 @@
 
 /**
  * Aplicar por lote (Inyección / Drench / Aseguramiento de calidad): la persona con la estación a cargo registra un
- * lote completo (o una parte: área editable) con sus productos. El producto se elige del catálogo AUNQUE la estación no lo
- * tenga en bodega (no se exige saldo ni recepción). Si la estación sí tiene saldo de ese producto, se pregunta si se tomó de
- * la bodega de la estación (descuenta) o vino aparte (no descuenta). Sin señal:
+ * lote completo (o una parte: área editable) con sus productos. El producto se elige del catálogo. Todo producto se descuenta de la bodega de la estación (sin saldo: confirmar con la casilla roja). Sin señal:
  * se guarda en el teléfono y se envía solo (operación `aplicacion_lote`, sql/129).
  *
  * Sin plan también se puede registrar: queda «Sin plan» y la base lo anota (SIN_PLAN).
@@ -42,8 +40,6 @@ type Datos = {
   objetivosPorProducto?: Record<string, string[]>
   comentario: string
   editadas: LineaEditable[] | null
-  /** Por producto con saldo en la estación: true = lo tomé de la bodega, false = vino aparte (139). */
-  deBodega?: Record<string, boolean>
   /** Objetivos creados en este teléfono (sin señal) que aún no bajan con el catálogo. */
   objetivosNuevos?: ObjetivoCatalogo[]
 }
@@ -98,12 +94,11 @@ export function FormAplicacionLote({
   const [comentario, setComentario] = useState(b?.comentario ?? '')
   const [verObservaciones, setVerObservaciones] = useState(Boolean(b?.comentario))
   const [editadas, setEditadas] = useState<LineaEditable[] | null>(b?.editadas ?? null)
-  const [deBodega, setDeBodega] = useState<Record<string, boolean>>(b?.deBodega ?? {})
   const [aceptada, setAceptada] = useState<string | null>(null)
   // sql/140 · Registro histórico: día pasado, sin custodia y SIN descontar la bodega (la base lo vuelve a validar)
   const [esHistorico, setEsHistorico] = useState(false)
   const [ficha, setFicha] = useState<string | null>(null)
-  useAutoguardado(borrador, { lote, categoria, fechaHora, area, objetivosPorProducto: objProducto, comentario, editadas, deBodega, objetivosNuevos })
+  useAutoguardado(borrador, { lote, categoria, fechaHora, area, objetivosPorProducto: objProducto, comentario, editadas, objetivosNuevos })
 
   const planEstacion = useMemo(() => inyeccion.plan.filter((p) => p.estacion_id === null || p.estacion_id === estacion.id), [inyeccion.plan, estacion.id])
   // Los lotes con plan en la estación salen primero y marcados; se puede elegir cualquier lote de SUS zonas (sin plan = «sin plan»)
@@ -145,13 +140,9 @@ export function FormAplicacionLote({
   )
   const lineas = editadas ?? propuestas
 
-  // 139: solo se pregunta por los productos que la estación SÍ tiene en bodega; el resto no toca el inventario
-  const tieneSaldo = (id: string) => !esHistorico && (saldos.get(id) ?? 0) > 0
+  // 143: todo se consume de la bodega de la estación (salvo el registro histórico, que no mueve inventario)
   const usaLinea = (l: LineaEditable) => Boolean(l.material_id) && num(l.cantidad || '0') > 0
-  const deLaBodega = (l: LineaEditable) => tieneSaldo(l.material_id) && deBodega[l.material_id] === true
-  const sinResponder = lineas.filter((l) => usaLinea(l) && tieneSaldo(l.material_id) && deBodega[l.material_id] === undefined)
-  // Falta inventario solo cuando dijo «lo tomé de la bodega» y no alcanza
-  const faltante = lineas.filter((l) => usaLinea(l) && deLaBodega(l) && num(l.cantidad) > (saldos.get(l.material_id) ?? 0))
+  const faltante = esHistorico ? [] : lineas.filter((l) => usaLinea(l) && num(l.cantidad) > (saldos.get(l.material_id) ?? 0))
   const firmaFaltante = faltante.map((l) => `${l.material_id}:${l.cantidad.trim()}`).join('|')
   const aceptaNegativo = faltante.length > 0 && aceptada === firmaFaltante
   const nombre = (id: string) => tecnico(id)?.descripcion ?? 'producto'
@@ -191,9 +182,6 @@ export function FormAplicacionLote({
         // El objetivo es de CADA producto
         const sinObjetivo = r.lineas.filter((l) => objetivosDe(l.material_id).length === 0)
         if (sinObjetivo.length) return `Elige el objetivo de: ${[...new Set(sinObjetivo.map((l) => nombre(l.material_id)))].join(', ')}.`
-        if (sinResponder.length) {
-          return `Responde si lo tomaste de la bodega de la estación: ${[...new Set(sinResponder.map((l) => nombre(l.material_id)))].join(', ')}.`
-        }
         if (faltante.length && !aceptaNegativo) {
           return 'No hay inventario suficiente para algún producto. Marca la casilla roja de abajo (sobre el botón Guardar) para confirmar que de verdad se aplicó, o corrige la cantidad.'
         }
@@ -214,7 +202,7 @@ export function FormAplicacionLote({
           sinInventario: faltante.length > 0,
           lineas: r.lineas.map((l) => ({
             ...l,
-            de_bodega: tieneSaldo(l.material_id) && deBodega[l.material_id] === true,
+            de_bodega: !esHistorico,
             objetivos: objetivosParaEnviar(objetivosDe(l.material_id), todosObjetivos),
           })),
           fechaHora: fh,
@@ -371,8 +359,6 @@ export function FormAplicacionLote({
             if (!l.material_id) return null
             const t = tecnico(l.material_id)
             const dosis = l.cantidad.trim() ? dosisPorMz(num(l.cantidad), areaNum) : null
-            const pregunta = tieneSaldo(l.material_id) && num(l.cantidad || '0') > 0
-            const respuesta = deBodega[l.material_id]
             const propios = objetivosDe(l.material_id)
             const otrosSinObjetivo = lineas.filter((x) => x.material_id && x.material_id !== l.material_id && objetivosDe(x.material_id).length === 0).length
             const delPlan = datosPlan.get(l.material_id)
@@ -400,31 +386,6 @@ export function FormAplicacionLote({
                     </button>
                   )}
                 </div>
-                {pregunta && (
-                  <div className="mt-2 rounded-xl bg-slate-50 p-2.5 ring-1 ring-inset ring-slate-200" role="group" aria-label="¿De dónde salió el producto?" data-pregunta-bodega={l.material_id}>
-                    <p className="mb-1.5 text-xs font-semibold text-slate-700">
-                      Hay {cantidad(saldos.get(l.material_id) ?? 0)} {t?.unidad ?? ''} en la estación. ¿Lo tomaste de ahí?
-                    </p>
-                    <div className="grid grid-cols-2 gap-2">
-                      {([[true, 'Sí, de la bodega', 'si'], [false, 'No, vino aparte', 'no']] as const).map(([valor, texto, clave]) => (
-                        <button
-                          key={clave}
-                          type="button"
-                          aria-pressed={respuesta === valor}
-                          data-de-bodega={clave}
-                          onClick={() => setDeBodega((x) => ({ ...x, [l.material_id]: valor }))}
-                          className={`min-h-11 rounded-xl px-3 py-2 text-sm font-semibold leading-tight ring-1 ring-inset transition-colors ${
-                            respuesta === valor ? 'bg-brand-700 text-white ring-brand-700' : 'bg-white text-slate-700 ring-slate-300'
-                          }`}
-                        >
-                          {respuesta === valor ? '✓ ' : ''}
-                          {texto}
-                        </button>
-                      ))}
-                    </div>
-                    {respuesta === undefined && <p className="mt-1.5 text-xs font-semibold text-amber-700">Elige una respuesta para poder guardar.</p>}
-                  </div>
-                )}
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-slate-600">
                   {dosis !== null && (
                     <span data-dosis-mz>

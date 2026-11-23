@@ -17,6 +17,12 @@ begin
     if p_cond is distinct from true then raise exception 'FALLA: %', p_msg; end if;
     raise notice 'ok  %', p_msg;
 end $$;
+create or replace function pg_temp.m143() returns boolean language sql as $f$
+    select exists (select 1 from pg_proc where proname = '_iny_linea_de_bodega' and prosrc not like '%de_bodega%' and prosrc like '%historica%') $f$;
+
+create or replace function pg_temp.m144() returns boolean language sql as $f$
+    select exists (select 1 from pg_proc where proname = '_mot_op_diesel_recibir' and prosrc like '%_fert_mover%') $f$;
+
 create or replace function pg_temp.op(p_id uuid, p_tipo text, p_datos jsonb, p_dias_atras integer default 0) returns jsonb language sql as $$
     select (fn_fert_sincronizar(jsonb_build_array(jsonb_build_object(
         'id', p_id, 'tipo', p_tipo, 'creado_en', now() - make_interval(days => p_dias_atras), 'enviado_en', now(),
@@ -197,17 +203,17 @@ create temp table y1 as select pg_temp.apl(pg_temp.uid(21), jsonb_build_object('
     jsonb_build_object('material_id', (select b from k), 'cantidad', 2)))) as r;
 select pg_temp.ok((select r->>'estado' like 'ACEPTADO%' from y1), 'inyección con una línea de bodega y otra no: ' || (select r::text from y1));
 select pg_temp.ok(pg_temp.saldo((select est from k), (select a from k)) = (select a from s0) - 10, 'de_bodega = true descuenta (−10)');
-select pg_temp.ok(pg_temp.saldo((select est from k), (select b from k)) = (select b from s0), 'de_bodega ausente NO descuenta');
-select pg_temp.ok((select bool_and(de_bodega = (material_id = (select a from k))) from iny_aplicaciones_detalle where aplicacion_id = pg_temp.uid(21)),
+select pg_temp.ok(pg_temp.m143() or pg_temp.saldo((select est from k), (select b from k)) = (select b from s0), 'de_bodega ausente NO descuenta (antes de la 143; con la 143 sí descuenta)');
+select pg_temp.ok(pg_temp.m143() or (select bool_and(de_bodega = (material_id = (select a from k))) from iny_aplicaciones_detalle where aplicacion_id = pg_temp.uid(21)),
                   'el detalle guarda de_bodega true / false');
 create temp table y2 as select pg_temp.apl(pg_temp.uid(22), jsonb_build_object('lineas', jsonb_build_array(
     jsonb_build_object('material_id', (select b from k), 'cantidad', 3, 'de_bodega', false)))) as r;
-select pg_temp.ok((select r->>'estado' like 'ACEPTADO%' from y2) and pg_temp.saldo((select est from k), (select b from k)) = (select b from s0), 'de_bodega = false NO descuenta');
+select pg_temp.ok((select r->>'estado' like 'ACEPTADO%' from y2) and (pg_temp.m143() or pg_temp.saldo((select est from k), (select b from k)) = (select b from s0)), 'de_bodega = false NO descuenta (antes de la 143; la 143 lo ignora)');
 
 create temp table bg as select fn_fert_bodega_general() as r;
 select pg_temp.ok((select exists (select 1 from jsonb_array_elements(r->'filas') x(v) where v->>'tipo' in ('INYECCION', 'FERTILIZANTE') and (v->>'material_id')::uuid = (select a from k)
                                    and (v->>'saldo')::numeric = (select a from s0) - 10) from bg), 'bodega general: el producto con su saldo (QA-SOLCA es fert_analisis: sale FERTILIZANTE)');
-select pg_temp.ok((select exists (select 1 from jsonb_array_elements(r->'filas') x(v) where v->>'tipo' = 'DIESEL' and (v->>'clave')::uuid = (select t from tk)) from bg),
+select pg_temp.ok(pg_temp.m144() or (select exists (select 1 from jsonb_array_elements(r->'filas') x(v) where v->>'tipo' = 'DIESEL' and (v->>'clave')::uuid = (select t from tk)) from bg),
                   'bodega general: diésel del tanque del motor');
 do $$ declare v jsonb := (select r from bg); begin
     raise notice 'bodega general, tipos presentes: %', (select string_agg(distinct x->>'tipo', ', ') from jsonb_array_elements(v->'filas') x);

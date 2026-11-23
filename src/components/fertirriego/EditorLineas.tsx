@@ -83,7 +83,12 @@ export function EditorLineas({
 }) {
   const unidad = (id: string) => materiales.find((m) => m.id === id)?.unidad ?? ''
   const usados = new Set(lineas.map((l) => l.material_id))
-  const todas = opcionesPorClase(materiales)
+  // Con plan (Inyección): primero los productos del plan, marcados «Del plan»; después TODOS los demás para buscarlos (se puede aplicar sin plan)
+  const base = opcionesPorClase(materiales)
+  const todas = plan && plan.size > 0
+    ? [...base.filter((o) => plan.has(o.id)).map((o) => ({ ...o, grupo: 'Del plan', destacado: true })),
+       ...base.filter((o) => !plan.has(o.id)).map((o) => ({ ...o, grupo: 'Otros productos (buscar)', destacado: false }))]
+    : base
   const opcionesDe = (actual: string) => todas.filter((o) => o.id === actual || !usados.has(o.id))
 
   function cambiar(clave: string, cambios: Partial<LineaEditable>) {

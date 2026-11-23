@@ -14,7 +14,7 @@ import { claveBorrador, useAutoguardado, useBorrador } from '@/lib/fertirriego/b
 import { crearOperacion } from '@/lib/fertirriego/operaciones'
 import type { Estacion, Operacion, Persona, PermisoHistorico } from '@/lib/fertirriego/tipos'
 import type { EstadoMotores, MotorEstacion, OperacionPendienteMotor } from '@/lib/motores/estado'
-import { armarRegistroDiario, avisosContinuidad, calcularRegistro, proponerInicial, recibidoDelDia } from '@/lib/motores/registroDiario'
+import { armarRegistroDiario, avisosContinuidad, calcularRegistro, proponerInicial } from '@/lib/motores/registroDiario'
 import { MarcoRegistro } from '@/components/fertirriego/MarcoRegistro'
 
 type Datos = {
@@ -28,6 +28,7 @@ type Datos = {
   visorCambiado: boolean
   noTrabajo: boolean
   comentario: string
+  suministro?: string
 }
 
 const num = (t: string): number | null => {
@@ -71,6 +72,8 @@ export function FormRegistroMotor({
   estacion,
   yo,
   historico,
+  bodegaDiesel,
+  dieselMaterialId,
   registrar,
   onAbrirRecibir,
   onCerrar,
@@ -83,8 +86,12 @@ export function FormRegistroMotor({
   yo: Persona
   /** sql/140: permiso temporal «Registro histórico» de esta estación (si lo tiene, se ofrece la casilla). */
   historico?: PermisoHistorico | null
+  /** sql/144: el diésel en la bodega de la estación (con lo pendiente de enviar); null = no se sabe todavía. */
+  bodegaDiesel: number | null
+  /** El producto diésel de AGL (para rebajar la bodega local al guardar). */
+  dieselMaterialId: string | null
   registrar: (...ops: Operacion[]) => Promise<void>
-  /** «Recibí diésel hoy»: abre la misma operación de recibir. */
+  /** «Recibir diésel»: abre la recepción a la bodega de la estación. */
   onAbrirRecibir: () => void
   onCerrar: () => void
   onGuardado: (m: string) => void
@@ -101,9 +108,12 @@ export function FormRegistroMotor({
   const [visorCambiado, setVisorCambiado] = useState(b?.visorCambiado ?? false)
   const [noTrabajo, setNoTrabajo] = useState(b?.noTrabajo ?? false)
   const [comentario, setComentario] = useState(b?.comentario ?? '')
+  const [suministro, setSuministro] = useState(b?.suministro ?? '')
+  // Confirmación de «sin inventario»: atada a lo que se confirmó (si cambia el suministro, hay que confirmar de nuevo)
+  const [aceptada, setAceptada] = useState<string | null>(null)
   // sql/140 · Registro histórico: día pasado, sin custodia y SIN mover el diésel del tanque (la base lo vuelve a validar)
   const [esHistorico, setEsHistorico] = useState(false)
-  useAutoguardado(borrador, { fecha, horoIni, horoFin, visorIni, visorFin, rpm, horoCambiado, visorCambiado, noTrabajo, comentario })
+  useAutoguardado(borrador, { fecha, horoIni, horoFin, visorIni, visorFin, rpm, horoCambiado, visorCambiado, noTrabajo, comentario, suministro })
 
   // El inicial propuesto es la lectura final del último registro ANTERIOR a esta fecha (cola incluida)
   const propuesta = useMemo(() => proponerInicial({ equipoId: motor.equipo_id, fecha, estado, pendientes }), [motor.equipo_id, fecha, estado, pendientes])
@@ -113,7 +123,11 @@ export function FormRegistroMotor({
   const visorFinEf = noTrabajo ? visorIniTxt : visorFin
 
   const tanqueId = motor.tanque?.id ?? ''
-  const recibido = useMemo(() => recibidoDelDia({ tanqueId, fecha, recepciones: estado.recepciones, pendientes }), [tanqueId, fecha, estado.recepciones, pendientes])
+  // sql/144: el suministro de combustible del día sale de la bodega de la estación y sube el tanque
+  const recibido = Math.max(num(suministro) ?? 0, 0)
+  const falta = !esHistorico && recibido > 0 && bodegaDiesel !== null && recibido > bodegaDiesel + 0.0001
+  const firmaFalta = falta ? `${recibido}|${bodegaDiesel}` : ''
+  const aceptaNegativo = falta && aceptada === firmaFalta
   const calc = calcularRegistro(
     { horoIni: num(horoIniTxt), horoFin: num(horoFinEf), visorIni: num(visorIniTxt), visorFin: num(visorFinEf), recibido },
     { horoCambiado }
@@ -124,6 +138,15 @@ export function FormRegistroMotor({
 
   const avisoPie = (
     <div className="flex flex-col gap-1" data-avisos-registro>
+      {falta && (
+        <label className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-900 ring-1 ring-inset ring-red-300" role="alert" data-alerta-sin-inventario>
+          <input type="checkbox" checked={aceptaNegativo} onChange={(e) => setAceptada(e.target.checked ? firmaFalta : null)} className="h-6 w-6 shrink-0" data-acepta-negativo />
+          <span className="min-w-0 flex-1 break-words leading-snug">
+            <strong>Sin inventario</strong>: en la bodega hay {bodegaDiesel} gal y suministras {recibido}.{' '}
+            <span className="font-semibold">Marca para confirmar que sí se suministró.</span>
+          </span>
+        </label>
+      )}
       {propuesta.origen && propuesta.fechaBase && (
         <p className="text-xs text-slate-600">
           Continúa del registro del {fmtFecha(propuesta.fechaBase).slice(0, 5)} ({ORIGEN[propuesta.origen]}).
@@ -163,6 +186,7 @@ export function FormRegistroMotor({
         if (!fecha) return 'Indica la fecha del registro.'
         if (esHistorico && fecha >= hoy) return 'El registro histórico es solo de días pasados: elige un día anterior a hoy.'
         if (!completo) return 'Escribe un número válido.'
+        if (falta && !aceptaNegativo) return 'No hay diésel suficiente en la bodega. Marca la casilla roja de abajo para confirmar que sí se suministró, o corrige el suministro (o primero recibe el diésel).'
         const rpmNum = rpm.trim() ? num(rpm) : null
         if (rpm.trim() && rpmNum === null) return 'Las revoluciones deben estar entre 0 y 6000.'
         const a = armarRegistroDiario({
@@ -179,12 +203,13 @@ export function FormRegistroMotor({
           comentario,
           estacionId: estacion.id,
           tanqueId: tanqueId || undefined,
-          recibido,
+          suministro: recibido,
+          dieselMaterialId,
           hoy,
         })
         if ('error' in a) return a.error
         return [
-          crearOperacion('motor_registro_diario', esHistorico ? { ...a.datos, historica: true } : a.datos, {
+          crearOperacion('motor_registro_diario', { ...a.datos, ...(esHistorico ? { historica: true } : {}), ...(aceptaNegativo ? { acepta_negativo: true } : {}) }, {
             ubicacion,
             enNombreDe,
             resumen: `${esHistorico ? 'Registro HISTÓRICO' : 'Registro diario'} · ${motor.codigo} · ${fmtFecha(fecha).slice(0, 5)}${calc.horas !== null ? ` · ${calc.horas} h` : ''}`,
@@ -272,14 +297,19 @@ export function FormRegistroMotor({
         <Calculado etiqueta="Rendimiento gal/h" valor={calc.rendimiento === null ? '—' : String(calc.rendimiento)} dato="data-rendimiento" />
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2 text-sm" data-recibido-dia>
-        <span className="text-slate-700">
-          Diésel recibido ese día: <strong>{recibido} gal</strong>
-        </span>
-        <button type="button" onClick={onAbrirRecibir} className="min-h-11 rounded-lg px-3 text-sm font-semibold text-brand-700 underline" data-recibi-diesel>
-          Recibí diésel hoy
-        </button>
-      </div>
+      <Campo etiqueta="Suministro de combustible (gal)">
+        <div className="flex flex-wrap items-center gap-3" data-suministro-dia>
+          <div className="w-32">
+            <CajaNumero valor={suministro} onCambiar={setSuministro} dato="data-suministro" etiqueta="Suministro de combustible" />
+          </div>
+          <span className="text-xs text-slate-600" data-bodega-diesel>
+            {esHistorico ? 'El histórico no mueve la bodega.' : bodegaDiesel === null ? 'Sale de la bodega de la estación.' : `En bodega: ${bodegaDiesel} gal (sale de ahí)`}
+          </span>
+          <button type="button" onClick={onAbrirRecibir} className="min-h-11 rounded-lg px-3 text-sm font-semibold text-brand-700 underline" data-recibi-diesel>
+            Recibir diésel
+          </button>
+        </div>
+      </Campo>
 
       <div className="flex flex-col gap-1">
         <label className="flex min-h-11 items-center gap-3 text-sm text-slate-800">

@@ -1,11 +1,12 @@
 /**
  * Registro diario del motor (hoja FTR_F-MA-103), cuentas puras: horas, galones gastados, rendimiento, continuidad del
  * horómetro y del visor, y el armado de las operaciones. Sin React ni red. Las mismas fórmulas que la base (sql/130):
- *   horas = horómetro final − inicial · gastado = visor inicial − visor final + recibido ese día · rendimiento = gastado ÷ horas.
+ *   horas = horómetro final − inicial · gastado = visor inicial − visor final + suministro del día · rendimiento = gastado ÷ horas.
+ * El suministro de combustible (campo de la hoja) sale de la bodega de la estación y sube el tanque del motor (sql/144).
  * Las fechas son de Honduras (UTC-6): se registran jornadas de ayer o anteriores, nunca se asume «hoy».
  */
 
-import type { EstadoMotores, OperacionPendienteMotor, RecepcionMotor } from './estado'
+import type { EstadoMotores, OperacionPendienteMotor } from './estado'
 
 /** Día (AAAA-MM-DD) en Honduras (UTC-6) de un instante ISO. (Igual que en estado.ts: aquí no se importa para que las pruebas con Node carguen el archivo suelto.) */
 function diaLocal(iso: string): string {
@@ -13,7 +14,7 @@ function diaLocal(iso: string): string {
   return Number.isFinite(t) ? new Date(t - 6 * 3600_000).toISOString().slice(0, 10) : iso.slice(0, 10)
 }
 
-export type DatosRegistro = { horoIni: number | null; horoFin: number | null; visorIni: number | null; visorFin: number | null; recibido: number }
+export type DatosRegistro = { horoIni: number | null; horoFin: number | null; visorIni: number | null; visorFin: number | null; recibido: number }  // `recibido` = suministro de combustible del día
 
 const r2 = (n: number) => Math.round(n * 100) / 100
 const esNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
@@ -42,7 +43,7 @@ export function calcularRegistro(
     }
   }
   const gastado = r2((d.visorIni as number) - (d.visorFin as number) + d.recibido)
-  if (gastado < 0) errores.push('El visor final es mayor que el inicial y no hay diésel recibido ese día: registra la recepción o corrige la lectura.')
+  if (gastado < 0) errores.push('El visor final es mayor que el inicial y no anotaste suministro de combustible ese día: escríbelo o corrige la lectura.')
   const rendimiento = horas > 0 && gastado >= 0 ? r2(gastado / horas) : null
   if (horas === 0 && gastado > 0) avisos.push('Gastó diésel sin horas de trabajo.')
   return { horas, gastado, rendimiento, errores, avisos }
@@ -95,17 +96,6 @@ export function avisosContinuidad(args: {
   return out
 }
 
-/** Lo recibido en el tanque ese día (hora de Honduras): lo que ya está en la base más lo que está en cola, sin anuladas. */
-export function recibidoDelDia(args: { tanqueId: string; fecha: string; recepciones: RecepcionMotor[]; pendientes: OperacionPendienteMotor[] }): number {
-  let t = 0
-  for (const r of args.recepciones) if (r.tanque_id === args.tanqueId && !r.anulado_at && diaLocal(r.fecha_hora) === args.fecha) t += r.galones
-  for (const o of args.pendientes) {
-    if (o.estado_local !== 'PENDIENTE' || o.tipo !== 'diesel_recibir' || o.datos.tanque_id !== args.tanqueId) continue
-    if (diaLocal(String(o.datos.fecha_hora ?? o.creado_en ?? '')) === args.fecha) t += numero(o.datos.galones)
-  }
-  return r2(t)
-}
-
 export function armarRegistroDiario(args: {
   equipoId: string
   fecha: string
@@ -120,17 +110,20 @@ export function armarRegistroDiario(args: {
   comentario: string
   estacionId?: string
   tanqueId?: string
-  /** Lo recibido ese día en el tanque, para guardar el consumo estimado en el teléfono (la base lo vuelve a calcular). */
-  recibido?: number
+  /** Suministro de combustible del día (galones que pasaron de la bodega al tanque). Baja la bodega de la estación (sql/144). */
+  suministro?: number
+  /** El diésel de la bodega (producto de AGL): solo para que el teléfono rebaje su saldo local antes de enviar. */
+  dieselMaterialId?: string | null
   hoy?: string
 }): { datos: Record<string, unknown> } | { error: string } {
   if (![args.horoIni, args.horoFin, args.visorIni, args.visorFin].every(esNum)) return { error: 'Escribe un número válido.' }
+  if (args.suministro !== undefined && (!esNum(args.suministro) || args.suministro < 0)) return { error: 'El suministro de combustible no es válido.' }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(args.fecha)) return { error: 'Indica la fecha del registro.' }
   if (args.fecha > (args.hoy ?? hoyHonduras())) return { error: 'La fecha no puede ser posterior a hoy.' }
   if ((args.horoCambiado || args.visorCambiado) && !args.comentario.trim()) return { error: 'Explica el cambio del horómetro o del visor en las observaciones.' }
   if (args.rpm !== null && (!esNum(args.rpm) || args.rpm < 0 || args.rpm > 6000)) return { error: 'Las revoluciones deben estar entre 0 y 6000.' }
   const c = calcularRegistro(
-    { horoIni: args.horoIni, horoFin: args.horoFin, visorIni: args.visorIni, visorFin: args.visorFin, recibido: args.recibido ?? 0 },
+    { horoIni: args.horoIni, horoFin: args.horoFin, visorIni: args.visorIni, visorFin: args.visorFin, recibido: args.suministro ?? 0 },
     { horoCambiado: args.horoCambiado }
   )
   if (c.errores.length) return { error: c.errores[0] }
@@ -149,38 +142,35 @@ export function armarRegistroDiario(args: {
       horo_cambiado: args.horoCambiado,
       visor_cambiado: args.visorCambiado,
       comentario: args.comentario.trim() || null,
+      suministro_gal: args.suministro && args.suministro > 0 ? args.suministro : undefined,
+      diesel_material_id: args.suministro && args.suministro > 0 ? (args.dieselMaterialId ?? undefined) : undefined,
       gastado_local: c.gastado,
     },
   }
 }
 
+/** Recibir diésel = entra a la bodega de la estación como un producto más (sql/144): sin tanque, sin motor. */
 export function armarRecepcionDiesel(args: {
-  tanqueId: string
+  estacionId: string
   galones: number
   fechaHora: string
   choferId: string | null
   vehiculoId: string | null
   comentario: string
-  estacionId?: string
-  capacidadGal?: number | null
-  saldoActual?: number
-}): { datos: Record<string, unknown>; aviso?: string } | { error: string } {
+  /** El diésel de la bodega (producto de AGL): para que el teléfono suba su saldo local antes de enviar. */
+  dieselMaterialId?: string | null
+}): { datos: Record<string, unknown> } | { error: string } {
   if (!esNum(args.galones) || args.galones <= 0) return { error: 'Indica los galones recibidos.' }
-  const aviso =
-    args.capacidadGal && args.saldoActual !== undefined && args.saldoActual + args.galones > args.capacidadGal + 0.0001
-      ? `Con esto el tanque pasa de su capacidad (${args.capacidadGal} gal).`
-      : undefined
   return {
     datos: {
-      tanque_id: args.tanqueId,
       estacion_id: args.estacionId,
       galones: args.galones,
       fecha_hora: args.fechaHora,
       chofer_id: args.choferId,
       vehiculo_id: args.vehiculoId,
       comentario: args.comentario.trim() || null,
+      diesel_material_id: args.dieselMaterialId ?? undefined,
     },
-    aviso,
   }
 }
 
