@@ -51,6 +51,8 @@ y baja lo que el campo registra. Lo terminado se baja a AGL, se verifica (sha256
 - **Si una prueba falla en Opus:** Opus NO reescribe código extenso. Devuelve el error exacto y la línea que falló al
   orquestador para que **Sonnet** aplique el fix. Luego Opus re-ejecuta *únicamente* la prueba que falló, no toda la suite.
 
+**Catálogos únicos (regla del usuario, 2026-11-22; no debe volver a pasar):** todo campo que ya tiene catálogo (lotes, equipos, estaciones, materiales/MARA, turnos, choferes y vehículos, temporadas, zonas…) se llena SIEMPRE desde él; prohibido crear listas paralelas, listas fijas en el código o texto libre donde hay catálogo; se guarda el id (FK) y se valida en la base. Si falta un valor, se agrega al catálogo existente (AGL es el dueño) con control de duplicados. Va en el Review Focus de cada plan, en el brief de cada subagente y en la revisión de Opus.
+
 **Reglas operativas:**
 - Cada encargo a un subagente lleva `model` explícito. Ante la duda entre dos niveles, usar el más barato.
 - Briefs cortos que apunten a rutas de archivos en vez de pegar código. Pocos agentes a la vez. No releer lo que ya está en contexto.
