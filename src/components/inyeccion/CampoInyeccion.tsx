@@ -20,6 +20,7 @@ import { EncabezadoEnvios } from '@/components/fertirriego/EncabezadoEnvios'
 import type { Operacion } from '@/lib/fertirriego/tipos'
 import { useInyeccion } from '@/lib/inyeccion/useInyeccion'
 import { permisoHistoricoDe, useCampoExtras } from '@/lib/campo/useCampoExtras'
+import { AvisoModoPruebas } from '@/components/campo/AvisoModoPruebas'
 import { FichaProducto } from './FichaProducto'
 import { FormAplicacionLote } from './FormAplicacionLote'
 import { VistaHistorialInyeccion } from './VistaHistorialInyeccion'
@@ -154,6 +155,7 @@ export function CampoInyeccion({ usuarioId }: { usuarioId: string }) {
               />
             </div>
           )}
+          <AvisoModoPruebas estacionNombre={estacion.nombre} />
           <div className="flex flex-wrap items-baseline justify-between gap-x-2">
             <h1 className="text-xl font-bold tracking-tight text-slate-900" data-estacion={estacion.nombre}>
               Inyección · {estacion.nombre}

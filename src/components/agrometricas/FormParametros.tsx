@@ -256,10 +256,12 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
       mostrar('El teléfono no tiene espacio para guardar (¿muchas fotos sin enviar?). Busca señal para enviar.', 'error')
       return
     }
-    // Lo guardado queda en pantalla para seguir editando: no se limpia nada
+    // Lo guardado se limpia de las cajas (queda como texto gris «Guardado: X») para que no parezca pendiente ni se vuelva a mandar
+    const guardadosAhora = Object.keys({ ...numeros, ...clima })
+    if (guardadosAhora.length) setValores((v) => Object.fromEntries(Object.entries(v).filter(([k]) => !guardadosAhora.includes(k))))
     setGuardados((g) => ({ ...g, ...Object.fromEntries(Object.entries({ ...numeros, ...clima }).map(([k, v]) => [k, String(v)])) }))
     if (nota) setComentarioGuardado(nota)
-    if (hojasNuevas != null) { setHojasICGuardadas(String(hojasNuevas)); setCorregirIC(false) }
+    if (hojasNuevas != null) { setHojasICGuardadas(String(hojasNuevas)); setHojasIC(''); setCorregirIC(false) }
     if (foto) { setFoto(null); setFotoGuardada(true) }
     mostrar(navigator.onLine ? `Registrado: ${turno.turno} · ${fecha}` : 'Registrado en el teléfono. Se enviará al volver la señal.')
     refrescarCola()

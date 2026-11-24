@@ -54,6 +54,7 @@ import { VistaEnvios } from './VistaEnvios'
 import { VistaRelevos } from './VistaRelevos'
 import { VistaTraslados } from './VistaTraslados'
 import { VistaTurnos } from './VistaTurnos'
+import { AvisoModoPruebas } from '@/components/campo/AvisoModoPruebas'
 
 type Pestana = 'estacion' | 'turnos' | 'bitacora' | 'relevos' | 'traslados'
 type Ventana =
@@ -359,12 +360,7 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
                 />
               </div>
             )}
-            {estacion.nombre.startsWith('PRUEBA · ') && (
-              // 98: estación de prueba (la crea el modo de pruebas con ese prefijo)
-              <div className="rounded-xl bg-amber-100 px-3 py-2 text-sm font-bold text-amber-900 ring-1 ring-inset ring-amber-300" data-modo-prueba>
-                MODO PRUEBA · Lo que registres aquí es de práctica: no cuenta y se borrará.
-              </div>
-            )}
+            <AvisoModoPruebas estacionNombre={estacion.nombre} />
             <div className="flex flex-wrap items-baseline justify-between gap-x-2">
               <h1 className="text-xl font-bold tracking-tight text-slate-900" data-estacion={estacion.nombre}>
                 {estacion.nombre}
