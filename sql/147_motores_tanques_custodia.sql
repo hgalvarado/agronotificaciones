@@ -68,6 +68,13 @@ alter table public.mot_registros add column if not exists caudal_fin    numeric(
 alter table public.mot_registros add column if not exists operador      text;
 alter table public.mot_registros add column if not exists dif_visor_gal numeric(12,2);
 alter table public.mot_registros add column if not exists custodia_id   uuid;
+alter table public.mot_registros add column if not exists horas_estimadas numeric(10,2) check (horas_estimadas is null or horas_estimadas >= 0);
+alter table public.mot_registros add column if not exists rend_ref_gal_h  numeric(10,2);
+alter table public.mot_motores   add column if not exists horas_est_desde_mant numeric not null default 0;
+comment on column public.mot_registros.horas_estimadas is
+    '147: horas ESTIMADAS (gastado / rendimiento de referencia del motor) cuando el horómetro no avanzó pero hubo consumo. Solo suman al mantenimiento; NUNCA al horómetro. null = no aplica.';
+comment on column public.mot_registros.rend_ref_gal_h is '147: rendimiento de referencia (mediana de los últimos 30 días del motor) con que se estimaron las horas.';
+comment on column public.mot_motores.horas_est_desde_mant is '147: parte de horas_desde_mant que es ESTIMADA (días sin avance de horómetro con consumo).';
 comment on column public.mot_registros.dif_visor_gal is
     '147: visor inicial menos el saldo del libro del tanque antes del consumo. Negativo = faltan galones; positivo = sobran. null = primer día o histórico.';
 comment on column public.mot_registros.recibido_gal is
@@ -134,9 +141,18 @@ begin
     end loop;
 end $$;
 
+create or replace function public._mot_ests_visibles()
+returns uuid[] language sql stable security definer set search_path = public, pg_temp as $$
+    select coalesce(array_agg(e.id), '{}'::uuid[]) from public.estaciones_riego e where public.fn_fert_puede(e.id, 'ver')
+$$;
+revoke execute on function public._mot_ests_visibles() from public, anon;
+grant  execute on function public._mot_ests_visibles() to authenticated;
+
+-- (el arreglo de estaciones visibles se calcula una vez por consulta con el subselect; no se llama fn_fert_puede por fila)
 create policy fert_leer on public.mot_custodias for select to authenticated
-    using (public.fn_es_admin() or public.fn_tiene_permiso('motores', 'auditar')
-           or (public.fn_tiene_permiso('motores', 'ver') and estacion_id is not null and public.fn_fert_puede(estacion_id, 'ver')));
+    using ((select public.fn_es_admin()) or (select public.fn_tiene_permiso('motores', 'auditar'))
+           or ((select public.fn_tiene_permiso('motores', 'ver')) and estacion_id is not null
+               and estacion_id = any((select public._mot_ests_visibles()))));
 create policy fert_leer on public.mot_tanque_historial for select to authenticated
     using (public.fn_es_admin() or public.fn_tiene_permiso('motores', 'auditar') or public.fn_tiene_permiso('motores', 'configurar'));
 
@@ -242,7 +258,19 @@ begin
         if v_n <> 1 then v_est := null; end if;
 
         select t.id into v_id from public.mot_tanques t where t.activo and public._mot_norm(t.nombre) = public._mot_norm(x.nombre) limit 1;
-        if v_id is null then
+        if v_id is not null and not exists (select 1 from public.mot_tanque_historial h where h.tanque_id = v_id and h.motivo like '147:%') then
+            -- tanque que ya existía (de la 130, p. ej. «PAPALON-1 »): se ADOPTA una sola vez con los datos del catálogo sembrado
+            -- (capacidad; zona y estación si faltan y coinciden). Las correcciones que se hagan después con fn_mot_tanque_guardar no se pisan.
+            update public.mot_tanques
+               set capacidad_gal = x.cap,
+                   zona_id = coalesce(zona_id, v_zona),
+                   estacion_id = coalesce(estacion_id, v_est),
+                   asignado_at = case when estacion_id is null and v_est is not null then now() else asignado_at end
+             where id = v_id;
+            insert into public.mot_tanque_historial (tanque_id, estacion_antes, estacion_nueva, motivo)
+            values (v_id, (select t2.estacion_id from public.mot_tanques t2 where t2.id = v_id), (select t2.estacion_id from public.mot_tanques t2 where t2.id = v_id),
+                    '147: adoptado del catálogo sembrado (capacidad ' || x.cap || ' gal)');
+        elsif v_id is null then
             insert into public.mot_tanques (estacion_id, nombre, capacidad_gal, zona_id, asignado_at)
             values (v_est, x.nombre, x.cap, v_zona, case when v_est is not null then now() end)
             returning id into v_id;
@@ -250,14 +278,53 @@ begin
                 insert into public.mot_tanque_historial (tanque_id, estacion_antes, estacion_nueva, motivo)
                 values (v_id, null, v_est, '147: siembra inicial (el nombre coincide con la estación)');
             end if;
-        else
-            -- ya existía (de la 130 o de una corrida anterior): solo se completan los datos que faltan, sin tocar lo ya asignado
-            update public.mot_tanques
-               set zona_id = coalesce(zona_id, v_zona), capacidad_gal = coalesce(capacidad_gal, x.cap)
-             where id = v_id and (zona_id is null or capacidad_gal is null);
-        end if;
+        end if;   -- (si ya estaba sembrado/adoptado en una corrida anterior no se toca)
     end loop;
 end $$;
+
+
+/** Rendimiento de referencia (gal/h) del PROPIO motor: mediana de sus últimos 30 días con horas > 0 y consumo > 0; mínimo 5 días válidos, si no null. */
+create or replace function public._mot_rend_referencia(p_equipo uuid, p_fecha date)
+returns numeric
+language sql stable security definer set search_path = public, pg_temp as $$
+    select case when count(*) >= 5 then round((percentile_cont(0.5) within group (order by q.rendimiento_gal_h))::numeric, 2) end
+      from (select r.rendimiento_gal_h from public.mot_registros r
+             where r.equipo_id = p_equipo and r.anulado_at is null and r.fecha >= p_fecha - 30 and r.fecha < p_fecha
+               and r.horas > 0 and r.gastado_gal > 0 and r.rendimiento_gal_h is not null and r.rendimiento_gal_h > 0) q
+$$;
+revoke execute on function public._mot_rend_referencia(uuid, date) from public, anon, authenticated;
+
+/** Redefine la de la 130: las horas del mantenimiento = horómetro real + ESTIMADAS (días sin avance de horómetro con consumo). Nunca toca el horómetro. */
+create or replace function public._mot_recalcular_horas(p_equipo uuid)
+returns void
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+    m  public.mot_mantenimientos%rowtype;
+    a  public.mot_asignaciones%rowtype;
+    v_base numeric := 0;
+    v_ref  date;
+    v_incl boolean := true;
+    v_horas numeric;
+    v_est   numeric;
+begin
+    select * into m from public.mot_mantenimientos where equipo_id = p_equipo and anulado_at is null order by fecha_hora desc limit 1;
+    select * into a from public.mot_asignaciones where equipo_id = p_equipo and anulado_at is null and horas_base is not null
+     order by fecha_hora desc, creado_en desc limit 1;
+    if m.id is not null and (a.id is null or m.fecha_hora >= a.fecha_hora) then
+        v_base := 0; v_ref := public._mot_dia(m.fecha_hora); v_incl := false;
+    elsif a.id is not null then
+        v_base := a.horas_base; v_ref := public._mot_dia(a.fecha_hora); v_incl := true;
+    end if;
+    select coalesce(sum(r.horas), 0), coalesce(sum(r.horas_estimadas), 0) into v_horas, v_est
+      from public.mot_registros r
+     where r.equipo_id = p_equipo and r.anulado_at is null
+       and (v_ref is null or (case when v_incl then r.fecha >= v_ref else r.fecha > v_ref end));
+    update public.mot_motores
+       set horas_desde_mant = v_base + v_horas + v_est, horas_est_desde_mant = v_est, mant_ref_fecha = v_ref, mant_ref_incl = v_incl,
+           ultimo_mant_at = (select max(x.fecha_hora) from public.mot_mantenimientos x where x.equipo_id = p_equipo and x.anulado_at is null)
+     where equipo_id = p_equipo;
+end $$;
+revoke execute on function public._mot_recalcular_horas(uuid) from public, anon, authenticated;
 
 
 -- ---------------------------------------------------------------- 5 · semáforo de mantenimiento, estado «qué toca ahora» y señales
@@ -289,8 +356,11 @@ begin
                  when 'rojo' then format('Mantenimiento VENCIDO hace %s h (cada %s h)', trim_scale(round(-v_fal, 1))::text, v_int)
                  when 'amarillo' then format('Faltan %s h para el mantenimiento (cada %s h)', trim_scale(round(v_fal, 1))::text, v_int)
                  else format('Mantenimiento al día: faltan %s h', trim_scale(round(v_fal, 1))::text) end;
-    return jsonb_build_object('nivel', v_niv, 'horas_desde_mant', mo.horas_desde_mant, 'intervalo_horas', v_int,
-                              'faltan_horas', round(v_fal, 1), 'aviso_horas', v_av, 'texto', v_txt);
+    if mo.horas_est_desde_mant > 0 then
+        v_txt := v_txt || format(' · incluye %s h estimadas', trim_scale(round(mo.horas_est_desde_mant, 1))::text);
+    end if;
+    return jsonb_build_object('nivel', v_niv, 'horas_desde_mant', mo.horas_desde_mant, 'horas_estimadas', mo.horas_est_desde_mant,
+                              'intervalo_horas', v_int, 'faltan_horas', round(v_fal, 1), 'aviso_horas', v_av, 'texto', v_txt);
 end $$;
 revoke execute on function public._mot_semaforo(uuid) from public, anon, authenticated;
 
@@ -390,6 +460,7 @@ language sql stable security definer set search_path = public, pg_temp as $$
                lag(x.tanque_id)   over w as p_tq
           from public.mot_registros x
          where x.equipo_id = any(p_equipos) and x.anulado_at is null
+           and (p_desde is null or x.fecha >= p_desde - 60)       -- solo el contexto necesario (RENDIMIENTO con mucho historial)
         window w as (partition by x.equipo_id order by x.fecha)
     )
     select r.equipo_id, r.id, r.fecha, s.nivel, s.codigo, s.texto
@@ -446,9 +517,13 @@ language sql stable security definer set search_path = public, pg_temp as $$
                  then format('Gastó %s gal en %s h (%s gal/h). Lo normal en este motor es %s gal/h: debió gastar cerca de %s gal.',
                              trim_scale(r.gastado_gal)::text, trim_scale(r.horas)::text, trim_scale(r.rendimiento_gal_h)::text,
                              trim_scale(round(m.med::numeric, 2))::text, trim_scale(round((m.med * r.horas)::numeric, 1))::text) end),
-        ('rojo', 'CONSUMO_SIN_HORAS',
+        ('amarillo', 'HORO_SIN_AVANCE_CON_CONSUMO',
             case when r.horas = 0 and r.gastado_gal > 0
-                 then format('Gastó %s gal con 0 horas de motor.', trim_scale(r.gastado_gal)::text) end),
+                 then format('Horómetro sin avance con consumo (%s gal): no se tomó o está dañado.%s', trim_scale(r.gastado_gal)::text,
+                             case when r.horas_estimadas is not null
+                                  then format(' Se estimaron %s h solo para el mantenimiento (referencia %s gal/h); el horómetro no se modificó.',
+                                              trim_scale(r.horas_estimadas)::text, trim_scale(r.rend_ref_gal_h)::text)
+                                  else ' Sin rendimiento de referencia para estimar horas (se necesitan 5 días con horas en los últimos 30).' end) end),
         ('amarillo', 'HORAS_SIN_CONSUMO',
             case when r.horas >= 1 and r.gastado_gal = 0
                  then format('Trabajó %s h y no gastó diésel.', trim_scale(r.horas)::text) end),
@@ -637,8 +712,9 @@ begin
         end loop;
         update public.mot_tanques set motor_equipo_id = null where motor_equipo_id = v_eq and activo and id <> v_tanque;
         if v_creado_id is null and not exists (select 1 from jsonb_array_elements(v_tanques_antes) y where (y->>'id')::uuid = v_tanque) then
-            v_tanques_antes := v_tanques_antes || jsonb_build_object('id', t_dest.id, 'estacion_id', t_dest.estacion_id,
-                                                                     'motor_equipo_id', t_dest.motor_equipo_id, 'activo', t_dest.activo);
+            -- el tanque de DESTINO va PRIMERO: al anular se restaura en ese orden y no choca con el índice de un motor por tanque
+            v_tanques_antes := jsonb_build_array(jsonb_build_object('id', t_dest.id, 'estacion_id', t_dest.estacion_id,
+                                                                     'motor_equipo_id', t_dest.motor_equipo_id, 'activo', t_dest.activo)) || v_tanques_antes;
         end if;
         update public.mot_tanques set motor_equipo_id = v_eq where id = v_tanque;
         update public.mot_motores
@@ -796,6 +872,8 @@ declare
     v_hist   boolean := lower(btrim(coalesce(d->>'historica', ''))) in ('true', 't', '1');
     v_sem    jsonb;
     v_cust   uuid;
+    v_hest   numeric;          -- horas estimadas (solo mantenimiento)
+    v_ref    numeric;          -- rendimiento de referencia del motor
 begin
     -- 147:registro · marcas de parches anteriores incluidos: MOTOR_NO_ASIGNADO_EN_FECHA · 140:historica · 140:autorizar ·
     -- 140:sin-libro · 140:sin-consumo · 144:sum-calc · 144:msg · 144:sum-mov
@@ -918,6 +996,20 @@ begin
         v_obs := public._fert_obs(v_obs, array['CONSUMO_SIN_HORAS']);
     end if;
 
+    -- 147:horas-estimadas · horómetro sin avance CON consumo: se estiman horas SOLO para el mantenimiento (gastado / rendimiento de
+    -- referencia propio, 30 días, mínimo 5 días válidos). El horómetro del motor NO se toca.
+    if v_horas = 0 and v_gast > 0 then
+        v_obs := public._fert_obs(v_obs, array['HORO_SIN_AVANCE_CON_CONSUMO']);
+        v_ref := public._mot_rend_referencia(v_eq, v_fecha);
+        if v_ref is not null and v_ref > 0 then
+            v_hest := round(v_gast / v_ref, 2);
+            v_obs := public._fert_obs(v_obs, array['HORAS_ESTIMADAS']);
+        else
+            v_ref := null;
+            v_obs := public._fert_obs(v_obs, array['SIN_RENDIMIENTO_REFERENCIA']);
+        end if;
+    end if;
+
     v_cust := (select c.id from public.mot_custodias c
                 where c.equipo_id = v_eq and c.desde <= v_momento and (c.hasta is null or c.hasta > v_momento)
                 order by c.desde desc limit 1);
@@ -925,11 +1017,11 @@ begin
     insert into public.mot_registros
         (id, equipo_id, estacion_id, tanque_id, fecha, horo_ini, horo_fin, horas, visor_ini, visor_fin, recibido_gal, gastado_gal,
          rendimiento_gal_h, rpm, horo_cambiado, visor_cambiado, comentario, registrado_por, fecha_hora,
-         caudal_ini, caudal_fin, operador, custodia_id)
+         caudal_ini, caudal_fin, operador, custodia_id, horas_estimadas, rend_ref_gal_h)
     values
         (p_id, v_eq, v_est, v_tanque, v_fecha, v_hi, v_hf, v_horas, v_vi, v_vf, v_recib, v_gast,
          v_rend, v_rpm, v_hc, v_vc, v_coment, (select auth.uid()), v_fh,
-         v_ci, v_cf, v_oper, v_cust);
+         v_ci, v_cf, v_oper, v_cust, v_hest, case when v_hest is not null then v_ref end);
 
     -- libro del tanque: el suministro declarado sin recepción lo SUBE (nunca baja la bodega); 140:sin-libro / 140:sin-consumo:
     -- un histórico no mueve nada.
@@ -969,7 +1061,8 @@ begin
        set horo_ultimo = case when v_reciente then v_hf else horo_ultimo end,
            visor_ultimo = case when v_reciente then v_vf else visor_ultimo end,
            fecha_ultimo = case when v_reciente then v_fecha else fecha_ultimo end,
-           horas_desde_mant = horas_desde_mant + case when v_cuenta then v_horas else 0 end
+           horas_desde_mant = horas_desde_mant + case when v_cuenta then v_horas + coalesce(v_hest, 0) else 0 end,
+           horas_est_desde_mant = horas_est_desde_mant + case when v_cuenta then coalesce(v_hest, 0) else 0 end
      where equipo_id = v_eq;
 
     v_sem := public._mot_semaforo(v_eq);
@@ -1007,53 +1100,190 @@ begin
     end;
 end $$;
 
--- 9a · lo que baja el teléfono: ayudas visuales, tanques, tramos y señales
-select pg_temp.parchar('public.fn_mot_estado_campo(date)',
-$p$'material_diesel_id', (select c.material_diesel_id from public.mot_bajada_config c where c.id),$p$,
-$p$'material_diesel_id', (select c.material_diesel_id from public.mot_bajada_config c where c.id),
+-- 9a · lo que baja el teléfono: función completa (reemplaza la de la 130 con los parches de 138 y 145 incluidos) más las ayudas
+-- visuales, los tanques, los tramos y las señales. RENDIMIENTO: las estaciones visibles se calculan UNA vez (v_ests) y todo se
+-- filtra con = any(v_ests) (antes fn_fert_puede se llamaba por fila y daba statement timeout con muchos registros).
+-- Marcas de parches anteriores incluidas para que correr 138/145 después las salte: 'motor_mantenimiento', v_conf · 'otras_estaciones' ·
+-- mo.prueba_de is not null and public.fn_fert_en_pruebas() · /* 145:otras */ · public._mot_es_prueba(m.equipo_id) and public.fn_fert_en_pruebas()
+create or replace function public.fn_mot_estado_campo(p_desde date default null)
+returns jsonb
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+declare
+    v_hoy    date := public._mot_dia(now());
+    v_desde  date;
+    v_conf   boolean;
+    v_rec    boolean;
+    v_mov    boolean;
+    v_pru    boolean := public.fn_fert_en_pruebas();
+    v_ests   uuid[];
+begin
+    perform public._mot_exigir_permiso('ver');
+    v_desde := coalesce(p_desde, v_hoy - 45);
+    v_conf := public.fn_es_admin() or public.fn_tiene_permiso('motores', 'configurar');
+    v_rec := v_conf or public.fn_tiene_permiso('motores', 'motor_recibir');
+    v_mov := v_conf or public.fn_tiene_permiso('motores', 'motor_mover');
+    -- 147:ests · estaciones que ve esta persona, una sola vez
+    select coalesce(array_agg(e.id), '{}'::uuid[]) into v_ests from public.estaciones_riego e where public.fn_fert_puede(e.id, 'ver');
+    return jsonb_build_object(
+        'servidor_en', now(),
+        'permisos', jsonb_build_object(
+            'ver', true,
+            'registrar', public.fn_es_admin() or public.fn_tiene_permiso('motores', 'registrar'),
+            'anular', public.fn_es_admin() or public.fn_tiene_permiso('motores', 'anular'),
+            'configurar', v_conf,
+            'motor_recibir', v_rec,
+            'motor_mover', v_mov,
+            'motor_retirar', v_conf or public.fn_tiene_permiso('motores', 'motor_retirar'),
+            'motor_mantenimiento', v_conf or public.fn_tiene_permiso('motores', 'motor_mantenimiento'),
+            'auditar', public.fn_es_admin() or public.fn_tiene_permiso('motores', 'auditar')),
+        'material_diesel_id', (select c.material_diesel_id from public.mot_bajada_config c where c.id),
+        'motores', coalesce((
+            select jsonb_agg(jsonb_strip_nulls(jsonb_build_object(
+                       'equipo_id', x.equipo_id, 'codigo', x.codigo, 'nombre', x.nombre, 'modelo', x.modelo, 'estado', x.estado,
+                       'estacion_id', x.estacion_id,
+                       'tanque', case when x.tanque_id is null then null else jsonb_build_object(
+                           'id', x.tanque_id, 'nombre', x.tanque_nombre, 'capacidad_gal', coalesce(x.cap_tanque, x.capacidad_tanque_gal),
+                           'saldo_gal', x.saldo) end,
+                       'horo_ultimo', x.horo_ultimo, 'visor_ultimo', x.visor_ultimo, 'fecha_ultimo', x.fecha_ultimo,
+                       'intervalo_horas', x.intervalo, 'aviso_horas', x.aviso, 'horas_desde_mant', x.horas_desde_mant,
+                       'horas_est_desde_mant', x.horas_est_desde_mant,
+                       'horas_para_mant', case when x.intervalo is null then null else x.intervalo - x.horas_desde_mant end))
+                   order by x.codigo)
+              from (select mo.*, e.codigo, e.nombre,
+                           mo.aviso_horas as aviso,
+                           coalesce(mo.intervalo_horas, c.ciclo_horas) as intervalo,
+                           t.nombre as tanque_nombre, t.capacidad_gal as cap_tanque,
+                           coalesce((select s.disponible from public.mot_saldos s where s.tanque_id = mo.tanque_id), 0) as saldo
+                      from public.mot_motores mo
+                      join public.equipos e on e.id = mo.equipo_id
+                      left join public.categorias_equipo c on c.id = e.categoria_id
+                      left join public.mot_tanques t on t.id = mo.tanque_id
+                     where mo.activo
+                       and ((mo.estacion_id is not null and mo.estacion_id = any(v_ests))
+                            or (mo.estacion_id is null and mo.prueba_de is null and not v_pru and v_rec)
+                            or (mo.estacion_id is null and mo.prueba_de is not null and v_pru and mo.prueba_de = any(v_ests)))) x), '[]'::jsonb),
+        'otras_estaciones', case when v_mov or v_rec then coalesce((
+            select jsonb_agg(jsonb_build_object(
+                       'equipo_id', mo.equipo_id, 'codigo', e.codigo, 'nombre', e.nombre, 'modelo', mo.modelo, 'estado', mo.estado,
+                       'estacion_id', mo.estacion_id, 'estacion_nombre', er.nombre) order by e.codigo)
+              from public.mot_motores mo
+              join public.equipos e on e.id = mo.equipo_id
+              join public.estaciones_riego er on er.id = mo.estacion_id
+             where mo.activo and mo.estacion_id is not null and not (mo.estacion_id = any(v_ests))
+               and mo.prueba_de is null and not v_pru), '[]'::jsonb) else '[]'::jsonb end,
         'ayuda', coalesce((select jsonb_agg(public._mot_estado_motor(q.equipo_id) order by q.codigo)
                              from (select mo2.equipo_id, e2.codigo from public.mot_motores mo2 join public.equipos e2 on e2.id = mo2.equipo_id
-                                    where mo2.activo and mo2.estacion_id is not null and public.fn_fert_puede(mo2.estacion_id, 'ver')) q), '[]'::jsonb),
+                                    where mo2.activo and mo2.estacion_id = any(v_ests)) q), '[]'::jsonb),
         'senales', coalesce((select jsonb_agg(jsonb_build_object('equipo_id', s.equipo_id, 'registro_id', s.registro_id, 'fecha', s.fecha,
                                                                  'nivel', s.nivel, 'codigo', s.codigo, 'texto', s.texto) order by s.fecha desc, s.codigo)
                                from public._mot_senales(array(select distinct rr.equipo_id from public.mot_registros rr
-                                                               where rr.fecha >= v_desde and rr.anulado_at is null
-                                                                 and public.fn_fert_puede(rr.estacion_id, 'ver')), v_desde, null) s
-                              where exists (select 1 from public.mot_registros r3 where r3.id = s.registro_id and public.fn_fert_puede(r3.estacion_id, 'ver'))), '[]'::jsonb),
-        'tanques', coalesce((select jsonb_agg(jsonb_build_object('id', t.id, 'nombre', t.nombre, 'zona_id', t.zona_id, 'estacion_id', t.estacion_id,
-                                                                  'capacidad_gal', t.capacidad_gal, 'motor_equipo_id', t.motor_equipo_id,
-                                                                  'saldo_gal', coalesce((select s.disponible from public.mot_saldos s where s.tanque_id = t.id), 0)) order by t.nombre)
-                               from public.mot_tanques t
-                              where t.activo and ((t.estacion_id is not null and public.fn_fert_puede(t.estacion_id, 'ver')) or (t.estacion_id is null and v_conf))), '[]'::jsonb),
-        'tramos', coalesce((select jsonb_agg(jsonb_build_object('id', c.id, 'equipo_id', c.equipo_id, 'ubicacion', c.ubicacion, 'estacion_id', c.estacion_id,
-                                                                 'tanque_id', c.tanque_id, 'desde', c.desde, 'hasta', c.hasta,
-                                                                 'horo_entrada', c.horo_entrada, 'horo_salida', c.horo_salida) order by c.desde desc)
+                                                               where rr.fecha >= v_desde and rr.anulado_at is null and rr.estacion_id = any(v_ests)), v_desde, null) s
+                               join public.mot_registros r3 on r3.id = s.registro_id and r3.estacion_id = any(v_ests)), '[]'::jsonb),
+        'tanques', coalesce((select jsonb_agg(jsonb_strip_nulls(jsonb_build_object(
+                                       'id', t.id, 'nombre', t.nombre, 'zona_id', t.zona_id, 'estacion_id', t.estacion_id,
+                                       'capacidad_gal', t.capacidad_gal, 'motor_equipo_id', t.motor_equipo_id,
+                                       'saldo_gal', coalesce(sa.disponible, 0))) order by t.nombre)
+                               from public.mot_tanques t left join public.mot_saldos sa on sa.tanque_id = t.id
+                              where t.activo and ((t.estacion_id is not null and t.estacion_id = any(v_ests)) or (t.estacion_id is null and v_conf))), '[]'::jsonb),
+        'tanques_sin_motor', coalesce((
+            select jsonb_agg(jsonb_build_object(
+                       'id', t.id, 'nombre', t.nombre, 'estacion_id', t.estacion_id, 'capacidad_gal', t.capacidad_gal,
+                       'saldo_gal', coalesce(sa.disponible, 0)) order by t.nombre)
+              from public.mot_tanques t left join public.mot_saldos sa on sa.tanque_id = t.id
+             where t.activo and t.motor_equipo_id is null and t.estacion_id = any(v_ests)), '[]'::jsonb),
+        'tramos', coalesce((select jsonb_agg(jsonb_strip_nulls(jsonb_build_object(
+                                       'id', c.id, 'equipo_id', c.equipo_id, 'ubicacion', c.ubicacion, 'estacion_id', c.estacion_id,
+                                       'tanque_id', c.tanque_id, 'desde', c.desde, 'hasta', c.hasta,
+                                       'horo_entrada', c.horo_entrada, 'horo_salida', c.horo_salida)) order by c.desde desc)
                               from public.mot_custodias c
-                             where c.estacion_id is not null and public.fn_fert_puede(c.estacion_id, 'ver')), '[]'::jsonb),$p$,
-$p$'ayuda', coalesce((select jsonb_agg(public._mot_estado_motor$p$);
-
-select pg_temp.parchar('public.fn_mot_estado_campo(date)',
-$p$'motor_mantenimiento', v_conf or public.fn_tiene_permiso('motores', 'motor_mantenimiento')),$p$,
-$p$'motor_mantenimiento', v_conf or public.fn_tiene_permiso('motores', 'motor_mantenimiento'),
-            'auditar', public.fn_es_admin() or public.fn_tiene_permiso('motores', 'auditar')),$p$,
-$p$'auditar', public.fn_es_admin()$p$);
-
-select pg_temp.parchar('public.fn_mot_estado_campo(date)',
-$p$'horo_cambiado', r.horo_cambiado, 'visor_cambiado', r.visor_cambiado, 'comentario', r.comentario,$p$,
-$p$'horo_cambiado', r.horo_cambiado, 'visor_cambiado', r.visor_cambiado, 'comentario', r.comentario,
+                             where c.estacion_id = any(v_ests) and (c.hasta is null or c.hasta >= v_desde::timestamptz)), '[]'::jsonb),
+        'registros', coalesce((
+            select jsonb_agg(jsonb_strip_nulls(jsonb_build_object(
+                       'id', r.id, 'equipo_id', r.equipo_id, 'estacion_id', r.estacion_id, 'tanque_id', r.tanque_id, 'fecha', r.fecha,
+                       'horo_ini', r.horo_ini, 'horo_fin', r.horo_fin, 'horas', r.horas, 'visor_ini', r.visor_ini, 'visor_fin', r.visor_fin,
+                       'recibido_gal', r.recibido_gal, 'gastado_gal', r.gastado_gal, 'rendimiento_gal_h', r.rendimiento_gal_h, 'rpm', r.rpm,
+                       'horo_cambiado', r.horo_cambiado, 'visor_cambiado', r.visor_cambiado, 'comentario', r.comentario,
                        'caudal_ini', r.caudal_ini, 'caudal_fin', r.caudal_fin, 'operador', r.operador, 'dif_visor_gal', r.dif_visor_gal,
-                       'custodia_id', r.custodia_id,
-                       'registrado_por_nombre', (select p.nombre from public.perfiles p where p.id = r.registrado_por),$p$,
-$p$'registrado_por_nombre'$p$);
+                       'horas_estimadas', r.horas_estimadas, 'rend_ref_gal_h', r.rend_ref_gal_h,
+                       'registrado_por', r.registrado_por, 'fecha_hora', r.fecha_hora, 'anulado_at', r.anulado_at,
+                       'motivo_anulacion', r.motivo_anulacion, 'observaciones', to_jsonb(o.observaciones)))
+                   order by r.fecha desc, r.fecha_hora desc)
+              from public.mot_registros r
+              left join public.fert_operaciones o on o.id = r.id
+             where r.fecha >= v_desde and r.estacion_id = any(v_ests)), '[]'::jsonb),
+        -- 147:registrado_por_nombre · los nombres van UNA vez en «personas» {id: nombre} (no repetidos en cada fila)
+        'personas', coalesce((
+            select jsonb_object_agg(p.id::text, p.nombre)
+              from public.perfiles p
+             where p.id in (select r.registrado_por from public.mot_registros r where r.fecha >= v_desde and r.estacion_id = any(v_ests)
+                            union select r.registrado_por from public.mot_recepciones r
+                                   where public._mot_dia(r.fecha_hora) >= v_desde and r.estacion_id = any(v_ests))), '{}'::jsonb),
+        'recepciones', coalesce((
+            select jsonb_agg(jsonb_strip_nulls(jsonb_build_object(
+                       'id', r.id, 'tanque_id', r.tanque_id, 'estacion_id', r.estacion_id, 'galones', r.galones, 'chofer_id', r.chofer_id,
+                       'vehiculo_id', r.vehiculo_id, 'fecha_hora', r.fecha_hora, 'comentario', r.comentario,
+                       'registrado_por', r.registrado_por, 'anulado_at', r.anulado_at, 'motivo_anulacion', r.motivo_anulacion))
+                   order by r.fecha_hora desc)
+              from public.mot_recepciones r
+             where public._mot_dia(r.fecha_hora) >= v_desde and r.estacion_id = any(v_ests)), '[]'::jsonb),
+        'mantenimientos', coalesce((
+            select jsonb_agg(jsonb_strip_nulls(jsonb_build_object(
+                       'id', q.id, 'equipo_id', q.equipo_id, 'estacion_id', q.estacion_id, 'fecha_hora', q.fecha_hora, 'horometro', q.horometro,
+                       'tipo', q.tipo, 'nota', q.nota, 'horas_antes', q.horas_antes)))
+              from (select distinct on (m.equipo_id) m.* from public.mot_mantenimientos m
+                     where m.anulado_at is null
+                       and ((m.estacion_id is null and not public._mot_es_prueba(m.equipo_id))
+                            or (m.estacion_id is not null and m.estacion_id = any(v_ests))
+                            or (m.estacion_id is null and public._mot_es_prueba(m.equipo_id) and v_pru))
+                     order by m.equipo_id, m.fecha_hora desc) q), '[]'::jsonb),
+        'asignaciones', coalesce((
+            select jsonb_agg(jsonb_strip_nulls(jsonb_build_object(
+                       'id', q.id, 'equipo_id', q.equipo_id, 'tipo', q.tipo, 'estacion_origen', q.estacion_origen,
+                       'estacion_destino', q.estacion_destino, 'tanque_id', q.tanque_id, 'fecha_hora', q.fecha_hora, 'motivo', q.motivo,
+                       'motivo_codigo', q.motivo_codigo, 'destino_saldo', q.destino_saldo, 'destino_devolucion', q.destino_devolucion,
+                       'saldo_gal', q.saldo_gal, 'anulado_at', q.anulado_at)) order by q.fecha_hora desc)
+              from (select a.*, row_number() over (partition by a.equipo_id order by a.fecha_hora desc, a.creado_en desc) as n
+                      from public.mot_asignaciones a
+                     where coalesce(a.estacion_destino, a.estacion_origen) is null
+                        or coalesce(a.estacion_destino, a.estacion_origen) = any(v_ests)) q
+             where q.n <= 10), '[]'::jsonb)
+    );
+end
+$$;
+revoke execute on function public.fn_mot_estado_campo(date) from public, anon;
+grant  execute on function public.fn_mot_estado_campo(date) to authenticated;
 
 -- 9b · bajada a AGL: las columnas nuevas vacías NO entran a la huella (los ya bajados no se vuelven a «cambiar»); custodia_id nunca sale
 select pg_temp.parchar('public._mot_filas(uuid[])',
 $p$((to_jsonb(r) - 'bajado_a_agl_en') - 'huella') || jsonb_build_object('tabla', 'registro')$p$,
 $p$(((to_jsonb(r) - 'bajado_a_agl_en') - 'huella') - 'custodia_id'
                  - (select coalesce(array_agg(k.k), '{}'::text[]) from (values ('caudal_ini', r.caudal_ini::text), ('caudal_fin', r.caudal_fin::text),
-                        ('operador', r.operador), ('dif_visor_gal', r.dif_visor_gal::text)) k(k, v) where k.v is null)   -- 147:huella
+                        ('operador', r.operador), ('dif_visor_gal', r.dif_visor_gal::text),
+                        ('horas_estimadas', r.horas_estimadas::text), ('rend_ref_gal_h', r.rend_ref_gal_h::text)) k(k, v) where k.v is null)   -- 147:huella
                  ) || jsonb_build_object('tabla', 'registro')$p$,
 $p$147:huella$p$);
+
+-- 9b2 · _mot_filas: las estaciones/motores de prueba se calculan UNA vez (antes _fert_es_prueba / _mot_es_prueba por fila)
+select pg_temp.parchar('public._mot_filas(uuid[])',
+$p$where not public._fert_es_prueba(u.estacion_id) and not public._mot_es_prueba(u.equipo_id)$p$,
+$p$where u.estacion_id is distinct from all ((select coalesce(array_agg(z.id), '{}'::uuid[]) from public.estaciones_riego z where z.prueba_de is not null))   -- 147:filas
+       and u.equipo_id is distinct from all ((select coalesce(array_agg(m.equipo_id), '{}'::uuid[]) from public.mot_motores m where m.prueba_de is not null))$p$,
+$p$147:filas$p$);
+
+-- 9b3 · anular / eliminar una asignación: primero se quita el motor de TODOS los tanques listados en «antes» y luego se restauran
+-- (así también se anulan las asignaciones guardadas con el orden viejo, sin chocar con el índice de un motor por tanque)
+select pg_temp.parchar('public._mot_op_anulacion(uuid, jsonb, timestamptz, boolean)',
+$p$for x in select e from jsonb_array_elements(coalesce(a.antes->'tanques', '[]'::jsonb)) e loop$p$,
+$p$update public.mot_tanques set motor_equipo_id = null   -- 147:quitar-motor
+         where motor_equipo_id is not null and id in (select (q->>'id')::uuid from jsonb_array_elements(coalesce(a.antes->'tanques', '[]'::jsonb)) q);
+        for x in select e from jsonb_array_elements(coalesce(a.antes->'tanques', '[]'::jsonb)) e loop$p$,
+$p$147:quitar-motor$p$);
+select pg_temp.parchar('public.fn_campo_eliminar_documento(text, uuid, text)',
+$p$for x in select e from jsonb_array_elements(coalesce(a.antes->'tanques', '[]'::jsonb)) e loop$p$,
+$p$update public.mot_tanques set motor_equipo_id = null   -- 147:quitar-motor
+                     where motor_equipo_id is not null and id in (select (q->>'id')::uuid from jsonb_array_elements(coalesce(a.antes->'tanques', '[]'::jsonb)) q);
+                    for x in select e from jsonb_array_elements(coalesce(a.antes->'tanques', '[]'::jsonb)) e loop$p$,
+$p$147:quitar-motor$p$);
 
 -- 9c · bodega general: el diésel que quedó en la bodega (144) se muestra como LEGADO (no se sigue usando)
 select pg_temp.parchar('public.fn_fert_bodega_general()',
@@ -1211,7 +1441,8 @@ begin
         'motor', (select jsonb_build_object('equipo_id', mo.equipo_id, 'codigo', e.codigo, 'nombre', e.nombre, 'modelo', mo.modelo, 'estado', mo.estado,
                                             'estacion_id', mo.estacion_id, 'estacion', er.nombre, 'tanque_id', mo.tanque_id,
                                             'horo_ultimo', mo.horo_ultimo, 'visor_ultimo', mo.visor_ultimo, 'fecha_ultimo', mo.fecha_ultimo,
-                                            'horas_desde_mant', mo.horas_desde_mant, 'intervalo_horas', public._mot_intervalo(mo.equipo_id))
+                                            'horas_desde_mant', mo.horas_desde_mant, 'horas_estimadas_mant', mo.horas_est_desde_mant,
+                                            'intervalo_horas', public._mot_intervalo(mo.equipo_id))
                     from public.mot_motores mo join public.equipos e on e.id = mo.equipo_id
                     left join public.estaciones_riego er on er.id = mo.estacion_id where mo.equipo_id = p_equipo),
         'ayuda', public._mot_estado_motor(p_equipo),
@@ -1221,7 +1452,7 @@ begin
                        'tanque_id', c.tanque_id, 'tanque', t.nombre, 'desde', c.desde, 'hasta', c.hasta,
                        'horo_entrada', c.horo_entrada, 'horo_salida', c.horo_salida,
                        'horas_horometro', case when c.horo_entrada is not null and c.horo_salida is not null then c.horo_salida - c.horo_entrada end,
-                       'registros', x.n, 'horas', x.horas, 'gal_gastados', x.gal, 'gal_suministrados', x.sum, 'rendimiento_prom', x.rend,
+                       'registros', x.n, 'horas', x.horas, 'horas_estimadas', x.hest, 'gal_gastados', x.gal, 'gal_suministrados', x.sum, 'rendimiento_prom', x.rend,
                        'dias_sin_registro', case when c.ubicacion = 'ESTACION'
                             then greatest((least(coalesce(public._mot_dia(c.hasta), v_hoy), v_hoy) - public._mot_dia(c.desde) + 1) - x.n, 0) end)
                    order by c.desde desc)
@@ -1230,7 +1461,7 @@ begin
               left join public.zonas z on z.id = er.zona_id
               left join public.mot_tanques t on t.id = c.tanque_id
               left join lateral (
-                  select count(*) as n, coalesce(sum(r.horas), 0) as horas, coalesce(sum(r.gastado_gal), 0) as gal,
+                  select count(*) as n, coalesce(sum(r.horas), 0) as horas, coalesce(sum(r.horas_estimadas), 0) as hest, coalesce(sum(r.gastado_gal), 0) as gal,
                          coalesce(sum(r.recibido_gal), 0) as sum,
                          case when sum(r.horas) > 0 then round(sum(r.gastado_gal) / sum(r.horas), 2) end as rend
                     from public.mot_registros r
@@ -1251,6 +1482,7 @@ begin
                        'visor_ini', r.visor_ini, 'visor_fin', r.visor_fin, 'gastado_gal', r.gastado_gal, 'recibido_gal', r.recibido_gal,
                        'rendimiento_gal_h', r.rendimiento_gal_h, 'rpm', r.rpm, 'caudal_ini', r.caudal_ini, 'caudal_fin', r.caudal_fin,
                        'operador', r.operador, 'dif_visor_gal', r.dif_visor_gal, 'comentario', r.comentario,
+                       'horas_estimadas', r.horas_estimadas, 'rend_ref_gal_h', r.rend_ref_gal_h,
                        'horo_cambiado', r.horo_cambiado, 'visor_cambiado', r.visor_cambiado,
                        'registrado_por', (select p.nombre from public.perfiles p where p.id = r.registrado_por), 'fecha_hora', r.fecha_hora,
                        'anulado_at', r.anulado_at, 'motivo_anulacion', r.motivo_anulacion, 'observaciones', to_jsonb(o.observaciones))

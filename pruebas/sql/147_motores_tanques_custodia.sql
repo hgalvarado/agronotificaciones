@@ -141,7 +141,7 @@ select pg_temp.ok((select tanque_id = (select t from tk) and galones = 50 from m
 
 create temp table rb as select pg_temp.reg(pg_temp.uid(13), (select m1 from m), 3, 1005, 1010, 140, 130) as r;
 select pg_temp.ok((select r->>'estado' like 'ACEPTADO%' from rb), 'día -3 aceptado: ' || (select r::text from rb));
-select pg_temp.ok((select recibido_gal = 50 and gastado_gal = 10 and dif_visor_gal = 0 from mot_registros where id = pg_temp.uid(13)), 'el suministro del día sale de lo recibido y cuadra con el visor');
+select pg_temp.ok((select recibido_gal = 0 and gastado_gal = 10 and dif_visor_gal = 0 from mot_registros where id = pg_temp.uid(13)), 'sin suministro ese día (la recepción fue 2 días antes) y cuadra con el visor');
 select pg_temp.ok(public._mot_saldo_actual((select t from tk)) = 130, 'saldo 130 tras el consumo');
 
 -- el visor no cuadra: faltan 10 gal
@@ -216,6 +216,11 @@ select pg_temp.ok(pg_temp.falla($f$select fn_mot_ficha_completa((select m1 from 
 select pg_temp.ok(pg_temp.falla($f$select fn_mot_tanque_guardar('{"nombre":"X147"}'::jsonb)$f$, 'Configurar') or pg_temp.falla($f$select fn_mot_tanque_guardar('{"nombre":"X147"}'::jsonb)$f$, 'configurar'),
                   'sin «Configurar» no se crean tanques');
 
+-- el orden viejo de «antes.tanques» (origen primero) también se anula: la anulación quita el motor de todos los tanques y luego restaura
+update mot_asignaciones
+   set antes = jsonb_set(antes, '{tanques}', (select jsonb_agg(e order by ord desc) from jsonb_array_elements(antes->'tanques') with ordinality t(e, ord)))
+ where id = pg_temp.uid(21) and jsonb_array_length(antes->'tanques') = 2;
+
 -- ---------------------------------------------------------------- 6 · anular el traslado reabre el tramo anterior y reconecta el tanque
 select pg_temp.como((select adm from k));
 create temp table an as select pg_temp.op(pg_temp.uid(22), 'anulacion', jsonb_build_object('documento_tipo', 'motor_asignacion', 'documento_id', pg_temp.uid(21),
@@ -223,6 +228,40 @@ create temp table an as select pg_temp.op(pg_temp.uid(22), 'anulacion', jsonb_bu
 select pg_temp.ok((select r->>'estado' like 'ACEPTADO%' from an), 'anulación aceptada: ' || (select r::text from an));
 select pg_temp.ok((select count(*) = 1 and bool_and(hasta is null and estacion_id = (select est from k)) from mot_custodias where equipo_id = (select m1 from m)), 'queda un solo tramo, abierto, en Papalon-1');
 select pg_temp.ok((select motor_equipo_id = (select m1 from m) from mot_tanques where id = (select t from tk)), 'el tanque Papalon-1 vuelve a estar conectado al motor');
+
+-- ---------------------------------------------------------------- 6b · horas ESTIMADAS (horómetro sin avance con consumo) solo para el mantenimiento
+select pg_temp.como((select adm from k));
+-- 6 días de referencia (30 días previos, con horas y consumo, 2 gal/h) cargados directo; son anteriores a la instalación: no cuentan en las horas del mantenimiento
+create temp table refd as select gen_random_uuid() as id, g from generate_series(15, 20) g;
+insert into fert_operaciones (id, tipo, perfil_id, estacion_id, creado_en, inmediato, datos, resultado)
+select id, 'motor_registro_diario', (select e1 from k), (select est from k), (pg_temp.hoy() - g) + time '12:00', false, '{}', 'ACEPTADO' from refd;
+insert into mot_registros (id, equipo_id, estacion_id, tanque_id, fecha, horo_ini, horo_fin, horas, visor_ini, visor_fin, recibido_gal, gastado_gal,
+                           rendimiento_gal_h, rpm, fecha_hora, registrado_por)
+select id, (select m1 from m), (select est from k), (select t from tk), pg_temp.hoy() - g, 900 + g, 908 + g, 8, 300, 284, 0, 16, 2.00, 1450,
+       (pg_temp.hoy() - g) + time '12:00', (select e1 from k) from refd;
+select pg_temp.ok(public._mot_rend_referencia((select m1 from m), pg_temp.hoy()) = 2, 'rendimiento de referencia del motor = 2 gal/h (mediana de 30 días)');
+select pg_temp.ok(public._mot_rend_referencia((select m1 from m), pg_temp.hoy() - 200) is null, 'sin 5 días válidos en los 30 previos no hay referencia (null)');
+select pg_temp.como((select e1 from k));
+create temp table he as select pg_temp.reg(pg_temp.uid(31), (select m1 from m), 0, 1004, 1004, 106, 98) as r;
+select pg_temp.ok((select r->>'estado' like 'ACEPTADO%' from he), 'día con horómetro sin avance y consumo 8 gal aceptado: ' || (select r::text from he));
+select pg_temp.ok((select horas = 0 and gastado_gal = 8 and horas_estimadas = 4 and rend_ref_gal_h = 2 from mot_registros where id = pg_temp.uid(31)),
+                  'se estiman 4 h (8 gal / 2 gal/h) y el registro conserva horas = 0');
+select pg_temp.ok((select 'HORO_SIN_AVANCE_CON_CONSUMO' = any(observaciones) and 'HORAS_ESTIMADAS' = any(observaciones) from fert_operaciones where id = pg_temp.uid(31)),
+                  'observaciones HORO_SIN_AVANCE_CON_CONSUMO y HORAS_ESTIMADAS');
+select pg_temp.ok((select horo_ultimo = 1004 from mot_motores where equipo_id = (select m1 from m)), 'las horas estimadas NO tocan el horómetro del motor (sigue en 1004)');
+select pg_temp.ok((select horas_desde_mant = 23 and horas_est_desde_mant = 4 from mot_motores where equipo_id = (select m1 from m)), 'el mantenimiento avanza 19 reales + 4 estimadas = 23 (4 estimadas)');
+select pg_temp.ok((select _mot_semaforo((select m1 from m))->>'texto' like '%incluye 4 h estimadas%'), 'el semáforo marca «incluye 4 h estimadas»');
+select pg_temp.como((select adm from k));
+select _mot_recalcular_horas((select m1 from m));
+select pg_temp.ok((select horas_desde_mant = 23 and horas_est_desde_mant = 4 from mot_motores where equipo_id = (select m1 from m)), 'recalcular desde las tablas da lo mismo (sin doble conteo)');
+select pg_temp.ok(exists (select 1 from jsonb_array_elements(fn_mot_ficha_completa((select m1 from m))->'senales') s
+                           where s->>'codigo' = 'HORO_SIN_AVANCE_CON_CONSUMO' and s->>'texto' like '%estimaron 4 h%'), 'señal HORO_SIN_AVANCE_CON_CONSUMO con las horas estimadas');
+select pg_temp.ok(jsonb_typeof(fn_mot_estado_campo()->'personas') = 'object', 'el estado de campo trae «personas» una sola vez (no un nombre por fila)');
+create temp table an2 as select pg_temp.op(pg_temp.uid(32), 'anulacion', jsonb_build_object('documento_tipo', 'motor_registro', 'documento_id', pg_temp.uid(31),
+    'motivo', 'Prueba 147: se anula el día estimado')) as r;
+select pg_temp.ok((select r->>'estado' like 'ACEPTADO%' from an2), 'anular el día estimado: ' || (select r::text from an2));
+select pg_temp.ok((select horas_desde_mant = 19 and horas_est_desde_mant = 0 and horo_ultimo = 1004 from mot_motores where equipo_id = (select m1 from m)),
+                  'al anular, las horas estimadas se van del mantenimiento (19) y el horómetro sigue igual');
 
 -- ---------------------------------------------------------------- 7 · modo de pruebas (145) sigue aislado
 select pg_temp.ok(not exists (select 1 from jsonb_array_elements(fn_mot_tanques_listar()) x where x->>'nombre' like 'PRUEBA-T-%'), 'la lista de tanques no muestra los de práctica');
