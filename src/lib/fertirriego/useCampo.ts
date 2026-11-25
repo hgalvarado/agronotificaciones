@@ -53,7 +53,14 @@ export function useCampo(usuarioId: string) {
   const sincronizarAhora = useCallback(async () => {
     if (!almacen.current) return
     setSincronizando(true)
-    const r = await sincronizar(almacen.current, supabase)
+    // Apenas baja el estado se refresca TODO junto (estado + cola + hora): sin parpadeos ni esperas por las llaves
+    const alEstado = async (e: EstadoCampo) => {
+      const c = almacen.current ? await almacen.current.listarCola() : null
+      setEstado(e)
+      setSincronizadoEn(new Date().toISOString())
+      if (c) setCola(c)
+    }
+    const r = await sincronizar(almacen.current, supabase, alEstado)
     setSincronizando(false)
     if (r.estado) {
       setEstado(r.estado)

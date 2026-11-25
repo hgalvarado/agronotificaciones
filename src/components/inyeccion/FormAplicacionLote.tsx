@@ -20,7 +20,7 @@ import { claveBorrador, useAutoguardado, useBorrador } from '@/lib/fertirriego/b
 import { cantidad } from '@/lib/fertirriego/calculos'
 import { crearOperacion, nuevoId } from '@/lib/fertirriego/operaciones'
 import type { Estacion, Material, Operacion, Persona, PermisoHistorico } from '@/lib/fertirriego/tipos'
-import { areaPropuesta, armarAplicacionLote, dosisPorMz, lineasDelPlan } from '@/lib/inyeccion/aplicarLote'
+import { areaDelLote, areaPropuesta, armarAplicacionLote, dosisPorMz, lineasDelPlan } from '@/lib/inyeccion/aplicarLote'
 import { textoDato, type EstadoInyeccion } from '@/lib/inyeccion/estado'
 import { loteCanonico, normLote, opcionesDeLotes, temporadaDeLote } from '@/lib/inyeccion/lotes'
 import { normalizarObjetivo, objetivosParaEnviar, type ObjetivoCatalogo } from '@/lib/inyeccion/objetivos'
@@ -115,12 +115,7 @@ export function FormAplicacionLote({
   )
   const sinPlan = Boolean(lote) && grupo.length === 0
   // Área del lote (todas las cohortes del plan): solo para avisar; la base decide
-  const areaLote = useMemo(() => {
-    const porTurno = new Map<string, number>()
-    for (const p of planEstacion) if (normLote(p.lote) === normLote(lote)) porTurno.set(p.turno_agl_id, Math.max(porTurno.get(p.turno_agl_id) ?? 0, Number(p.area_mz ?? 0)))
-    const t = [...porTurno.values()].reduce((x, y) => x + y, 0)
-    return t > 0 ? t : null
-  }, [planEstacion, lote])
+  const areaLote = useMemo(() => areaDelLote(planEstacion, lote), [planEstacion, lote])
 
   const propuesta = areaPropuesta({ areaPlan: grupo[0]?.area_mz ?? null, areaLote })
   const areaTexto = area ?? (propuesta !== null ? String(propuesta) : '')

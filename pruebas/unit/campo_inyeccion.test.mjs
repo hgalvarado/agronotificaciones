@@ -12,7 +12,7 @@ const dir = mkdtempSync(join(tmpdir(), 'iny-'))
 const copia = join(dir, 'calculos.ts')
 writeFileSync(copia, readFileSync(resolve('src/lib/fertirriego/calculos.ts'), 'utf8').replace("'@/lib/fechas/zona'", `'${zona}'`))
 const { efectosDe, saldosLocales, NOMBRE_MOVIMIENTO } = await import(pathToFileURL(copia).href)
-const { dosisPorMz, areaPropuesta, armarAplicacionLote, lineasDelPlan } = await import(pathToFileURL(resolve('src/lib/inyeccion/aplicarLote.ts')).href)
+const { dosisPorMz, areaPropuesta, areaDelLote, armarAplicacionLote, lineasDelPlan } = await import(pathToFileURL(resolve('src/lib/inyeccion/aplicarLote.ts')).href)
 const { normalizarObjetivo, buscarDuplicado, destinoVigente, objetivosElegibles, objetivosParaEnviar, crearObjetivoLocal, validarNombreObjetivo } = await import(pathToFileURL(resolve('src/lib/inyeccion/objetivos.ts')).href)
 const { normLote, loteCanonico, temporadaDeLote, opcionesDeLotes } = await import(pathToFileURL(resolve('src/lib/inyeccion/lotes.ts')).href)
 const { fichasCampo } = await import(pathToFileURL(resolve('src/lib/campo/fichas.ts')).href)
@@ -30,8 +30,9 @@ test('dosisPorMz = cantidad ÷ área; área 0 → null', () => {
   assert.equal(dosisPorMz(1, 3), 0.3333)
 })
 
-test('areaPropuesta usa el plan y cae al lote', () => {
-  assert.equal(areaPropuesta({ areaPlan: 3, areaLote: 5 }), 3)
+test('areaPropuesta usa el área del LOTE y cae a la línea del plan', () => {
+  assert.equal(areaPropuesta({ areaPlan: 3, areaLote: 5 }), 5)
+  assert.equal(areaPropuesta({ areaPlan: 3, areaLote: null }), 3)
   assert.equal(areaPropuesta({ areaPlan: null, areaLote: 5 }), 5)
   assert.equal(areaPropuesta({ areaPlan: 0, areaLote: 5 }), 5)
   assert.equal(areaPropuesta({ areaPlan: null, areaLote: null }), null)
@@ -342,4 +343,15 @@ test('143 · de_bodega=false solo para el registro histórico; el formulario ya 
   assert.equal(r.datos.lineas[0].de_bodega, false)
   const src = readFileSync(resolve('src/components/inyeccion/FormAplicacionLote.tsx'), 'utf8')
   assert.equal(/data-pregunta-bodega|Sí, de la bodega|vino aparte/.test(src), false)
+})
+
+test('área del lote: suma los turnos reales (máximo por turno = línea combinada), sin duplicar con SIN-TURNO; la propuesta es la del lote', () => {
+  const f = (turno, area) => ({ lote: '1002-170', turno_agl_id: turno, area_mz: area })
+  // datos reales de 1002-170: SIN-TURNO 15 + 29.49 + 14.49 · turno A 13.93 + 28.35 + 14.42 · turno B 0.56 + 1.14 + 0.58
+  const plan = [f('SIN-TURNO|1002-170', 15), f('SIN-TURNO|1002-170', 29.49), f('SIN-TURNO|1002-170', 14.49), f('TR-A', 13.93), f('TR-A', 28.35), f('TR-A', 14.42), f('TR-A', 28.35), f('TR-B', 0.56), f('TR-B', 1.14), f('TR-B', 0.58)]
+  assert.equal(areaDelLote(plan, '1002-170'), 29.49)
+  assert.equal(areaDelLote(plan.filter((p) => p.turno_agl_id.startsWith('SIN-TURNO')), '1002-170'), 29.49) // sin turnos: usa los SIN-TURNO
+  assert.equal(areaDelLote(plan, '1002-999'), null)
+  assert.equal(areaPropuesta({ areaPlan: 15, areaLote: 29.49 }), 29.49)
+  assert.equal(areaPropuesta({ areaPlan: 15, areaLote: null }), 15)
 })

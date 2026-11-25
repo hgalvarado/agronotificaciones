@@ -60,7 +60,7 @@ export function sobreDe(op: Operacion, ahora = new Date()) {
   }
 }
 
-async function sincronizarUnaVez(almacen: AlmacenLocal, supabase: SupabaseClient): Promise<ResultadoSincronizacion> {
+async function sincronizarUnaVez(almacen: AlmacenLocal, supabase: SupabaseClient, alEstado?: (e: EstadoCampo) => void | Promise<void>): Promise<ResultadoSincronizacion> {
   const r: ResultadoSincronizacion = { enviados: 0, rechazados: 0, estado: null, sinRed: false, error: null }
 
   const { data: sesion } = await supabase.auth.getSession()
@@ -127,6 +127,11 @@ async function sincronizarUnaVez(almacen: AlmacenLocal, supabase: SupabaseClient
   await almacen.guardarEstado(estado as EstadoCampo, ahoraIso())
   r.estado = estado as EstadoCampo
 
+  // 3 · Lo aceptado ya está en el estado bajado: sale de la cola
+  for (const o of await almacen.listarCola()) {
+    if (o.estado_local === 'ACEPTADO' || o.estado_local === 'OBSERVADO') await almacen.borrarOperacion(o.id)
+  }
+
   // 2a · Bodega general (139): clasificación, última recepción, procedencia y diésel de los tanques. Una base sin la 139
   // simplemente no responde: la bodega se arma solo con los saldos del estado (nunca impide sincronizar).
   try {
@@ -135,6 +140,9 @@ async function sincronizarUnaVez(almacen: AlmacenLocal, supabase: SupabaseClient
   } catch {
     /* sin 139, sin señal a medias o sin espacio: se queda lo último guardado */
   }
+
+  // La pantalla se refresca YA (estado, cola y bodega): las llaves no la hacen esperar
+  if (alEstado) await alEstado(r.estado)
 
   // 2b · Llaves del código de relevo (si su rol tiene «Relevo»). Se importan como no exportables.
   const { data: llaves, error: e3 } = await supabase.rpc('fn_fert_mis_llaves')
@@ -150,10 +158,6 @@ async function sincronizarUnaVez(almacen: AlmacenLocal, supabase: SupabaseClient
     await almacen.guardarLlaves(importadas)
   }
 
-  // 3 · Lo aceptado ya está en el estado bajado: sale de la cola
-  for (const o of await almacen.listarCola()) {
-    if (o.estado_local === 'ACEPTADO' || o.estado_local === 'OBSERVADO') await almacen.borrarOperacion(o.id)
-  }
   return r
 }
 
@@ -164,9 +168,9 @@ let otraVuelta: Promise<ResultadoSincronizacion> | null = null
  * la cola): se hace UNA vuelta más al terminar, para que no espere al reloj de cada minuto (que además se reinicia
  * cada vez que cambia la cola). Lo encontró la QA (2026-11-12): lo guardado justo al abrir tardaba más de 1 minuto.
  */
-export function sincronizar(almacen: AlmacenLocal, supabase: SupabaseClient): Promise<ResultadoSincronizacion> {
+export function sincronizar(almacen: AlmacenLocal, supabase: SupabaseClient, alEstado?: (e: EstadoCampo) => void | Promise<void>): Promise<ResultadoSincronizacion> {
   if (!enCurso) {
-    enCurso = sincronizarUnaVez(almacen, supabase)
+    enCurso = sincronizarUnaVez(almacen, supabase, alEstado)
       .catch((e: unknown) => {
         const mensaje = e instanceof Error ? e.message : String(e)
         if (!esFallaDeRed(mensaje)) registrarFallaSync(e, { fase: 'inesperado' })
@@ -180,7 +184,7 @@ export function sincronizar(almacen: AlmacenLocal, supabase: SupabaseClient): Pr
   if (!otraVuelta) {
     otraVuelta = enCurso.then(() => {
       otraVuelta = null
-      return sincronizar(almacen, supabase)
+      return sincronizar(almacen, supabase, alEstado)
     })
   }
   return otraVuelta

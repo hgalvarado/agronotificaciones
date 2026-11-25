@@ -64,10 +64,29 @@ export function dosisPorMz(cantidad: number, areaMz: number): number | null {
   return Math.round((cantidad / areaMz) * 10000) / 10000
 }
 
-/** Área propuesta: la del plan primero; el área del lote como respaldo; null si no hay ninguna. */
+/**
+ * Área del LOTE completo según el plan publicado por AGL (que ya trae el área de la Ruta de siembra o, si el lote está terminado
+ * en AGL, el área real). Cada línea del plan lleva el área de su grupo (turno · variedad) repetida en cada DDT y producto, y hay
+ * líneas «combinadas» (varias variedades juntas): por eso se toma el MÁXIMO de cada grupo de turno (la combinada = todas sus
+ * variedades) y se suman los turnos. Los lotes aún sin turno (`SIN-TURNO|…`) solo cuentan si no hay turnos reales (no se duplican).
+ * null si el plan no trae área.
+ */
+export function areaDelLote(plan: { lote: string; turno_agl_id: string; area_mz: number | null }[], lote: string): number | null {
+  const mios = plan.filter((p) => llave(p.lote) === llave(lote))
+  const maxPor = (filas: typeof mios) => {
+    const m = new Map<string, number>()
+    for (const p of filas) m.set(p.turno_agl_id, Math.max(m.get(p.turno_agl_id) ?? 0, num(p.area_mz)))
+    return [...m.values()].reduce((x, y) => x + y, 0)
+  }
+  const reales = mios.filter((p) => !p.turno_agl_id.startsWith('SIN-TURNO'))
+  const total = maxPor(reales.length > 0 ? reales : mios)
+  return total > 0 ? Math.round(total * 10000) / 10000 : null
+}
+
+/** Área propuesta: la del LOTE completo primero; el área de la línea del plan como respaldo; null si no hay ninguna. */
 export function areaPropuesta(args: { areaPlan: number | null; areaLote: number | null }): number | null {
-  if (args.areaPlan !== null && num(args.areaPlan) > 0) return num(args.areaPlan)
   if (args.areaLote !== null && num(args.areaLote) > 0) return num(args.areaLote)
+  if (args.areaPlan !== null && num(args.areaPlan) > 0) return num(args.areaPlan)
   return null
 }
 
