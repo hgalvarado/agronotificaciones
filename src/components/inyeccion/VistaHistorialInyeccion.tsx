@@ -183,7 +183,7 @@ export function VistaHistorialInyeccion({
   const fechaDia = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString('es-HN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })
 
   const casilla = (a: AplicacionInyeccion, marcada: boolean) => (
-    <label className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center" aria-label={`Marcar aplicación del ${a.fecha}`}>
+    <label className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center self-center" aria-label={`Marcar aplicación del ${a.fecha}`}>
       <input
         type="checkbox"
         checked={marcada}
@@ -247,10 +247,10 @@ export function VistaHistorialInyeccion({
       )}
       {vista === 'aplicaciones' && filas.length > 0 && (
         <div className="flex items-center justify-between gap-2">
-          <p className="text-xs text-slate-500" data-ayuda-seleccion>
-            {puedeActuar ? 'Marca una fila para anular o eliminar' : `${filas.length} aplicación(es)`}
+          <p className="text-xs text-slate-500" data-ayuda-seleccion title={puedeActuar ? 'Marca una fila para anular o eliminar' : undefined}>
+            {filas.length} aplicación(es){puedeActuar ? ' · marca para anular' : ''}
           </p>
-          <span className="inline-flex rounded-lg bg-slate-100 p-0.5" role="radiogroup" aria-label="Forma de ver" data-modo-historial>
+          <span className="inline-flex rounded-lg bg-slate-100 p-0.5" role="radiogroup" aria-label="Forma de ver" title="Lista o tabla. Marca una fila para anular o eliminar" data-modo-historial>
             {(
               [
                 ['lista', 'Lista'],
@@ -289,25 +289,25 @@ export function VistaHistorialInyeccion({
                 return (
                   <div
                     key={a.id}
-                    className={`grid grid-cols-[1fr_auto] items-start ${marcada ? 'bg-brand-50/60' : ''} ${a.anulado_at ? 'opacity-60' : ''}`}
+                    className={`flex items-center ${marcada ? 'bg-brand-50/60' : ''} ${a.anulado_at ? 'opacity-60' : ''}`}
                     data-aplicacion-lote={a.id}
                     data-seleccionada={marcada ? '' : undefined}
                   >
-                    <button type="button" aria-expanded={abierta} onClick={() => alternarAbierta(a.id)} className="min-w-0 px-3 py-1.5 text-left" data-expandir-aplicacion>
+                    <button type="button" aria-expanded={abierta} onClick={() => alternarAbierta(a.id)} className="block min-w-0 flex-1 px-3 py-1.5 text-left" data-expandir-aplicacion>
                       {lineas.map((l) => {
                         const fila = indice.get(`${a.id}|${l.material_id}`)
                         const u = unidad(l.material_id)
                         const punto = fila ? PUNTO_TONO[TONO_TIEMPO[fila.tiempo].tono] : 'bg-slate-400'
                         return (
-                          <span key={l.material_id} className="mb-1 grid min-h-11 grid-cols-[0.75rem_1fr] items-start gap-2 last:mb-0" data-linea-aplicada={l.material_id}>
+                          <span key={l.material_id} className="mb-1 grid grid-cols-[0.75rem_1fr] items-start gap-2 last:mb-0" data-linea-aplicada={l.material_id}>
                             <span className={`mt-1.5 h-2.5 w-2.5 rounded-full ${punto}`} aria-hidden="true" />
                             <span className="min-w-0">
                               <span className="flex items-baseline justify-between gap-2">
-                                <span className={`min-w-0 truncate text-sm font-extrabold text-slate-900 ${a.anulado_at ? 'line-through' : ''}`}>{nombreProducto(l.material_id)}</span>
-                                <span className="shrink-0 text-sm font-bold tabular-nums text-slate-900">{l.dosis_mz !== null ? `${cantidad(l.dosis_mz)} ${u}/mz` : 'sin dosis'}</span>
+                                <span className={`min-w-0 truncate text-[15px] font-bold leading-tight text-slate-900 ${a.anulado_at ? 'line-through' : ''}`}>{nombreProducto(l.material_id)}</span>
+                                <span className="shrink-0 text-[15px] font-bold leading-tight tabular-nums text-slate-900">{l.dosis_mz !== null ? `${cantidad(l.dosis_mz)} ${u}/mz` : 'sin dosis'}</span>
                               </span>
                               <span className="flex items-center justify-between gap-2">
-                                <span className="min-w-0 truncate text-xs tabular-nums text-slate-600">
+                                <span className="min-w-0 truncate text-xs font-normal tabular-nums text-slate-600">
                                   {rotulo(a.lote)} · <strong>{cantidad(l.cantidad)}</strong> {u}
                                   {l.ddt_plan !== null ? ` · DDT ${fila?.ddt_real ?? l.ddt_plan}` : ''}
                                 </span>

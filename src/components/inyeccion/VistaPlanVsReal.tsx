@@ -75,8 +75,8 @@ export function VistaPlanVsReal({
           <span className={`mt-1.5 h-2.5 w-2.5 rounded-full ${punto}`} aria-hidden="true" />
           <span className="min-w-0">
             <span className="flex items-baseline justify-between gap-2">
-              <span className="min-w-0 truncate text-sm font-extrabold text-slate-900">{producto(f.material_id)}</span>
-              <span className="shrink-0 text-sm font-bold tabular-nums text-slate-900">{dosis !== null ? `${cantidad(dosis)} ${u}/mz` : '—'}</span>
+              <span className="min-w-0 truncate text-[15px] font-bold leading-tight text-slate-900">{producto(f.material_id)}</span>
+              <span className="shrink-0 text-[15px] font-bold leading-tight tabular-nums text-slate-900">{dosis !== null ? `${cantidad(dosis)} ${u}/mz` : '—'}</span>
             </span>
             <span className="flex items-center justify-between gap-2">
               <span className="min-w-0 truncate text-xs tabular-nums text-slate-600">

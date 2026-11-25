@@ -6,7 +6,7 @@
  */
 
 import { useState } from 'react'
-import { Campo, Entrada, Tarjeta } from '@/components/ui/Primitivos'
+import { Campo, Entrada } from '@/components/ui/Primitivos'
 import { SelectorMultiple, type OpcionSelector } from '@/components/ui/SelectorMultiple'
 import { ETIQUETAS_CUMPLIMIENTO, type EtiquetaCumplimiento } from '@/lib/inyeccion/cumplimiento'
 import { SIN_FILTROS_INY, filtrosActivosIny, type FiltrosInyeccion } from '@/lib/inyeccion/filtrosInyeccion'
@@ -28,15 +28,15 @@ export function FiltrosHistorialInyeccion({
   const activos = filtrosActivosIny(filtros)
   const poner = (c: Partial<FiltrosInyeccion>) => onCambiar({ ...filtros, ...c })
   return (
-    <Tarjeta className="p-3" >
+    <div className="rounded-xl bg-white px-3 ring-1 ring-inset ring-slate-200">
       <button
         type="button"
         onClick={() => setAbierto((a) => !a)}
         aria-expanded={abierto}
         data-filtros-iny-alternar
-        className="flex min-h-11 w-full items-center justify-between gap-2 text-left"
+        className="flex h-10 w-full items-center justify-between gap-2 text-left"
       >
-        <span className="flex items-center gap-2 text-base font-bold text-slate-900">
+        <span className="flex items-center gap-2 text-sm font-bold text-slate-900">
           Filtros
           {activos > 0 && (
             <span className="rounded-full bg-brand-600 px-2 py-0.5 text-xs font-bold text-white" data-filtros-iny-activos>
@@ -44,9 +44,9 @@ export function FiltrosHistorialInyeccion({
             </span>
           )}
         </span>
-        <span className="text-sm font-semibold text-brand-700">{abierto ? 'Ocultar ▲' : 'Mostrar ▼'}</span>
+        <span className="text-xs font-semibold text-brand-700">{abierto ? 'Ocultar ▲' : 'Mostrar ▼'}</span>
       </button>
-      <div hidden={!abierto} className="mt-3 flex flex-col gap-3" data-filtros-iny>
+      <div hidden={!abierto} className="flex flex-col gap-3 pb-3 pt-1" data-filtros-iny>
         <div className="grid grid-cols-2 gap-3">
           <Campo etiqueta="Aplicado desde">
             <Entrada type="date" value={filtros.desde} max={filtros.hasta || undefined} onChange={(e) => poner({ desde: e.target.value })} data-filtro-iny-desde />
@@ -81,6 +81,6 @@ export function FiltrosHistorialInyeccion({
           </button>
         )}
       </div>
-    </Tarjeta>
+    </div>
   )
 }

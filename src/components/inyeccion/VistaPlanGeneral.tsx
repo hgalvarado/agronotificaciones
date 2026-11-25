@@ -144,8 +144,8 @@ export function VistaPlanGeneral({
                         <span className={`mt-1.5 h-2.5 w-2.5 rounded-full ${puntoCategoria(estado.categorias, catDe.get(p.material_id) ?? null)}`} aria-hidden="true" />
                         <span className="min-w-0">
                           <span className="flex items-baseline justify-between gap-2">
-                            <span className="min-w-0 truncate text-sm font-extrabold text-slate-900">{m?.descripcion ?? m?.codigo ?? 'Producto'}</span>
-                            <span className="shrink-0 text-sm font-bold tabular-nums text-slate-900">{p.dosis_mz !== null ? `${cantidad(p.dosis_mz)} ${m?.unidad ?? ''}/mz` : 'sin dosis'}</span>
+                            <span className="min-w-0 truncate text-[15px] font-bold leading-tight text-slate-900">{m?.descripcion ?? m?.codigo ?? 'Producto'}</span>
+                            <span className="shrink-0 text-[15px] font-bold leading-tight tabular-nums text-slate-900">{p.dosis_mz !== null ? `${cantidad(p.dosis_mz)} ${m?.unidad ?? ''}/mz` : 'sin dosis'}</span>
                           </span>
                           <span className="block truncate text-xs tabular-nums text-slate-600">
                             {cantidad(p.area_mz)} mz · {cantidad(p.cantidad)} {m?.unidad ?? ''} · {p.lotes.length} lote(s)

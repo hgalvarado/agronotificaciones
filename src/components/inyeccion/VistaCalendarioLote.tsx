@@ -6,7 +6,7 @@
  * chip abre el detalle (plan contra real). Todo el lote cabe en una pantalla con desplazamiento interno.
  */
 
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
 import { cantidad } from '@/lib/fertirriego/calculos'
 import type { FilaCumplimiento } from '@/lib/inyeccion/cumplimiento'
@@ -47,8 +47,22 @@ export function VistaCalendarioLote({
   const [elegido, setElegido] = useState('')
   const [abierta, setAbierta] = useState<string | null>(null)
   const lote = elegido && lotes.some((l) => l.id === elegido) ? elegido : (lotes[0]?.id ?? '')
-  const delLote = useMemo(() => filas.filter((f) => normLote(f.lote) === normLote(lote)), [filas, lote])
+  // `producto` llega como función nueva en cada dibujo del padre: se guarda en una ref para no invalidar los memos
+  const refProducto = useRef(producto)
+  refProducto.current = producto
+  const porLote = useMemo(() => {
+    const m = new Map<string, FilaCumplimiento[]>()
+    for (const f of filas) {
+      const k = normLote(f.lote)
+      const l = m.get(k)
+      if (l) l.push(f)
+      else m.set(k, [f])
+    }
+    return m
+  }, [filas])
+  const delLote = useMemo(() => porLote.get(normLote(lote)) ?? [], [porLote, lote])
   const dias = useMemo(() => {
+    const producto = refProducto.current
     const m = new Map<string, FilaCumplimiento[]>()
     for (const f of delLote) {
       const k = f.ddt === null ? 'x' : String(f.ddt)
@@ -57,7 +71,7 @@ export function VistaCalendarioLote({
     return [...m.entries()]
       .map(([k, fs]) => ({ ddt: k === 'x' ? null : Number(k), filas: fs.sort((a, b) => producto(a.material_id).localeCompare(producto(b.material_id), 'es')) }))
       .sort((a, b) => (a.ddt ?? 9999) - (b.ddt ?? 9999))
-  }, [delLote, producto])
+  }, [delLote])
 
   const conPlan = delLote.filter((f) => f.tiempo !== 'sin_plan')
   const aplicados = conPlan.filter((f) => f.aplicaciones.length > 0).length
