@@ -254,8 +254,11 @@ export function FormRegistroMotor({
           resumen: `${corregir ? 'Registro CORREGIDO' : esHistorico ? 'Registro HISTÓRICO' : 'Registro diario'} · ${motor.codigo} · ${fmtFecha(fecha).slice(0, 5)}${calc.horas !== null ? ` · ${calc.horas} h` : ''}`,
         })
         if (!corregir) return [nuevo]
-        // Corregir = anular el registro viejo (el tanque vuelve a como estaba) y guardar el corregido, en ese orden
+        // Corregir = anular el registro viejo (el tanque vuelve a como estaba) y guardar el corregido, EN ESE ORDEN: la cola se ordena
+        // por creado_en (a segundos), así que el corregido lleva un segundo MÁS que la anulación; si no, a veces iría primero y la
+        // base lo rechazaría («Ya hay un registro de ese día») dejando el día sin registro.
         const anula = crearOperacion('anulacion', { estacion_id: estacion.id, documento_tipo: 'motor_registro', documento_id: corregir.id, motivo: `Corrección: ${motivo.trim()}` }, { ubicacion, enNombreDe, resumen: `Corrección · anula registro del ${fmtFecha(corregir.fecha).slice(0, 5)}` })
+        nuevo.creado_en = ahoraIso(new Date(Date.parse(anula.creado_en) + 1000))
         return [anula, nuevo]
       }}
     >
