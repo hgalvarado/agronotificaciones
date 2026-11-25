@@ -20,6 +20,8 @@ export type FilaHoja = {
   operador: string | null
   /** Peor señal del día: 'rojo' | 'amarillo' | null. */
   senal: 'rojo' | 'amarillo' | null
+  /** Día en que solo se recibió combustible (sin registro de horas): la hoja muestra solo el suministro. */
+  soloSuministro?: boolean
 }
 
 export type EntradaFila = {
@@ -62,16 +64,34 @@ export function aFilaHoja(r: EntradaFila, senales: { nivel: string }[] = []): Fi
   }
 }
 
-/** Sin anulados, dentro del rango (inclusive; vacío = sin límite) y en orden de la hoja: del más antiguo al más reciente. */
+export type SuministroDia = { id: string; dia: string; galones: number }
+
+/**
+ * Sin anulados, dentro del rango (inclusive; vacío = sin límite) y en orden de la hoja: del más antiguo al más reciente.
+ * `suministros` = lo recibido en el tanque del motor (ya sin anuladas, con su día local): llena la columna «Sum.» del día y,
+ * si ese día no hubo registro de horas, agrega una fila solo con el suministro (igual que se anota en la hoja de campo).
+ */
 export function filasDeHoja(
   registros: (EntradaFila & { equipo_id?: string })[],
   f: { equipoId?: string; desde?: string; hasta?: string },
-  senales?: Map<string, { nivel: string }[]>
+  senales?: Map<string, { nivel: string }[]>,
+  suministros: SuministroDia[] = []
 ): FilaHoja[] {
-  return registros
-    .filter((r) => !r.anulado_at && (!f.equipoId || r.equipo_id === f.equipoId) && (!f.desde || r.fecha >= f.desde) && (!f.hasta || r.fecha <= f.hasta))
-    .map((r) => aFilaHoja(r, senales?.get(r.id) ?? []))
-    .sort((a, b) => a.fecha.localeCompare(b.fecha))
+  const enRango = (d: string) => (!f.desde || d >= f.desde) && (!f.hasta || d <= f.hasta)
+  const porDia = new Map<string, number>()
+  for (const x of suministros) if (enRango(x.dia)) porDia.set(x.dia, (porDia.get(x.dia) ?? 0) + x.galones)
+  const filas = registros
+    .filter((r) => !r.anulado_at && (!f.equipoId || r.equipo_id === f.equipoId) && enRango(r.fecha))
+    .map((r) => {
+      const fila = aFilaHoja(r, senales?.get(r.id) ?? [])
+      return { ...fila, suministro: Math.max(fila.suministro, porDia.get(r.fecha) ?? 0) }
+    })
+  const conRegistro = new Set(filas.map((x) => x.fecha))
+  for (const [dia, gal] of porDia) {
+    if (conRegistro.has(dia)) continue
+    filas.push({ id: `s${dia}`, fecha: dia, horoIni: 0, horoFin: 0, horas: 0, visorIni: 0, visorFin: 0, gastado: 0, rendimiento: null, rpm: null, suministro: gal, caudalIni: null, caudalFin: null, operador: null, senal: null, soloSuministro: true })
+  }
+  return filas.sort((a, b) => a.fecha.localeCompare(b.fecha))
 }
 
 export type TotalesHoja = { dias: number; horas: number; gastado: number; suministro: number; rendimiento: number | null }
@@ -79,10 +99,11 @@ export type TotalesHoja = { dias: number; horas: number; gastado: number; sumini
 const r2 = (n: number) => Math.round(n * 100) / 100
 
 /** Totales al pie. El rendimiento medio = galones ÷ horas de los días que trabajaron (no el promedio de promedios). */
-export function totalesHoja(filas: FilaHoja[]): TotalesHoja {
+export function totalesHoja(todas: FilaHoja[]): TotalesHoja {
+  const filas = todas.filter((x) => !x.soloSuministro)
   const horas = filas.reduce((s, f) => s + f.horas, 0)
   const gastado = filas.reduce((s, f) => s + f.gastado, 0)
-  const suministro = filas.reduce((s, f) => s + f.suministro, 0)
+  const suministro = todas.reduce((s, f) => s + f.suministro, 0)
   const conHoras = filas.filter((f) => f.horas > 0)
   const hTrab = conHoras.reduce((s, f) => s + f.horas, 0)
   const gTrab = conHoras.reduce((s, f) => s + f.gastado, 0)

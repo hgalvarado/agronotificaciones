@@ -25,7 +25,9 @@ export function htmlHoja(args: { secciones: SeccionPdf[]; desde?: string; hasta?
       const filas = s.filas
         .map(
           (f) =>
-            `<tr><td>${ddmmaa(f.fecha)}</td><td class="n">${numHoja(f.horoIni)}</td><td class="n">${numHoja(f.horoFin)}</td><td class="n">${numHoja(f.horas)}</td>` +
+            f.soloSuministro
+              ? `<tr><td>${ddmmaa(f.fecha)}</td><td colspan="8"></td><td class="n">${numHoja(f.suministro)}</td><td colspan="2"></td><td></td><td class="c"></td></tr>`
+              : `<tr><td>${ddmmaa(f.fecha)}</td><td class="n">${numHoja(f.horoIni)}</td><td class="n">${numHoja(f.horoFin)}</td><td class="n">${numHoja(f.horas)}</td>` +
             `<td class="n">${numHoja(f.visorIni)}</td><td class="n">${numHoja(f.visorFin)}</td><td class="n">${numHoja(f.gastado)}</td><td class="n">${numHoja(f.rendimiento, 2)}</td>` +
             `<td class="n">${numHoja(f.rpm, 0)}</td><td class="n">${f.suministro > 0 ? numHoja(f.suministro) : ''}</td>` +
             `<td class="n">${f.caudalIni === null ? '' : numHoja(f.caudalIni)}</td><td class="n">${f.caudalFin === null ? '' : numHoja(f.caudalFin)}</td>` +

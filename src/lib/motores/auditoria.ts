@@ -24,6 +24,13 @@ export type ResumenMotorAuditor = {
   zona: string | null
   tanque_id: string | null
   tanque: string | null
+  /** sql/149: para el medidor de combustible y la barra de mantenimiento (opcionales con datos viejos). */
+  capacidad_gal?: number | null
+  saldo_gal?: number | null
+  intervalo_horas?: number | null
+  aviso_horas?: number | null
+  horas_desde_mant?: number | null
+  horas_est_desde_mant?: number | null
   horo_ultimo: number | null
   fecha_ultimo: string | null
   tramos: number
@@ -113,6 +120,12 @@ export type FichaMotor = {
     horas_desde_mant: number
     horas_estimadas_mant: number
     intervalo_horas: number | null
+    /** sql/149 */
+    aviso_horas?: number | null
+    tanque?: string | null
+    capacidad_gal?: number | null
+    saldo_gal?: number | null
+    zona?: string | null
   }
   ayuda: AyudaServidor | null
   tramos: TramoFicha[]
@@ -123,7 +136,7 @@ export type FichaMotor = {
 }
 
 /** Filtros de la lista de motores del auditor. Una lista vacía = no recorta. */
-export type FiltroAuditor = { texto: string; estados: string[]; estaciones: string[]; niveles: string[] }
+export type FiltroAuditor = { texto: string; estados: string[]; estaciones: string[]; niveles: string[]; zonas?: string[] }
 
 const sinTildes = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 const ORDEN: Record<string, number> = { rojo: 0, amarillo: 1, gris: 2, verde: 3 }
@@ -135,9 +148,35 @@ export function filtrarResumen(lista: ResumenMotorAuditor[], f: FiltroAuditor): 
     .filter((m) => {
       if (f.estados.length > 0 && !f.estados.includes(m.estado)) return false
       if (f.estaciones.length > 0 && !(m.estacion && f.estaciones.includes(m.estacion))) return false
+      if (f.zonas && f.zonas.length > 0 && !(m.zona && f.zonas.includes(m.zona))) return false
       if (f.niveles.length > 0 && !f.niveles.includes(m.ayuda?.nivel ?? 'gris')) return false
       if (q && !sinTildes([m.codigo, m.nombre, m.modelo, m.estacion, m.zona, m.tanque].filter(Boolean).join(' ')).includes(q)) return false
       return true
     })
     .sort((a, b) => (ORDEN[a.ayuda?.nivel ?? 'gris'] ?? 2) - (ORDEN[b.ayuda?.nivel ?? 'gris'] ?? 2) || a.codigo.localeCompare(b.codigo, 'es', { numeric: true }))
+}
+
+/** sql/149: una temporada (para pedir las anteriores). */
+export type TemporadaInfo = { id: string; nombre: string; fecha_inicio: string; fecha_fin: string; activa: boolean }
+
+/** sql/149: las cifras de la temporada de un motor, una estación, un tramo o el total. */
+export type CifrasTemporada = {
+  dias: number
+  horas: number
+  horas_estimadas: number
+  gal_gastados: number
+  gal_recibidos: number
+  rendimiento_gal_h: number | null
+  rpm_prom: number | null
+  mantenimientos?: number
+}
+
+export type TramoResumen = CifrasTemporada & { id: string; estacion_id: string | null; estacion: string | null; zona: string | null; desde: string; hasta: string | null }
+
+/** Lo que devuelve fn_mot_resumen_temporada. */
+export type ResumenTemporadaServidor = {
+  temporada: { id: string | null; nombre: string | null; desde: string; hasta: string; activa: boolean }
+  total: CifrasTemporada
+  motores: (CifrasTemporada & { equipo_id: string; codigo: string; nombre: string; tramos: TramoResumen[] })[]
+  estaciones: (CifrasTemporada & { estacion_id: string; estacion: string; zona: string | null })[]
 }

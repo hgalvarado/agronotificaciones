@@ -495,7 +495,7 @@ html[data-tema='oscuro'] input[type='date']::-webkit-calendar-picker-indicator {
  * Se usan desde src/lib/fertirriego/coloresMovimiento.ts; el color nunca va solo (siempre con icono y texto). */
 :root {
   --mov-recepcion-fondo: #e8f6ec; --mov-recepcion-borde: #1f9d4a; --mov-recepcion-texto: #14602e;
-  --mov-aplicacion-fondo: #fdecea; --mov-aplicacion-borde: #d93025; --mov-aplicacion-texto: #a3231a;
+  --mov-aplicacion-fondo: #e8eafc; --mov-aplicacion-borde: #4a52d6; --mov-aplicacion-texto: #2c3396;
   --mov-conteo-fondo: #e0f5f3; --mov-conteo-borde: #00a99d; --mov-conteo-texto: #005c56;
   --mov-inyeccion-fondo: #f0eafb; --mov-inyeccion-borde: #7c4dcc; --mov-inyeccion-texto: #4b2a96;
   --mov-devolucion-fondo: #f3f6dc; --mov-devolucion-borde: #8da40f; --mov-devolucion-texto: #566607;
@@ -508,7 +508,7 @@ html[data-tema='oscuro'] input[type='date']::-webkit-calendar-picker-indicator {
 }
 html[data-tema='oscuro'] {
   --mov-recepcion-fondo: #0f2a1b; --mov-recepcion-borde: #34c466; --mov-recepcion-texto: #7ee8a2;
-  --mov-aplicacion-fondo: #2e1416; --mov-aplicacion-borde: #f0584c; --mov-aplicacion-texto: #ffa59d;
+  --mov-aplicacion-fondo: #181a3a; --mov-aplicacion-borde: #7f87f0; --mov-aplicacion-texto: #bcc1fb;
   --mov-conteo-fondo: #0d2a29; --mov-conteo-borde: #2cc9bd; --mov-conteo-texto: #7fe6df;
   --mov-inyeccion-fondo: #241a3a; --mov-inyeccion-borde: #a07ae8; --mov-inyeccion-texto: #cdb6fa;
   --mov-devolucion-fondo: #262b0c; --mov-devolucion-borde: #b8d12e; --mov-devolucion-texto: #dbea85;

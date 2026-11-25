@@ -1,26 +1,33 @@
 'use client'
 
 /**
- * Auditoría de Motores (solo con «Auditar»; necesita señal): TODOS los motores con su semáforo y, al tocar uno, su ficha completa
- * (sql/147: fn_mot_motores_resumen y fn_mot_ficha_completa). La ficha trae la línea de tiempo de tramos (dónde estuvo y con qué
- * horómetro), los movimientos y todos los días con todos los campos de la hoja y sus señales, con filtros por fecha, estación y señal.
+ * Vista GENERAL de Motores (sql/147 y 149; solo lectura; necesita señal): TODOS los motores con su ubicación, el medidor del tanque y la
+ * barra de mantenimiento, al día en tiempo real, y al tocar uno su ficha: resumen de la temporada, dónde estuvo y el historial en tabla.
+ * La ve quien tiene «Vista general» o «Auditar» (y el administrador); no puede registrar ni modificar nada.
  */
 
 import { useMemo, useState } from 'react'
+import { IconChevronRight } from '@/components/ui/Icons'
+import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
+import { useAvisosCambios } from '@/lib/datos/useAvisosCambios'
 import { Boton } from '@/components/ui/Primitivos'
 import { Modal } from '@/components/ui/Modal'
 import { SelectorMultiple } from '@/components/ui/SelectorMultiple'
 import { formatearFechaHora } from '@/lib/estados'
 import { cantidad } from '@/lib/fertirriego/calculos'
-import { filtrarResumen, type FichaMotor, type RegistroFicha, type ResumenMotorAuditor, type TramoFicha } from '@/lib/motores/auditoria'
+import { filtrarResumen, type CifrasTemporada, type FichaMotor, type RegistroFicha, type ResumenMotorAuditor, type ResumenTemporadaServidor, type TemporadaInfo, type TramoFicha } from '@/lib/motores/auditoria'
 import type { RegistroMotor } from '@/lib/motores/estado'
 import { filasDeHoja } from '@/lib/motores/hoja'
+import { resumirRegistros } from '@/lib/motores/resumenTemporada'
 import { htmlHoja } from '@/lib/motores/hojaPdf'
 import { imprimirHtml } from '@/lib/motores/imprimir'
 import { peorNivel, type Aviso } from '@/lib/motores/senales'
 import { useLlamadaRpc } from '@/lib/motores/useLlamadaRpc'
 import { DetalleRegistroMotor, fechaCorta } from './DetalleRegistroMotor'
-import { ChipsSenales, EstadoConsulta, etiquetaMotor, FilaToque } from './ElementosMotor'
+import { BandaNivel, ChipsSenales, EstadoConsulta, etiquetaMotor, FilaToque, InsigniaNivel } from './ElementosMotor'
+import { BarraMantenimiento } from './BarraMantenimiento'
+import { MedidorTanque } from './MedidorTanque'
+import { ResumenTemporada } from './ResumenTemporada'
 import { BarraVistaHistorial, HojaMotor, type VistaHistorial } from './HojaMotor'
 
 const NOMBRE_ESTADO: Record<string, string> = { EN_ESTACION: 'En estación', TALLER: 'En el taller', RETIRADO: 'Retirado', SIN_ASIGNAR: 'Sin asignar' }
@@ -33,8 +40,14 @@ const NOMBRE_NIVEL_FILTRO = [
 const NOMBRE_MOV: Record<string, string> = { INSTALADO: 'Motor recibido', TRASLADADO: 'Motor movido', RETIRADO: 'Motor retirado', AL_TALLER: 'Al taller', DE_VUELTA: 'De vuelta del taller' }
 const NOMBRE_UBICACION: Record<string, string> = { ESTACION: 'En estación', TALLER: 'En el taller', RETIRADO: 'Retirado' }
 
-export function VistaAuditoria({ generadoPor }: { generadoPor: string }) {
+const TABLAS_VIVAS = ['mot_registros', 'mot_recepciones', 'mot_motores', 'mot_custodias']
+
+export function VistaGeneral({ generadoPor }: { generadoPor: string }) {
   const { datos, cargando, error, recargar } = useLlamadaRpc<ResumenMotorAuditor[]>('fn_mot_motores_resumen', undefined)
+  const { datos: temporadasDatos, cargando: cargandoTemp } = useLlamadaRpc<TemporadaInfo[]>('fn_mot_temporadas', undefined)
+  // Tiempo real: la base avisa (y al volver a la pantalla); con el freno de useAvisosCambios (sin bucles)
+  useAvisosCambios({ tablas: TABLAS_VIVAS, alCambiar: recargar })
+  const [zonas, setZonas] = useState<string[]>([])
   const [texto, setTexto] = useState('')
   const [estados, setEstados] = useState<string[]>([])
   const [estaciones, setEstaciones] = useState<string[]>([])
@@ -45,17 +58,18 @@ export function VistaAuditoria({ generadoPor }: { generadoPor: string }) {
 
   const lista = datos ?? []
   const opcionesEstaciones = useMemo(() => [...new Set(lista.map((m) => m.estacion).filter((x): x is string => Boolean(x)))].sort((a, b) => a.localeCompare(b, 'es', { numeric: true })).map((x) => ({ valor: x, etiqueta: x })), [lista])
-  const visibles = useMemo(() => filtrarResumen(lista, { texto, estados, estaciones, niveles }), [lista, texto, estados, estaciones, niveles])
-  const activos = [texto.trim(), estados.length, estaciones.length, niveles.length].filter(Boolean).length
+  const opcionesZonas = useMemo(() => [...new Set(lista.map((m) => m.zona).filter((x): x is string => Boolean(x)))].sort((a, b) => a.localeCompare(b, 'es', { numeric: true })).map((x) => ({ valor: x, etiqueta: x })), [lista])
+  const visibles = useMemo(() => filtrarResumen(lista, { texto, estados, estaciones, niveles, zonas }), [lista, texto, estados, estaciones, niveles, zonas])
+  const activos = [texto.trim(), estados.length, estaciones.length, niveles.length, zonas.length].filter(Boolean).length
 
   return (
-    <div className="flex flex-col gap-2" data-vista-auditoria>
+    <div className="flex flex-col gap-2" data-vista-general>
       <div className="flex items-center justify-between gap-2">
-        <button type="button" onClick={() => setFiltros((v) => !v)} aria-expanded={filtros} className="min-h-11 rounded-lg px-3 text-sm font-semibold text-slate-700 ring-1 ring-inset ring-slate-300" data-filtros-auditoria>
+        <button type="button" onClick={() => setFiltros((v) => !v)} aria-expanded={filtros} className="min-h-11 rounded-lg px-3 text-sm font-semibold text-slate-700 ring-1 ring-inset ring-slate-300" data-filtros-general>
           Filtros{activos > 0 ? ` · ${activos} activo${activos === 1 ? '' : 's'}` : ''}
         </button>
         <span className="text-xs text-slate-500">{visibles.length} de {lista.length} motores</span>
-        <Boton tamano="sm" variante="fantasma" className="min-h-11" onClick={recargar} data-actualizar-auditoria>
+        <Boton tamano="sm" variante="fantasma" className="min-h-11" onClick={recargar} data-actualizar-general>
           Actualizar
         </Boton>
       </div>
@@ -68,11 +82,12 @@ export function VistaAuditoria({ generadoPor }: { generadoPor: string }) {
             aria-label="Buscar"
             className="min-h-11 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-base focus:border-brand-600 focus:outline-none"
           />
+          <SelectorMultiple etiqueta="Zona" opciones={opcionesZonas} valores={zonas} onCambiar={setZonas} />
           <SelectorMultiple etiqueta="Dónde está" opciones={Object.entries(NOMBRE_ESTADO).map(([valor, etiqueta]) => ({ valor, etiqueta }))} valores={estados} onCambiar={setEstados} />
           <SelectorMultiple etiqueta="Estación" opciones={opcionesEstaciones} valores={estaciones} onCambiar={setEstaciones} />
           <SelectorMultiple etiqueta="Semáforo" opciones={NOMBRE_NIVEL_FILTRO} valores={niveles} onCambiar={setNiveles} />
           {activos > 0 && (
-            <button type="button" className="min-h-11 text-sm font-semibold text-brand-700 underline" onClick={() => { setTexto(''); setEstados([]); setEstaciones([]); setNiveles([]) }}>
+            <button type="button" className="min-h-11 text-sm font-semibold text-brand-700 underline" onClick={() => { setTexto(''); setEstados([]); setEstaciones([]); setNiveles([]); setZonas([]) }}>
               Quitar filtros
             </button>
           )}
@@ -80,32 +95,50 @@ export function VistaAuditoria({ generadoPor }: { generadoPor: string }) {
       )}
       <EstadoConsulta cargando={cargando} error={error} vacio={visibles.length === 0} textoVacio={lista.length === 0 ? 'No hay motores.' : 'No hay motores con esos filtros.'} />
       {visibles.slice(0, limite).map((m) => (
-        <FilaToque
-          key={m.equipo_id}
-          atributos={{ 'data-motor-auditor': m.codigo }}
-          nivel={m.ayuda?.nivel ?? 'gris'}
-          titulo={
-            <>
-              {etiquetaMotor(m.codigo, m.nombre)}
-              <span className="ml-1 text-xs font-normal text-slate-600">{NOMBRE_ESTADO[m.estado] ?? m.estado}</span>
-            </>
-          }
-          linea2={m.ayuda?.ahora?.[0]?.texto ?? m.ayuda?.mantenimiento?.texto ?? 'Sin novedades.'}
-          linea3={`${m.estacion ?? 'Sin estación'}${m.zona ? ` · ${m.zona}` : ''}${m.tanque ? ` · tanque ${m.tanque}` : ''} · ${m.tramos} tramo${m.tramos === 1 ? '' : 's'}${m.fecha_ultimo ? ` · último registro ${fechaCorta(m.fecha_ultimo).slice(0, 5)}` : ''}`}
-          onToque={() => setFicha(m.equipo_id)}
-        />
+        <FilaMotorGeneral key={m.equipo_id} m={m} onToque={() => setFicha(m.equipo_id)} />
       ))}
       {visibles.length > limite && (
         <Boton variante="fantasma" className="min-h-11" onClick={() => setLimite((l) => l + 40)} data-ver-mas>
           Ver más ({visibles.length - limite})
         </Boton>
       )}
-      {ficha && <FichaMotorAuditor equipoId={ficha} generadoPor={generadoPor} onCerrar={() => setFicha(null)} />}
+      {ficha && <FichaMotorAuditor equipoId={ficha} generadoPor={generadoPor} temporadas={temporadasDatos ?? []} temporadasListas={!cargandoTemp} onCerrar={() => setFicha(null)} />}
     </div>
   )
 }
 
-function FichaMotorAuditor({ equipoId, generadoPor, onCerrar }: { equipoId: string; generadoPor: string; onCerrar: () => void }) {
+/** Una fila por motor: dónde está, medidor del tanque y barra de mantenimiento a la vista (sin abrir nada). */
+function FilaMotorGeneral({ m, onToque }: { m: ResumenMotorAuditor; onToque: () => void }) {
+  const nivel = m.ayuda?.nivel ?? 'gris'
+  return (
+    <div data-motor-auditor={m.codigo}>
+      <button type="button" onClick={onToque} className="flex min-h-14 w-full items-center gap-2.5 rounded-xl bg-white py-2 pl-2.5 pr-3 text-left ring-1 ring-inset ring-slate-200 active:bg-slate-50">
+        <BandaNivel nivel={nivel} />
+        <span className="min-w-0 flex-1">
+          <span className="flex items-start justify-between gap-2">
+            <span className="block min-w-0 break-words text-[15px] font-medium leading-tight text-slate-900">{etiquetaMotor(m.codigo, m.nombre)}</span>
+            {nivel !== 'gris' && <InsigniaNivel nivel={nivel} />}
+          </span>
+          <span className="mt-0.5 block break-words text-[13px] leading-snug text-slate-700">
+            {m.estado === 'EN_ESTACION' ? (m.estacion ?? 'Sin estación') : (NOMBRE_ESTADO[m.estado] ?? m.estado)}
+            {m.zona ? ` · ${m.zona}` : ''}
+            {m.fecha_ultimo ? ` · último registro ${fechaCorta(m.fecha_ultimo).slice(0, 5)}` : ''}
+          </span>
+          <span className="mt-1.5 grid grid-cols-2 gap-3">
+            <MedidorTanque saldo={m.tanque_id ? (m.saldo_gal ?? 0) : null} capacidad={m.capacidad_gal ?? null} />
+            <BarraMantenimiento horas={m.horas_desde_mant ?? 0} estimadas={m.horas_est_desde_mant ?? 0} intervalo={m.intervalo_horas ?? null} aviso={m.aviso_horas ?? null} />
+          </span>
+        </span>
+        <IconChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
+      </button>
+    </div>
+  )
+}
+
+function FichaMotorAuditor({ equipoId, generadoPor, temporadas, temporadasListas, onCerrar }: { equipoId: string; generadoPor: string; temporadas: TemporadaInfo[]; temporadasListas: boolean; onCerrar: () => void }) {
+  // Temporada: la activa por defecto; las anteriores o «todo el historial» se piden aquí (sql/149)
+  const [temporadaId, setTemporadaId] = useState('')
+  const temporada = useMemo(() => (temporadaId === 'todo' ? null : (temporadas.find((t) => t.id === temporadaId) ?? temporadas.find((t) => t.activa) ?? null)), [temporadas, temporadaId])
   const [desde, setDesde] = useState('')
   const [hasta, setHasta] = useState('')
   const [estaciones, setEstaciones] = useState<string[]>([])
@@ -113,8 +146,13 @@ function FichaMotorAuditor({ equipoId, generadoPor, onCerrar }: { equipoId: stri
   const [limite, setLimite] = useState(40)
   const [abierta, setAbierta] = useState<string | null>(null)
   const [vista, setVista] = useState<VistaHistorial>('lista')
-  const argumentos = useMemo(() => ({ p_equipo: equipoId, p_desde: desde || null, p_hasta: hasta || null }), [equipoId, desde, hasta])
-  const { datos, cargando, error, recargar } = useLlamadaRpc<FichaMotor>('fn_mot_ficha_completa', argumentos)
+  const argumentos = useMemo(
+    () => ({ p_equipo: equipoId, p_desde: desde || temporada?.fecha_inicio || null, p_hasta: hasta || temporada?.fecha_fin || null }),
+    [equipoId, desde, hasta, temporada]
+  )
+  const { datos, cargando, error, recargar } = useLlamadaRpc<FichaMotor>('fn_mot_ficha_completa', argumentos, temporadasListas)
+  const argumentosResumen = useMemo(() => ({ p_temporada: temporada?.id ?? null }), [temporada])
+  const { datos: resumenSrv } = useLlamadaRpc<ResumenTemporadaServidor>('fn_mot_resumen_temporada', argumentosResumen, temporadasListas && temporadaId !== 'todo')
 
   const senalesDe = useMemo(() => {
     const m = new Map<string, Aviso[]>()
@@ -139,6 +177,13 @@ function FichaMotorAuditor({ equipoId, generadoPor, onCerrar }: { equipoId: stri
   const activos = [desde, hasta, estaciones.length, codigosSenal.length].filter(Boolean).length
   const [filtros, setFiltros] = useState(false)
   const m = datos?.motor
+  const cifras = useMemo<CifrasTemporada | null>(() => {
+    if (!datos) return null
+    if (temporadaId === 'todo' || !resumenSrv) return resumirRegistros(datos.registros)
+    return resumenSrv.motores.find((x) => x.equipo_id === equipoId) ?? resumirRegistros([])
+  }, [datos, resumenSrv, temporadaId, equipoId])
+  const tramosResumen = temporadaId === 'todo' ? [] : (resumenSrv?.motores.find((x) => x.equipo_id === equipoId)?.tramos ?? [])
+  const opcionesTemporada = useMemo(() => [...temporadas.map((t) => ({ id: t.id, titulo: t.nombre, subtitulo: t.activa ? 'Activa' : undefined })), { id: 'todo', titulo: 'Todo el historial' }], [temporadas])
   const filasTabla = useMemo(() => filasDeHoja(registros, {}, senalesDe), [registros, senalesDe])
   /** PDF: una sección por estación donde estuvo el motor (con su zona y tanque). */
   const exportar = () => {
@@ -155,7 +200,7 @@ function FichaMotorAuditor({ equipoId, generadoPor, onCerrar }: { equipoId: stri
   return (
     <Modal abierto ancho="ancho" titulo={`Ficha · ${m?.codigo ?? ''}`} onCerrar={onCerrar}>
       <div className="flex flex-col gap-2" data-ficha-auditor>
-        <EstadoConsulta cargando={cargando} error={error} vacio={!datos} textoVacio="Sin datos." />
+        <EstadoConsulta cargando={cargando || !temporadasListas} error={error} vacio={!datos} textoVacio="Sin datos." />
         {datos && m && (
           <>
             <p className="text-xs text-slate-600">
@@ -163,6 +208,28 @@ function FichaMotorAuditor({ equipoId, generadoPor, onCerrar }: { equipoId: stri
               {m.modelo ? ` · ${m.modelo}` : ''} · {m.estacion ?? NOMBRE_ESTADO[m.estado] ?? m.estado}
               {m.horo_ultimo !== null ? ` · horómetro ${cantidad(m.horo_ultimo)}` : ''}
             </p>
+            <div data-selector-temporada>
+              <SelectorBuscable
+                valor={temporadaId === 'todo' ? 'todo' : (temporada?.id ?? '')}
+                opciones={opcionesTemporada}
+                onCambiar={setTemporadaId}
+                placeholder="Temporada…"
+                etiquetaBusqueda="Buscar temporada"
+                permitirVacio={false}
+              />
+            </div>
+            <ResumenTemporada cifras={cifras} subtitulo={temporadaId === 'todo' ? 'Todo el historial' : (temporada?.nombre ?? '')}>
+              {tramosResumen.length > 1 && (
+                <ul className="mt-2 flex flex-col gap-1 border-t border-slate-100 pt-2" data-resumen-tramos>
+                  {tramosResumen.map((t) => (
+                    <li key={t.id} className="flex items-baseline justify-between gap-2 text-xs text-slate-700">
+                      <span className="min-w-0 truncate">{t.estacion ?? 'Estación'}{t.zona ? ` · ${t.zona}` : ''}</span>
+                      <span className="shrink-0 tabular-nums">{cantidad(t.horas)} h · {cantidad(t.gal_gastados)} gal{t.rendimiento_gal_h === null ? '' : ` · ${cantidad(t.rendimiento_gal_h)} gal/h`}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </ResumenTemporada>
             {datos.ayuda?.mantenimiento && <FilaToque nivel={datos.ayuda.mantenimiento.nivel} titulo="Mantenimiento" linea2={datos.ayuda.mantenimiento.texto} linea3={`${cantidad(m.horas_desde_mant)} h desde el último mantenimiento${m.horas_estimadas_mant > 0 ? ` (${cantidad(m.horas_estimadas_mant)} h estimadas)` : ''}`} />}
             {datos.ayuda?.registro && <FilaToque nivel={datos.ayuda.registro.nivel} titulo="Registro del día" linea2={datos.ayuda.registro.texto} />}
             {datos.ayuda?.tanque && <FilaToque nivel={datos.ayuda.tanque.nivel} titulo="Tanque" linea2={datos.ayuda.tanque.texto} />}
