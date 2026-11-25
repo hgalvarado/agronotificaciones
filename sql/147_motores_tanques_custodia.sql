@@ -152,7 +152,7 @@ grant  execute on function public._mot_ests_visibles() to authenticated;
 create policy fert_leer on public.mot_custodias for select to authenticated
     using ((select public.fn_es_admin()) or (select public.fn_tiene_permiso('motores', 'auditar'))
            or ((select public.fn_tiene_permiso('motores', 'ver')) and estacion_id is not null
-               and estacion_id = any((select public._mot_ests_visibles()))));
+               and estacion_id = any((select public._mot_ests_visibles())::uuid[])));
 create policy fert_leer on public.mot_tanque_historial for select to authenticated
     using (public.fn_es_admin() or public.fn_tiene_permiso('motores', 'auditar') or public.fn_tiene_permiso('motores', 'configurar'));
 
@@ -274,10 +274,9 @@ begin
             insert into public.mot_tanques (estacion_id, nombre, capacidad_gal, zona_id, asignado_at)
             values (v_est, x.nombre, x.cap, v_zona, case when v_est is not null then now() end)
             returning id into v_id;
-            if v_est is not null then
-                insert into public.mot_tanque_historial (tanque_id, estacion_antes, estacion_nueva, motivo)
-                values (v_id, null, v_est, '147: siembra inicial (el nombre coincide con la estación)');
-            end if;
+            -- SIEMPRE se deja la marca «147:» (con o sin estación): así una segunda corrida no lo «adopta» ni pisa correcciones
+            insert into public.mot_tanque_historial (tanque_id, estacion_antes, estacion_nueva, motivo)
+            values (v_id, null, v_est, '147: siembra inicial' || case when v_est is not null then ' (el nombre coincide con la estación)' else ' (sin estación)' end);
         end if;   -- (si ya estaba sembrado/adoptado en una corrida anterior no se toca)
     end loop;
 end $$;
@@ -1266,8 +1265,9 @@ $p$147:huella$p$);
 -- 9b2 · _mot_filas: las estaciones/motores de prueba se calculan UNA vez (antes _fert_es_prueba / _mot_es_prueba por fila)
 select pg_temp.parchar('public._mot_filas(uuid[])',
 $p$where not public._fert_es_prueba(u.estacion_id) and not public._mot_es_prueba(u.equipo_id)$p$,
-$p$where u.estacion_id is distinct from all ((select coalesce(array_agg(z.id), '{}'::uuid[]) from public.estaciones_riego z where z.prueba_de is not null))   -- 147:filas
-       and u.equipo_id is distinct from all ((select coalesce(array_agg(m.equipo_id), '{}'::uuid[]) from public.mot_motores m where m.prueba_de is not null))$p$,
+$p$where coalesce(u.estacion_id <> all ((select coalesce(array_agg(z.id), '{}'::uuid[]) from public.estaciones_riego z where z.prueba_de is not null)::uuid[]), true)   -- 147:filas
+       and coalesce(u.equipo_id <> all ((select coalesce(array_agg(m.equipo_id), '{}'::uuid[]) from public.mot_motores m where m.prueba_de is not null)::uuid[]), true)
+       /* 145: not public._mot_es_prueba(u.equipo_id) · (texto literal que la 145 usa como marca; no quitar) */$p$,
 $p$147:filas$p$);
 
 -- 9b3 · anular / eliminar una asignación: primero se quita el motor de TODOS los tanques listados en «antes» y luego se restauran

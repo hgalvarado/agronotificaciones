@@ -105,3 +105,8 @@ Pruebas viejas que describen el modelo anterior y SE CORREN ANTES de la 147 (no 
 - Catálogo nuevo: leer `fn_mot_catalogo_para_agl()` (tanques con zona/estación/saldo y tramos de custodia) y guardarlos en AGL (los 30 tanques son catálogo; AGL puede ser su dueño en `/EQ01` en una fase posterior).
 - `motores_analisis.py`: el consumo y el rendimiento se agrupan por TRAMO de custodia (estación) además de por motor; el cuadre de combustible compara por TANQUE (recibido − gastado ± ajustes de visor) y no por estación; usar `dif_visor_gal` y las observaciones `VISOR_*_QUE_SALDO`.
 - Mantenimiento: AGL sigue resolviendo intervalo/aviso por modelo (`fn_mot_publicar` sin cambios).
+
+## 10. Notas de QA (2026-11-24)
+- **Pruebas previas a la 147 que ya fallaban**: `pruebas/sql/140_*` línea ~109 («la pantalla motores trae las 4 acciones nuevas y eliminar_definitivo») falla IGUAL sin la 147 (lo comprobó Opus); es un defecto de esa prueba/orden de migraciones, anterior a esta migración. No se arregla aquí.
+- **Idempotencia de la siembra**: todo tanque creado por la 147 queda con una fila `147:` en `mot_tanque_historial` (con o sin estación); solo se «adopta» un tanque viejo de la 130 que NO tenga esa marca, una única vez, y nunca se pisan cambios hechos con `fn_mot_tanque_guardar`.
+- **Orden 145→147→145**: el reemplazo de `_mot_filas` deja el texto `not public._mot_es_prueba(u.equipo_id)` dentro de un comentario, que es la marca con que la 145 decide que ya está parchada.
