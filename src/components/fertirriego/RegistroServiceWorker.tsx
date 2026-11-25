@@ -12,6 +12,12 @@ import { useEffect } from 'react'
 export function RegistroServiceWorker({ rutas }: { rutas?: string[] } = {}) {
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return
+    // En desarrollo NO se instala: guardaba pantallas y archivos viejos y se veía una versión anterior del código.
+    if (process.env.NODE_ENV === 'development') {
+      navigator.serviceWorker.getRegistrations().then((rs) => rs.forEach((r) => r.unregister())).catch(() => {})
+      if ('caches' in window) caches.keys().then((ks) => ks.filter((k) => k.startsWith('agn-fert-')).forEach((k) => caches.delete(k))).catch(() => {})
+      return
+    }
     const seguro = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1'
     if (!seguro) return
     navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' }).catch(() => {
