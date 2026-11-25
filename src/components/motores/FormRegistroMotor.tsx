@@ -248,9 +248,11 @@ export function FormRegistroMotor({
           hoy,
         })
         if ('error' in a) return a.error
+        // Corregir: el registro corregido se asienta a nombre de quien lo hizo originalmente (así no exige tener la estación a cargo)
+        const nombreDe = corregir ? (corregir.registrado_por ?? enNombreDe) : enNombreDe
         const nuevo = crearOperacion('motor_registro_diario', { ...a.datos, ...(esHistorico ? { historica: true } : {}) }, {
           ubicacion,
-          enNombreDe,
+          enNombreDe: nombreDe,
           resumen: `${corregir ? 'Registro CORREGIDO' : esHistorico ? 'Registro HISTÓRICO' : 'Registro diario'} · ${motor.codigo} · ${fmtFecha(fecha).slice(0, 5)}${calc.horas !== null ? ` · ${calc.horas} h` : ''}`,
         })
         if (!corregir) return [nuevo]

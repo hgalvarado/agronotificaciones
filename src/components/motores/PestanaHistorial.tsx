@@ -15,7 +15,7 @@ import { formatearFechaHora } from '@/lib/estados'
 import { cantidad } from '@/lib/fertirriego/calculos'
 import type { TipoEliminable } from '@/lib/fertirriego/eliminar'
 import type { Chofer, Estacion, Operacion, Persona, Vehiculo } from '@/lib/fertirriego/tipos'
-import { diaLocal, nombreQuien, type EstadoMotores, type MotorEstacion, type RegistroMotor } from '@/lib/motores/estado'
+import { diaLocal, nombreQuien, type EstadoMotores, type MotorEstacion, type RecepcionMotor, type RegistroMotor } from '@/lib/motores/estado'
 import { filasDeHoja } from '@/lib/motores/hoja'
 import { resumirRegistros } from '@/lib/motores/resumenTemporada'
 import { htmlHoja } from '@/lib/motores/hojaPdf'
@@ -44,6 +44,7 @@ export function PestanaHistorial({
   nombreEstacion,
   puedeAnular,
   onCorregir,
+  onCorregirRecepcion,
   puedeEliminar,
   registrar,
   onGuardado,
@@ -62,6 +63,8 @@ export function PestanaHistorial({
   puedeAnular: boolean
   /** Solo administrador: abre la corrección de un registro del día. */
   onCorregir?: (r: RegistroMotor) => void
+  /** Solo administrador: corrige una recepción de combustible. */
+  onCorregirRecepcion?: (r: RecepcionMotor) => void
   puedeEliminar: boolean
   registrar: (...ops: Operacion[]) => Promise<void>
   onGuardado: (m: string) => void
@@ -84,8 +87,13 @@ export function PestanaHistorial({
   const senales = useMemo(() => senalesPorRegistro(estado.registros, estado.recepciones), [estado.registros, estado.recepciones])
   const tanquesDeMotores = useMemo(() => new Map(estado.motores.map((m) => [m.equipo_id, m.tanque?.id ?? null])), [estado.motores])
 
-  const acciones = (tipo: AnulableMotor['tipo'], elim: TipoEliminable, id: string, texto: string, anulado: boolean, reg?: RegistroMotor) => (
+  const acciones = (tipo: AnulableMotor['tipo'], elim: TipoEliminable, id: string, texto: string, anulado: boolean, reg?: RegistroMotor, rec?: RecepcionMotor) => (
     <>
+      {rec && onCorregirRecepcion && puede && puedeEliminar && !anulado && (
+        <Boton tamano="md" className="min-h-11" onClick={() => onCorregirRecepcion(rec)} data-corregir-recepcion-motor>
+          Corregir
+        </Boton>
+      )}
       {reg && onCorregir && puede && puedeEliminar && !anulado && (
         <Boton tamano="md" className="min-h-11" onClick={() => onCorregir(reg)} data-corregir-registro-motor>
           Corregir
@@ -175,7 +183,7 @@ export function PestanaHistorial({
                 <DatoHoja etiqueta="Observaciones" valor={x.comentario} ancho />
               </dl>
               {x.anulado_at && <p className="mt-2 text-xs font-semibold text-red-700">Anulado{x.motivo_anulacion ? `: ${x.motivo_anulacion}` : ''}</p>}
-              {(puede || puedeEliminar) && <div className="mt-3 flex flex-wrap gap-2">{acciones('diesel_recepcion', 'mot_recepcion', x.id, `Recepción de ${x.galones} gal`, Boolean(x.anulado_at))}</div>}
+              {(puede || puedeEliminar) && <div className="mt-3 flex flex-wrap gap-2">{acciones('diesel_recepcion', 'mot_recepcion', x.id, `Recepción de ${x.galones} gal`, Boolean(x.anulado_at), undefined, x)}</div>}
             </div>
           </FilaToque>
         ),
