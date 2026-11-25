@@ -211,8 +211,8 @@ export function senalesDeRegistro(r: RegSenal, prev: RegSenal | null, hist: RegS
     if (d < -TOLERANCIA_GAL) add('rojo', 'VISOR_FALTA', `Visor inicial: faltan ${t(-d)} gal.`)
     else if (d > TOLERANCIA_GAL) add('amarillo', 'VISOR_SOBRA', `Visor inicial: sobran ${t(d)} gal. ¿Falta recibir combustible?`)
   }
-  if (r.dif_visor_gal !== null && r.dif_visor_gal < -TOLERANCIA_GAL) add('rojo', 'SALDO_FALTA', `Faltan ${t(-r.dif_visor_gal)} gal contra el tanque.`)
-  else if (r.dif_visor_gal !== null && r.dif_visor_gal > TOLERANCIA_GAL) add('amarillo', 'SALDO_SOBRA', `Sobran ${t(r.dif_visor_gal)} gal contra el tanque.`)
+  // El visor contra el tanque se compara EN VIVO con el registro anterior y las recepciones (VISOR_FALTA / VISOR_SOBRA). Lo guardado al registrar
+  // (dif_visor_gal) queda viejo en cuanto se corrige un registro o una recepción, así que ya no se usa para avisar.
   const rend = hist.filter((h) => h.horas > 0 && h.rendimiento_gal_h !== null).slice(0, 10).map((h) => h.rendimiento_gal_h as number)
   if (r.horas > 0 && r.rendimiento_gal_h !== null && rend.length >= 5) {
     const med = mediana(rend)
@@ -253,13 +253,11 @@ export function senalesPorRegistro(registros: RegSenal[], recepciones: Pick<Rece
 export const OBS_MOTOR: Record<string, { nivel: NivelAviso; texto: string }> = {
   REGISTRO_HISTORICO: { nivel: 'info', texto: 'Registro histórico' },
   SUMINISTRO_DURANTE_DIA: { nivel: 'info', texto: 'Entró combustible ese día' },
-  FUERA_DE_ORDEN: { nivel: 'amarillo', texto: 'Día anterior a otros ya hechos' },
   MOTOR_NO_ASIGNADO_EN_FECHA: { nivel: 'amarillo', texto: 'Motor sin asignar esa fecha' },
   MOTOR_EN_TALLER_EN_FECHA: { nivel: 'amarillo', texto: 'Motor en taller esa fecha' },
   MOTOR_RETIRADO_EN_FECHA: { nivel: 'amarillo', texto: 'Motor retirado esa fecha' },
   MANTENIMIENTO_PROXIMO: { nivel: 'amarillo', texto: 'Mantenimiento próximo' },
   MANTENIMIENTO_VENCIDO: { nivel: 'rojo', texto: 'Mantenimiento vencido' },
-  SIN_REGISTRO_PREVIO: { nivel: 'info', texto: 'Primer registro del motor' },
 }
 
 // ---------------------------------------------------------------- alertas del formulario (antes de guardar)
