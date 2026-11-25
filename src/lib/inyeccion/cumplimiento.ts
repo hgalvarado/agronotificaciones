@@ -48,6 +48,8 @@ export type FilaCumplimiento = {
   ddt: number | null
   ciclo: string | null
   material_id: string
+  /** Categoría del plan (clave del catálogo de categorías); null en las filas «sin plan». */
+  categoria_clave: string | null
   fecha_plan: string | null
   fecha_estimada: boolean
   dosis_plan: number | null
@@ -154,6 +156,7 @@ export function comparativaPlanReal(plan: FilaPlanInyeccion[], aplicaciones: Apl
               ddt: l.ddt_plan ?? null,
               ciclo: a.ciclo,
               material_id: l.material_id,
+              categoria_clave: null,
               fecha_plan: null,
               fecha_estimada: false,
               dosis_plan: null,
@@ -179,6 +182,7 @@ export function comparativaPlanReal(plan: FilaPlanInyeccion[], aplicaciones: Apl
           ddt: fs[0].ddt,
           ciclo: fs[0].ciclo ?? null,
           material_id: fs[0].material_id,
+          categoria_clave: fs[0].categoria_clave ?? null,
           fecha_plan: fechas[0] ?? null,
           fecha_estimada: fs.some((f) => f.fecha_estimada),
           dosis_plan: dosis,

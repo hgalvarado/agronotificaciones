@@ -24,7 +24,8 @@ import { SIN_FILTROS_INY, filaCumple, lineaCumple, type FiltrosInyeccion } from 
 import { rotuloLote } from '@/lib/inyeccion/lotes'
 import { planDeEstacion } from '@/lib/inyeccion/planGeneral'
 import { FiltrosHistorialInyeccion } from './FiltrosHistorialInyeccion'
-import { InsigniasCumplimiento } from './InsigniasCumplimiento'
+import { EstadoCompacto, InsigniasCumplimiento, PUNTO_TONO, TONO_TIEMPO } from './InsigniasCumplimiento'
+import { VistaCalendarioLote } from './VistaCalendarioLote'
 import { VistaPlanVsReal } from './VistaPlanVsReal'
 
 function FormAnular({
@@ -109,7 +110,7 @@ export function VistaHistorialInyeccion({
   const [anulando, setAnulando] = useState<AplicacionInyeccion | null>(null)
   const [eliminando, setEliminando] = useState<AplicacionInyeccion | null>(null)
   const [seleccionId, setSeleccionId] = useState<string | null>(null)
-  const [vista, setVista] = useState<'aplicaciones' | 'plan'>('aplicaciones')
+  const [vista, setVista] = useState<'aplicaciones' | 'plan' | 'calendario'>('aplicaciones')
   const [filtros, setFiltros] = useState<FiltrosInyeccion>(SIN_FILTROS_INY)
   const hoy = hoyIso()
 
@@ -158,15 +159,51 @@ export function VistaHistorialInyeccion({
   const puedeAnularSel = Boolean(seleccionada && puedeAnular && estacion.permisos.anular && !seleccionada.anulado_at)
   const puedeEliminarSel = Boolean(seleccionada && puedeEliminar && onEliminado)
 
+  const [modo, setModo] = useState<'lista' | 'tabla'>('lista')
+  const [limite, setLimite] = useState(40)
+  const [abiertas, setAbiertas] = useState<Set<string>>(new Set())
+  const alternarAbierta = (id: string) =>
+    setAbiertas((p) => {
+      const n = new Set(p)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
+  const mostradas = filas.slice(0, limite)
+  const porDia = useMemo(() => {
+    const m = new Map<string, typeof mostradas>()
+    for (const x of mostradas) {
+      const d = x.a.fecha ?? x.a.fecha_hora.slice(0, 10)
+      m.set(d, [...(m.get(d) ?? []), x])
+    }
+    return [...m.entries()]
+  }, [mostradas])
+  const puedeActuar = (puedeAnular && estacion.permisos.anular) || (puedeEliminar && Boolean(onEliminado))
+  const lotesCalendario = useMemo(() => opcionesLotes.map((o) => ({ id: o.valor, titulo: o.etiqueta })), [opcionesLotes])
+  const fechaDia = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString('es-HN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })
+
+  const casilla = (a: AplicacionInyeccion, marcada: boolean) => (
+    <label className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center" aria-label={`Marcar aplicación del ${a.fecha}`}>
+      <input
+        type="checkbox"
+        checked={marcada}
+        onChange={() => setSeleccionId(marcada ? null : a.id)}
+        data-seleccionar-aplicacion
+        className="h-5 w-5 accent-brand-600"
+      />
+    </label>
+  )
+
   return (
     <div className="flex flex-col gap-2" data-historial-inyeccion>
       {todas.length > 0 && (
         <>
-          <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1" role="tablist" aria-label="Vista del historial" data-vista-historial>
+          <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1" role="tablist" aria-label="Vista del historial" data-vista-historial>
             {(
               [
                 ['aplicaciones', 'Aplicaciones'],
-                ['plan', 'Plan contra real'],
+                ['plan', 'Plan vs real'],
+                ['calendario', 'Calendario'],
               ] as const
             ).map(([v, t]) => (
               <button
@@ -176,13 +213,13 @@ export function VistaHistorialInyeccion({
                 aria-selected={vista === v}
                 onClick={() => setVista(v)}
                 data-vista-historial-opcion={v}
-                className={`min-h-11 rounded-lg px-2 text-sm font-bold ${vista === v ? 'bg-white text-brand-700 shadow-[var(--shadow-card)]' : 'text-slate-600'}`}
+                className={`min-h-11 rounded-lg px-1 text-sm font-bold ${vista === v ? 'bg-white text-brand-700 shadow-[var(--shadow-card)]' : 'text-slate-600'}`}
               >
                 {t}
               </button>
             ))}
           </div>
-          <FiltrosHistorialInyeccion filtros={filtros} onCambiar={setFiltros} productos={opcionesProductos} lotes={opcionesLotes} personas={opcionesPersonas} />
+          {vista !== 'calendario' && <FiltrosHistorialInyeccion filtros={filtros} onCambiar={setFiltros} productos={opcionesProductos} lotes={opcionesLotes} personas={opcionesPersonas} />}
         </>
       )}
       {pendientes.map((o) => (
@@ -198,82 +235,179 @@ export function VistaHistorialInyeccion({
         <p className="rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-500 ring-1 ring-inset ring-slate-200">Todavía no hay aplicaciones por lote en esta estación.</p>
       )}
 
-      {vista === 'plan' && todas.length > 0 && <VistaPlanVsReal filas={filasPlan} producto={nombreProducto} unidad={unidad} rotuloLote={rotulo} quien={nombreQuien} />}
+      {vista === 'plan' && todas.length > 0 && (
+        <VistaPlanVsReal filas={filasPlan} producto={nombreProducto} unidad={unidad} rotuloLote={rotulo} quien={nombreQuien} categorias={estado.categorias} />
+      )}
+      {vista === 'calendario' && todas.length + planDe.length > 0 && (
+        <VistaCalendarioLote filas={comparativa} lotes={lotesCalendario} producto={nombreProducto} unidad={unidad} rotuloLote={rotulo} quien={nombreQuien} />
+      )}
 
       {vista === 'aplicaciones' && todas.length > 0 && filas.length === 0 && (
         <p className="rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-500 ring-1 ring-inset ring-slate-200">No hay aplicaciones con esos filtros.</p>
       )}
-      {vista === 'aplicaciones' &&
-        filas.map(({ a, lineas }) => {
-          const marcada = seleccionId === a.id
-          const quien = nombreQuien(a.registrado_por)
-          return (
-            <div
-              key={a.id}
-              className={`rounded-xl bg-white p-3 ring-2 ring-inset ${marcada ? 'ring-brand-600' : 'ring-slate-200'} ${a.anulado_at ? 'opacity-70' : ''}`}
-              data-aplicacion-lote={a.id}
-              data-seleccionada={marcada ? '' : undefined}
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="flex flex-wrap gap-1">
-                  {a.anulado_at && <Insignia tono="rojo">Anulada</Insignia>}
-                  {a.observaciones?.includes('REGISTRO_HISTORICO') && <Insignia tono="azul">Histórico</Insignia>}
-                  {a.lineas.some((l) => !l.en_plan) && <Insignia tono="ambar">Sin plan</Insignia>}
-                </span>
-                <button
-                  type="button"
-                  aria-pressed={marcada}
-                  onClick={() => setSeleccionId(marcada ? null : a.id)}
-                  data-seleccionar-aplicacion
-                  className={`min-h-11 rounded-full px-4 text-sm font-semibold ring-1 ring-inset ${marcada ? 'bg-brand-600 text-white ring-brand-600' : 'bg-white text-slate-700 ring-slate-300'}`}
-                >
-                  {marcada ? '✓ Seleccionada' : 'Seleccionar'}
-                </button>
-              </div>
-              <ul className="mt-1 flex flex-col gap-2.5">
-                {lineas.map((l) => {
+      {vista === 'aplicaciones' && filas.length > 0 && (
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs text-slate-500" data-ayuda-seleccion>
+            {puedeActuar ? 'Marca una fila para anular o eliminar' : `${filas.length} aplicación(es)`}
+          </p>
+          <span className="inline-flex rounded-lg bg-slate-100 p-0.5" role="radiogroup" aria-label="Forma de ver" data-modo-historial>
+            {(
+              [
+                ['lista', 'Lista'],
+                ['tabla', 'Tabla'],
+              ] as const
+            ).map(([v, t]) => (
+              <button
+                key={v}
+                type="button"
+                role="radio"
+                aria-checked={modo === v}
+                onClick={() => setModo(v)}
+                data-modo-historial-opcion={v}
+                className={`min-h-9 rounded-md px-3 text-xs font-semibold ${modo === v ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
+              >
+                {t}
+              </button>
+            ))}
+          </span>
+        </div>
+      )}
+
+      {vista === 'aplicaciones' && modo === 'lista' &&
+        porDia.map(([dia, items]) => (
+          <section key={dia} className="overflow-hidden rounded-xl bg-white ring-1 ring-inset ring-slate-200" data-dia-historial={dia}>
+            <h3 className="sticky top-0 z-[1] flex items-baseline justify-between bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-wide text-slate-600">
+              <span>{fechaDia(dia)}</span>
+              <span className="font-semibold normal-case">{items.length} aplicación(es)</span>
+            </h3>
+            <div className="divide-y divide-slate-100">
+              {items.map(({ a, lineas }) => {
+                const marcada = seleccionId === a.id
+                const abierta = abiertas.has(a.id)
+                const quien = nombreQuien(a.registrado_por)
+                const historica = a.observaciones?.includes('REGISTRO_HISTORICO')
+                return (
+                  <div
+                    key={a.id}
+                    className={`grid grid-cols-[1fr_auto] items-start ${marcada ? 'bg-brand-50/60' : ''} ${a.anulado_at ? 'opacity-60' : ''}`}
+                    data-aplicacion-lote={a.id}
+                    data-seleccionada={marcada ? '' : undefined}
+                  >
+                    <button type="button" aria-expanded={abierta} onClick={() => alternarAbierta(a.id)} className="min-w-0 px-3 py-1.5 text-left" data-expandir-aplicacion>
+                      {lineas.map((l) => {
+                        const fila = indice.get(`${a.id}|${l.material_id}`)
+                        const u = unidad(l.material_id)
+                        const punto = fila ? PUNTO_TONO[TONO_TIEMPO[fila.tiempo].tono] : 'bg-slate-400'
+                        return (
+                          <span key={l.material_id} className="mb-1 grid min-h-11 grid-cols-[0.75rem_1fr] items-start gap-2 last:mb-0" data-linea-aplicada={l.material_id}>
+                            <span className={`mt-1.5 h-2.5 w-2.5 rounded-full ${punto}`} aria-hidden="true" />
+                            <span className="min-w-0">
+                              <span className="flex items-baseline justify-between gap-2">
+                                <span className={`min-w-0 truncate text-sm font-extrabold text-slate-900 ${a.anulado_at ? 'line-through' : ''}`}>{nombreProducto(l.material_id)}</span>
+                                <span className="shrink-0 text-sm font-bold tabular-nums text-slate-900">{l.dosis_mz !== null ? `${cantidad(l.dosis_mz)} ${u}/mz` : 'sin dosis'}</span>
+                              </span>
+                              <span className="flex items-center justify-between gap-2">
+                                <span className="min-w-0 truncate text-xs tabular-nums text-slate-600">
+                                  {rotulo(a.lote)} · <strong>{cantidad(l.cantidad)}</strong> {u}
+                                  {l.ddt_plan !== null ? ` · DDT ${fila?.ddt_real ?? l.ddt_plan}` : ''}
+                                </span>
+                                {a.anulado_at ? (
+                                  <span className="shrink-0 rounded-full bg-red-50 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-red-700 ring-1 ring-inset ring-red-600/20">Anulada</span>
+                                ) : fila ? (
+                                  <EstadoCompacto fila={fila} />
+                                ) : null}
+                              </span>
+                            </span>
+                          </span>
+                        )
+                      })}
+                      {abierta && (
+                        <span className="mt-1 block rounded-lg bg-slate-50 p-2 pl-5 text-xs text-slate-600 ring-1 ring-inset ring-slate-200" data-detalle-aplicacion>
+                          <span className="block">
+                            {formatearFechaHora(a.fecha_hora)} · {cantidad(a.area_mz)} mz · {quien ?? 'Persona sin nombre en este teléfono'}
+                          </span>
+                          {historica && <span className="block">Registro histórico</span>}
+                          {a.lineas.some((l) => !l.en_plan) && <span className="block">Sin plan en alguna línea</span>}
+                          {lineas.map((l) => {
+                            const fila = indice.get(`${a.id}|${l.material_id}`)
+                            const u = unidad(l.material_id)
+                            const objetivos = objetivosDeLinea(a, l)
+                            return (
+                              <span key={l.material_id} className="mt-1 block">
+                                <strong className="text-slate-800">{nombreProducto(l.material_id)}</strong>
+                                {objetivos.length > 0 ? ` · Objetivo: ${objetivos.join(', ')}` : ''}
+                                {fila && fila.tiempo !== 'sin_plan' && (
+                                  <span className="mt-0.5 block">
+                                    Plan: {cantidad(fila.cantidad_plan)} {u} · DDT {fila.ddt ?? '—'}
+                                    {fila.fecha_plan ? ` · ${fila.fecha_estimada ? '≈ ' : ''}${fila.fecha_plan}` : ''}
+                                    <span className="mt-0.5 block">
+                                      <InsigniasCumplimiento fila={fila} unidad={u} />
+                                    </span>
+                                  </span>
+                                )}
+                              </span>
+                            )
+                          })}
+                          {a.comentario && <span className="mt-1 block">Observaciones: {a.comentario}</span>}
+                          {a.anulado_at && a.motivo_anulacion && <span className="mt-1 block text-red-700">Motivo de la anulación: {a.motivo_anulacion}</span>}
+                        </span>
+                      )}
+                    </button>
+                    {casilla(a, marcada)}
+                  </div>
+                )
+              })}
+            </div>
+          </section>
+        ))}
+
+      {vista === 'aplicaciones' && modo === 'tabla' && filas.length > 0 && (
+        <div className="overflow-x-auto rounded-xl bg-white ring-1 ring-inset ring-slate-200" data-tabla-historial>
+          <table className="w-full min-w-[34rem] text-left text-xs">
+            <thead className="sticky top-0 bg-slate-100 text-[11px] font-bold uppercase tracking-wide text-slate-600">
+              <tr>
+                <th className="px-2 py-1.5">Fecha</th>
+                <th className="px-2 py-1.5">Lote</th>
+                <th className="px-2 py-1.5">Producto</th>
+                <th className="px-2 py-1.5 text-right">Dosis</th>
+                <th className="px-2 py-1.5 text-right">Cant.</th>
+                <th className="px-2 py-1.5 text-right">DDT</th>
+                <th className="px-2 py-1.5">Estado</th>
+                <th className="w-11 px-0 py-1.5" aria-label="Marcar" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {mostradas.flatMap(({ a, lineas }) =>
+                lineas.map((l, i) => {
+                  const marcada = seleccionId === a.id
                   const fila = indice.get(`${a.id}|${l.material_id}`)
                   const u = unidad(l.material_id)
-                  const objetivos = objetivosDeLinea(a, l)
                   return (
-                    <li key={l.material_id} data-linea-aplicada={l.material_id}>
-                      <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-                        <p className="text-base font-extrabold text-slate-900">{nombreProducto(l.material_id)}</p>
-                        <p className="text-base font-bold tabular-nums text-slate-900">{l.dosis_mz !== null ? `${cantidad(l.dosis_mz)} ${u}/mz` : 'sin dosis'}</p>
-                      </div>
-                      <p className="text-sm tabular-nums text-slate-700">
-                        <strong>{cantidad(l.cantidad)}</strong> {u}
-                        {l.ddt_plan !== null ? (
-                          <>
-                            {' · '}DDT {fila?.ddt_real ?? l.ddt_plan}
-                            {fila?.ddt_real !== null && fila?.ddt_real !== undefined && fila.ddt_real !== l.ddt_plan ? ` (plan ${l.ddt_plan})` : ''}
-                          </>
-                        ) : null}
-                        {' · '}
-                        {a.fecha}
-                        {fila?.fecha_plan && fila.fecha_plan !== a.fecha ? ` (plan ${fila.fecha_plan})` : ''}
-                      </p>
-                      {fila && fila.tiempo !== 'sin_plan' ? (
-                        <div className="mt-1">
-                          <InsigniasCumplimiento fila={fila} unidad={u} />
-                        </div>
-                      ) : null}
-                      {objetivos.length > 0 && <p className="text-xs text-slate-500">Objetivo: {objetivos.join(', ')}</p>}
-                    </li>
+                    <tr key={`${a.id}|${l.material_id}`} className={`${marcada ? 'bg-brand-50/60' : ''} ${a.anulado_at ? 'opacity-60' : ''}`} data-aplicacion-lote={i === 0 ? a.id : undefined} data-linea-aplicada={l.material_id}>
+                      <td className="whitespace-nowrap px-2 py-1 tabular-nums">{a.fecha}</td>
+                      <td className="max-w-[9rem] truncate px-2 py-1">{rotulo(a.lote)}</td>
+                      <td className="max-w-[9rem] truncate px-2 py-1 font-semibold text-slate-900">{nombreProducto(l.material_id)}</td>
+                      <td className="whitespace-nowrap px-2 py-1 text-right tabular-nums">{l.dosis_mz !== null ? `${cantidad(l.dosis_mz)} ${u}/mz` : '—'}</td>
+                      <td className="whitespace-nowrap px-2 py-1 text-right tabular-nums">
+                        {cantidad(l.cantidad)} {u}
+                      </td>
+                      <td className="px-2 py-1 text-right tabular-nums">{l.ddt_plan !== null ? (fila?.ddt_real ?? l.ddt_plan) : '—'}</td>
+                      <td className="px-2 py-1">{a.anulado_at ? 'Anulada' : fila ? <EstadoCompacto fila={fila} /> : '—'}</td>
+                      <td className="px-0 py-0">{i === 0 ? casilla(a, marcada) : null}</td>
+                    </tr>
                   )
-                })}
-              </ul>
-              <div className="mt-2 border-t border-slate-100 pt-2">
-                <p className="text-sm font-semibold text-slate-700">{rotulo(a.lote)}</p>
-                <p className="text-xs text-slate-500">
-                  {formatearFechaHora(a.fecha_hora)} · {cantidad(a.area_mz)} mz · {quien ?? 'Persona sin nombre en este teléfono'}
-                </p>
-                {a.comentario && <p className="text-xs text-slate-500">Observaciones: {a.comentario}</p>}
-                {a.anulado_at && a.motivo_anulacion && <p className="mt-1 text-xs text-red-700">Motivo de la anulación: {a.motivo_anulacion}</p>}
-              </div>
-            </div>
-          )
-        })}
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {vista === 'aplicaciones' && filas.length > limite && (
+        <button type="button" onClick={() => setLimite((l) => l + 40)} className="min-h-11 rounded-xl bg-white text-sm font-semibold text-brand-700 ring-1 ring-inset ring-slate-300" data-ver-mas-historial>
+          Ver más ({filas.length - limite})
+        </button>
+      )}
 
       {seleccionada && (
         <div
