@@ -188,12 +188,18 @@ function Panel({
       if (anclaje.current?.contains(e.target as Node)) return
       onCerrar()
     }
-    const tecla = (e: KeyboardEvent) => e.key === 'Escape' && onCerrar()
+    // Escape cierra SOLO el desplegable: en captura y deteniendo la
+    // propagación, para que el modal de detrás no se cierre también.
+    const tecla = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      e.stopPropagation()
+      onCerrar()
+    }
     document.addEventListener('mousedown', fuera)
-    document.addEventListener('keydown', tecla)
+    document.addEventListener('keydown', tecla, true)
     return () => {
       document.removeEventListener('mousedown', fuera)
-      document.removeEventListener('keydown', tecla)
+      document.removeEventListener('keydown', tecla, true)
     }
   }, [anclaje, onCerrar])
 

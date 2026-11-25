@@ -277,7 +277,7 @@ export function VistaHistorialInyeccion({
 
       {seleccionada && (
         <div
-          className="sticky bottom-2 z-10 flex flex-col gap-2 rounded-xl bg-white p-3 shadow-[var(--shadow-raised)] ring-2 ring-inset ring-brand-600"
+          className="sticky bottom-[calc(env(safe-area-inset-bottom)+4.75rem)] z-30 mb-24 flex lg:bottom-2 lg:mb-0 flex-col gap-2 rounded-xl bg-white p-3 shadow-[var(--shadow-raised)] ring-2 ring-inset ring-brand-600"
           role="region"
           aria-label="Acciones del registro seleccionado"
           data-acciones-seleccion
@@ -296,7 +296,7 @@ export function VistaHistorialInyeccion({
                 Eliminar por completo
               </Boton>
             )}
-            <Boton tamano="md" variante="secundario" onClick={() => setSeleccionId(null)} data-quitar-seleccion>
+            <Boton tamano="md" variante="secundario" onClick={() => setSeleccionId(null)} data-quitar-seleccion className="min-h-11">
               Quitar selección
             </Boton>
           </div>
