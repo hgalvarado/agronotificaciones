@@ -1418,7 +1418,7 @@ begin
           left join public.estaciones_riego er on er.id = mo.estacion_id
           left join public.zonas z on z.id = er.zona_id
           left join public.mot_tanques t on t.id = mo.tanque_id
-         where mo.activo and mo.prueba_de is null), '[]'::jsonb);
+         where mo.activo and (mo.prueba_de is null or public.fn_fert_en_pruebas())), '[]'::jsonb);
 end $$;
 revoke execute on function public.fn_mot_motores_resumen() from public, anon;
 grant  execute on function public.fn_mot_motores_resumen() to authenticated;

@@ -15,9 +15,13 @@ export function BarraMantenimiento({ horas, estimadas = 0, intervalo, aviso }: {
   const b = barraMantenimiento({ horas, estimadas, intervalo, aviso })
   const etiqueta = b.sinIntervalo ? 'Mantenimiento: sin intervalo' : `Mantenimiento: ${b.texto}${estimadas > 0 ? `, incluye ${Math.round(estimadas * 10) / 10} horas estimadas` : ''}`
   return (
-    <span className="flex items-center gap-2" data-barra-mant={b.zona}>
+    <span className="block w-full" data-barra-mant={b.zona}>
+      <span className="flex items-baseline justify-between gap-2">
+        <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Mantenimiento</span>
+        <span className={`text-sm font-medium tabular-nums ${TEXTO[b.zona]}`}>{b.texto}</span>
+      </span>
       <span
-        className="relative block h-2.5 min-w-0 flex-1 overflow-hidden rounded-full bg-emerald-100"
+        className="relative mt-0.5 block h-2.5 w-full overflow-hidden rounded-full bg-emerald-100"
         role="meter"
         aria-label={etiqueta}
         aria-valuemin={0}
@@ -32,7 +36,6 @@ export function BarraMantenimiento({ horas, estimadas = 0, intervalo, aviso }: {
           </>
         )}
       </span>
-      <span className={`shrink-0 text-xs font-medium tabular-nums ${TEXTO[b.zona]}`}>{b.texto}</span>
     </span>
   )
 }

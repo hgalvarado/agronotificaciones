@@ -6,16 +6,17 @@
  * «Asignar motor» es secundario y va al final.
  */
 
+import { useMemo, useState } from 'react'
 import { Boton } from '@/components/ui/Primitivos'
 import { Modal } from '@/components/ui/Modal'
 import { IconChevronRight } from '@/components/ui/Icons'
 import { cantidad } from '@/lib/fertirriego/calculos'
+import { useMemoria } from '@/lib/memoria/useMemoria'
 import type { VistaMotor } from '@/lib/motores/vistaMotor'
 import { BandaNivel, etiquetaMotor, FilaToque, InsigniaNivel } from './ElementosMotor'
 import { BarraMantenimiento } from './BarraMantenimiento'
 import { MedidorTanque } from './MedidorTanque'
 
-const fecha = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
 
 export type AccionMotor = 'registro' | 'recibir' | 'mover' | 'retirar' | 'mantenimiento' | 'historial'
 
@@ -23,7 +24,7 @@ function TarjetaMotor({ v, puedeRegistrar, onAbrir, onRegistrar, onRecibir }: { 
   const m = v.motor
   return (
     <div data-motor={m.codigo} className="rounded-xl bg-white ring-1 ring-inset ring-slate-200">
-      <button type="button" onClick={onAbrir} className="flex min-h-14 w-full items-stretch gap-2.5 py-2.5 pl-2.5 pr-3 text-left active:bg-slate-50">
+      <button type="button" onClick={onAbrir} className="flex min-h-14 w-full items-stretch gap-2.5 py-2 pl-2.5 pr-3 text-left active:bg-slate-50">
         <BandaNivel nivel={v.ayuda.nivel} />
         <span className="min-w-0 flex-1">
           <span className="flex items-start justify-between gap-2">
@@ -33,23 +34,22 @@ function TarjetaMotor({ v, puedeRegistrar, onAbrir, onRegistrar, onRecibir }: { 
             </span>
             {v.ayuda.nivel !== 'gris' && <InsigniaNivel nivel={v.ayuda.nivel} />}
           </span>
-          <span className="mt-2 block">
+          <span className="mt-1.5 block">
             {m.tanque ? <MedidorTanque saldo={v.saldo} capacidad={m.tanque.capacidad_gal} /> : <span className="text-xs text-slate-600">Sin tanque</span>}
           </span>
-          <span className="mt-1.5 block">
+          <span className="mt-1 block">
             <BarraMantenimiento horas={v.horas} estimadas={v.estimadas} intervalo={m.intervalo_horas} aviso={m.aviso_horas} />
           </span>
-          <span className="mt-1.5 block text-xs text-slate-600">{v.fechaUltima ? `Último registro ${fecha(v.fechaUltima)}` : 'Sin registros'}</span>
         </span>
         <IconChevronRight className="h-4 w-4 shrink-0 self-center text-slate-400" />
       </button>
       {puedeRegistrar && (
-        <div className="flex gap-2 border-t border-slate-100 px-2.5 py-1.5">
-          <Boton tamano="sm" className="min-h-11 flex-1" onClick={onRegistrar} data-registrar-dia>
+        <div className="flex gap-2 border-t border-slate-100 px-2.5 py-1">
+          <Boton tamano="sm" className="min-h-10 flex-1" onClick={onRegistrar} data-registrar-dia>
             Registrar día
           </Boton>
           {m.tanque && (
-            <Boton tamano="sm" variante="secundario" className="min-h-11 flex-1" onClick={onRecibir} data-recibir-combustible>
+            <Boton tamano="sm" variante="secundario" className="min-h-10 flex-1" onClick={onRecibir} data-recibir-combustible>
               Recibir combustible
             </Boton>
           )}
@@ -76,23 +76,51 @@ export function PestanaMotores({
   onRegistrar: (equipoId: string) => void
   onRecibir: (equipoId: string) => void
 }) {
+  // Orden propio de cada persona (el que más usa, primero): se recuerda en su equipo; los motores nuevos van al final
+  const [orden, fijarOrden] = useMemoria<string[]>('motores-orden', [])
+  const [ordenando, setOrdenando] = useState(false)
+  const lista = useMemo(() => {
+    const pos = (id: string) => { const i = orden.indexOf(id); return i < 0 ? Number.MAX_SAFE_INTEGER : i }
+    return vistas.map((v, i) => ({ v, i })).sort((a, b) => pos(a.v.motor.equipo_id) - pos(b.v.motor.equipo_id) || a.i - b.i).map((x) => x.v)
+  }, [vistas, orden])
+  const mover = (id: string, d: -1 | 1) => {
+    const ids = lista.map((x) => x.motor.equipo_id)
+    const i = ids.indexOf(id), j = i + d
+    if (i < 0 || j < 0 || j >= ids.length) return
+    ;[ids[i], ids[j]] = [ids[j], ids[i]]
+    fijarOrden(ids)
+  }
   return (
     <div className="flex flex-col gap-2" data-pestana-motores>
+      {lista.length > 1 && (
+        <button type="button" onClick={() => setOrdenando((o) => !o)} className="min-h-9 self-end rounded-lg px-2 text-sm font-medium text-brand-700 underline" data-ordenar-motores>
+          {ordenando ? 'Listo' : 'Ordenar'}
+        </button>
+      )}
       {vistas.length === 0 && (
         <p className="rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-500 ring-1 ring-inset ring-slate-200" data-sin-motores>
           {puedeAsignar ? 'Sin motores. Asigna uno.' : 'Sin motores en esta estación.'}
         </p>
       )}
       <div data-motores className="flex flex-col gap-2">
-        {vistas.map((v) => (
+        {lista.map((v, k) => (
+          <div key={v.motor.equipo_id} className="flex items-stretch gap-1.5">
+            <div className="min-w-0 flex-1">
           <TarjetaMotor
-            key={v.motor.equipo_id}
             v={v}
             puedeRegistrar={puedeRegistrar}
             onAbrir={() => onAbrir(v.motor.equipo_id)}
             onRegistrar={() => onRegistrar(v.motor.equipo_id)}
             onRecibir={() => onRecibir(v.motor.equipo_id)}
           />
+            </div>
+            {ordenando && (
+              <div className="flex shrink-0 flex-col justify-center gap-1">
+                <button type="button" disabled={k === 0} onClick={() => mover(v.motor.equipo_id, -1)} aria-label="Subir" className="min-h-11 min-w-11 rounded-lg bg-white text-lg text-slate-700 ring-1 ring-inset ring-slate-300 disabled:opacity-30" data-subir-motor>▲</button>
+                <button type="button" disabled={k === lista.length - 1} onClick={() => mover(v.motor.equipo_id, 1)} aria-label="Bajar" className="min-h-11 min-w-11 rounded-lg bg-white text-lg text-slate-700 ring-1 ring-inset ring-slate-300 disabled:opacity-30" data-bajar-motor>▼</button>
+              </div>
+            )}
+          </div>
         ))}
       </div>
       {puedeAsignar && (
