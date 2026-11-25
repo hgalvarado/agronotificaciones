@@ -90,6 +90,9 @@ function tinta(color: Rgb | undefined, gris: number, trazo = false): string {
 /** Carta, en puntos. Es el tamaño en el que se imprime en Honduras. */
 export const ANCHO = 612
 export const ALTO = 792
+/** A4 apaisada (puntos). */
+export const ANCHO_A4 = 842
+export const ALTO_A4 = 595
 
 /** Anchos de la Helvetica, en milésimas de em, para poder centrar. */
 const ANCHOS_HELVETICA: Record<string, number> = {
@@ -153,9 +156,12 @@ const dos = (n: number) => (Math.round(n * 100) / 100).toString()
 export class Pagina {
   private ordenes: string[] = []
 
+  /** Hoja horizontal (A4 apaisada, 842 × 595 pt); por defecto vertical como siempre. */
+  constructor(readonly horizontal = false) {}
+
   /** De «Y desde arriba» a la Y que entiende el PDF. */
   private aPdf(y: number): number {
-    return ALTO - y
+    return (this.horizontal ? ALTO_A4 : ALTO) - y
   }
 
   texto(x: number, y: number, texto: string, op: OpcionesTexto = {}): this {
@@ -280,7 +286,7 @@ export function construirPdf(paginas: Pagina[], titulo = 'Documento'): Blob {
 
   for (let i = 0; i < n; i++) {
     objetos.push(
-      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${ANCHO} ${ALTO}] ` +
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${paginas[i].horizontal ? ANCHO_A4 : ANCHO} ${paginas[i].horizontal ? ALTO_A4 : ALTO}] ` +
         `/Resources << /Font << /F1 ${idF1} 0 R /F2 ${idF2} 0 R >> >> ` +
         `/Contents ${idContenido(i)} 0 R >>`
     )

@@ -46,7 +46,6 @@ export function DetalleRegistroMotor({
         <DatoHoja etiqueta="Caudal inicial" valor={n(r.caudal_ini)} />
         <DatoHoja etiqueta="Caudal final" valor={n(r.caudal_fin)} />
         <DatoHoja etiqueta="Firma del operador" valor={r.operador} ancho />
-        {r.dif_visor_gal !== null && <DatoHoja etiqueta="Visor inicial − libro del tanque (gal)" valor={n(r.dif_visor_gal)} ancho />}
         {r.horas_estimadas !== null && <DatoHoja etiqueta="Horas estimadas (solo mantenimiento)" valor={n(r.horas_estimadas)} ancho />}
         <DatoHoja etiqueta="Observaciones" valor={r.comentario} ancho />
       </dl>

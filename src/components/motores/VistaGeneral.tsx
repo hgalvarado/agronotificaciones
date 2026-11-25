@@ -19,8 +19,7 @@ import { filtrarResumen, type CifrasTemporada, type FichaMotor, type RegistroFic
 import type { RegistroMotor } from '@/lib/motores/estado'
 import { filasDeHoja } from '@/lib/motores/hoja'
 import { resumirRegistros } from '@/lib/motores/resumenTemporada'
-import { htmlHoja } from '@/lib/motores/hojaPdf'
-import { imprimirHtml } from '@/lib/motores/imprimir'
+import { descargarHoja } from '@/lib/motores/hojaArchivo'
 import { peorNivel, type Aviso } from '@/lib/motores/senales'
 import { useLlamadaRpc } from '@/lib/motores/useLlamadaRpc'
 import { DetalleRegistroMotor, fechaCorta } from './DetalleRegistroMotor'
@@ -186,7 +185,7 @@ function FichaMotorAuditor({ equipoId, generadoPor, temporadas, temporadasListas
   const opcionesTemporada = useMemo(() => [...temporadas.map((t) => ({ id: t.id, titulo: t.nombre, subtitulo: t.activa ? 'Activa' : undefined })), { id: 'todo', titulo: 'Todo el historial' }], [temporadas])
   const filasTabla = useMemo(() => filasDeHoja(registros, {}, senalesDe), [registros, senalesDe])
   /** PDF: una sección por estación donde estuvo el motor (con su zona y tanque). */
-  const exportar = () => {
+  const exportar = (formato: 'pdf' | 'excel') => {
     if (!m) return
     const tramoDe = new Map((datos?.tramos ?? []).filter((t) => t.estacion_id).map((t) => [t.estacion_id as string, t]))
     const ids = [...new Set(registros.map((r) => r.estacion_id ?? ''))]
@@ -194,7 +193,7 @@ function FichaMotorAuditor({ equipoId, generadoPor, temporadas, temporadasListas
       const t = id ? tramoDe.get(id) : undefined
       return { motor: etiquetaMotor(m.codigo, m.nombre), estacion: t?.estacion ?? m.estacion, zona: t?.zona ?? null, tanque: t?.tanque ?? null, filas: filasDeHoja(registros.filter((r) => (r.estacion_id ?? '') === id), {}, senalesDe) }
     })
-    imprimirHtml(htmlHoja({ secciones, desde, hasta, generadoPor, generadoEn: formatearFechaHora(new Date().toISOString()) }))
+    descargarHoja(formato, { secciones, desde, hasta, generadoPor, generadoEn: formatearFechaHora(new Date().toISOString()) }, `Motor_${m.codigo}`)
   }
 
   return (

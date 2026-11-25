@@ -125,7 +125,8 @@ export function FormRegistroMotor({
   // El inicial propuesto es la lectura final del último registro ANTERIOR a esta fecha (cola incluida)
   const propuesta = useMemo(() => proponerInicial({ equipoId: motor.equipo_id, fecha, estado, pendientes }), [motor.equipo_id, fecha, estado, pendientes])
   // Horómetro dañado: no se escribe ninguna lectura; se usa donde terminó el motor la última vez
-  const horoBase = propuesta.horoIni ?? motor.horo_ultimo ?? 0
+  const siguiente = estado.registros.filter((r) => r.equipo_id === motor.equipo_id && !r.anulado_at && r.fecha > fecha).sort((a, b) => a.fecha.localeCompare(b.fecha))[0]
+  const horoBase = propuesta.horoIni ?? siguiente?.horo_ini ?? motor.horo_ultimo ?? 0
   const horoIniTxt = horoMalo ? String(horoBase) : horoIni ?? (propuesta.horoIni !== null ? String(propuesta.horoIni) : '')
   // El visor inicial = donde terminó el último registro + lo recibido ese día en el tanque (ej.: terminó en 47 y hoy entraron 150 → 197).
   // En un registro histórico no se suma: no mueve el tanque.
