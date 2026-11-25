@@ -9,7 +9,7 @@
 import { Boton } from '@/components/ui/Primitivos'
 import { peorNivel, queTocaAhora, type ItemAhora } from '@/lib/motores/senales'
 import type { VistaMotor } from '@/lib/motores/vistaMotor'
-import { FilaToque, IconoNivel, NOMBRE_NIVEL } from './ElementosMotor'
+import { BandaNivel, etiquetaMotor, FilaToque, InsigniaNivel, NOMBRE_NIVEL } from './ElementosMotor'
 
 export type AccionHoy = { tipo: 'registro' | 'mantenimiento' | 'recibir'; equipoId: string }
 
@@ -34,16 +34,17 @@ export function PestanaHoy({
     if (i.codigo === 'TANQUE' && puedeRegistrar) return { texto: 'Recibir diésel', accion: { tipo: 'recibir', equipoId: i.equipo_id } }
     return null
   }
+  const nombreDe = new Map(vistas.map((v) => [v.motor.equipo_id, etiquetaMotor(v.motor.codigo, v.motor.nombre)]))
   const nivel = peorNivel(items.map((i) => i.nivel))
   const urgentes = items.filter((i) => i.nivel === 'rojo').length
   const primera = items.map((i) => ({ i, a: accionDe(i) })).find((x) => x.a !== null)
 
   return (
     <div className="flex flex-col gap-2" data-pestana-hoy>
-      <div className="flex items-center gap-3 rounded-xl bg-white p-3 ring-1 ring-inset ring-slate-200" data-resumen-hoy={nivel}>
-        <IconoNivel nivel={nivel} />
+      <div className="flex items-stretch gap-2.5 rounded-xl bg-white py-3 pl-2.5 pr-3 ring-1 ring-inset ring-slate-200" data-resumen-hoy={nivel}>
+        <BandaNivel nivel={nivel} />
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold text-slate-900">
+          <p className="text-[15px] font-medium text-slate-900">
             {vistas.length === 0
               ? 'Esta estación no tiene motores conectados'
               : items.length === 0
@@ -52,11 +53,12 @@ export function PestanaHoy({
           </p>
           <p className="text-xs text-slate-600">{NOMBRE_NIVEL[nivel]} · lo más urgente va primero.</p>
         </div>
+        <InsigniaNivel nivel={nivel} />
       </div>
 
       {primera?.a && (
         <Boton className="min-h-14 w-full text-base" onClick={() => onAccion(primera.a!.accion)} data-accion-principal-hoy>
-          {primera.a.texto} · {primera.i.motor}
+          {primera.a.texto} · {nombreDe.get(primera.i.equipo_id) ?? primera.i.motor}
         </Boton>
       )}
 
@@ -67,7 +69,7 @@ export function PestanaHoy({
             key={`${i.equipo_id}-${i.codigo}-${k}`}
             atributos={{ 'data-pendiente-hoy': i.codigo }}
             nivel={i.nivel}
-            titulo={i.motor}
+            titulo={nombreDe.get(i.equipo_id) ?? i.motor}
             linea2={i.texto}
             linea3={a ? `Toca para: ${a.texto.toLowerCase()}` : undefined}
             onToque={a ? () => onAccion(a.accion) : undefined}

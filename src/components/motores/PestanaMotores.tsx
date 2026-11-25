@@ -10,7 +10,7 @@ import { Boton } from '@/components/ui/Primitivos'
 import { Modal } from '@/components/ui/Modal'
 import { cantidad } from '@/lib/fertirriego/calculos'
 import type { VistaMotor } from '@/lib/motores/vistaMotor'
-import { BarraTanque, FilaToque } from './ElementosMotor'
+import { BarraTanque, etiquetaMotor, FilaToque } from './ElementosMotor'
 
 const fecha = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
 
@@ -47,8 +47,8 @@ export function PestanaMotores({
             nivel={v.ayuda.nivel}
             titulo={
               <>
-                {v.motor.codigo}
-                {v.motor.nombre ? <span className="ml-1 text-xs font-normal text-slate-600">{v.motor.nombre}{v.motor.modelo ? ` · ${v.motor.modelo}` : ''}</span> : null}
+                {etiquetaMotor(v.motor.codigo, v.motor.nombre)}
+                {v.motor.modelo ? <span className="ml-1 text-xs font-normal text-slate-600">{v.motor.modelo}</span> : null}
               </>
             }
             linea2={v.ayuda.mantenimiento.texto}

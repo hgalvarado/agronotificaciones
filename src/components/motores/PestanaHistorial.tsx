@@ -17,7 +17,7 @@ import type { TipoEliminable } from '@/lib/fertirriego/eliminar'
 import type { Chofer, Estacion, Operacion, Persona, Vehiculo } from '@/lib/fertirriego/tipos'
 import { diaLocal, nombreQuien, type EstadoMotores, type MotorEstacion } from '@/lib/motores/estado'
 import { peorNivel, senalesPorRegistro } from '@/lib/motores/senales'
-import { DatoHoja, FilaToque, ChipsSenales } from './ElementosMotor'
+import { DatoHoja, etiquetaMotor, FilaToque, ChipsSenales } from './ElementosMotor'
 import { DetalleRegistroMotor, fechaCorta } from './DetalleRegistroMotor'
 import { FormAnularMotor, type AnulableMotor } from './FormAnularMotor'
 
@@ -67,7 +67,7 @@ export function PestanaHistorial({
   const [limite, setLimite] = useState(40)
 
   const puede = puedeAnular && estacion.permisos.anular
-  const codigoDe = useMemo(() => new Map(estado.motores.map((m) => [m.equipo_id, m.codigo])), [estado.motores])
+  const codigoDe = useMemo(() => new Map(estado.motores.map((m) => [m.equipo_id, etiquetaMotor(m.codigo, m.nombre)])), [estado.motores])
   const tanqueNombre = useMemo(() => new Map((estado.tanques ?? []).map((t) => [t.id, t.nombre])), [estado.tanques])
   const senales = useMemo(() => senalesPorRegistro(estado.registros, estado.recepciones), [estado.registros, estado.recepciones])
   const tanquesDeMotores = useMemo(() => new Map(estado.motores.map((m) => [m.equipo_id, m.tanque?.id ?? null])), [estado.motores])

@@ -17,7 +17,7 @@ import type { RegistroMotor } from '@/lib/motores/estado'
 import { peorNivel, type Aviso } from '@/lib/motores/senales'
 import { useLlamadaRpc } from '@/lib/motores/useLlamadaRpc'
 import { DetalleRegistroMotor, fechaCorta } from './DetalleRegistroMotor'
-import { ChipsSenales, EstadoConsulta, FilaToque } from './ElementosMotor'
+import { ChipsSenales, EstadoConsulta, etiquetaMotor, FilaToque } from './ElementosMotor'
 
 const NOMBRE_ESTADO: Record<string, string> = { EN_ESTACION: 'En estación', TALLER: 'En el taller', RETIRADO: 'Retirado', SIN_ASIGNAR: 'Sin asignar' }
 const NOMBRE_NIVEL_FILTRO = [
@@ -82,7 +82,7 @@ export function VistaAuditoria() {
           nivel={m.ayuda?.nivel ?? 'gris'}
           titulo={
             <>
-              {m.codigo}
+              {etiquetaMotor(m.codigo, m.nombre)}
               <span className="ml-1 text-xs font-normal text-slate-600">{NOMBRE_ESTADO[m.estado] ?? m.estado}</span>
             </>
           }

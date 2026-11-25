@@ -8,26 +8,41 @@
 
 import type { ReactNode } from 'react'
 import { IconCheck, IconChevronRight, IconClock, IconInfo, IconX } from '@/components/ui/Icons'
-import { CLASES_TONO, Insignia, type Tono } from '@/components/ui/Primitivos'
+import { BandaLateral, InsigniaSobria } from '@/components/ui/Banda'
+import { Insignia, type Tono } from '@/components/ui/Primitivos'
 import type { Aviso } from '@/lib/motores/senales'
 
 export const TONO_DE_NIVEL: Record<string, Tono> = { rojo: 'rojo', amarillo: 'ambar', verde: 'verde', gris: 'gris', info: 'azul' }
 export const NOMBRE_NIVEL: Record<string, string> = { rojo: 'Urgente', amarillo: 'Atención', verde: 'Bien', gris: 'Sin dato', info: 'Aviso' }
 
 const ICONO: Record<string, typeof IconX> = { rojo: IconX, amarillo: IconInfo, verde: IconCheck, gris: IconClock, info: IconInfo }
+const BANDA_NIVEL: Record<string, string> = { rojo: 'bg-red-600', amarillo: 'bg-amber-500', verde: 'bg-emerald-600/70', gris: 'bg-slate-300', info: 'bg-sky-500' }
 
-/** Cuadro de color con icono; el texto del nivel va para el lector de pantalla y en el chip. */
-export function IconoNivel({ nivel }: { nivel: string }) {
+/** «Nombre · código» del motor (si no hay nombre distinto del código, solo el código). */
+export function etiquetaMotor(codigo: string, nombre?: string | null): string {
+  const n = (nombre ?? '').trim()
+  return n && n !== codigo ? `${n} · ${codigo}` : codigo
+}
+
+/** Banda lateral del color del nivel (el color no va en fondos ni en cuadros de icono). */
+export function BandaNivel({ nivel }: { nivel: string }) {
+  return <BandaLateral clase={BANDA_NIVEL[nivel] ?? BANDA_NIVEL.gris} />
+}
+
+/** Insignia sobria: icono + texto del nivel, borde fino, sin relleno. */
+export function InsigniaNivel({ nivel }: { nivel: string }) {
   const Icono = ICONO[nivel] ?? IconInfo
   return (
-    <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ring-1 ring-inset ${CLASES_TONO[TONO_DE_NIVEL[nivel] ?? 'gris']}`} data-nivel={nivel}>
-      <Icono className="h-5 w-5" />
-      <span className="sr-only">{NOMBRE_NIVEL[nivel] ?? nivel}</span>
+    <span data-nivel={nivel}>
+      <InsigniaSobria tono={TONO_DE_NIVEL[nivel] ?? 'gris'}>
+        <Icono className="h-3 w-3" />
+        {NOMBRE_NIVEL[nivel] ?? nivel}
+      </InsigniaSobria>
     </span>
   )
 }
 
-/** Fila compacta (≈56 px): lo principal en negrita, contexto y detalle más chicos. Toda la fila es el botón; el detalle se abre debajo. */
+/** Fila compacta (≈56 px): banda de color a la izquierda, lo principal en medium, contexto más chico. Toda la fila es el botón; el detalle se abre debajo. */
 export function FilaToque({
   nivel,
   titulo,
@@ -52,17 +67,20 @@ export function FilaToque({
 }) {
   const cuerpo = (
     <>
-      <IconoNivel nivel={nivel} />
+      <BandaNivel nivel={nivel} />
       <span className="min-w-0 flex-1">
-        <span className="block break-words text-sm font-bold leading-tight text-slate-900">{titulo}</span>
-        {linea2 && <span className="mt-0.5 block break-words text-xs leading-snug text-slate-700">{linea2}</span>}
-        {linea3 && <span className="mt-0.5 block break-words text-[11px] leading-snug text-slate-500">{linea3}</span>}
+        <span className="flex items-start justify-between gap-2">
+          <span className="block min-w-0 break-words text-[15px] font-medium leading-tight text-slate-900">{titulo}</span>
+          {nivel !== 'gris' && <InsigniaNivel nivel={nivel} />}
+        </span>
+        {linea2 && <span className="mt-0.5 block break-words text-[13px] leading-snug text-slate-700">{linea2}</span>}
+        {linea3 && <span className="mt-0.5 block break-words text-xs leading-snug text-slate-600">{linea3}</span>}
       </span>
-      {derecha && <span className="shrink-0 text-right text-sm font-bold tabular-nums text-slate-900">{derecha}</span>}
+      {derecha && <span className="shrink-0 text-right text-sm font-semibold tabular-nums text-slate-900">{derecha}</span>}
       {onToque && <IconChevronRight className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${abierta ? 'rotate-90' : ''}`} />}
     </>
   )
-  const clase = 'flex min-h-14 w-full items-center gap-3 rounded-xl bg-white px-3 py-2 text-left ring-1 ring-inset ring-slate-200'
+  const clase = 'flex min-h-14 w-full items-center gap-2.5 rounded-xl bg-white py-2 pl-2.5 pr-3 text-left ring-1 ring-inset ring-slate-200'
   return (
     <div {...atributos}>
       {onToque ? (
