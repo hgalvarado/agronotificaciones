@@ -112,6 +112,14 @@ export function revisar(texto, nombre) {
       if (/<(Tarjeta|Card)\b/.test(l) && /\bp-(5|6|7|8)\b|\bp[xy]-(6|7|8)\b/.test(tag(orig, i)))
         add(i, 'tarjeta-grande-en-fila', 'Tarjeta con padding grande por cada registro: usa filas compactas agrupadas (guía a).')
     }
+    // (l) elegancia: nada de negritas fuertes ni fondos de color en filas de lista
+    if (enMap[i] && !esUi && /className|class=/.test(o)) {
+      if (/font-(bold|extrabold|black)/.test(o))
+        add(i, 'negrita-en-fila', 'font-bold/extrabold dentro de una lista: usa font-medium o font-semibold (guía «Elegancia»).')
+      if (/bg-(?:red|green|blue|amber|yellow|orange|emerald|rose|sky|indigo|violet|purple|teal|cyan|lime|pink|fuchsia)-(?:50|100)/.test(o))
+        add(i, 'fondo-color-en-fila', 'Fondo de color en una fila de lista: el color vive en la banda lateral (BandaLateral) y la insignia sobria (guía «Elegancia»).')
+    }
+    if (/var\(--mov-[a-z]+-fondo\)/.test(o) && !esUi) add(i, 'fondo-color-en-fila', 'Variable de fondo --mov-*-fondo en una fila: no se tiñe el fondo; usa BandaLateral + insignia sobria (guía «Elegancia»).')
     // (e) colores fijos
     if (!esUi) {
       const fuera = o.replace(/var\([^)]*\)/g, '')
@@ -183,6 +191,7 @@ const LISTA = [
   'A 412 px de ancho: sin desborde horizontal, áreas táctiles >= 44 px.',
   'Con datos DEMO reales (scripts/sembrar-demo-campo.sql), no con 1-2 filas inventadas.',
   'Estado vacío, de carga y de error claros; botón «Regresar».',
+  'Elegancia: sin fondos de color en filas, sin puntos (banda lateral fina), sin font-bold en listas.',
   'Filas compactas agrupadas, sin scroll infinito; tocar la fila abre el detalle (Anular/Eliminar/Editar solo ahí).',
 ]
 

@@ -66,19 +66,15 @@ export function tonoDe(tipo: string): TonoMovimiento {
   return { familia, ...FAMILIAS[familia] }
 }
 
-/** Fondo suave + franja de color a la izquierda (para la fila o el bloque). */
-export function estiloFila(familia: FamiliaMovimiento): CSSProperties {
-  return {
-    backgroundColor: `var(--mov-${familia}-fondo)`,
-    borderLeft: `4px solid var(--mov-${familia}-borde)`,
-  }
+/** Color de la banda vertical de la fila (el fondo de la fila NO se tiñe). Se pinta con `BandaLateral`. */
+export function colorBanda(familia: FamiliaMovimiento): string {
+  return `var(--mov-${familia}-borde)`
 }
 
-/** Para la insignia de la familia (icono + texto). */
+/** Insignia sobria de la familia: texto del color y borde fino; sin relleno. */
 export function estiloInsignia(familia: FamiliaMovimiento): CSSProperties {
   return {
-    backgroundColor: `var(--mov-${familia}-fondo)`,
     color: `var(--mov-${familia}-texto)`,
-    boxShadow: `inset 0 0 0 1px var(--mov-${familia}-borde)`,
+    boxShadow: `inset 0 0 0 1px color-mix(in srgb, var(--mov-${familia}-borde) 45%, transparent)`,
   }
 }

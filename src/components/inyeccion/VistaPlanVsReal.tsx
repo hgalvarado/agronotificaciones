@@ -9,6 +9,7 @@ import { useMemo, useState } from 'react'
 import { cantidad } from '@/lib/fertirriego/calculos'
 import type { FilaCumplimiento } from '@/lib/inyeccion/cumplimiento'
 import type { CategoriaInyeccion } from '@/lib/inyeccion/estado'
+import { BandaLateral } from '@/components/ui/Banda'
 import { ChipsCategoria, puntoCategoria } from './ChipsCategoria'
 import { EstadoCompacto, InsigniasCumplimiento, PUNTO_TONO, TONO_TIEMPO } from './InsigniasCumplimiento'
 
@@ -70,17 +71,17 @@ export function VistaPlanVsReal({
           type="button"
           aria-expanded={abierta}
           onClick={() => !abiertaFija && setAbiertas((p) => { const n = new Set(p); if (n.has(f.clave)) n.delete(f.clave); else n.add(f.clave); return n })}
-          className="grid min-h-14 w-full grid-cols-[0.75rem_1fr] items-start gap-2 px-3 py-2 text-left"
+          className="grid min-h-14 w-full grid-cols-[0.25rem_1fr] items-stretch gap-2.5 px-3 py-2 text-left"
         >
-          <span className={`mt-1.5 h-2.5 w-2.5 rounded-full ${punto}`} aria-hidden="true" />
+          <BandaLateral clase={punto} />
           <span className="min-w-0">
             <span className="flex items-baseline justify-between gap-2">
-              <span className="min-w-0 truncate text-[15px] font-bold leading-tight text-slate-900">{producto(f.material_id)}</span>
-              <span className="shrink-0 text-[15px] font-bold leading-tight tabular-nums text-slate-900">{dosis !== null ? `${cantidad(dosis)} ${u}/mz` : '—'}</span>
+              <span className="min-w-0 truncate text-[15px] font-medium leading-tight text-slate-900">{producto(f.material_id)}</span>
+              <span className="shrink-0 text-[15px] font-semibold leading-tight tabular-nums text-slate-900">{dosis !== null ? `${cantidad(dosis)} ${u}/mz` : '—'}</span>
             </span>
             <span className="flex items-center justify-between gap-2">
               <span className="min-w-0 truncate text-xs tabular-nums text-slate-600">
-                {rotuloLote(f.lote)} · {f.aplicaciones.length > 0 ? `${cantidad(f.cantidad_real)}${f.tiempo === 'sin_plan' ? '' : ` / ${cantidad(f.cantidad_plan)}`} ${u}` : `${cantidad(f.cantidad_plan)} ${u}`}
+                <span className="text-[13px] font-medium text-slate-800">{rotuloLote(f.lote)}</span> · {f.aplicaciones.length > 0 ? `${cantidad(f.cantidad_real)}${f.tiempo === 'sin_plan' ? '' : ` / ${cantidad(f.cantidad_plan)}`} ${u}` : `${cantidad(f.cantidad_plan)} ${u}`}
               </span>
               <EstadoCompacto fila={f} />
             </span>
@@ -90,7 +91,7 @@ export function VistaPlanVsReal({
           <div className="px-3 pb-3 pl-8">
             <div className="grid grid-cols-2 gap-2 text-sm">
               <div className="rounded-lg bg-slate-50 p-2 ring-1 ring-inset ring-slate-200" data-columna-plan>
-                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Plan</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Plan</p>
                 <p className="font-semibold tabular-nums text-slate-800">
                   {cantidad(f.cantidad_plan)} {u}
                 </p>
@@ -105,7 +106,7 @@ export function VistaPlanVsReal({
                 )}
               </div>
               <div className="rounded-lg bg-slate-50 p-2 ring-1 ring-inset ring-slate-200" data-columna-real>
-                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Real</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Real</p>
                 {f.aplicaciones.length === 0 ? (
                   <p className="font-semibold text-slate-500">Sin aplicar</p>
                 ) : (
@@ -146,7 +147,7 @@ export function VistaPlanVsReal({
         const f0 = fs.find((f) => f.fecha_plan)
         return (
           <section key={k} className="overflow-hidden rounded-xl bg-white ring-1 ring-inset ring-slate-200" data-plan-real-ddt={k}>
-            <h3 className="sticky top-0 z-[1] flex items-baseline justify-between bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-wide text-slate-600">
+            <h3 className="sticky top-0 z-[1] flex items-baseline justify-between bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
               <span>{k === 'sp' ? 'Sin plan' : k === 'x' ? 'DDT sin dato' : `DDT ${k}`}{f0 ? ` · ${f0.fecha_estimada ? '≈ ' : ''}${fechaCorta(f0.fecha_plan)}` : ''}</span>
               <span className="font-semibold normal-case">{fs.length}</span>
             </h3>

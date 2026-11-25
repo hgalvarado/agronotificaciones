@@ -11,6 +11,7 @@
 import { useMemo, useState } from 'react'
 import { AreaTexto, Boton, Campo, Insignia } from '@/components/ui/Primitivos'
 import type { OpcionSelector } from '@/components/ui/SelectorMultiple'
+import { BandaLateral, InsigniaSobria } from '@/components/ui/Banda'
 import { MarcoRegistro } from '@/components/fertirriego/MarcoRegistro'
 import { EliminarPorCompleto } from '@/components/fertirriego/EliminarPorCompleto'
 import { formatearFechaHora } from '@/lib/estados'
@@ -247,7 +248,7 @@ export function VistaHistorialInyeccion({
                 aria-selected={vista === v}
                 onClick={() => setVista(v)}
                 data-vista-historial-opcion={v}
-                className={`min-h-11 rounded-lg px-1 text-sm font-bold ${vista === v ? 'bg-white text-brand-700 shadow-[var(--shadow-card)]' : 'text-slate-600'}`}
+                className={`min-h-11 rounded-lg px-1 text-sm font-semibold ${vista === v ? 'bg-white text-brand-700 shadow-[var(--shadow-card)]' : 'text-slate-600'}`}
               >
                 {t}
               </button>
@@ -259,7 +260,7 @@ export function VistaHistorialInyeccion({
       {pendientes.map((o) => (
         <div key={o.id} className="rounded-xl bg-white p-3 ring-1 ring-inset ring-amber-300" data-aplicacion-pendiente>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-bold text-slate-800">{o.resumen}</p>
+            <p className="text-sm font-semibold text-slate-800">{o.resumen}</p>
             <Insignia tono={o.estado_local === 'RECHAZADO' ? 'rojo' : 'ambar'}>{o.estado_local === 'RECHAZADO' ? 'Rechazado' : 'Por enviar'}</Insignia>
           </div>
           {o.estado_local === 'RECHAZADO' && o.mensaje && <p className="mt-1 text-xs text-red-700">{o.mensaje}</p>}
@@ -310,7 +311,7 @@ export function VistaHistorialInyeccion({
       {vista === 'aplicaciones' && modo === 'lista' &&
         porDia.map(([dia, items]) => (
           <section key={dia} className="overflow-hidden rounded-xl bg-white ring-1 ring-inset ring-slate-200" data-dia-historial={dia}>
-            <h3 className="sticky top-0 z-[1] flex items-baseline justify-between bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-wide text-slate-600">
+            <h3 className="sticky top-0 z-[1] flex items-baseline justify-between bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
               <span>{fechaDia(dia)}</span>
               <span className="font-semibold normal-case">{items.length} aplicación(es)</span>
             </h3>
@@ -331,20 +332,20 @@ export function VistaHistorialInyeccion({
                         const u = unidad(l.material_id)
                         const punto = fila ? PUNTO_TONO[TONO_TIEMPO[fila.tiempo].tono] : 'bg-slate-400'
                         return (
-                          <span key={l.material_id} className="mb-1 grid grid-cols-[0.75rem_1fr] items-start gap-2 last:mb-0" data-linea-aplicada={l.material_id}>
-                            <span className={`mt-1.5 h-2.5 w-2.5 rounded-full ${punto}`} aria-hidden="true" />
+                          <span key={l.material_id} className="mb-1 grid grid-cols-[0.25rem_1fr] items-stretch gap-2.5 last:mb-0" data-linea-aplicada={l.material_id}>
+                            <BandaLateral clase={punto} />
                             <span className="min-w-0">
                               <span className="flex items-baseline justify-between gap-2">
-                                <span className={`min-w-0 truncate text-[15px] font-bold leading-tight text-slate-900 ${a.anulado_at ? 'line-through' : ''}`}>{nombreProducto(l.material_id)}</span>
-                                <span className="shrink-0 text-[15px] font-bold leading-tight tabular-nums text-slate-900">{l.dosis_mz !== null ? `${cantidad(l.dosis_mz)} ${u}/mz` : 'sin dosis'}</span>
+                                <span className={`min-w-0 truncate text-[15px] font-medium leading-tight text-slate-900 ${a.anulado_at ? 'line-through' : ''}`}>{nombreProducto(l.material_id)}</span>
+                                <span className="shrink-0 text-[15px] font-semibold leading-tight tabular-nums text-slate-900">{l.dosis_mz !== null ? `${cantidad(l.dosis_mz)} ${u}/mz` : 'sin dosis'}</span>
                               </span>
                               <span className="flex items-center justify-between gap-2">
                                 <span className="min-w-0 truncate text-xs font-normal tabular-nums text-slate-600">
-                                  {rotulo(a.lote)} · <strong>{cantidad(l.cantidad)}</strong> {u}
+                                  <span className="text-[13px] font-medium text-slate-800">{rotulo(a.lote)}</span> · {cantidad(l.cantidad)} {u}
                                   {l.ddt_plan !== null ? ` · DDT ${fila?.ddt_real ?? l.ddt_plan}` : ''}
                                 </span>
                                 {a.anulado_at ? (
-                                  <span className="shrink-0 rounded-full bg-red-50 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-red-700 ring-1 ring-inset ring-red-600/20">Anulada</span>
+                                  <InsigniaSobria tono="rojo">Anulada</InsigniaSobria>
                                 ) : fila ? (
                                   <EstadoCompacto fila={fila} />
                                 ) : null}

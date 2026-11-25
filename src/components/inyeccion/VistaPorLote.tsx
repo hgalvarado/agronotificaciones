@@ -7,7 +7,8 @@
  */
 
 import { useMemo, useState } from 'react'
-import { Boton, Insignia } from '@/components/ui/Primitivos'
+import { InsigniaSobria } from '@/components/ui/Banda'
+import { Boton } from '@/components/ui/Primitivos'
 import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
 import { hoyIso } from '@/lib/fechas/zona'
 import { cantidad } from '@/lib/fertirriego/calculos'
@@ -89,25 +90,25 @@ export function VistaPorLote({
         return (
           <div key={`${p.turno_agl_id}|${p.ddt}`} className="rounded-xl bg-white p-3 ring-1 ring-inset ring-slate-200" data-plan-lote-ddt={p.ddt ?? ''} data-estado-plan={p.estado}>
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-base font-bold text-slate-900">
-                DDT {p.ddt ?? '—'} <span className="text-sm font-semibold text-slate-500">· {p.fecha_estimada ? '≈ ' : ''}{fechaCorta(p.fecha_plan)}</span>
+              <p className="text-base font-semibold text-slate-900">
+                DDT {p.ddt ?? '—'} <span className="text-sm font-normal text-slate-500">· {p.fecha_estimada ? '≈ ' : ''}{fechaCorta(p.fecha_plan)}</span>
                 {p.fecha_estimada && <span className="ml-1 text-xs font-medium text-slate-500" data-fecha-estimada>(fecha estimada: aún sin turno)</span>}
               </p>
-              <Insignia tono={e.tono}>{e.texto(p.dias)}</Insignia>
+              <InsigniaSobria tono={e.tono}>{e.texto(p.dias)}</InsigniaSobria>
             </div>
             {(p.turno || p.variedad) && <p className="text-xs text-slate-500">{[p.turno, p.variedad].filter(Boolean).join(' · ')}</p>}
             <ul className="mt-2 flex flex-col gap-2">
               {p.productos.map((x) => (
                 <li key={x.material_id} className="text-sm text-slate-800">
                   <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-                    <strong className="text-base font-extrabold text-slate-900">{nombre(x.material_id)}</strong>
-                    <span className="text-base font-bold tabular-nums text-slate-900">
+                    <span className="text-[15px] font-medium text-slate-900">{nombre(x.material_id)}</span>
+                    <span className="text-[15px] font-semibold tabular-nums text-slate-900">
                       {x.dosis_mz !== null ? `${cantidad(x.dosis_mz)} ${unidad(x.material_id)}/mz · ` : ''}
                       {cantidad(x.cantidad_plan)} {unidad(x.material_id)}
                     </span>
                   </div>
                   {x.controla && <p className="text-xs text-slate-600">Controla: {x.controla}</p>}
-                  {x.observaciones && <p className="mt-0.5 rounded-lg bg-amber-50 px-2 py-1 text-xs text-amber-900 ring-1 ring-inset ring-amber-600/20">{x.observaciones}</p>}
+                  {x.observaciones && <p className="mt-0.5 rounded-lg px-2 py-1 text-xs text-amber-900 ring-1 ring-inset ring-amber-600/30">{x.observaciones}</p>}
                 </li>
               ))}
             </ul>
@@ -120,7 +121,7 @@ export function VistaPorLote({
         )
       })}
       <div data-por-lote-aplicado>
-        <p className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-500">Lo aplicado en {rotuloLote(estado.lotes, lote)}</p>
+        <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Lo aplicado en {rotuloLote(estado.lotes, lote)}</p>
         {aplicaciones.length === 0 ? (
           <p className="text-sm text-slate-500">Todavía no se ha registrado nada en este lote.</p>
         ) : (

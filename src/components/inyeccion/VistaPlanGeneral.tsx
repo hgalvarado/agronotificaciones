@@ -8,7 +8,7 @@
  */
 
 import { useMemo, useState } from 'react'
-import { Insignia } from '@/components/ui/Primitivos'
+import { BandaLateral, InsigniaSobria } from '@/components/ui/Banda'
 import { ChipsCategoria, puntoCategoria } from './ChipsCategoria'
 import { cantidad } from '@/lib/fertirriego/calculos'
 import { planesAplicados, type EstadoInyeccion } from '@/lib/inyeccion/estado'
@@ -105,7 +105,7 @@ export function VistaPlanGeneral({
         const fechas = g.fecha_desde ? `${g.fecha_estimada ? '≈ ' : ''}${g.fecha_desde === g.fecha_hasta ? fechaCorta(g.fecha_desde) : `${fechaCorta(g.fecha_desde)} – ${fechaCorta(g.fecha_hasta)}`}` : ''
         return (
           <div key={clave} className="flex flex-col gap-2">
-          {encabezadoCiclo && <h3 className="pt-1 text-base font-extrabold text-brand-700" data-plan-ciclo-titulo>{g.ciclo ?? 'Sin ciclo'}</h3>}
+          {encabezadoCiclo && <h3 className="pt-1 text-base font-semibold text-brand-700" data-plan-ciclo-titulo>{g.ciclo ?? 'Sin ciclo'}</h3>}
           <details
             open={actual.has(clave)}
             onToggle={(e) => {
@@ -121,9 +121,9 @@ export function VistaPlanGeneral({
             data-plan-ddt={g.ddt}
           >
             <summary className="flex min-h-11 cursor-pointer list-none flex-wrap items-center justify-between gap-x-3 gap-y-1 px-3 py-2">
-              <span className="text-base font-bold text-slate-900">DDT {g.ddt ?? 'sin dato'}</span>
+              <span className="text-base font-semibold text-slate-900">DDT {g.ddt ?? 'sin dato'}</span>
               <span className="flex flex-wrap items-center gap-1.5">
-                {g.completo ? <Insignia tono="verde">Todo aplicado</Insignia> : <Insignia tono="ambar">{g.n_lotes - g.n_lotes_hechos} por aplicar</Insignia>}
+                {g.completo ? <InsigniaSobria tono="verde">✔ Todo aplicado</InsigniaSobria> : <InsigniaSobria tono="ambar">{g.n_lotes - g.n_lotes_hechos} por aplicar</InsigniaSobria>}
               </span>
               <span className="w-full text-xs text-slate-500">
                 {fechas ? `${fechas} · ` : ''}
@@ -140,12 +140,12 @@ export function VistaPlanGeneral({
                   const ab = productosAbiertos.has(`${clave}|${p.material_id}`)
                   return (
                     <div key={p.material_id} data-plan-producto={p.material_id}>
-                      <button type="button" aria-expanded={ab} onClick={() => alternarProducto(`${clave}|${p.material_id}`)} className="grid min-h-14 w-full grid-cols-[0.75rem_1fr] items-start gap-2 px-3 py-2 text-left">
-                        <span className={`mt-1.5 h-2.5 w-2.5 rounded-full ${puntoCategoria(estado.categorias, catDe.get(p.material_id) ?? null)}`} aria-hidden="true" />
+                      <button type="button" aria-expanded={ab} onClick={() => alternarProducto(`${clave}|${p.material_id}`)} className="grid min-h-14 w-full grid-cols-[0.25rem_1fr] items-stretch gap-2.5 px-3 py-2 text-left">
+                        <BandaLateral clase={puntoCategoria(estado.categorias, catDe.get(p.material_id) ?? null)} />
                         <span className="min-w-0">
                           <span className="flex items-baseline justify-between gap-2">
-                            <span className="min-w-0 truncate text-[15px] font-bold leading-tight text-slate-900">{m?.descripcion ?? m?.codigo ?? 'Producto'}</span>
-                            <span className="shrink-0 text-[15px] font-bold leading-tight tabular-nums text-slate-900">{p.dosis_mz !== null ? `${cantidad(p.dosis_mz)} ${m?.unidad ?? ''}/mz` : 'sin dosis'}</span>
+                            <span className="min-w-0 truncate text-[15px] font-medium leading-tight text-slate-900">{m?.descripcion ?? m?.codigo ?? 'Producto'}</span>
+                            <span className="shrink-0 text-[15px] font-semibold leading-tight tabular-nums text-slate-900">{p.dosis_mz !== null ? `${cantidad(p.dosis_mz)} ${m?.unidad ?? ''}/mz` : 'sin dosis'}</span>
                           </span>
                           <span className="block truncate text-xs tabular-nums text-slate-600">
                             {cantidad(p.area_mz)} mz · {cantidad(p.cantidad)} {m?.unidad ?? ''} · {p.lotes.length} lote(s)
@@ -158,13 +158,13 @@ export function VistaPlanGeneral({
                         <div className="flex flex-col gap-1 px-3 pb-3 pl-8">
                           {controla && <p className="text-xs text-slate-700">Controla: {controla}</p>}
                           {p.observaciones.map((o) => (
-                            <p key={o} className="rounded-lg bg-amber-50 px-2 py-1 text-xs text-amber-900 ring-1 ring-inset ring-amber-600/20" data-plan-observacion>
+                            <p key={o} className="rounded-lg px-2 py-1 text-xs text-amber-900 ring-1 ring-inset ring-amber-600/30" data-plan-observacion>
                               {o}
                             </p>
                           ))}
                           <div className="flex flex-wrap gap-1.5" data-plan-variedades>
                             {p.variedades.map((v) => (
-                              <span key={v.variedad} className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                              <span key={v.variedad} className="rounded-full px-2 py-0.5 text-xs font-medium text-slate-700 ring-1 ring-inset ring-slate-300">
                                 {v.variedad}{' '}
                                 {v.pct === null ? 'sin % en el LTP' : v.pct_max !== null && v.pct_max !== v.pct ? `${cantidad(v.pct)}–${cantidad(v.pct_max)} % del área` : `${cantidad(v.pct)} % del área`}
                               </span>

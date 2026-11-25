@@ -8,7 +8,7 @@ export function InsigniaFamilia({ familia, texto }: { familia: FamiliaMovimiento
   const f = FAMILIAS[familia]
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold"
+      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
       style={estiloInsignia(familia)}
       data-familia-movimiento={familia}
     >
@@ -27,7 +27,7 @@ export function LeyendaMovimientos({ familias }: { familias: FamiliaMovimiento[]
   const unicas = [...new Set(familias)]
   if (unicas.length === 0) return null
   return (
-    <div className="flex flex-wrap items-center gap-1.5" data-leyenda-movimientos aria-label="Colores de la bitácora">
+    <div className="flex flex-wrap items-center gap-1" data-leyenda-movimientos aria-label="Colores de la bitácora">
       {unicas.map((f) => (
         <InsigniaFamilia key={f} familia={f} />
       ))}

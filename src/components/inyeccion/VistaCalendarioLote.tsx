@@ -19,12 +19,12 @@ const fechaCorta = (iso: string | null) => (iso ? new Date(`${iso}T12:00:00Z`).t
 type Marca = { icono: string; clase: string; nombre: string }
 function marcaDe(f: FilaCumplimiento): Marca {
   const aplicada = f.aplicaciones.length > 0
-  if (f.tiempo === 'vencido') return { icono: '✖', clase: 'bg-red-50 text-red-800 ring-red-600/30', nombre: 'sin aplicar' }
-  if (f.tiempo === 'pendiente') return { icono: '○', clase: 'bg-slate-50 text-slate-600 ring-slate-300', nombre: 'aún no toca' }
-  if (aplicada && f.cantidad === 'de_menos') return { icono: '◐', clase: 'bg-amber-50 text-amber-900 ring-amber-600/30', nombre: 'de menos' }
-  if (f.tiempo === 'tarde') return { icono: '✔', clase: 'bg-amber-50 text-amber-900 ring-amber-600/30', nombre: 'tarde' }
-  if (f.tiempo === 'temprano') return { icono: '✔', clase: 'bg-sky-50 text-sky-900 ring-sky-600/30', nombre: 'temprano' }
-  return { icono: '✔', clase: 'bg-emerald-50 text-emerald-900 ring-emerald-600/30', nombre: 'aplicado' }
+  if (f.tiempo === 'vencido') return { icono: '✖', clase: 'text-red-800 ring-red-600/30', nombre: 'sin aplicar' }
+  if (f.tiempo === 'pendiente') return { icono: '○', clase: 'text-slate-600 ring-slate-300', nombre: 'aún no toca' }
+  if (aplicada && f.cantidad === 'de_menos') return { icono: '◐', clase: 'text-amber-800 ring-amber-600/30', nombre: 'de menos' }
+  if (f.tiempo === 'tarde') return { icono: '✔', clase: 'text-amber-800 ring-amber-600/30', nombre: 'tarde' }
+  if (f.tiempo === 'temprano') return { icono: '✔', clase: 'text-sky-800 ring-sky-600/30', nombre: 'temprano' }
+  return { icono: '✔', clase: 'text-emerald-800 ring-emerald-600/30', nombre: 'aplicado' }
 }
 
 export function VistaCalendarioLote({
@@ -114,7 +114,7 @@ export function VistaCalendarioLote({
       <div className="grid grid-cols-4 divide-x divide-slate-200 overflow-hidden rounded-xl bg-white text-center ring-1 ring-inset ring-slate-200" data-calendario-resumen>
         {resumen.map(([v, t]) => (
           <div key={t} className="px-1 py-1.5">
-            <p className="text-base font-extrabold tabular-nums leading-tight text-slate-900">{v}</p>
+            <p className="text-base font-semibold tabular-nums leading-tight text-slate-900">{v}</p>
             <p className="text-[11px] leading-tight text-slate-500">{t}</p>
           </div>
         ))}
@@ -131,7 +131,7 @@ export function VistaCalendarioLote({
             return (
               <div key={d.ddt ?? 'x'} className="grid grid-cols-[3.5rem_1fr] gap-2 px-2 py-0.5" data-calendario-ddt={d.ddt ?? ''}>
                 <div className="py-2">
-                  <p className="text-sm font-extrabold leading-tight text-slate-900">DDT {d.ddt ?? '—'}</p>
+                  <p className="text-sm font-semibold leading-tight text-slate-900">DDT {d.ddt ?? '—'}</p>
                   <p className="text-[11px] leading-tight text-slate-500">
                     {fecha?.fecha_estimada ? '≈ ' : ''}
                     {fechaCorta(fecha?.fecha_plan ?? null)}
@@ -153,7 +153,7 @@ export function VistaCalendarioLote({
                         className="inline-flex min-h-11 items-center"
                         data-calendario-chip={f.tiempo}
                       >
-                        <span className={`inline-flex max-w-full items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold leading-tight ring-1 ring-inset ${m.clase} ${abierta === f.clave ? 'outline outline-2 outline-brand-600' : ''}`}>
+                        <span className={`inline-flex max-w-full items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium leading-tight ring-1 ring-inset ${m.clase} ${abierta === f.clave ? 'outline outline-2 outline-brand-600' : ''}`}>
                           <span aria-hidden="true">{m.icono}</span>
                           <span className="text-left">
                             {producto(f.material_id)}

@@ -1,7 +1,8 @@
 'use client'
 
-/** Chips de categoría con punto de color (como en el plan foliar de referencia) para filtrar por tipo de producto. */
+/** Chips de categoría con banda de color (como en el plan foliar de referencia) para filtrar por tipo de producto. */
 
+import { BandaLateral } from '@/components/ui/Banda'
 import type { CategoriaInyeccion } from '@/lib/inyeccion/estado'
 
 const PUNTOS = ['bg-emerald-500', 'bg-sky-500', 'bg-amber-500', 'bg-violet-500', 'bg-rose-500', 'bg-teal-500', 'bg-orange-500', 'bg-indigo-500']
@@ -41,8 +42,8 @@ export function ChipsCategoria({
             onClick={() => onCambiar(on ? elegidas.filter((x) => x !== c.clave) : [...elegidas, c.clave])}
             className="inline-flex min-h-11 items-center"
           >
-            <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${on ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-700 ring-slate-300'}`}>
-              <span className={`h-2 w-2 rounded-full ${puntoCategoria(categorias, c.clave)}`} aria-hidden="true" />
+            <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${on ? 'bg-slate-100 text-slate-900 ring-slate-500' : 'text-slate-700 ring-slate-300'}`}>
+              <span className="flex h-3 w-1"><BandaLateral clase={puntoCategoria(categorias, c.clave)} /></span>
               {etiquetaCategoria(c)}
             </span>
           </button>
