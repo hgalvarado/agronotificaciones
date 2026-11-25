@@ -12,7 +12,8 @@ import { formatearFechaHora } from '@/lib/estados'
 import { cantidad } from '@/lib/fertirriego/calculos'
 import { nombreQuien, type EstadoMotores, type TanqueFijo } from '@/lib/motores/estado'
 import { semaforoTanque } from '@/lib/motores/senales'
-import { BarraTanque, FilaToque } from './ElementosMotor'
+import { FilaToque } from './ElementosMotor'
+import { MedidorTanque } from './MedidorTanque'
 
 export function PestanaTanques({
   tanques,
@@ -37,12 +38,12 @@ export function PestanaTanques({
     <div className="flex flex-col gap-2" data-pestana-tanques>
       {puedeRecibir && tanques.length > 0 && (
         <Boton className="min-h-14 w-full text-base" onClick={onRecibir} data-recibir-diesel>
-          Recibir diésel
+          Recibir combustible
         </Boton>
       )}
       {tanques.length === 0 && (
         <p className="rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-500 ring-1 ring-inset ring-slate-200" data-sin-tanques>
-          Esta estación no tiene tanques asignados.{puedeConfigurar ? ' Asígnale uno en «Administrar tanques».' : ' Pide a Torre de Control que le asigne uno.'}
+          {puedeConfigurar ? 'Sin tanques. Asigna uno.' : 'Sin tanques en esta estación.'}
         </p>
       )}
       <div className="flex flex-col gap-1.5">
@@ -56,18 +57,8 @@ export function PestanaTanques({
               atributos={{ 'data-tanque': t.nombre }}
               nivel={sem.nivel}
               titulo={t.nombre}
-              derecha={
-                <span>
-                  {cantidad(saldo)} <span className="text-[11px] font-normal text-slate-500">gal</span>
-                </span>
-              }
-              linea2={motor ? `Conectado a ${motor}` : 'Sin motor conectado'}
-              linea3={
-                <>
-                  {t.capacidad_gal ? `${sem.pct ?? 0} % de ${cantidad(t.capacidad_gal)} gal` : 'Sin capacidad definida'}
-                  <BarraTanque pct={sem.pct} nivel={sem.nivel} />
-                </>
-              }
+              linea2={<MedidorTanque saldo={saldo} capacidad={t.capacidad_gal} />}
+              linea3={motor ? `Motor ${motor}` : 'Sin motor'}
               onToque={() => onAbrir(t.id)}
             />
           )
@@ -104,10 +95,9 @@ export function DetalleTanque({
   return (
     <Modal abierto titulo={`Tanque ${tanque.nombre}`} onCerrar={onCerrar}>
       <div className="flex flex-col gap-2" data-detalle-tanque={tanque.nombre}>
-        <FilaToque nivel={sem.nivel} titulo={`${cantidad(saldo)} gal`} linea2={sem.texto} linea3={<BarraTanque pct={sem.pct} nivel={sem.nivel} />} />
-        <p className="text-xs text-slate-600">{motor ? `Conectado al motor ${motor}.` : 'Sin motor conectado.'}</p>
-        <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Últimas recepciones</p>
-        {recientes.length === 0 && <p className="text-sm text-slate-500">Sin recepciones en los últimos 45 días.</p>}
+        <FilaToque nivel={sem.nivel} titulo="Nivel" linea2={<MedidorTanque saldo={saldo} capacidad={tanque.capacidad_gal} grande />} linea3={motor ? `Motor ${motor}` : 'Sin motor'} />
+        <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Últimas entradas</p>
+        {recientes.length === 0 && <p className="text-sm text-slate-500">Sin entradas en 45 días.</p>}
         {recientes.map((r) => (
           <p key={r.id} className="text-sm text-slate-700">
             <strong className="tabular-nums text-slate-900">{cantidad(r.galones)} gal</strong> · {formatearFechaHora(r.fecha_hora)}
@@ -116,7 +106,7 @@ export function DetalleTanque({
         ))}
         {puedeRecibir && (
           <Boton className="mt-1 min-h-14 w-full text-base" onClick={onRecibir} data-recibir-en-tanque>
-            Recibir diésel en este tanque
+            Recibir combustible
           </Boton>
         )}
         <Boton variante="fantasma" className="min-h-11" onClick={onCerrar}>

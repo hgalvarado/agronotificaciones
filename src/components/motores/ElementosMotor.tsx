@@ -128,17 +128,6 @@ export const NOMBRE_CORTO: Record<string, string> = {
   VISOR_NO_CONTINUA: 'Visor no continúa',
 }
 
-/** Barra del nivel de un tanque (color según el semáforo). */
-export function BarraTanque({ pct, nivel }: { pct: number | null; nivel: string }) {
-  if (pct === null) return null
-  const color = nivel === 'rojo' ? 'bg-red-500' : nivel === 'amarillo' ? 'bg-amber-500' : 'bg-brand-600'
-  return (
-    <span className="mt-1 block h-2 overflow-hidden rounded-full bg-slate-100" role="img" aria-label={`Tanque al ${pct} %`}>
-      <span className={`block h-full ${color}`} style={{ width: `${pct}%` }} />
-    </span>
-  )
-}
-
 /** Un dato de la hoja: etiqueta chica y valor. */
 export function DatoHoja({ etiqueta, valor, ancho = false }: { etiqueta: string; valor: ReactNode; ancho?: boolean }) {
   return (
