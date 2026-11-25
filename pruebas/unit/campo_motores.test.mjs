@@ -55,7 +55,7 @@ test('gastó diésel sin horas: aviso', () => {
 
 test('el visor sube sin suministro → error exacto; la hoja real 20/11: 279→265 con suministro 140 gasta 14 (no 154)', () => {
   const e = calcularRegistro({ horoIni: 1, horoFin: 2, visorIni: 100, visorFin: 150, recibido: 0 })
-  assert.deepEqual(e.errores, ['El visor final es mayor que el inicial y no anotaste suministro de combustible ese día: escríbelo o corrige la lectura.'])
+  assert.deepEqual(e.errores, ['Subió el visor: recibe combustible primero.'])
   assert.equal(e.gastado, null)
   // hoja física: galones iniciales 279, finales 265, gastados 14, suministro 140 (el visor inicial ya incluye el suministro)
   const r = calcularRegistro({ horoIni: 19252.6, horoFin: 19259.4, visorIni: 279, visorFin: 265, recibido: 140 })
@@ -76,7 +76,7 @@ test('entró diésel durante el día: visor final mayor explicado por el suminis
 
 test('horómetro final menor: error; con «cambiado» no', () => {
   const e = calcularRegistro({ horoIni: 20, horoFin: 10, visorIni: 5, visorFin: 4, recibido: 0 })
-  assert.deepEqual(e.errores, ['El horómetro final es menor que el inicial.'])
+  assert.deepEqual(e.errores, ['Horómetro final menor que el inicial.'])
   const c = calcularRegistro({ horoIni: 20, horoFin: 10, visorIni: 5, visorFin: 4, recibido: 0 }, { horoCambiado: true })
   assert.deepEqual(c.errores, [])
   assert.equal(c.horas, 0)
@@ -115,8 +115,8 @@ test('avisosContinuidad: avisa sin bloquear y se calla con la casilla marcada', 
   const propuesta = { horoIni: 100, visorIni: 50, origen: 'registro', fechaBase: '2026-11-16' }
   const a = avisosContinuidad({ horoIni: 105, visorIni: 40, horoCambiado: false, visorCambiado: false, propuesta })
   assert.equal(a.length, 2)
-  assert.match(a[0], /^El horómetro inicial no continúa donde terminó el último registro/)
-  assert.match(a[1], /^El visor inicial no coincide con el final anterior/)
+  assert.match(a[0], /^Horómetro no continúa/)
+  assert.match(a[1], /^Visor no continúa/)
   assert.deepEqual(avisosContinuidad({ horoIni: 105, visorIni: 40, horoCambiado: true, visorCambiado: true, propuesta }), [])
   assert.deepEqual(avisosContinuidad({ horoIni: 105, visorIni: 40, horoCambiado: false, visorCambiado: false, propuesta: { horoIni: null, visorIni: null, origen: null, fechaBase: null } }), [])
   assert.deepEqual(avisosContinuidad({ horoIni: 100, visorIni: 50, horoCambiado: false, visorCambiado: false, propuesta }), [])
@@ -126,9 +126,9 @@ test('armarRegistroDiario: «cambiado» sin comentario, fecha futura y rpm fuera
   const base = { equipoId: 'M', fecha: '2026-11-20', fechaHora: '2026-11-21T15:00:00Z', horoIni: 1, horoFin: 2, visorIni: 10, visorFin: 9, rpm: null, horoCambiado: false, visorCambiado: false, comentario: '', hoy: '2026-11-22' }
   assert.ok('datos' in armarRegistroDiario(base))
   assert.match(armarRegistroDiario({ ...base, horoCambiado: true }).error, /Explica el cambio/)
-  assert.equal(armarRegistroDiario({ ...base, fecha: '2026-11-23' }).error, 'La fecha no puede ser posterior a hoy.')
-  assert.match(armarRegistroDiario({ ...base, rpm: 7000 }).error, /entre 0 y 6000/)
-  assert.equal(armarRegistroDiario({ ...base, horoFin: 0 }).error, 'El horómetro final es menor que el inicial.')
+  assert.equal(armarRegistroDiario({ ...base, fecha: '2026-11-23' }).error, 'La fecha no puede ser futura.')
+  assert.match(armarRegistroDiario({ ...base, rpm: 7000 }).error, /0 y 6000/)
+  assert.equal(armarRegistroDiario({ ...base, horoFin: 0 }).error, 'Horómetro final menor que el inicial.')
   const ok = armarRegistroDiario({ ...base, horoCambiado: true, comentario: 'cambio de horómetro', horoFin: 0 })
   assert.ok('datos' in ok)
   assert.equal(ok.datos.gastado_local, 1)
@@ -136,8 +136,8 @@ test('armarRegistroDiario: «cambiado» sin comentario, fecha futura y rpm fuera
 
 test('armarRecepcionDiesel: va al TANQUE elegido, galones > 0', () => {
   const base = { estacionId: 'E', tanqueId: 'T', galones: 50, fechaHora: '2026-11-20T15:00:00Z', choferId: null, vehiculoId: null, comentario: '' }
-  assert.equal(armarRecepcionDiesel({ ...base, tanqueId: null }).error, 'Elige el tanque donde se recibe el diésel.')
-  assert.equal(armarRecepcionDiesel({ ...base, galones: 0 }).error, 'Indica los galones recibidos.')
+  assert.equal(armarRecepcionDiesel({ ...base, tanqueId: null }).error, 'Elige el tanque.')
+  assert.equal(armarRecepcionDiesel({ ...base, galones: 0 }).error, 'Escribe los galones.')
   const r = armarRecepcionDiesel(base)
   assert.ok('datos' in r)
   assert.equal(r.datos.estacion_id, 'E')
@@ -154,8 +154,8 @@ test('armarRegistroDiario: gastado = inicial − final; suministro, caudal y ope
   assert.equal(ok.datos.caudal_fin, 13.5)
   assert.equal(ok.datos.operador, 'Jeninjnr')
   assert.equal(ok.datos.diesel_material_id, undefined)
-  assert.equal(armarRegistroDiario({ ...base, suministro: -1 }).error, 'El suministro de combustible no es válido.')
-  assert.equal(armarRegistroDiario({ ...base, caudalIni: -5 }).error, 'La lectura de caudal debe ser un número.')
+  assert.equal(armarRegistroDiario({ ...base, suministro: -1 }).error, 'Suministro no válido.')
+  assert.equal(armarRegistroDiario({ ...base, caudalIni: -5 }).error, 'Caudal: escribe un número.')
   assert.equal(armarRegistroDiario(base).datos.suministro_gal, undefined)
 })
 
@@ -168,13 +168,13 @@ test('armarMovimientoMotor: ya no pregunta por el diésel; entrar pide estación
   // instalar pide estación y tanque libre
   const i = { ...base, tipo: 'INSTALADO' }
   assert.equal(armarMovimientoMotor(i).error, 'Elige la estación de destino.')
-  assert.match(armarMovimientoMotor({ ...i, estacionDestino: 'E' }).error, /Elige el tanque del motor/)
+  assert.match(armarMovimientoMotor({ ...i, estacionDestino: 'E' }).error, /Elige un tanque libre/)
   const inst = armarMovimientoMotor({ ...i, estacionDestino: 'E', tanqueId: 'T' })
   assert.equal(inst.operacion, 'motor_asignar')
   assert.equal(inst.datos.tipo, 'INSTALADO')
   assert.equal(inst.datos.tanque_id, 'T')
   // trasladar también necesita el tanque libre del destino
-  assert.match(armarMovimientoMotor({ ...base, tipo: 'TRASLADADO', estacionDestino: 'E2', motivoCodigo: 'CAMBIO_ESTACION', motivo: 'x' }).error, /Elige el tanque del motor/)
+  assert.match(armarMovimientoMotor({ ...base, tipo: 'TRASLADADO', estacionDestino: 'E2', motivoCodigo: 'CAMBIO_ESTACION', motivo: 'x' }).error, /Elige un tanque libre/)
   // crear un tanque nuevo (solo «Configurar»): pide nombre
   assert.equal(armarMovimientoMotor({ ...i, estacionDestino: 'E', tanqueNuevo: { nombre: ' ', capacidadGal: 300 } }).error, 'Escribe el nombre del tanque nuevo.')
 })

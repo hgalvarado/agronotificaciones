@@ -24,7 +24,6 @@ const diaLocal = (iso: string): string => {
   const ms = Date.parse(iso)
   return Number.isFinite(ms) ? new Date(ms - 6 * 3600_000).toISOString().slice(0, 10) : iso.slice(0, 10)
 }
-const ddmm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
 
 /** Días de calendario entre dos fechas AAAA-MM-DD (b − a). */
 export function diasEntre(a: string, b: string): number {
@@ -44,34 +43,32 @@ export type Semaforo = { nivel: NivelSemaforo; texto: string }
 export function semaforoMantenimiento(m: { intervalo_horas: number | null; aviso_horas: number | null }, horasDesdeMant: number, horasEstimadas = 0): Semaforo & { faltan: number | null } {
   const intervalo = m.intervalo_horas
   if (intervalo === null || intervalo === undefined || intervalo <= 0) {
-    return { nivel: 'gris', faltan: null, texto: 'Sin intervalo de mantenimiento: pide cargarlo en AGL (Modelos de motor de riego).' }
+    return { nivel: 'gris', faltan: null, texto: 'Sin intervalo: cárgalo en AGL.' }
   }
   const aviso = m.aviso_horas ?? Math.round(intervalo * 0.1)
   const faltan = r2(intervalo - horasDesdeMant)
   const nivel: NivelSemaforo = faltan <= 0 ? 'rojo' : faltan <= aviso ? 'amarillo' : 'verde'
   let texto =
     nivel === 'rojo'
-      ? `Mantenimiento VENCIDO hace ${t(-faltan)} h (cada ${intervalo} h)`
-      : nivel === 'amarillo'
-        ? `Faltan ${t(faltan)} h para el mantenimiento (cada ${intervalo} h)`
-        : `Mantenimiento al día: faltan ${t(faltan)} h`
-  if (horasEstimadas > 0) texto += ` · incluye ${t(horasEstimadas)} h estimadas`
+      ? `Vencido hace ${t(-faltan)} h`
+      : `Faltan ${t(faltan)} h`
+  if (horasEstimadas > 0) texto += ` · ${t(horasEstimadas)} h estimadas`
   return { nivel, faltan, texto }
 }
 
 export function semaforoRegistro(fechaUltima: string | null, hoy: string): Semaforo & { dias: number | null } {
-  if (!fechaUltima) return { nivel: 'amarillo', dias: null, texto: 'Todavía no tiene registros: registra el primer día.' }
+  if (!fechaUltima) return { nivel: 'amarillo', dias: null, texto: 'Sin registros: registra el primer día.' }
   const dias = Math.max(diasEntre(fechaUltima, hoy) - 1, 0)
   if (dias === 0) return { nivel: 'verde', dias, texto: 'Registro al día.' }
   if (dias === 1) return { nivel: 'amarillo', dias, texto: 'Falta el registro de ayer.' }
-  return { nivel: dias >= 3 ? 'rojo' : 'amarillo', dias, texto: `Faltan ${dias} días sin registro (desde el ${ddmm(sumarDias(fechaUltima, 1))}).` }
+  return { nivel: dias >= 3 ? 'rojo' : 'amarillo', dias, texto: `Faltan ${dias} días de registro.` }
 }
 
 export function semaforoTanque(saldo: number | null, capacidad: number | null): Semaforo & { pct: number | null } {
-  if (saldo === null) return { nivel: 'rojo', pct: null, texto: 'El motor no tiene tanque conectado.' }
+  if (saldo === null) return { nivel: 'rojo', pct: null, texto: 'Sin tanque conectado.' }
   const pct = capacidad && capacidad > 0 ? Math.max(0, Math.min(100, Math.round((saldo * 100) / capacidad))) : null
-  if (saldo <= 0) return { nivel: 'rojo', pct, texto: 'El tanque está vacío según el libro: recibe diésel o cuéntalo con el visor.' }
-  if (capacidad && saldo <= capacidad * 0.15) return { nivel: 'amarillo', pct, texto: `Tanque bajo: quedan ${t(saldo)} gal (${Math.round((saldo * 100) / capacidad)} % de ${t(capacidad)}).` }
+  if (saldo <= 0) return { nivel: 'rojo', pct, texto: 'Tanque vacío: recibe combustible.' }
+  if (capacidad && saldo <= capacidad * 0.15) return { nivel: 'amarillo', pct, texto: `Tanque bajo: ${t(saldo)} gal.` }
   return { nivel: 'verde', pct, texto: `Tanque con ${t(saldo)} gal.` }
 }
 
@@ -203,11 +200,11 @@ export function senalesDeRegistro(r: RegSenal, prev: RegSenal | null, hist: RegS
   const out: Aviso[] = []
   const add = (nivel: NivelAviso, codigo: string, texto: string) => out.push({ nivel, codigo, texto })
   if (prev && !r.horo_cambiado) {
-    if (r.horo_ini < prev.horo_fin - 0.005) add('rojo', 'HORO_RETROCEDE', `El horómetro retrocede: inicia en ${t(r.horo_ini, 2)} y el día anterior terminó en ${t(prev.horo_fin, 2)}.`)
-    else if (r.horo_ini > prev.horo_fin + 0.005) add('amarillo', 'HORO_SALTA', `El horómetro no continúa: inicia en ${t(r.horo_ini, 2)} y el día anterior terminó en ${t(prev.horo_fin, 2)} (salto de ${t(r.horo_ini - prev.horo_fin, 2)} h).`)
+    if (r.horo_ini < prev.horo_fin - 0.005) add('rojo', 'HORO_RETROCEDE', `Horómetro retrocede: inicia ${t(r.horo_ini, 2)}, antes ${t(prev.horo_fin, 2)}.`)
+    else if (r.horo_ini > prev.horo_fin + 0.005) add('amarillo', 'HORO_SALTA', `Horómetro salta ${t(r.horo_ini - prev.horo_fin, 2)} h.`)
   }
   if (prev && diasEntre(prev.fecha, r.fecha) > 1 && prev.estacion_id === r.estacion_id) {
-    add('amarillo', 'HUECO_DIAS', `Faltan ${diasEntre(prev.fecha, r.fecha) - 1} día(s) sin registro (del ${ddmm(sumarDias(prev.fecha, 1))} al ${ddmm(sumarDias(r.fecha, -1))}).`)
+    add('amarillo', 'HUECO_DIAS', `Faltan ${diasEntre(prev.fecha, r.fecha) - 1} día(s) de registro.`)
   }
   if (prev && prev.tanque_id === r.tanque_id && !r.visor_cambiado) {
     // suministros entre el día anterior y este día (este incluido): lo recibido en el tanque o lo declarado en el registro
@@ -215,32 +212,29 @@ export function senalesDeRegistro(r: RegSenal, prev: RegSenal | null, hist: RegS
     const delDia = recepciones.filter((x) => !x.anulado_at && x.tanque_id === r.tanque_id && diaLocal(x.fecha_hora) === r.fecha).reduce((s, x) => s + x.galones, 0)
     const esperado = prev.visor_fin + enRango + Math.max(delDia, r.recibido_gal)
     const d = r.visor_ini - esperado
-    if (d < -TOLERANCIA_GAL) add('rojo', 'VISOR_FALTA', `El visor inicial (${t(r.visor_ini)} gal) es menor de lo esperado (${t(esperado)} gal): faltan ${t(-d)} gal sin explicar entre el día anterior y hoy.`)
-    else if (d > TOLERANCIA_GAL) add('amarillo', 'VISOR_SOBRA', `El visor inicial (${t(r.visor_ini)} gal) es mayor de lo esperado (${t(esperado)} gal): ¿falta registrar un suministro de ${t(d)} gal?`)
+    if (d < -TOLERANCIA_GAL) add('rojo', 'VISOR_FALTA', `Visor inicial: faltan ${t(-d)} gal.`)
+    else if (d > TOLERANCIA_GAL) add('amarillo', 'VISOR_SOBRA', `Visor inicial: sobran ${t(d)} gal. ¿Falta recibir combustible?`)
   }
-  if (r.dif_visor_gal !== null && r.dif_visor_gal < -TOLERANCIA_GAL) add('rojo', 'SALDO_FALTA', `El tanque debía tener ${t(r.visor_ini - r.dif_visor_gal)} gal y el visor marca ${t(r.visor_ini)}: faltan ${t(-r.dif_visor_gal)} gal.`)
-  else if (r.dif_visor_gal !== null && r.dif_visor_gal > TOLERANCIA_GAL) add('amarillo', 'SALDO_SOBRA', `El tanque debía tener ${t(r.visor_ini - r.dif_visor_gal)} gal y el visor marca ${t(r.visor_ini)}: sobran ${t(r.dif_visor_gal)} gal.`)
+  if (r.dif_visor_gal !== null && r.dif_visor_gal < -TOLERANCIA_GAL) add('rojo', 'SALDO_FALTA', `Faltan ${t(-r.dif_visor_gal)} gal contra el tanque.`)
+  else if (r.dif_visor_gal !== null && r.dif_visor_gal > TOLERANCIA_GAL) add('amarillo', 'SALDO_SOBRA', `Sobran ${t(r.dif_visor_gal)} gal contra el tanque.`)
   const rend = hist.filter((h) => h.horas > 0 && h.rendimiento_gal_h !== null).slice(0, 10).map((h) => h.rendimiento_gal_h as number)
   if (r.horas > 0 && r.rendimiento_gal_h !== null && rend.length >= 5) {
     const med = mediana(rend)
     if (med > 0 && (r.rendimiento_gal_h > med * 1.35 || r.rendimiento_gal_h < med * 0.65)) {
       const grave = r.rendimiento_gal_h > med * 1.75 || r.rendimiento_gal_h < med * 0.4
-      add(grave ? 'rojo' : 'amarillo', 'RENDIMIENTO', `Gastó ${t(r.gastado_gal)} gal en ${t(r.horas)} h (${t(r.rendimiento_gal_h, 2)} gal/h). Lo normal en este motor es ${t(med, 2)} gal/h: debió gastar cerca de ${t(med * r.horas)} gal.`)
+      add(grave ? 'rojo' : 'amarillo', 'RENDIMIENTO', `Rinde ${t(r.rendimiento_gal_h, 2)} gal/h; lo normal ${t(med, 2)}.`)
     }
   }
   if (r.horas === 0 && r.gastado_gal > 0) {
     add(
       'amarillo',
       'HORO_SIN_AVANCE_CON_CONSUMO',
-      `Horómetro sin avance con consumo (${t(r.gastado_gal)} gal): no se tomó o está dañado.` +
-        (r.horas_estimadas !== null
-          ? ` Se estimaron ${t(r.horas_estimadas)} h solo para el mantenimiento (referencia ${t(r.rend_ref_gal_h ?? 0, 2)} gal/h); el horómetro no se modificó.`
-          : ' Sin rendimiento de referencia para estimar horas (se necesitan 5 días con horas en los últimos 30).')
+      `Horómetro sin avance, gastó ${t(r.gastado_gal)} gal.` + (r.horas_estimadas !== null ? ` Se estiman ${t(r.horas_estimadas)} h.` : ' Sin referencia para estimar.')
     )
   }
-  if (r.horas >= 1 && r.gastado_gal === 0) add('amarillo', 'HORAS_SIN_CONSUMO', `Trabajó ${t(r.horas)} h y no gastó diésel.`)
-  if (r.horas > 24) add('rojo', 'HORAS_IMPOSIBLES', `Más de 24 horas en un día (${t(r.horas)} h).`)
-  if (r.rpm === null) add('info', 'SIN_RPM', 'No se anotaron las revoluciones del motor.')
+  if (r.horas >= 1 && r.gastado_gal === 0) add('amarillo', 'HORAS_SIN_CONSUMO', `Trabajó ${t(r.horas)} h sin gastar.`)
+  if (r.horas > 24) add('rojo', 'HORAS_IMPOSIBLES', `Más de 24 h en un día.`)
+  if (r.rpm === null) add('info', 'SIN_RPM', 'Faltan las revoluciones.')
   return out
 }
 
@@ -261,12 +255,12 @@ export function senalesPorRegistro(registros: RegSenal[], recepciones: Pick<Rece
 
 /** Observaciones de captura que sí interesan en la fila (el resto son detalle técnico). */
 export const OBS_MOTOR: Record<string, { nivel: NivelAviso; texto: string }> = {
-  REGISTRO_HISTORICO: { nivel: 'info', texto: 'Registro histórico (no movió el diésel)' },
-  SUMINISTRO_DURANTE_DIA: { nivel: 'info', texto: 'Entró diésel durante el día' },
-  FUERA_DE_ORDEN: { nivel: 'amarillo', texto: 'Registro de un día anterior a otros ya hechos' },
-  MOTOR_NO_ASIGNADO_EN_FECHA: { nivel: 'amarillo', texto: 'El motor no estaba asignado esa fecha' },
-  MOTOR_EN_TALLER_EN_FECHA: { nivel: 'amarillo', texto: 'El motor estaba en el taller esa fecha' },
-  MOTOR_RETIRADO_EN_FECHA: { nivel: 'amarillo', texto: 'El motor estaba retirado esa fecha' },
+  REGISTRO_HISTORICO: { nivel: 'info', texto: 'Registro histórico' },
+  SUMINISTRO_DURANTE_DIA: { nivel: 'info', texto: 'Entró combustible ese día' },
+  FUERA_DE_ORDEN: { nivel: 'amarillo', texto: 'Día anterior a otros ya hechos' },
+  MOTOR_NO_ASIGNADO_EN_FECHA: { nivel: 'amarillo', texto: 'Motor sin asignar esa fecha' },
+  MOTOR_EN_TALLER_EN_FECHA: { nivel: 'amarillo', texto: 'Motor en taller esa fecha' },
+  MOTOR_RETIRADO_EN_FECHA: { nivel: 'amarillo', texto: 'Motor retirado esa fecha' },
   MANTENIMIENTO_PROXIMO: { nivel: 'amarillo', texto: 'Mantenimiento próximo' },
   MANTENIMIENTO_VENCIDO: { nivel: 'rojo', texto: 'Mantenimiento vencido' },
   SIN_REGISTRO_PREVIO: { nivel: 'info', texto: 'Primer registro del motor' },
@@ -301,25 +295,25 @@ export function alertasRegistro(e: EntradaAlertas): Aviso[] {
   const { horoIni, horoFin, visorIni, visorFin } = e
   const p = e.previo
   if (horoIni !== null && p.horoIni !== null && !e.horoCambiado) {
-    if (horoIni < p.horoIni - 0.005) out.push({ nivel: 'rojo', codigo: 'HORO_RETROCEDE', texto: `El horómetro retrocede: inicia en ${t(horoIni, 2)} y el último registro terminó en ${t(p.horoIni, 2)}${p.fechaBase ? ` (${ddmm(p.fechaBase)})` : ''}.` })
-    else if (horoIni > p.horoIni + 0.005) out.push({ nivel: 'amarillo', codigo: 'HORO_SALTA', texto: `El horómetro no continúa: inicia en ${t(horoIni, 2)} y el último registro terminó en ${t(p.horoIni, 2)}${p.fechaBase ? ` (${ddmm(p.fechaBase)})` : ''}: salto de ${t(horoIni - p.horoIni, 2)} h.` })
+    if (horoIni < p.horoIni - 0.005) out.push({ nivel: 'rojo', codigo: 'HORO_RETROCEDE', texto: `Horómetro retrocede: antes terminó en ${t(p.horoIni, 2)}.` })
+    else if (horoIni > p.horoIni + 0.005) out.push({ nivel: 'amarillo', codigo: 'HORO_SALTA', texto: `Horómetro salta ${t(horoIni - p.horoIni, 2)} h.` })
   }
   if (visorIni !== null && p.visorIni !== null && !e.visorCambiado && e.suministro === 0 && Math.abs(visorIni - p.visorIni) > 0.005) {
-    out.push({ nivel: 'amarillo', codigo: 'VISOR_NO_CONTINUA', texto: `El visor inicial (${t(visorIni)}) no coincide con el final anterior (${t(p.visorIni)}).` })
+    out.push({ nivel: 'amarillo', codigo: 'VISOR_NO_CONTINUA', texto: `Visor no continúa: antes terminó en ${t(p.visorIni)}.` })
   }
   if (!e.historico && visorIni !== null && e.saldoTanque !== null && p.visorIni !== null && !e.visorCambiado) {
     const extra = Math.max(e.suministro - e.recibidoHoyTanque, 0)
     const esperado = e.saldoTanque + extra
     const d = r2(visorIni - esperado)
-    if (d < -TOLERANCIA_GAL) out.push({ nivel: 'rojo', codigo: 'SALDO_FALTA', texto: `El tanque debía tener ${t(esperado)} gal y el visor marca ${t(visorIni)}: faltan ${t(-d)} gal.` })
-    else if (d > TOLERANCIA_GAL) out.push({ nivel: 'amarillo', codigo: 'SALDO_SOBRA', texto: `El tanque debía tener ${t(esperado)} gal y el visor marca ${t(visorIni)}: sobran ${t(d)} gal.` })
+    if (d < -TOLERANCIA_GAL) out.push({ nivel: 'rojo', codigo: 'SALDO_FALTA', texto: `Faltan ${t(-d)} gal contra el tanque.` })
+    else if (d > TOLERANCIA_GAL) out.push({ nivel: 'amarillo', codigo: 'SALDO_SOBRA', texto: `Sobran ${t(d)} gal contra el tanque.` })
   }
   if (horoIni !== null && horoFin !== null && visorIni !== null && visorFin !== null) {
     const horas = horoFin >= horoIni ? r2(horoFin - horoIni) : 0
     let gastado = r2(visorIni - visorFin)
     if (gastado < 0 && e.suministro > 0 && visorFin - visorIni <= e.suministro + 0.5) gastado = r2(visorIni + e.suministro - visorFin)
     if (gastado >= 0) {
-      if (horas > 24) out.push({ nivel: 'rojo', codigo: 'HORAS_IMPOSIBLES', texto: `Más de 24 horas en un día (${t(horas)} h).` })
+      if (horas > 24) out.push({ nivel: 'rojo', codigo: 'HORAS_IMPOSIBLES', texto: `Más de 24 h en un día.` })
       const hist = e.registros.filter((r) => r.equipo_id === e.equipoId && !r.anulado_at && r.fecha < e.fecha).sort((a, b) => b.fecha.localeCompare(a.fecha))
       const rend = hist.filter((h) => h.horas > 0 && h.rendimiento_gal_h !== null).slice(0, 10).map((h) => h.rendimiento_gal_h as number)
       if (horas > 0 && rend.length >= 5) {
@@ -327,10 +321,10 @@ export function alertasRegistro(e: EntradaAlertas): Aviso[] {
         const re = gastado / horas
         if (med > 0 && (re > med * 1.35 || re < med * 0.65)) {
           const grave = re > med * 1.75 || re < med * 0.4
-          out.push({ nivel: grave ? 'rojo' : 'amarillo', codigo: 'RENDIMIENTO', texto: `Gastó ${t(gastado)} gal en ${t(horas)} h (${t(re, 2)} gal/h). Lo normal en este motor es ${t(med, 2)} gal/h: debió gastar cerca de ${t(med * horas)} gal. Revisa las lecturas.` })
+          out.push({ nivel: grave ? 'rojo' : 'amarillo', codigo: 'RENDIMIENTO', texto: `Rinde ${t(re, 2)} gal/h; lo normal ${t(med, 2)}. Revisa las lecturas.` })
         }
       }
-      if (horas >= 1 && gastado === 0) out.push({ nivel: 'amarillo', codigo: 'HORAS_SIN_CONSUMO', texto: `Trabajó ${t(horas)} h y no gastó diésel.` })
+      if (horas >= 1 && gastado === 0) out.push({ nivel: 'amarillo', codigo: 'HORAS_SIN_CONSUMO', texto: `Trabajó ${t(horas)} h sin gastar.` })
       if (horas === 0 && gastado > 0) {
         const ref = rendimientoReferencia(e.registros, e.equipoId, e.fecha)
         const est = horasEstimadas(horas, gastado, ref)
@@ -339,8 +333,8 @@ export function alertasRegistro(e: EntradaAlertas): Aviso[] {
           codigo: 'HORO_SIN_AVANCE_CON_CONSUMO',
           texto:
             est !== null
-              ? `El horómetro no avanzó pero hubo consumo (${t(gastado)} gal): se estimarán ${t(est)} horas para el mantenimiento (el horómetro no se modifica).`
-              : `El horómetro no avanzó pero hubo consumo (${t(gastado)} gal). Aún no hay rendimiento de referencia (se necesitan 5 días con horas) para estimar horas del mantenimiento.`,
+              ? `Horómetro sin avance: se estiman ${t(est)} h.`
+              : `Horómetro sin avance, gastó ${t(gastado)} gal.`,
         })
       }
     }

@@ -132,7 +132,7 @@ export function AdministrarTanques({ estaciones, onCambio, onCerrar }: { estacio
           </Campo>
           <label className="flex min-h-11 items-center gap-3 text-sm text-slate-800">
             <input type="checkbox" checked={edicion.activo} onChange={(e) => setEdicion({ ...edicion, activo: e.target.checked })} className="h-6 w-6" data-tanque-activo />
-            Activo (un tanque con diésel o con motor no se puede desactivar)
+            Activo
           </label>
           <div className="flex flex-wrap gap-2">
             <Boton className="min-h-12 flex-1" onClick={() => void guardar()} disabled={guardando} data-guardar-tanque>

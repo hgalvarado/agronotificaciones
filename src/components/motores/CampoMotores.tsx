@@ -44,6 +44,8 @@ type Ventana = {
   tipo: 'registro' | 'recibir' | 'mover' | 'retirar' | 'mantenimiento' | 'detalle_motor' | 'detalle_tanque' | 'elegir_motor' | 'recibir_motor' | 'administrar_tanques'
   equipoId: string
   tanqueId?: string
+  /** Día del registro que pidió recibir combustible (la recepción viene con esa fecha). */
+  fecha?: string
 }
 
 export function CampoMotores({ usuarioId }: { usuarioId: string }) {
@@ -150,7 +152,7 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
       : null
     if (tipo === 'recibir') setVentana({ tipo, equipoId: '', tanqueId })
     else if (tipo && equipoId) setVentana({ tipo, equipoId })
-    guardado(tipo && (equipoId || tipo === 'recibir') ? 'Corrige los datos y guarda. Después, en «Envíos», quita el registro que no se aceptó.' : 'Vuelve a hacer el registro desde su pantalla y después quita el que no se aceptó en «Envíos».')
+    guardado(tipo && (equipoId || tipo === 'recibir') ? 'Corrige y guarda. Luego quita el rechazado en «Envíos».' : 'Haz el registro de nuevo. Luego quita el rechazado en «Envíos».')
   }
 
   if (campo.cargando && !estado) return <ListaEsqueleto filas={4} />
@@ -178,8 +180,8 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
       )}
       {fallo && (
         <div role="alert" data-guardado-fallido className="rounded-xl bg-red-50 p-3 text-sm text-red-900 ring-1 ring-inset ring-red-600/20">
-          <p className="font-bold">No se pudo guardar «{fallo.formulario}» ({fallo.estacion}, {fallo.hora}).</p>
-          <p className="mt-0.5 text-xs">Lo que escribiste quedó como borrador. Ábrelo de nuevo para continuarlo. Error: {fallo.error}</p>
+          <p className="font-medium">No se guardó «{fallo.formulario}» ({fallo.estacion}, {fallo.hora}).</p>
+          <p className="mt-0.5 text-xs">Quedó como borrador. Ábrelo y guarda de nuevo. {fallo.error}</p>
           <button type="button" className="mt-2 min-h-11 text-xs font-semibold text-red-800 underline" onClick={() => setFallo(null)}>
             Cerrar
           </button>
@@ -187,9 +189,9 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
       )}
 
       {!estado || !me ? (
-        <Alerta tono="ambar">Abre esta pantalla una vez con señal para descargar tus estaciones y motores. Después funciona sin señal.</Alerta>
+        <Alerta tono="ambar">Abre con señal una vez. Luego funciona sin señal.</Alerta>
       ) : estaciones.length === 0 || !estacion ? (
-        <Alerta tono="ambar">No tienes estaciones asignadas. Pide a tu jefe que te asigne en Usuarios → Estaciones de riego.</Alerta>
+        <Alerta tono="ambar">Sin estaciones. Pide a tu jefe que te asigne.</Alerta>
       ) : (
         <>
           {estaciones.length > 1 && (
@@ -233,15 +235,18 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
             ))}
           </div>
 
-          {!puedeRegistrar && <Alerta tono="ambar">Tu rol puede ver Motores pero no registrar. Se configura en Permisos.</Alerta>}
+          {!puedeRegistrar && <Alerta tono="ambar">Solo puedes ver. No puedes registrar.</Alerta>}
 
           {pestana === 'hoy' && <PestanaHoy vistas={vistas} estacionNombre={estacion.nombre} puedeRegistrar={puedeRegistrar} puedeMantenimiento={puedeMantenimiento} onAccion={alAccionHoy} />}
           {pestana === 'motores' && (
             <PestanaMotores
               vistas={vistas}
               puedeAsignar={puedeRecibirMotor || puedeMover}
+              puedeRegistrar={puedeRegistrar}
               onAsignar={() => setVentana({ tipo: 'elegir_motor', equipoId: '' })}
               onAbrir={(id) => setVentana({ tipo: 'detalle_motor', equipoId: id })}
+              onRegistrar={(id) => setVentana({ tipo: 'registro', equipoId: id })}
+              onRecibir={(id) => setVentana({ tipo: 'recibir', equipoId: id })}
             />
           )}
           {pestana === 'historial' && (
@@ -278,7 +283,7 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
               onAdministrar={() => setVentana({ tipo: 'administrar_tanques', equipoId: '' })}
             />
           )}
-          {pestana === 'auditoria' && puedeAuditar && <VistaAuditoria />}
+          {pestana === 'auditoria' && puedeAuditar && <VistaAuditoria generadoPor={estado.yo.nombre} />}
 
           {vistaVentana && ventana?.tipo === 'detalle_motor' && (
             <DetalleMotor
@@ -315,7 +320,7 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
               yo={estado.yo}
               historico={permisoHistoricoDe(extras, estacion.id)}
               registrar={campo.registrar}
-              onAbrirRecibir={() => setVentana({ tipo: 'recibir', equipoId: motorVentana.equipo_id })}
+              onAbrirRecibir={(f) => setVentana({ tipo: 'recibir', equipoId: motorVentana.equipo_id, fecha: f })}
               onCerrar={() => setVentana(null)}
               onGuardado={guardado}
             />
@@ -324,6 +329,7 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
             <FormRecibirDiesel
               tanques={tanques}
               tanqueInicial={tanqueInicial(ventana)}
+              fechaInicial={ventana.fecha}
               saldoDe={saldoDe}
               campo={estado}
               estacion={estacion}
@@ -337,13 +343,11 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
             <AdministrarTanques estaciones={estaciones} onCambio={mot.actualizar} onCerrar={() => setVentana(null)} />
           )}
           {ventana?.tipo === 'elegir_motor' && (
-            <Modal abierto titulo="Asignar nuevo motor" onCerrar={() => setVentana(null)}>
+            <Modal abierto titulo="Asignar motor" onCerrar={() => setVentana(null)}>
               <div className="flex flex-col gap-3" data-elegir-motor>
-                <p className="text-sm text-slate-600">
-                  Busca el motor por su código o nombre. Si está en otra estación, se mueve a <strong>{estacion.nombre}</strong>.
-                </p>
+                <p className="text-sm text-slate-600">Busca el motor. Pasa a <strong>{estacion.nombre}</strong>.</p>
                 {elegibles.length === 0 ? (
-                  <Alerta tono="ambar">No hay motores disponibles para recibir en esta estación.</Alerta>
+                  <Alerta tono="ambar">Sin motores disponibles.</Alerta>
                 ) : (
                   <div data-selector-motor>
                     <SelectorBuscable

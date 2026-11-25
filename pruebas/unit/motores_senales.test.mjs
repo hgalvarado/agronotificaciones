@@ -21,13 +21,13 @@ const reg = (fecha, extra = {}) => ({
 
 test('semáforo de mantenimiento: verde, amarillo (aviso 10 %), rojo, gris y «incluye N h estimadas»', () => {
   const m = { intervalo_horas: 500, aviso_horas: null }
-  assert.deepEqual(S.semaforoMantenimiento(m, 100), { nivel: 'verde', faltan: 400, texto: 'Mantenimiento al día: faltan 400 h' })
-  assert.deepEqual(S.semaforoMantenimiento(m, 460), { nivel: 'amarillo', faltan: 40, texto: 'Faltan 40 h para el mantenimiento (cada 500 h)' })
-  assert.equal(S.semaforoMantenimiento(m, 505).texto, 'Mantenimiento VENCIDO hace 5 h (cada 500 h)')
+  assert.deepEqual(S.semaforoMantenimiento(m, 100), { nivel: 'verde', faltan: 400, texto: 'Faltan 400 h' })
+  assert.deepEqual(S.semaforoMantenimiento(m, 460), { nivel: 'amarillo', faltan: 40, texto: 'Faltan 40 h' })
+  assert.equal(S.semaforoMantenimiento(m, 505).texto, 'Vencido hace 5 h')
   assert.equal(S.semaforoMantenimiento(m, 505).nivel, 'rojo')
   assert.equal(S.semaforoMantenimiento({ intervalo_horas: null, aviso_horas: null }, 5).nivel, 'gris')
   assert.equal(S.semaforoMantenimiento({ intervalo_horas: 500, aviso_horas: 100 }, 410).nivel, 'amarillo')
-  assert.match(S.semaforoMantenimiento(m, 460, 4).texto, / · incluye 4 h estimadas$/)
+  assert.match(S.semaforoMantenimiento(m, 460, 4).texto, / · 4 h estimadas$/)
 })
 
 test('semáforo del registro: al día, falta ayer, faltan varios días (rojo desde 3) y sin registros', () => {
@@ -36,7 +36,7 @@ test('semáforo del registro: al día, falta ayer, faltan varios días (rojo des
   assert.equal(S.semaforoRegistro('2026-11-21', HOY).nivel, 'amarillo')
   const r = S.semaforoRegistro('2026-11-20', HOY)
   assert.equal(r.nivel, 'rojo')
-  assert.equal(r.texto, 'Faltan 3 días sin registro (desde el 21/11).')
+  assert.equal(r.texto, 'Faltan 3 días de registro.')
   assert.equal(S.semaforoRegistro(null, HOY).nivel, 'amarillo')
 })
 
@@ -44,10 +44,10 @@ test('semáforo del tanque: vacío rojo, ≤15 % amarillo, verde y sin tanque', 
   assert.equal(S.semaforoTanque(0, 600).nivel, 'rojo')
   const bajo = S.semaforoTanque(80, 600)
   assert.equal(bajo.nivel, 'amarillo')
-  assert.equal(bajo.texto, 'Tanque bajo: quedan 80 gal (13 % de 600).')
+  assert.equal(bajo.texto, 'Tanque bajo: 80 gal.')
   assert.equal(bajo.pct, 13)
   assert.equal(S.semaforoTanque(300, 600).nivel, 'verde')
-  assert.equal(S.semaforoTanque(null, null).texto, 'El motor no tiene tanque conectado.')
+  assert.equal(S.semaforoTanque(null, null).texto, 'Sin tanque conectado.')
 })
 
 test('«qué toca ahora»: ordena por urgencia y el motor retirado no pide registro ni tanque', () => {
@@ -105,7 +105,7 @@ test('señales por día: horómetro retrocede y salta, hueco, visor, rendimiento
   assert.deepEqual(sin(reg('2026-11-11', { horo_ini: 1000, visor_ini: 188 })), ['HORO_RETROCEDE'])
   const retro = S.senalesDeRegistro(reg('2026-11-11', { horo_ini: 1000, visor_ini: 188 }), previo, [], [])[0]
   assert.equal(retro.nivel, 'rojo')
-  assert.equal(retro.texto, 'El horómetro retrocede: inicia en 1000 y el día anterior terminó en 1015.')
+  assert.equal(retro.texto, 'Horómetro retrocede: inicia 1000, antes 1015.')
   assert.deepEqual(sin(reg('2026-11-11', { horo_ini: 1020, visor_ini: 188 })), ['HORO_SALTA'])
   assert.ok(sin(reg('2026-11-13', { horo_ini: 1015, visor_ini: 188 })).includes('HUECO_DIAS'))
   assert.ok(sin(reg('2026-11-11', { horo_ini: 1015, visor_ini: 150 })).includes('VISOR_FALTA'))
@@ -118,9 +118,9 @@ test('señales por día: horómetro retrocede y salta, hueco, visor, rendimiento
   const hist = Array.from({ length: 6 }, (_, i) => reg(`2026-11-0${i + 1}`, { rendimiento_gal_h: 2 })).reverse()
   const rara = S.senalesDeRegistro(reg('2026-11-11', { ...base, horas: 5, gastado_gal: 30, rendimiento_gal_h: 6, horo_fin: 1020 }), previo, hist, []).find((x) => x.codigo === 'RENDIMIENTO')
   assert.equal(rara.nivel, 'rojo')
-  assert.equal(rara.texto, 'Gastó 30 gal en 5 h (6 gal/h). Lo normal en este motor es 2 gal/h: debió gastar cerca de 10 gal.')
+  assert.equal(rara.texto, 'Rinde 6 gal/h; lo normal 2.')
   const sa = S.senalesDeRegistro(reg('2026-11-11', { ...base, horas: 0, horo_fin: 1015, gastado_gal: 8, rendimiento_gal_h: null, horas_estimadas: 4, rend_ref_gal_h: 2 }), previo, [], []).find((x) => x.codigo === 'HORO_SIN_AVANCE_CON_CONSUMO')
-  assert.match(sa.texto, /Se estimaron 4 h solo para el mantenimiento \(referencia 2 gal\/h\); el horómetro no se modificó\.$/)
+  assert.match(sa.texto, /Se estiman 4 h\.$/)
   assert.ok(S.senalesDeRegistro(reg('2026-11-11', { ...base, horas: 6, gastado_gal: 0, rendimiento_gal_h: 0 }), previo, [], []).some((x) => x.codigo === 'HORAS_SIN_CONSUMO'))
   assert.ok(S.senalesDeRegistro(reg('2026-11-11', { ...base, horas: 30 }), previo, [], []).some((x) => x.codigo === 'HORAS_IMPOSIBLES'))
 })
@@ -145,10 +145,10 @@ test('alertas del formulario: horómetro retrocede, tanque contra visor, rendimi
   assert.deepEqual(cod({ ...e, horoIni: 106, horoFin: 112 }), []) // continúa, el libro cuadra y gasta 12 en 6 h = 2 gal/h
   const falta = S.alertasRegistro({ ...e, horoIni: 106, horoFin: 112, visorIni: 190, visorFin: 178, saldoTanque: 200 }).find((a) => a.codigo === 'SALDO_FALTA')
   assert.equal(falta.nivel, 'rojo')
-  assert.equal(falta.texto, 'El tanque debía tener 200 gal y el visor marca 190: faltan 10 gal.')
+  assert.equal(falta.texto, 'Faltan 10 gal contra el tanque.')
   assert.ok(cod({ ...e, horoIni: 106, horoFin: 112, visorFin: 150 }).includes('RENDIMIENTO')) // 50 gal en 6 h = 8.3 gal/h
   const sin = S.alertasRegistro({ ...e, horoIni: 106, horoFin: 106, visorFin: 192 }).find((a) => a.codigo === 'HORO_SIN_AVANCE_CON_CONSUMO')
-  assert.equal(sin.texto, 'El horómetro no avanzó pero hubo consumo (8 gal): se estimarán 4 horas para el mantenimiento (el horómetro no se modifica).')
+  assert.equal(sin.texto, 'Horómetro sin avance: se estiman 4 h.')
   // un histórico no compara con el libro
   assert.ok(!cod({ ...e, horoIni: 106, horoFin: 112, visorIni: 190, visorFin: 178, historico: true }).includes('SALDO_FALTA'))
 })

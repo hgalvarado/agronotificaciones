@@ -38,7 +38,7 @@ export function calcularRegistro(
   if (diff < 0) {
     if (opciones.horoCambiado) horas = 0
     else {
-      errores.push('El horómetro final es menor que el inicial.')
+      errores.push('Horómetro final menor que el inicial.')
       horas = 0
     }
   }
@@ -51,7 +51,7 @@ export function calcularRegistro(
       gastado = Math.max(r2((d.visorIni as number) + d.recibido - (d.visorFin as number)), 0)
       duranteDia = true
     } else {
-      errores.push('El visor final es mayor que el inicial y no anotaste suministro de combustible ese día: escríbelo o corrige la lectura.')
+      errores.push('Subió el visor: recibe combustible primero.')
       gastado = null
     }
   }
@@ -87,7 +87,6 @@ export function proponerInicial(args: { equipoId: string; fecha: string; estado:
   return b ? { horoIni: b.horo, visorIni: b.visor, origen: b.origen, fechaBase: b.fecha } : { horoIni: null, visorIni: null, origen: null, fechaBase: null }
 }
 
-const fmt = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
 
 export function avisosContinuidad(args: {
   horoIni: number | null
@@ -99,10 +98,10 @@ export function avisosContinuidad(args: {
   const out: string[] = []
   const p = args.propuesta
   if (p.horoIni !== null && !args.horoCambiado && esNum(args.horoIni) && Math.abs(args.horoIni - p.horoIni) > 0.005) {
-    out.push(`El horómetro inicial no continúa donde terminó el último registro (${p.horoIni}${p.fechaBase ? `, del ${fmt(p.fechaBase)}` : ''}).`)
+    out.push(`Horómetro no continúa: antes terminó en ${p.horoIni}.`)
   }
   if (p.visorIni !== null && !args.visorCambiado && esNum(args.visorIni) && Math.abs(args.visorIni - p.visorIni) > 0.005) {
-    out.push(`El visor inicial no coincide con el final anterior (${p.visorIni}).`)
+    out.push(`Visor no continúa: antes terminó en ${p.visorIni}.`)
   }
   return out
 }
@@ -131,13 +130,13 @@ export function armarRegistroDiario(args: {
   hoy?: string
 }): { datos: Record<string, unknown> } | { error: string } {
   if (![args.horoIni, args.horoFin, args.visorIni, args.visorFin].every(esNum)) return { error: 'Escribe un número válido.' }
-  if (args.suministro !== undefined && (!esNum(args.suministro) || args.suministro < 0)) return { error: 'El suministro de combustible no es válido.' }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(args.fecha)) return { error: 'Indica la fecha del registro.' }
-  if (args.fecha > (args.hoy ?? hoyHonduras())) return { error: 'La fecha no puede ser posterior a hoy.' }
-  if ((args.horoCambiado || args.visorCambiado) && !args.comentario.trim()) return { error: 'Explica el cambio del horómetro o del visor en las observaciones.' }
-  if (args.rpm !== null && (!esNum(args.rpm) || args.rpm < 0 || args.rpm > 6000)) return { error: 'Las revoluciones deben estar entre 0 y 6000.' }
-  for (const q of [args.caudalIni, args.caudalFin]) if (q !== null && q !== undefined && (!esNum(q) || q < 0)) return { error: 'La lectura de caudal debe ser un número.' }
-  if ((args.operador ?? '').trim().length > 80) return { error: 'El nombre del operador es muy largo.' }
+  if (args.suministro !== undefined && (!esNum(args.suministro) || args.suministro < 0)) return { error: 'Suministro no válido.' }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(args.fecha)) return { error: 'Falta la fecha.' }
+  if (args.fecha > (args.hoy ?? hoyHonduras())) return { error: 'La fecha no puede ser futura.' }
+  if ((args.horoCambiado || args.visorCambiado) && !args.comentario.trim()) return { error: 'Explica el cambio en observaciones.' }
+  if (args.rpm !== null && (!esNum(args.rpm) || args.rpm < 0 || args.rpm > 6000)) return { error: 'Revoluciones entre 0 y 6000.' }
+  for (const q of [args.caudalIni, args.caudalFin]) if (q !== null && q !== undefined && (!esNum(q) || q < 0)) return { error: 'Caudal: escribe un número.' }
+  if ((args.operador ?? '').trim().length > 80) return { error: 'Nombre del operador muy largo.' }
   const c = calcularRegistro(
     { horoIni: args.horoIni, horoFin: args.horoFin, visorIni: args.visorIni, visorFin: args.visorFin, recibido: args.suministro ?? 0 },
     { horoCambiado: args.horoCambiado }
@@ -177,8 +176,8 @@ export function armarRecepcionDiesel(args: {
   vehiculoId: string | null
   comentario: string
 }): { datos: Record<string, unknown> } | { error: string } {
-  if (!args.tanqueId) return { error: 'Elige el tanque donde se recibe el diésel.' }
-  if (!esNum(args.galones) || args.galones <= 0) return { error: 'Indica los galones recibidos.' }
+  if (!args.tanqueId) return { error: 'Elige el tanque.' }
+  if (!esNum(args.galones) || args.galones <= 0) return { error: 'Escribe los galones.' }
   return {
     datos: {
       estacion_id: args.estacionId,
@@ -226,11 +225,11 @@ export function armarMovimientoMotor(args: {
   const motivoTexto = args.motivo.trim() || (recibe ? '' : (ETIQUETA_MOTIVO[args.motivoCodigo] ?? ''))
   if (!recibe && !motivoTexto) return { error: 'Elige el motivo.' }
   if (!recibe && args.motivoCodigo === 'OTRO' && !args.motivo.trim()) return { error: 'Escribe cuál es el motivo.' }
-  if (args.horometro != null && (!esNum(args.horometro) || args.horometro < 0)) return { error: 'El horómetro no es válido.' }
+  if (args.horometro != null && (!esNum(args.horometro) || args.horometro < 0)) return { error: 'Horómetro no válido.' }
   if (entra && !args.estacionDestino) return { error: 'Elige la estación de destino.' }
-  if (entra && !args.tanqueId && !args.tanqueNuevo) return { error: 'Elige el tanque del motor: uno libre de la estación de destino.' }
+  if (entra && !args.tanqueId && !args.tanqueNuevo) return { error: 'Elige un tanque libre.' }
   if (args.tanqueNuevo && !args.tanqueNuevo.nombre.trim()) return { error: 'Escribe el nombre del tanque nuevo.' }
-  if (args.horasBase !== null && (!esNum(args.horasBase) || args.horasBase < 0)) return { error: 'Las horas desde el último mantenimiento no son válidas.' }
+  if (args.horasBase !== null && (!esNum(args.horasBase) || args.horasBase < 0)) return { error: 'Horas de mantenimiento no válidas.' }
   const datos: Record<string, unknown> = {
     equipo_id: args.equipoId,
     estacion_id: args.estacionDestino ?? args.estacionOrigen ?? undefined,

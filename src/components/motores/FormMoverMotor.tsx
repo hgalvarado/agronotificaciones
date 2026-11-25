@@ -29,7 +29,7 @@ const MOTIVOS_RETIRAR = ['FIN_TEMPORADA', 'DANO_REEMPLAZO', 'OTRO']
 const NOMBRE_TIPO: Record<TipoMovimientoMotor, string> = {
   INSTALADO: 'Recibir motor en esta estación',
   TRASLADADO: 'Mover a otra estación',
-  AL_TALLER: 'Llevar al taller (mantenimiento)',
+  AL_TALLER: 'Llevar al taller',
   DE_VUELTA: 'Recibir del taller en esta estación',
   RETIRADO: 'Retirar de la estación',
 }
@@ -37,9 +37,9 @@ const NOMBRE_TIPO: Record<TipoMovimientoMotor, string> = {
 const TITULO: Record<ModoMovimiento, string> = { recibir: 'Recibir motor', mover: 'Mover motor', retirar: 'Retirar motor' }
 
 const AYUDA: Record<ModoMovimiento, string> = {
-  recibir: 'Escribe cómo llega el motor (su horómetro) y elige el tanque libre al que se conecta. No hace falta explicar el motivo.',
-  mover: 'El motor sale de esta estación y se recibe en la que elijas, en uno de sus tanques libres. El tanque y su diésel se quedan aquí.',
-  retirar: 'El motor deja de estar en esta estación. Elige por qué. El tanque y su diésel se quedan aquí.',
+  recibir: 'Escribe el horómetro y elige un tanque libre.',
+  mover: 'Elige la estación destino. El tanque se queda aquí.',
+  retirar: 'Elige el motivo. El tanque se queda aquí.',
 }
 
 type Datos = {
@@ -132,9 +132,9 @@ export function FormMoverMotor({
       borrador={borrador}
       sinCustodia
       construir={({ ubicacion, enNombreDe }) => {
-        if (!tipo) return 'Elige qué se hace con el motor.'
+        if (!tipo) return 'Elige qué hacer.'
         const fh = deEntradaLocal(fechaHora)
-        if (!fh) return 'Indica la fecha y hora del movimiento.'
+        if (!fh) return 'Falta la fecha y hora.'
         const horas = horasBase.trim() ? Number(horasBase.replace(',', '.')) : null
         const cap = tanqueCapacidad.trim() ? Number(tanqueCapacidad.replace(',', '.')) : null
         const a = armarMovimientoMotor({
@@ -217,7 +217,7 @@ export function FormMoverMotor({
             </div>
           ) : (
             <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-900 ring-1 ring-inset ring-amber-600/20" data-sin-tanque-libre>
-              Esa estación no tiene un tanque libre. Pide a Torre de Control que le asigne uno (Motores › Tanques).
+              Sin tanque libre. Pide uno a Torre de Control.
             </p>
           )}
           {libres.length === 0 && puedeCrearTanque && (

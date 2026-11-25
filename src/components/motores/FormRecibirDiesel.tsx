@@ -23,6 +23,7 @@ type Datos = { tanque?: string; fechaHora: string; galones: string; chofer: stri
 export function FormRecibirDiesel({
   tanques,
   tanqueInicial,
+  fechaInicial,
   saldoDe,
   campo,
   estacion,
@@ -35,6 +36,8 @@ export function FormRecibirDiesel({
   tanques: TanqueFijo[]
   /** El tanque que ya viene elegido (el del motor o el que se tocó). */
   tanqueInicial?: string
+  /** Día (AAAA-MM-DD) con el que viene la recepción (el del registro que la pidió); sin esto, ahora. */
+  fechaInicial?: string
   /** Saldo del tanque contando lo pendiente de enviar. */
   saldoDe: (tanqueId: string) => number
   campo: EstadoCampo
@@ -47,7 +50,7 @@ export function FormRecibirDiesel({
   const borrador = useBorrador<Datos>(claveBorrador('diesel_recibir', yo.id, estacion.id))
   const b = borrador.inicial
   const [tanque, setTanque] = useState(b?.tanque ?? tanqueInicial ?? (tanques.length === 1 ? tanques[0].id : ''))
-  const [fechaHora, setFechaHora] = useState(b?.fechaHora ?? aEntradaLocal(ahoraIso()))
+  const [fechaHora, setFechaHora] = useState(b?.fechaHora ?? (fechaInicial ? `${fechaInicial}T12:00` : aEntradaLocal(ahoraIso())))
   const [galones, setGalones] = useState(b?.galones ?? '')
   const [chofer, setChofer] = useState(b?.chofer ?? '')
   const [vehiculo, setVehiculo] = useState(b?.vehiculo ?? '')
@@ -63,7 +66,7 @@ export function FormRecibirDiesel({
 
   return (
     <MarcoRegistro
-      titulo={`Recibir diésel · ${estacion.nombre}`}
+      titulo={`Recibir combustible · ${estacion.nombre}`}
       estacion={estacion}
       yo={yo}
       registrar={registrar}
@@ -72,10 +75,10 @@ export function FormRecibirDiesel({
       borrador={borrador}
       rapido
       construir={({ ubicacion, enNombreDe }) => {
-        if (tanques.length === 0) return 'Esta estación no tiene tanques asignados. Pide a Torre de Control que le asigne uno (Motores › Tanques).'
+        if (tanques.length === 0) return 'Sin tanques. Pide uno a Torre de Control.'
         const fh = deEntradaLocal(fechaHora)
-        if (!fh) return 'Indica la fecha y hora de la recepción.'
-        if (Date.parse(fh) > Date.now() + 5 * 60_000) return 'La recepción no puede ser en el futuro.'
+        if (!fh) return 'Falta la fecha y hora.'
+        if (Date.parse(fh) > Date.now() + 5 * 60_000) return 'La fecha no puede ser futura.'
         const a = armarRecepcionDiesel({
           estacionId: estacion.id,
           tanqueId: tanque || null,
@@ -86,11 +89,11 @@ export function FormRecibirDiesel({
           comentario,
         })
         if ('error' in a) return a.error
-        return [...nuevos, crearOperacion('diesel_recibir', a.datos, { ubicacion, enNombreDe, resumen: `Diésel recibido · ${tanques.find((t) => t.id === tanque)?.nombre ?? estacion.nombre} · ${g} gal` })]
+        return [...nuevos, crearOperacion('diesel_recibir', a.datos, { ubicacion, enNombreDe, resumen: `Combustible recibido · ${tanques.find((t) => t.id === tanque)?.nombre ?? estacion.nombre} · ${g} gal` })]
       }}
     >
       <p className="text-sm text-slate-700" data-bodega-recibir>
-        El diésel entra al <strong>tanque</strong> que elijas en {estacion.nombre}; no pasa por la bodega.
+        Entra al <strong>tanque</strong>, no a la bodega.
       </p>
       <Campo etiqueta="Tanque" requerido>
         <div data-selector-tanque-diesel>
@@ -107,7 +110,7 @@ export function FormRecibirDiesel({
             permitirVacio={false}
           />
         </div>
-        {tanque && <p className="mt-1 text-xs text-slate-600">Ahora hay {saldoDe(tanque)} gal en este tanque.</p>}
+        {tanque && <p className="mt-1 text-xs text-slate-600">Hay {saldoDe(tanque)} gal.</p>}
       </Campo>
       <Campo etiqueta="Galones recibidos" requerido>
         <input

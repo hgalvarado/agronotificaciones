@@ -3,7 +3,8 @@
 /**
  * Registro diario del motor = la hoja física FTR_F-MA-103, con sus mismos campos y su mismo orden: fecha, control de horas del motor
  * (horómetro inicial, final, horas), lectura del visor del tanque (galones iniciales, finales, gastados), rendimiento, revoluciones,
- * suministro de combustible, lectura de caudal (inicial y final) y firma del operador. El gastado (inicial − final) y el rendimiento
+ * lectura de caudal (inicial y final) y firma del operador. El suministro de combustible NO se escribe aquí: se recibe con «Recibir
+ * combustible» y la base lo toma de las recepciones del día. El gastado (inicial − final) y el rendimiento
  * se calculan en vivo y las alertas salen al instante, con texto claro. Sin señal: se guarda en el teléfono y se envía solo
  * (operación `motor_registro_diario`). Se registran jornadas de ayer o anteriores: nunca se asume «hoy».
  */
@@ -31,7 +32,6 @@ type Datos = {
   visorCambiado: boolean
   noTrabajo: boolean
   comentario: string
-  suministro?: string
   caudalIni?: string
   caudalFin?: string
   operador?: string
@@ -93,8 +93,8 @@ export function FormRegistroMotor({
   /** sql/140: permiso temporal «Registro histórico» de esta estación (si lo tiene, se ofrece la casilla). */
   historico?: PermisoHistorico | null
   registrar: (...ops: Operacion[]) => Promise<void>
-  /** «Recibir diésel»: abre la recepción al tanque. */
-  onAbrirRecibir: () => void
+  /** «Recibir combustible»: abre la recepción al tanque, con la fecha de este registro. */
+  onAbrirRecibir: (fecha: string) => void
   onCerrar: () => void
   onGuardado: (m: string) => void
 }) {
@@ -110,13 +110,12 @@ export function FormRegistroMotor({
   const [visorCambiado, setVisorCambiado] = useState(b?.visorCambiado ?? false)
   const [noTrabajo, setNoTrabajo] = useState(b?.noTrabajo ?? false)
   const [comentario, setComentario] = useState(b?.comentario ?? '')
-  const [suministro, setSuministro] = useState(b?.suministro ?? '')
   const [caudalIni, setCaudalIni] = useState(b?.caudalIni ?? '')
   const [caudalFin, setCaudalFin] = useState(b?.caudalFin ?? '')
   const [operador, setOperador] = useState(b?.operador ?? yo.nombre)
   // sql/140 · Registro histórico: día pasado, sin custodia y SIN mover el diésel del tanque (la base lo vuelve a validar)
   const [esHistorico, setEsHistorico] = useState(false)
-  useAutoguardado(borrador, { fecha, horoIni, horoFin, visorIni, visorFin, rpm, horoCambiado, visorCambiado, noTrabajo, comentario, suministro, caudalIni, caudalFin, operador })
+  useAutoguardado(borrador, { fecha, horoIni, horoFin, visorIni, visorFin, rpm, horoCambiado, visorCambiado, noTrabajo, comentario, caudalIni, caudalFin, operador })
 
   // El inicial propuesto es la lectura final del último registro ANTERIOR a esta fecha (cola incluida)
   const propuesta = useMemo(() => proponerInicial({ equipoId: motor.equipo_id, fecha, estado, pendientes }), [motor.equipo_id, fecha, estado, pendientes])
@@ -126,15 +125,16 @@ export function FormRegistroMotor({
   const visorFinEf = noTrabajo ? visorIniTxt : visorFin
 
   const tanqueId = motor.tanque?.id ?? ''
-  // sql/147: el suministro del día sube el TANQUE (solo lo que falte de las recepciones); no toca la bodega
-  const recibido = Math.max(num(suministro) ?? 0, 0)
+  const hoy = hoyIso()
+  // sql/147: el suministro del día = lo recibido ese día en el tanque (recepciones, también las pendientes de enviar)
+  const recibidoHoy = tanqueId ? recibidoEnDia(tanqueId, fecha, estado, pendientes) : 0
+  const recibido = recibidoHoy
   const calc = calcularRegistro(
     { horoIni: num(horoIniTxt), horoFin: num(horoFinEf), visorIni: num(visorIniTxt), visorFin: num(visorFinEf), recibido },
     { horoCambiado }
   )
   const completo = num(horoIniTxt) !== null && num(horoFinEf) !== null && num(visorIniTxt) !== null && num(visorFinEf) !== null
-  const hoy = hoyIso()
-  const recibidoHoy = tanqueId ? recibidoEnDia(tanqueId, fecha, estado, pendientes) : 0
+  const visorSube = completo && !noTrabajo && (num(visorFinEf) as number) > (num(visorIniTxt) as number) && recibidoHoy === 0
   const saldoLibro = tanqueId ? saldoTanqueLocal(tanqueId, estado, pendientes) : null
   const ultima = fechaUltimaLocal(motor, pendientes)
   // el libro solo se compara con el registro más reciente del motor (igual que la base)
@@ -165,10 +165,11 @@ export function FormRegistroMotor({
     <div className="flex flex-col gap-1.5" data-avisos-registro>
       {propuesta.origen && propuesta.fechaBase && (
         <p className="text-xs text-slate-600">
-          Continúa del registro del {fmtFecha(propuesta.fechaBase).slice(0, 5)} ({ORIGEN[propuesta.origen]}).
+          Sigue del {fmtFecha(propuesta.fechaBase).slice(0, 5)} ({ORIGEN[propuesta.origen]}).
         </p>
       )}
       {completo &&
+        !visorSube &&
         calc.errores.map((e) => (
           <p key={e} className="rounded-lg bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-800 ring-1 ring-inset ring-red-600/20" role="alert" data-error-registro>
             {e}
@@ -187,7 +188,7 @@ export function FormRegistroMotor({
       ))}
       {completo && calc.duranteDia && (
         <p className="text-xs text-slate-600" data-aviso-registro>
-          Entró diésel durante el día: gastado = inicial + suministro − final.
+          Entró combustible ese día.
         </p>
       )}
     </div>
@@ -206,14 +207,14 @@ export function FormRegistroMotor({
       avisoPie={avisoPie}
       permisoHistorico={esHistorico}
       construir={({ ubicacion, enNombreDe }) => {
-        if (!fecha) return 'Indica la fecha del registro.'
-        if (esHistorico && fecha >= hoy) return 'El registro histórico es solo de días pasados: elige un día anterior a hoy.'
+        if (!fecha) return 'Falta la fecha.'
+        if (esHistorico && fecha >= hoy) return 'Histórico: elige un día anterior a hoy.'
         if (!completo) return 'Escribe un número válido.'
         const rpmNum = rpm.trim() ? num(rpm) : null
-        if (rpm.trim() && rpmNum === null) return 'Las revoluciones deben estar entre 0 y 6000.'
+        if (rpm.trim() && rpmNum === null) return 'Revoluciones entre 0 y 6000.'
         const ci = caudalIni.trim() ? num(caudalIni) : null
         const cf = caudalFin.trim() ? num(caudalFin) : null
-        if ((caudalIni.trim() && ci === null) || (caudalFin.trim() && cf === null)) return 'La lectura de caudal debe ser un número.'
+        if ((caudalIni.trim() && ci === null) || (caudalFin.trim() && cf === null)) return 'Caudal: escribe un número.'
         const a = armarRegistroDiario({
           equipoId: motor.equipo_id,
           fecha,
@@ -228,7 +229,6 @@ export function FormRegistroMotor({
           comentario,
           estacionId: estacion.id,
           tanqueId: tanqueId || undefined,
-          suministro: recibido,
           caudalIni: ci,
           caudalFin: cf,
           operador,
@@ -261,9 +261,8 @@ export function FormRegistroMotor({
             data-casilla-historico
           />
           <span className="min-w-0 flex-1">
-            <strong>Registro histórico</strong> (una lectura de antes de usar el sistema): día pasado y NO mueve el diésel del tanque; solo guarda horómetro, visor y horas.
-            Permiso hasta el {historico.hasta}
-            {historico.dias_restantes <= 0 ? ' (vence hoy)' : ` · te quedan ${historico.dias_restantes} día(s)`}.
+            <strong>Registro histórico</strong>: día pasado, no mueve el tanque. Hasta el {historico.hasta}
+            {historico.dias_restantes <= 0 ? ' (vence hoy)' : ` · ${historico.dias_restantes} día(s)`}.
           </span>
         </label>
       )}
@@ -312,13 +311,13 @@ export function FormRegistroMotor({
           <CajaNumero valor={horoFinEf} onCambiar={setHoroFin} dato="data-horo-fin" etiqueta="Horómetro final" deshabilitado={noTrabajo} />
         </Campo>
         <Calculado etiqueta="Horas" valor={calc.horas === null ? '—' : String(calc.horas)} dato="data-horas" />
-        <Campo etiqueta="Rev. del motor (opcional)">
+        <Campo etiqueta="Revoluciones (opcional)">
           <CajaNumero valor={rpm} onCambiar={setRpm} dato="data-rpm" etiqueta="Revoluciones del motor" />
         </Campo>
       </div>
       {estimadas !== null && (
         <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900 ring-1 ring-inset ring-amber-600/20" data-horas-estimadas>
-          Se estimarán {estimadas} horas para el mantenimiento (el horómetro no se modifica).
+          Se estiman {estimadas} h para el mantenimiento.
         </p>
       )}
 
@@ -334,23 +333,19 @@ export function FormRegistroMotor({
         <Calculado etiqueta="Rendimiento gal/h" valor={calc.rendimiento === null ? '—' : String(calc.rendimiento)} dato="data-rendimiento" />
       </div>
 
-      <Campo etiqueta="Suministro de combustible (gal)">
-        <div className="flex flex-wrap items-center gap-3" data-suministro-dia>
-          <div className="w-32">
-            <CajaNumero valor={suministro} onCambiar={setSuministro} dato="data-suministro" etiqueta="Suministro de combustible" />
-          </div>
-          <span className="min-w-0 flex-1 text-xs text-slate-600" data-tanque-libro>
-            {esHistorico
-              ? 'El histórico no mueve el tanque.'
-              : saldoLibro === null
-                ? 'El motor no tiene tanque conectado.'
-                : `Tanque ${motor.tanque?.nombre}: el libro dice ${saldoLibro} gal${recibidoHoy > 0 ? ` · recibidos ese día: ${recibidoHoy} gal` : ''}.`}
-          </span>
-          <button type="button" onClick={onAbrirRecibir} className="min-h-11 rounded-lg px-3 text-sm font-semibold text-brand-700 underline" data-recibi-diesel>
-            Recibir diésel
+      {visorSube && (
+        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-red-800" role="alert" data-visor-sube>
+          <span className="font-medium">Subió el visor: recibe combustible primero.</span>
+          <button type="button" onClick={() => onAbrirRecibir(fecha)} className="min-h-11 rounded-lg px-3 text-sm font-medium text-brand-700 underline" data-recibi-diesel>
+            Recibir combustible
           </button>
-        </div>
-      </Campo>
+        </p>
+      )}
+      {recibidoHoy > 0 && !esHistorico && (
+        <p className="text-xs text-slate-600" data-tanque-libro>
+          Recibido ese día: {recibidoHoy} gal.
+        </p>
+      )}
 
       <Seccion>Lectura de caudal</Seccion>
       <div className="grid grid-cols-2 gap-3">
