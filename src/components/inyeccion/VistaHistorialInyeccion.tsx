@@ -4,7 +4,7 @@
  * Historial de Inyección de la estación (últimos 120 días): lo que ya llegó a la base y lo que todavía está por
  * enviar, con el detalle completo (lote «Nombre · código», producto y dosis, cantidad, DDT del plan contra el DDT real,
  * fecha del plan contra la de aplicación, quién y objetivo) y una vista «Plan contra real». Filtros contraídos.
- * Anular / Eliminar por completo solo aparecen cuando hay un registro seleccionado (con «Quitar selección» y
+ * Anular / Eliminar por completo aparecen solo dentro del detalle de la aplicación (al tocar la fila; con
  * confirmación); la base vuelve a comprobar el permiso. El cumplimiento de fondo y la tendencia son de AGL.
  */
 
@@ -109,7 +109,6 @@ export function VistaHistorialInyeccion({
 }) {
   const [anulando, setAnulando] = useState<AplicacionInyeccion | null>(null)
   const [eliminando, setEliminando] = useState<AplicacionInyeccion | null>(null)
-  const [seleccionId, setSeleccionId] = useState<string | null>(null)
   const [vista, setVista] = useState<'aplicaciones' | 'plan' | 'calendario'>('aplicaciones')
   const [filtros, setFiltros] = useState<FiltrosInyeccion>(SIN_FILTROS_INY)
   const hoy = hoyIso()
@@ -155,9 +154,6 @@ export function VistaHistorialInyeccion({
   }, [todas, nombreQuien])
 
   const pendientes = cola.filter((o) => o.tipo === 'aplicacion_lote' && o.datos.estacion_id === estacion.id && o.estado_local !== 'ACEPTADO')
-  const seleccionada = seleccionId ? (todas.find((a) => a.id === seleccionId) ?? null) : null
-  const puedeAnularSel = Boolean(seleccionada && puedeAnular && estacion.permisos.anular && !seleccionada.anulado_at)
-  const puedeEliminarSel = Boolean(seleccionada && puedeEliminar && onEliminado)
 
   const [modo, setModo] = useState<'lista' | 'tabla'>('lista')
   const [limite, setLimite] = useState(40)
@@ -178,21 +174,59 @@ export function VistaHistorialInyeccion({
     }
     return [...m.entries()]
   }, [mostradas])
-  const puedeActuar = (puedeAnular && estacion.permisos.anular) || (puedeEliminar && Boolean(onEliminado))
   const lotesCalendario = useMemo(() => opcionesLotes.map((o) => ({ id: o.valor, titulo: o.etiqueta })), [opcionesLotes])
   const fechaDia = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString('es-HN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })
 
-  const casilla = (a: AplicacionInyeccion, marcada: boolean) => (
-    <label className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center self-center" aria-label={`Marcar aplicación del ${a.fecha}`}>
-      <input
-        type="checkbox"
-        checked={marcada}
-        onChange={() => setSeleccionId(marcada ? null : a.id)}
-        data-seleccionar-aplicacion
-        className="h-5 w-5 accent-brand-600"
-      />
-    </label>
-  )
+  const detalle = (a: AplicacionInyeccion, lineas: AplicacionInyeccion['lineas']) => {
+    const quien = nombreQuien(a.registrado_por)
+    const puedeAnularA = puedeAnular && estacion.permisos.anular && !a.anulado_at
+    const puedeEliminarA = puedeEliminar && Boolean(onEliminado)
+    return (
+      <div className="mx-3 mb-2 rounded-lg bg-slate-50 p-2 text-xs text-slate-600 ring-1 ring-inset ring-slate-200" data-detalle-aplicacion>
+        <p>
+          {formatearFechaHora(a.fecha_hora)} · {cantidad(a.area_mz)} mz · {quien ?? 'Persona sin nombre en este teléfono'}
+        </p>
+        {a.observaciones?.includes('REGISTRO_HISTORICO') && <p>Registro histórico</p>}
+        {a.lineas.some((l) => !l.en_plan) && <p>Sin plan en alguna línea</p>}
+        {lineas.map((l) => {
+          const fila = indice.get(`${a.id}|${l.material_id}`)
+          const u = unidad(l.material_id)
+          const objetivos = objetivosDeLinea(a, l)
+          return (
+            <div key={l.material_id} className="mt-1">
+              <strong className="text-slate-800">{nombreProducto(l.material_id)}</strong>
+              {objetivos.length > 0 ? ` · Objetivo: ${objetivos.join(', ')}` : ''}
+              {fila && fila.tiempo !== 'sin_plan' && (
+                <div className="mt-0.5">
+                  Plan: {cantidad(fila.cantidad_plan)} {u} · DDT {fila.ddt ?? '—'}
+                  {fila.fecha_plan ? ` · ${fila.fecha_estimada ? '≈ ' : ''}${fila.fecha_plan}` : ''}
+                  <div className="mt-0.5">
+                    <InsigniasCumplimiento fila={fila} unidad={u} />
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })}
+        {a.comentario && <p className="mt-1">Observaciones: {a.comentario}</p>}
+        {a.anulado_at && a.motivo_anulacion && <p className="mt-1 text-red-700">Motivo de la anulación: {a.motivo_anulacion}</p>}
+        {(puedeAnularA || puedeEliminarA) && (
+          <div className="mt-2 flex flex-wrap gap-2" data-acciones-aplicacion>
+            {puedeAnularA && (
+              <Boton tamano="md" variante="peligro" onClick={() => setAnulando(a)} data-anular-aplicacion-lote>
+                Anular
+              </Boton>
+            )}
+            {puedeEliminarA && (
+              <Boton tamano="md" variante="peligro" onClick={() => setEliminando(a)} data-eliminar-por-completo-iny>
+                Eliminar por completo
+              </Boton>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-2" data-historial-inyeccion>
@@ -247,10 +281,10 @@ export function VistaHistorialInyeccion({
       )}
       {vista === 'aplicaciones' && filas.length > 0 && (
         <div className="flex items-center justify-between gap-2">
-          <p className="text-xs text-slate-500" data-ayuda-seleccion title={puedeActuar ? 'Marca una fila para anular o eliminar' : undefined}>
-            {filas.length} aplicación(es){puedeActuar ? ' · marca para anular' : ''}
+          <p className="text-xs text-slate-500">
+            {filas.length} aplicación(es)
           </p>
-          <span className="inline-flex rounded-lg bg-slate-100 p-0.5" role="radiogroup" aria-label="Forma de ver" title="Lista o tabla. Marca una fila para anular o eliminar" data-modo-historial>
+          <span className="inline-flex rounded-lg bg-slate-100 p-0.5" role="radiogroup" aria-label="Forma de ver" data-modo-historial>
             {(
               [
                 ['lista', 'Lista'],
@@ -282,18 +316,16 @@ export function VistaHistorialInyeccion({
             </h3>
             <div className="divide-y divide-slate-100">
               {items.map(({ a, lineas }) => {
-                const marcada = seleccionId === a.id
                 const abierta = abiertas.has(a.id)
                 const quien = nombreQuien(a.registrado_por)
                 const historica = a.observaciones?.includes('REGISTRO_HISTORICO')
                 return (
                   <div
                     key={a.id}
-                    className={`flex items-center ${marcada ? 'bg-brand-50/60' : ''} ${a.anulado_at ? 'opacity-60' : ''}`}
+                    className={a.anulado_at ? 'opacity-60' : ''}
                     data-aplicacion-lote={a.id}
-                    data-seleccionada={marcada ? '' : undefined}
                   >
-                    <button type="button" aria-expanded={abierta} onClick={() => alternarAbierta(a.id)} className="block min-w-0 flex-1 px-3 py-1.5 text-left" data-expandir-aplicacion>
+                    <button type="button" aria-expanded={abierta} onClick={() => alternarAbierta(a.id)} className="block w-full min-w-0 px-3 py-1.5 text-left" data-expandir-aplicacion>
                       {lineas.map((l) => {
                         const fila = indice.get(`${a.id}|${l.material_id}`)
                         const u = unidad(l.material_id)
@@ -321,39 +353,8 @@ export function VistaHistorialInyeccion({
                           </span>
                         )
                       })}
-                      {abierta && (
-                        <span className="mt-1 block rounded-lg bg-slate-50 p-2 pl-5 text-xs text-slate-600 ring-1 ring-inset ring-slate-200" data-detalle-aplicacion>
-                          <span className="block">
-                            {formatearFechaHora(a.fecha_hora)} · {cantidad(a.area_mz)} mz · {quien ?? 'Persona sin nombre en este teléfono'}
-                          </span>
-                          {historica && <span className="block">Registro histórico</span>}
-                          {a.lineas.some((l) => !l.en_plan) && <span className="block">Sin plan en alguna línea</span>}
-                          {lineas.map((l) => {
-                            const fila = indice.get(`${a.id}|${l.material_id}`)
-                            const u = unidad(l.material_id)
-                            const objetivos = objetivosDeLinea(a, l)
-                            return (
-                              <span key={l.material_id} className="mt-1 block">
-                                <strong className="text-slate-800">{nombreProducto(l.material_id)}</strong>
-                                {objetivos.length > 0 ? ` · Objetivo: ${objetivos.join(', ')}` : ''}
-                                {fila && fila.tiempo !== 'sin_plan' && (
-                                  <span className="mt-0.5 block">
-                                    Plan: {cantidad(fila.cantidad_plan)} {u} · DDT {fila.ddt ?? '—'}
-                                    {fila.fecha_plan ? ` · ${fila.fecha_estimada ? '≈ ' : ''}${fila.fecha_plan}` : ''}
-                                    <span className="mt-0.5 block">
-                                      <InsigniasCumplimiento fila={fila} unidad={u} />
-                                    </span>
-                                  </span>
-                                )}
-                              </span>
-                            )
-                          })}
-                          {a.comentario && <span className="mt-1 block">Observaciones: {a.comentario}</span>}
-                          {a.anulado_at && a.motivo_anulacion && <span className="mt-1 block text-red-700">Motivo de la anulación: {a.motivo_anulacion}</span>}
-                        </span>
-                      )}
                     </button>
-                    {casilla(a, marcada)}
+                    {abierta && detalle(a, lineas)}
                   </div>
                 )
               })}
@@ -373,17 +374,15 @@ export function VistaHistorialInyeccion({
                 <th className="px-2 py-1.5 text-right">Cant.</th>
                 <th className="px-2 py-1.5 text-right">DDT</th>
                 <th className="px-2 py-1.5">Estado</th>
-                <th className="w-11 px-0 py-1.5" aria-label="Marcar" />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {mostradas.flatMap(({ a, lineas }) =>
-                lineas.map((l, i) => {
-                  const marcada = seleccionId === a.id
+              {mostradas.flatMap(({ a, lineas }) => [
+                ...lineas.map((l, i) => {
                   const fila = indice.get(`${a.id}|${l.material_id}`)
                   const u = unidad(l.material_id)
                   return (
-                    <tr key={`${a.id}|${l.material_id}`} className={`${marcada ? 'bg-brand-50/60' : ''} ${a.anulado_at ? 'opacity-60' : ''}`} data-aplicacion-lote={i === 0 ? a.id : undefined} data-linea-aplicada={l.material_id}>
+                    <tr key={`${a.id}|${l.material_id}`} onClick={() => alternarAbierta(a.id)} className={`cursor-pointer ${a.anulado_at ? 'opacity-60' : ''}`} data-aplicacion-lote={i === 0 ? a.id : undefined} data-linea-aplicada={l.material_id}>
                       <td className="whitespace-nowrap px-2 py-1 tabular-nums">{a.fecha}</td>
                       <td className="max-w-[9rem] truncate px-2 py-1">{rotulo(a.lote)}</td>
                       <td className="max-w-[9rem] truncate px-2 py-1 font-semibold text-slate-900">{nombreProducto(l.material_id)}</td>
@@ -393,11 +392,19 @@ export function VistaHistorialInyeccion({
                       </td>
                       <td className="px-2 py-1 text-right tabular-nums">{l.ddt_plan !== null ? (fila?.ddt_real ?? l.ddt_plan) : '—'}</td>
                       <td className="px-2 py-1">{a.anulado_at ? 'Anulada' : fila ? <EstadoCompacto fila={fila} /> : '—'}</td>
-                      <td className="px-0 py-0">{i === 0 ? casilla(a, marcada) : null}</td>
                     </tr>
                   )
-                })
-              )}
+                }),
+                ...(abiertas.has(a.id)
+                  ? [
+                      <tr key={`${a.id}|detalle`}>
+                        <td colSpan={7} className="px-0 py-1">
+                          {detalle(a, lineas)}
+                        </td>
+                      </tr>,
+                    ]
+                  : []),
+              ])}
             </tbody>
           </table>
         </div>
@@ -409,35 +416,6 @@ export function VistaHistorialInyeccion({
         </button>
       )}
 
-      {seleccionada && (
-        <div
-          className="sticky bottom-[calc(env(safe-area-inset-bottom)+4.75rem)] z-30 mb-24 flex lg:bottom-2 lg:mb-0 flex-col gap-2 rounded-xl bg-white p-3 shadow-[var(--shadow-raised)] ring-2 ring-inset ring-brand-600"
-          role="region"
-          aria-label="Acciones del registro seleccionado"
-          data-acciones-seleccion
-        >
-          <p className="text-sm font-semibold text-slate-800">
-            Seleccionada: {rotulo(seleccionada.lote)} · {seleccionada.fecha}
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {puedeAnularSel && (
-              <Boton tamano="md" variante="peligro" onClick={() => setAnulando(seleccionada)} data-anular-aplicacion-lote>
-                Anular
-              </Boton>
-            )}
-            {puedeEliminarSel && (
-              <Boton tamano="md" variante="peligro" onClick={() => setEliminando(seleccionada)} data-eliminar-por-completo-iny>
-                Eliminar por completo
-              </Boton>
-            )}
-            <Boton tamano="md" variante="secundario" onClick={() => setSeleccionId(null)} data-quitar-seleccion className="min-h-11">
-              Quitar selección
-            </Boton>
-          </div>
-          {!puedeAnularSel && !puedeEliminarSel && <p className="text-xs text-slate-500">Tu rol no tiene acciones sobre este registro.</p>}
-        </div>
-      )}
-
       {eliminando && (
         <EliminarPorCompleto
           tipo="iny_aplicacion"
@@ -446,7 +424,6 @@ export function VistaHistorialInyeccion({
           onCerrar={() => setEliminando(null)}
           onEliminado={(m) => {
             setEliminando(null)
-            setSeleccionId(null)
             onEliminado?.(m)
           }}
         />
@@ -460,7 +437,6 @@ export function VistaHistorialInyeccion({
           registrar={registrar}
           onCerrar={() => setAnulando(null)}
           onGuardado={(m) => {
-            setSeleccionId(null)
             onGuardado(m)
           }}
         />
