@@ -266,7 +266,7 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
               nombreEstacion={(id) => (id ? (estaciones.find((e) => e.id === id)?.nombre ?? null) : null)}
               puedeAnular={p?.anular ?? false}
               onCorregir={(r) => setVentana({ tipo: 'corregir', equipoId: r.equipo_id, registroId: r.id })}
-              onCorregirRecepcion={(r) => setVentana({ tipo: 'corregir_recepcion', equipoId: '', recepcionId: r.id })}
+              // Corregir recepciones: apagado hasta el sql/150 (la prueba mostró descuadre del registro del día y posibles duplicados)
               puedeEliminar={extras.eliminar_definitivo}
               registrar={campo.registrar}
               onGuardado={guardado}
