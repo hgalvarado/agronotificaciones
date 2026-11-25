@@ -3,8 +3,8 @@
 /**
  * Motores y combustible (Campo, bloque 3 + rediseño sql/147). Funciona sin señal igual que Fertirriego e Inyección (misma cola,
  * misma custodia). Cuatro pestañas claras: «Hoy» (qué toca ahora, por urgencia), «Motores» (semáforos y acciones de cada motor),
- * «Historial» (por día, todos los campos de la hoja) y «Tanques» (diésel por tanque fijo); con «Auditar», una quinta con todos los
- * motores y su ficha completa. Semáforos y señales se calculan en el teléfono (lib/motores/senales). El diésel entra a los
+ * «Historial» (por día, todos los campos de la hoja) y «Tanques» (diésel por tanque fijo); con «Vista general» o «Auditar», una quinta («General») con todos los
+ * motores, al día, y su ficha completa. Semáforos y señales se calculan en el teléfono (lib/motores/senales). El diésel entra a los
  * TANQUES, no a la bodega. El consumo, el rendimiento y los reportes largos son de AGL.
  */
 
@@ -34,11 +34,11 @@ import { PestanaHistorial } from './PestanaHistorial'
 import { PestanaHoy, type AccionHoy } from './PestanaHoy'
 import { DetalleMotor, PestanaMotores, type AccionMotor } from './PestanaMotores'
 import { DetalleTanque, PestanaTanques } from './PestanaTanques'
-import { VistaAuditoria } from './VistaAuditoria'
+import { VistaGeneral } from './VistaGeneral'
 
 const RUTAS_SW = ['/motores']
 
-type Pestana = 'hoy' | 'motores' | 'historial' | 'tanques' | 'auditoria'
+type Pestana = 'hoy' | 'motores' | 'historial' | 'tanques' | 'general'
 
 type Ventana = {
   tipo: 'registro' | 'recibir' | 'mover' | 'retirar' | 'mantenimiento' | 'detalle_motor' | 'detalle_tanque' | 'elegir_motor' | 'recibir_motor' | 'administrar_tanques'
@@ -101,7 +101,7 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
   const p = me?.permisos
   const puedeRegistrar = p?.registrar ?? false
   const puedeConfigurar = p?.configurar ?? false
-  const puedeAuditar = p?.auditar ?? false
+  const puedeGeneral = (p?.auditar ?? false) || (p?.ver_general ?? false)
   const puedeRecibirMotor = puedeConfigurar || (p?.motor_recibir ?? false)
   const puedeMover = puedeConfigurar || (p?.motor_mover ?? false)
   const puedeRetirar = puedeConfigurar || (p?.motor_retirar ?? false)
@@ -162,7 +162,7 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
     ['motores', 'Motores'],
     ['historial', 'Historial'],
     ['tanques', 'Tanques'],
-    ...(puedeAuditar ? ([['auditoria', 'Auditoría']] as [Pestana, string][]) : []),
+    ...(puedeGeneral ? ([['general', 'General']] as [Pestana, string][]) : []),
   ]
 
   return (
@@ -283,7 +283,7 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
               onAdministrar={() => setVentana({ tipo: 'administrar_tanques', equipoId: '' })}
             />
           )}
-          {pestana === 'auditoria' && puedeAuditar && <VistaAuditoria generadoPor={estado.yo.nombre} />}
+          {pestana === 'general' && puedeGeneral && <VistaGeneral generadoPor={estado.yo.nombre} />}
 
           {vistaVentana && ventana?.tipo === 'detalle_motor' && (
             <DetalleMotor

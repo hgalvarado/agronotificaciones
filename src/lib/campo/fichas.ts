@@ -5,7 +5,8 @@
 
 export type FichaCampo = { codigo: string; nombre: string; descripcion: string; ruta: string; icono: string; proximamente?: boolean }
 
-type FichaConPantalla = FichaCampo & { pantalla: string }
+/** `tambien`: otras acciones de la misma pantalla que bastan para abrir la ficha (p. ej. «Vista general» de solo lectura). */
+type FichaConPantalla = FichaCampo & { pantalla: string; tambien?: string[] }
 
 /** En orden de aparición (por frecuencia de uso). */
 const FICHAS: FichaConPantalla[] = [
@@ -32,6 +33,7 @@ const FICHAS: FichaConPantalla[] = [
     descripcion: 'Horas, diésel y mantenimiento de los motores de riego.',
     ruta: '/motores',
     icono: 'tractor',
+    tambien: ['ver_general', 'auditar'],
   },
   {
     codigo: 'agrometricas',
@@ -54,5 +56,5 @@ const FICHAS: FichaConPantalla[] = [
 
 /** Las fichas que la persona puede abrir: `ve(pantalla, 'ver')` verdadero. */
 export function fichasCampo(ve: (pantalla: string, accion: string) => boolean): FichaCampo[] {
-  return FICHAS.filter((f) => ve(f.pantalla, 'ver')).map(({ pantalla: _p, ...ficha }) => ficha)
+  return FICHAS.filter((f) => ve(f.pantalla, 'ver') || (f.tambien ?? []).some((a) => ve(f.pantalla, a))).map(({ pantalla: _p, tambien: _t, ...ficha }) => ficha)
 }

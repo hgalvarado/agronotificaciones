@@ -166,7 +166,11 @@ export type EstadoMotores = {
     motor_mantenimiento?: boolean
     /** sql/147: ve todos los motores con su ficha completa (nadie por defecto; el administrador sí). */
     auditar?: boolean
+    /** sql/149: vista General de solo lectura (todos los motores, tiempo real). */
+    ver_general?: boolean
   }
+  /** sql/149: temporada activa (el historial baja desde su inicio). */
+  temporada?: { id: string; nombre: string; desde: string; hasta: string } | null
   material_diesel_id: string | null
   motores: MotorEstacion[]
   /** Motores instalados en estaciones que la persona no ve: solo para elegirlos al recibir o mover (sql/138). */

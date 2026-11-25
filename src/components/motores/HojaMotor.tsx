@@ -104,20 +104,26 @@ export function HojaMotor({ titulo, filas }: { titulo: string; filas: FilaHoja[]
                 </td>
               </tr>
             )}
-            {/* ui-ok: máximo 45 días (lo que baja el teléfono) y con scroll vertical propio */}
+            {/* ui-ok: la temporada (tope de 400 registros por motor, lo que baja el teléfono) y con scroll vertical propio */}
             {filas.map((f) => (
               <tr key={f.id} className="border-t border-slate-100" data-fila-hoja={f.fecha}>
                 <td className="px-0.5 py-1 text-left text-[11px] leading-tight text-slate-900">
                   <span className="block font-medium tabular-nums">{ddmm(f.fecha)}</span>
                   <span className="block truncate text-[10px] text-slate-600">{(f.operador ?? '').split(' ')[0]}</span>
                 </td>
-                <td className={TD}><Par a={numHoja(f.horoIni)} b={numHoja(f.horoFin)} /></td>
-                <td className={TD}>{numHoja(f.horas)}</td>
-                <td className={TD}><Par a={numHoja(f.visorIni)} b={numHoja(f.visorFin)} /></td>
-                <td className={TD}>{numHoja(f.gastado)}</td>
-                <td className={TD}>{numHoja(f.rendimiento, 2)}</td>
-                <td className={TD}>{numHoja(f.rpm, 0)}</td>
-                <td className={TD}>{f.suministro > 0 ? numHoja(f.suministro) : ''}</td>
+                {f.soloSuministro ? (
+                  <td className={TD} colSpan={6} />
+                ) : (
+                  <>
+                    <td className={TD}><Par a={numHoja(f.horoIni)} b={numHoja(f.horoFin)} /></td>
+                    <td className={TD}>{numHoja(f.horas)}</td>
+                    <td className={TD}><Par a={numHoja(f.visorIni)} b={numHoja(f.visorFin)} /></td>
+                    <td className={TD}>{numHoja(f.gastado)}</td>
+                    <td className={TD}>{numHoja(f.rendimiento, 2)}</td>
+                    <td className={TD}>{numHoja(f.rpm, 0)}</td>
+                  </>
+                )}
+                <td className={`${TD} font-medium`}>{f.suministro > 0 ? numHoja(f.suministro) : ''}</td>
                 <td className={TD}>{f.caudalIni === null && f.caudalFin === null ? '' : <Par a={numHoja(f.caudalIni)} b={numHoja(f.caudalFin)} />}</td>
                 <td className="px-0.5 py-1 text-center"><Marca senal={f.senal} /></td>
               </tr>

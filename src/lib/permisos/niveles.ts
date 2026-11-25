@@ -24,7 +24,7 @@ export const NIVELES: { valor: Nivel; nombre: string; detalle: string }[] = [
 export type AccionNivel = { codigo: string; nivel?: number | null }
 
 /** Acciones que NO se encienden con un nivel rápido (solo con su casilla). */
-export const ACCIONES_SOLO_MANUALES = new Set(['eliminar_definitivo'])
+export const ACCIONES_SOLO_MANUALES = new Set(['eliminar_definitivo', 'ver_general'])
 
 export function nivelDeAccion(a: AccionNivel): Nivel {
   const n = Number(a.nivel ?? (a.codigo === 'ver' || a.codigo === 'exportar' ? 1 : 2))

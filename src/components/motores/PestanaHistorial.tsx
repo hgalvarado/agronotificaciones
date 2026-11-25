@@ -17,6 +17,7 @@ import type { TipoEliminable } from '@/lib/fertirriego/eliminar'
 import type { Chofer, Estacion, Operacion, Persona, Vehiculo } from '@/lib/fertirriego/tipos'
 import { diaLocal, nombreQuien, type EstadoMotores, type MotorEstacion } from '@/lib/motores/estado'
 import { filasDeHoja } from '@/lib/motores/hoja'
+import { resumirRegistros } from '@/lib/motores/resumenTemporada'
 import { htmlHoja } from '@/lib/motores/hojaPdf'
 import { imprimirHtml } from '@/lib/motores/imprimir'
 import { peorNivel, senalesPorRegistro } from '@/lib/motores/senales'
@@ -24,6 +25,7 @@ import { DatoHoja, etiquetaMotor, FilaToque, ChipsSenales } from './ElementosMot
 import { DetalleRegistroMotor, fechaCorta } from './DetalleRegistroMotor'
 import { FormAnularMotor, type AnulableMotor } from './FormAnularMotor'
 import { BarraVistaHistorial, HojaMotor, type VistaHistorial } from './HojaMotor'
+import { ResumenTemporada } from './ResumenTemporada'
 
 const NOMBRE_MOV: Record<string, string> = { INSTALADO: 'Motor recibido', TRASLADADO: 'Motor movido', RETIRADO: 'Motor retirado', AL_TALLER: 'Al taller', DE_VUELTA: 'De vuelta del taller' }
 const TIPOS_PENDIENTES = ['motor_registro_diario', 'diesel_recibir', 'motor_mantenimiento', 'motor_asignar', 'motor_retiro']
@@ -240,20 +242,26 @@ export function PestanaHistorial({
   const secciones = useMemo(() => {
     const elegidos = motoresSel.length > 0 ? motores.filter((m) => motoresSel.includes(m.equipo_id)) : motores
     return elegidos.map((m) => {
-      let filas = filasDeHoja(estado.registros.filter((r) => r.estacion_id === estacion.id), { equipoId: m.equipo_id, desde, hasta }, senales)
+      const sumin = m.tanque?.id
+        ? estado.recepciones.filter((x) => x.estacion_id === estacion.id && x.tanque_id === m.tanque?.id && !x.anulado_at).map((x) => ({ id: x.id, dia: diaLocal(x.fecha_hora), galones: x.galones }))
+        : []
+      let filas = filasDeHoja(estado.registros.filter((r) => r.estacion_id === estacion.id), { equipoId: m.equipo_id, desde, hasta }, senales, sumin)
       if (soloAlertas) filas = filas.filter((f) => f.senal !== null)
       return { motor: m, titulo: etiquetaMotor(m.codigo, m.nombre), filas }
     })
   }, [motores, motoresSel, estado.registros, estacion.id, desde, hasta, soloAlertas, senales])
-  // Combustible recibido (misma vista de tabla): quién, cuándo, cuánto y qué vehículo lo entregó
-  const recibos = useMemo(() => {
-    const tanquesSel = new Set(motoresSel.map((id) => tanquesDeMotores.get(id)).filter((x): x is string => Boolean(x)))
-    return estado.recepciones
-      .filter((x) => x.estacion_id === estacion.id && !x.anulado_at)
-      .filter((x) => motoresSel.length === 0 || x.tanque_id === null || tanquesSel.has(x.tanque_id))
-      .filter((x) => (!desde || diaLocal(x.fecha_hora) >= desde) && (!hasta || diaLocal(x.fecha_hora) <= hasta))
-      .sort((a, b) => b.fecha_hora.localeCompare(a.fecha_hora))
-  }, [estado.recepciones, estacion.id, motoresSel, tanquesDeMotores, desde, hasta])
+  // Resumen de la temporada (se calcula en el teléfono, también sin señal): motores elegidos (o todos los de la estación) y fechas del filtro
+  const cifras = useMemo(() => {
+    const ids = new Set(motoresSel.length > 0 ? motoresSel : motores.map((m) => m.equipo_id))
+    const tanquesIds = new Set(motores.filter((m) => ids.has(m.equipo_id)).map((m) => m.tanque?.id).filter((x): x is string => Boolean(x)))
+    const enRango = (dia: string) => (!desde || dia >= desde) && (!hasta || dia <= hasta)
+    const regs = estado.registros.filter((r) => r.estacion_id === estacion.id && ids.has(r.equipo_id) && enRango(r.fecha))
+    const recibido = estado.recepciones
+      // el recibido de un registro ya incluye lo recibido ese día en su tanque: aparte solo van los días sin registro
+      .filter((x) => x.estacion_id === estacion.id && !x.anulado_at && x.tanque_id !== null && tanquesIds.has(x.tanque_id) && enRango(diaLocal(x.fecha_hora)) && !regs.some((r) => r.fecha === diaLocal(x.fecha_hora) && r.tanque_id === x.tanque_id))
+      .reduce((n, x) => n + x.galones, 0)
+    return resumirRegistros(regs, recibido)
+  }, [estado.registros, estado.recepciones, estacion.id, motores, motoresSel, desde, hasta])
   const exportar = () =>
     imprimirHtml(
       htmlHoja({
@@ -267,6 +275,7 @@ export function PestanaHistorial({
 
   return (
     <div className="flex flex-col gap-2" data-historial-motores>
+      <ResumenTemporada cifras={cifras} subtitulo={desde || hasta ? 'Fechas elegidas' : (estado.temporada?.nombre ?? 'Últimos 45 días')} />
       <div className="flex items-center justify-between gap-2">
         <button
           type="button"
@@ -327,37 +336,10 @@ export function PestanaHistorial({
 
       {vista === 'lista' && visibles.length === 0 && (
         <p className="rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-500 ring-1 ring-inset ring-slate-200">
-          {activos > 0 ? 'Nada con esos filtros.' : 'Sin registros en 45 días.'}
+          {activos > 0 ? 'Nada con esos filtros.' : 'Sin registros en la temporada.'}
         </p>
       )}
       {vista === 'tabla' && secciones.map((x) => <HojaMotor key={x.motor.equipo_id} titulo={x.titulo} filas={x.filas} />)}
-      {vista === 'tabla' && recibos.length > 0 && (
-        <div className="overflow-hidden rounded-xl bg-white ring-1 ring-inset ring-slate-200" data-tabla-recibos>
-          <p className="bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">Combustible recibido · {recibos.reduce((t, x) => t + x.galones, 0).toLocaleString('es-HN')} gal</p>
-          <table className="w-full table-fixed text-[11px] leading-tight">
-            <thead>
-              <tr className="text-[10px] font-medium text-slate-600">
-                <th className="px-1 py-1 text-left">Fecha y hora</th>
-                <th className="px-1 py-1 text-left">Tanque</th>
-                <th className="px-1 py-1 text-right">Gal</th>
-                <th className="px-1 py-1 text-left">Entregó</th>
-                <th className="px-1 py-1 text-left">Registró</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recibos.map((x) => (
-                <tr key={x.id} className="border-t border-slate-100 align-top">
-                  <td className="px-1 py-1 tabular-nums">{formatearFechaHora(x.fecha_hora)}</td>
-                  <td className="break-words px-1 py-1">{x.tanque_id ? (tanqueNombre.get(x.tanque_id) ?? '—') : '—'}</td>
-                  <td className="px-1 py-1 text-right font-medium tabular-nums">{cantidad(x.galones)}</td>
-                  <td className="break-words px-1 py-1">{choferes.find((c) => c.id === x.chofer_id)?.nombre ?? '—'}{vehiculos.find((v) => v.id === x.vehiculo_id)?.placa ? ` · ${vehiculos.find((v) => v.id === x.vehiculo_id)?.placa}` : ''}</td>
-                  <td className="break-words px-1 py-1">{nombreQuien(estado, x.registrado_por) ?? '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
       {vista === 'lista' && porDia.map(([dia, lista]) => (
         <section key={dia} className="flex flex-col gap-1.5" data-dia-motores={dia}>
           <h3 className="mt-1 text-xs font-bold uppercase tracking-wide text-slate-500">{fechaDia(dia)} · {fechaCorta(dia)}</h3>
