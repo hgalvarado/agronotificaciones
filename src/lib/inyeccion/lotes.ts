@@ -43,6 +43,13 @@ export function temporadaDeLote(catalogo: LoteCatalogo[], nomenclatura: string, 
   return (filas.find((l) => l.activa) ?? filas[0]).temporada
 }
 
+/** «Nombre · código» de un lote (solo el código si el catálogo no trae nombre). Es el rótulo de TODAS las pantallas de Inyección. */
+export function rotuloLote(catalogo: LoteCatalogo[] | undefined, nomenclatura: string): string {
+  const n = normLote(nomenclatura)
+  const nombre = (catalogo ?? []).find((l) => normLote(l.nomenclatura) === n && l.nombre?.trim())?.nombre?.trim()
+  return nombre && normLote(nombre) !== n ? `${nombre} · ${nomenclatura}` : nomenclatura
+}
+
 export type OpcionLote = { id: string; titulo: string; subtitulo?: string; grupo: string; destacado?: boolean }
 
 export const GRUPO_CON_PLAN = 'Con plan en esta estación'
@@ -56,7 +63,7 @@ export function opcionesDeLotes(catalogo: LoteCatalogo[], lotesConPlan: string[]
     const k = normLote(l.nomenclatura)
     if (vistos.has(k)) continue
     const plan = conPlan.has(k)
-    vistos.set(k, { id: l.nomenclatura, titulo: l.nomenclatura, subtitulo: [l.nombre, l.zona].filter(Boolean).join(' · ') || undefined, grupo: plan ? GRUPO_CON_PLAN : GRUPO_CATALOGO, destacado: plan })
+    vistos.set(k, { id: l.nomenclatura, titulo: rotuloLote(catalogo, l.nomenclatura), subtitulo: l.zona || undefined, grupo: plan ? GRUPO_CON_PLAN : GRUPO_CATALOGO, destacado: plan })
   }
   return [...vistos.values()].sort(
     (a, b) => Number(b.destacado ?? false) - Number(a.destacado ?? false) || a.titulo.localeCompare(b.titulo, 'es', { numeric: true })

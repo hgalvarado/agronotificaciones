@@ -15,7 +15,7 @@ import type { Operacion } from '@/lib/fertirriego/tipos'
 import { formatearFechaHora } from '@/lib/estados'
 import { lotesConPlan, objetivosDeLinea, planesAplicados, type EstadoInyeccion } from '@/lib/inyeccion/estado'
 import { lotesDelPlan, planDeEstacion, planDeLote, siguientePlanDeLote, type EstadoPlanLote } from '@/lib/inyeccion/planGeneral'
-import { normLote } from '@/lib/inyeccion/lotes'
+import { normLote, rotuloLote } from '@/lib/inyeccion/lotes'
 
 const fechaCorta = (iso: string | null) => (iso ? new Date(`${iso}T12:00:00Z`).toLocaleDateString('es-HN', { day: 'numeric', month: 'short', timeZone: 'UTC' }) : 'sin fecha')
 
@@ -72,7 +72,7 @@ export function VistaPorLote({
       <div data-selector-lote-plan>
         <SelectorBuscable
           valor={lote}
-          opciones={lotes.map((l) => ({ id: l, titulo: l }))}
+          opciones={lotes.map((l) => ({ id: l, titulo: rotuloLote(estado.lotes, l) }))}
           onCambiar={setElegido}
           placeholder="Elegir lote…"
           etiquetaBusqueda="Buscar lote"
@@ -100,8 +100,8 @@ export function VistaPorLote({
               {p.productos.map((x) => (
                 <li key={x.material_id} className="text-sm text-slate-800">
                   <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-                    <strong>{nombre(x.material_id)}</strong>
-                    <span className="tabular-nums">
+                    <strong className="text-base font-extrabold text-slate-900">{nombre(x.material_id)}</strong>
+                    <span className="text-base font-bold tabular-nums text-slate-900">
                       {x.dosis_mz !== null ? `${cantidad(x.dosis_mz)} ${unidad(x.material_id)}/mz · ` : ''}
                       {cantidad(x.cantidad_plan)} {unidad(x.material_id)}
                     </span>
@@ -120,7 +120,7 @@ export function VistaPorLote({
         )
       })}
       <div data-por-lote-aplicado>
-        <p className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-500">Lo aplicado en este lote</p>
+        <p className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-500">Lo aplicado en {rotuloLote(estado.lotes, lote)}</p>
         {aplicaciones.length === 0 ? (
           <p className="text-sm text-slate-500">Todavía no se ha registrado nada en este lote.</p>
         ) : (

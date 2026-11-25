@@ -11,6 +11,7 @@ import { useMemo, useState } from 'react'
 import { Insignia } from '@/components/ui/Primitivos'
 import { cantidad } from '@/lib/fertirriego/calculos'
 import { planesAplicados, type EstadoInyeccion } from '@/lib/inyeccion/estado'
+import { rotuloLote } from '@/lib/inyeccion/lotes'
 import { planDeEstacion, planGeneralPorDdt, type GrupoDdt } from '@/lib/inyeccion/planGeneral'
 import type { Operacion } from '@/lib/fertirriego/tipos'
 
@@ -121,8 +122,8 @@ export function VistaPlanGeneral({
                   return (
                     <div key={p.material_id} className="flex flex-col gap-1" data-plan-producto={p.material_id}>
                       <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-                        <p className="text-sm font-bold text-slate-800">{m?.descripcion ?? m?.codigo ?? 'Producto'}</p>
-                        <p className="text-sm tabular-nums text-slate-700">
+                        <p className="text-base font-extrabold text-slate-900">{m?.descripcion ?? m?.codigo ?? 'Producto'}</p>
+                        <p className="text-base font-bold tabular-nums text-slate-900">
                           {p.dosis_mz !== null ? (
                             <>
                               <strong>{cantidad(p.dosis_mz)}</strong> {m?.unidad ?? ''}/mz
@@ -132,7 +133,7 @@ export function VistaPlanGeneral({
                           )}
                         </p>
                       </div>
-                      <p className="text-xs text-slate-500">
+                      <p className="text-sm text-slate-700">
                         {cantidad(p.area_mz)} mz · {cantidad(p.cantidad)} {m?.unidad ?? ''} en total · {p.lotes.length} lote(s)
                         {p.lotes_hechos > 0 ? ` (${p.lotes_hechos} ya aplicado(s))` : ''}
                       </p>
@@ -151,7 +152,7 @@ export function VistaPlanGeneral({
                         ))}
                       </div>
                       <p className="text-xs text-slate-500">
-                        Lotes: {p.lotes.slice(0, 8).join(', ')}
+                        Lotes: {p.lotes.slice(0, 8).map((l) => rotuloLote(estado.lotes, l)).join(', ')}
                         {p.lotes.length > 8 ? ` y ${p.lotes.length - 8} más` : ''}
                       </p>
                       {m && (
