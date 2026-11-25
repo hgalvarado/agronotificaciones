@@ -29,6 +29,10 @@ import {
 import { lineaRetiro, rotuloDevolucion, vistaDevolucion } from '@/lib/fertirriego/devolucionBodega'
 import { ordenarPorClase } from '@/lib/fertirriego/productos'
 import type { EstadoCampo, Operacion } from '@/lib/fertirriego/tipos'
+import { estiloFila, familiaDe } from '@/lib/fertirriego/coloresMovimiento'
+import { detalleAplicacion, indiceDeCumplimiento } from '@/lib/inyeccion/detalleBitacora'
+import type { EstadoInyeccion } from '@/lib/inyeccion/estado'
+import { InsigniaMovimiento, LeyendaMovimientos } from './InsigniaMovimiento'
 
 const RELOJ = new Intl.DateTimeFormat('es-HN', { timeZone: 'America/Tegucigalpa', hour: '2-digit', minute: '2-digit' })
 const DIA = new Intl.DateTimeFormat('es-HN', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long' })
@@ -41,6 +45,11 @@ const NOMBRE_MOTIVO_ENVASE: Record<string, string> = {
   ANULACION: 'Envases · anulación',
 }
 
+/** Origen de la fila: Inyección = movimientos cuyo documento es una aplicación por lote; Fertirriego = todo lo demás. */
+type Origen = 'todo' | 'fert' | 'iny'
+const esInyeccion = (x: { documento_tipo: string }) => x.documento_tipo === 'aplicacion_lote'
+const fechaCorta = (iso: string | null) => (iso ? new Date(`${iso}T12:00:00Z`).toLocaleDateString('es-HN', { day: 'numeric', month: 'short', timeZone: 'UTC' }) : 'sin fecha')
+
 const claseEntrada = 'h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:border-brand-600 focus:outline-none'
 
 export function VistaBitacora({
@@ -50,7 +59,10 @@ export function VistaBitacora({
   productos,
   onProductos,
   onAbrir,
+  inyeccion = null,
 }: {
+  /** Lo último de Inyección que bajó este teléfono (solo lectura): da el detalle de los movimientos de Inyección. */
+  inyeccion?: EstadoInyeccion | null
   estado: EstadoCampo
   cola: Operacion[]
   estacionId: string
@@ -74,8 +86,18 @@ export function VistaBitacora({
       ]),
     [estado, cola, estacionId]
   )
+  const [origen, setOrigen] = useState<Origen>('todo')
   const f: FiltrosBitacora = { ...filtros, productos }
-  const filas = filtrarBitacora(todos, f)
+  const filas = filtrarBitacora(
+    origen === 'todo' ? todos : todos.filter((x) => (origen === 'iny' ? esInyeccion(x) : !esInyeccion(x))),
+    f
+  )
+  const hoy = hoyIso()
+  const indiceIny = useMemo(() => indiceDeCumplimiento(inyeccion, estacionId, hoy), [inyeccion, estacionId, hoy])
+  const hayIny = useMemo(() => todos.some(esInyeccion), [todos])
+  const cuentaDe = (o: Origen) => (o === 'todo' ? todos.length : todos.filter((x) => (o === 'iny' ? esInyeccion(x) : !esInyeccion(x))).length)
+  const detalleIny = (x: { documento_id: string | null; material_id: string | null }) =>
+    x.documento_id ? detalleAplicacion(inyeccion, indiceIny, cola, x.documento_id, x.material_id, estacionId) : null
   const activos = filtrosActivos(f)
 
   // Devolución a bodega: el destino CONCRETO y quién retiró (nunca «suministros / bodega / taller» juntos)
@@ -121,6 +143,29 @@ export function VistaBitacora({
 
   return (
     <div className="flex flex-col gap-3">
+      {hayIny && (
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Origen del movimiento" data-origen-bitacora>
+          {(
+            [
+              ['todo', 'Todo'],
+              ['fert', 'Fertirriego'],
+              ['iny', 'Inyección'],
+            ] as const
+          ).map(([v, t]) => (
+            <button
+              key={v}
+              type="button"
+              aria-pressed={origen === v}
+              onClick={() => setOrigen(v)}
+              data-origen={v}
+              className={`min-h-11 rounded-full px-4 text-sm font-semibold ring-1 ring-inset ${origen === v ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-600 ring-slate-200'}`}
+            >
+              {t} <span className="text-xs font-normal opacity-80">({cuentaDe(v)})</span>
+            </button>
+          ))}
+        </div>
+      )}
+      <LeyendaMovimientos familias={filas.map((x) => familiaDe(x.tipo))} />
       {/* ---- Barra de filtros (se abre y cierra) ---- */}
       <div className="rounded-xl bg-white ring-1 ring-inset ring-slate-200">
         <div className="flex items-center gap-2 px-2 py-1">
@@ -279,24 +324,33 @@ export function VistaBitacora({
                     ? rotuloDevolucion(devDe(primero)!.destino)
                     : NOMBRE_MOVIMIENTO[primero.tipo as keyof typeof NOMBRE_MOVIMIENTO]
               const devB = devDe(primero)
+              const dIny = esInyeccion(primero) ? detalleIny(primero) : null
               const turnos = primero.turnos.map(turno).filter(Boolean).join(', ')
               const quien = nombrePersona(estado, primero.registrado_por)
               return (
-                <div key={clave} data-bloque={primero.tipo} data-bloque-cuenta={b.filas.length}>
+                <div key={clave} style={estiloFila(familiaDe(primero.tipo))} data-bloque={primero.tipo} data-bloque-cuenta={b.filas.length}>
                   <button
                     type="button"
                     onClick={() => alternarBloque(clave)}
                     aria-expanded={abierto}
                     data-bloque-cabecera
-                    className="grid min-h-14 w-full grid-cols-[3rem_1fr] items-center gap-2 px-3 py-2 text-left hover:bg-slate-50"
+                    className="grid min-h-14 w-full grid-cols-[3rem_1fr] items-center gap-2 px-3 py-2 text-left"
                   >
                     <span className="text-xs tabular-nums text-slate-500">{RELOJ.format(new Date(primero.fecha_hora))}</span>
                     <span className="min-w-0">
                       <span className="block break-words text-sm font-semibold text-slate-800">
-                        {titulo}
+                        <InsigniaMovimiento tipo={primero.tipo} texto={titulo} />
                         {turnos ? ` · ${turnos}` : ''}
                       </span>
-                      <span className="block break-words text-xs text-slate-400">{quien ?? 'Persona sin nombre en este teléfono'}</span>
+                      {dIny && (
+                        <span className="mt-0.5 block break-words text-sm font-bold text-slate-900" data-lote-iny>
+                          {dIny.loteRotulo}
+                          <span className="font-normal text-slate-600">
+                            {dIny.area_mz ? ` · ${cantidad(dIny.area_mz)} mz` : ''} · aplicado {fechaCorta(dIny.fecha)}
+                          </span>
+                        </span>
+                      )}
+                      <span className="block break-words text-xs text-slate-500">{quien ?? 'Persona sin nombre en este teléfono'}</span>
                       {devB && (
                         <span className="block break-words text-xs text-slate-500" data-retiro-devolucion>
                           {lineaRetiro(devB)}
@@ -332,6 +386,10 @@ export function VistaBitacora({
     const turnos = x.turnos.map(turno).filter(Boolean).join(', ')
     const quien = nombrePersona(estado, x.registrado_por)
     const articulo = esEnvase ? envase(x.envase_id) : material(x.material_id)?.descripcion
+    const dIny = esInyeccion(x) ? detalleIny(x) : null
+    const lIny = dIny?.linea ?? null
+    const dosisIny = lIny?.dosis_mz ?? null
+    const unidadIny = material(x.material_id)?.unidad ?? ''
     return (
       <button
         key={x.clave}
@@ -341,19 +399,33 @@ export function VistaBitacora({
         data-movimiento={x.tipo}
         data-historico={esHistorico ? '' : undefined}
         data-quien={quien ?? ''}
-        className={`grid min-h-14 w-full ${enBloque ? 'grid-cols-[1fr_auto]' : 'grid-cols-[3rem_1fr_auto]'} items-center gap-2 px-3 py-2 text-left ${x.anulado ? 'opacity-50' : ''} ${x.pendiente ? 'bg-amber-50/60' : 'hover:bg-slate-50'}`}
+        style={enBloque ? undefined : estiloFila(familiaDe(x.tipo))}
+        className={`grid min-h-14 w-full ${enBloque ? 'grid-cols-[1fr_auto]' : 'grid-cols-[3rem_1fr_auto]'} items-center gap-2 px-3 py-2 text-left ${x.anulado ? 'opacity-50' : ''}`}
       >
         {!enBloque && <span className="text-xs tabular-nums text-slate-500">{RELOJ.format(new Date(x.fecha_hora))}</span>}
         <span className="min-w-0">
           {enBloque ? (
-            <span className={`block break-words text-sm font-semibold text-slate-800 ${x.anulado ? 'line-through' : ''}`}>{articulo}</span>
+            <span className={`block break-words text-base font-extrabold text-slate-900 ${x.anulado ? 'line-through' : ''}`}>
+              {articulo}
+              {dosisIny !== null ? <span className="ml-2 font-bold">{cantidad(dosisIny)} {unidadIny}/mz</span> : null}
+            </span>
           ) : (
             <>
               <span className={`block break-words text-sm font-semibold text-slate-800 ${x.anulado ? 'line-through' : ''}`}>
-                {titulo}
+                <InsigniaMovimiento tipo={x.tipo} texto={titulo} />
                 {turnos ? ` · ${turnos}` : ''}
               </span>
-              {(productos.length !== 1 || esEnvase) && <span className="block break-words text-xs text-slate-500">{articulo}</span>}
+              {dIny && (
+                <span className="mt-0.5 block break-words text-sm font-bold text-slate-900" data-lote-iny>
+                  {dIny.loteRotulo}
+                </span>
+              )}
+              {(productos.length !== 1 || esEnvase) && (
+                <span className={`block break-words ${lIny ? 'text-base font-extrabold text-slate-900' : 'text-xs text-slate-500'}`}>
+                  {articulo}
+                  {dosisIny !== null ? <span className="ml-2 font-bold">{cantidad(dosisIny)} {unidadIny}/mz</span> : null}
+                </span>
+              )}
               <span className="block break-words text-xs text-slate-400" data-quien-movimiento>
                 {quien ?? 'Persona sin nombre en este teléfono'}
               </span>
@@ -363,6 +435,20 @@ export function VistaBitacora({
                 </span>
               )}
             </>
+          )}
+          {lIny && dIny && (
+            <span className="block break-words text-xs text-slate-600" data-detalle-iny>
+              <span className="block">
+                {lIny.ddt_plan !== null ? `DDT ${lIny.ddt_real ?? lIny.ddt_plan}${lIny.ddt_real !== null && lIny.ddt_real !== lIny.ddt_plan ? ` (plan ${lIny.ddt_plan})` : ''} · ` : ''}
+                aplicado {fechaCorta(dIny.fecha)}
+                {lIny.fecha_plan && lIny.fecha_plan !== dIny.fecha ? ` (plan ${fechaCorta(lIny.fecha_plan)})` : ''}
+                {!lIny.en_plan ? ' · sin plan' : ''}
+              </span>
+              <span className="block">
+                {dIny.area_mz ? `${cantidad(dIny.area_mz)} mz` : ''}
+                {lIny.objetivos.length > 0 ? ` · objetivo: ${lIny.objetivos.join(', ')}` : ''}
+              </span>
+            </span>
           )}
           {esHistorico && (
             <span className="mr-1 inline-block" data-insignia-historico>

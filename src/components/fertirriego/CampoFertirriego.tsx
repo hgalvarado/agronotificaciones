@@ -28,6 +28,7 @@ import { crearOperacion } from '@/lib/fertirriego/operaciones'
 import { obtenerUbicacion } from '@/lib/fertirriego/ubicacion'
 import type { Chofer, Estacion, Operacion, PermisoHistorico, Relevo, Traslado, Vehiculo } from '@/lib/fertirriego/tipos'
 import { useCampo } from '@/lib/fertirriego/useCampo'
+import { useInyeccionGuardada } from '@/lib/inyeccion/useInyeccionGuardada'
 import { AsignarCustodia } from './AsignarCustodia'
 import { AyudaFertirriego } from './AyudaFertirriego'
 import { DetalleDocumento } from './DetalleDocumento'
@@ -87,6 +88,8 @@ const PESTANAS: { clave: Pestana; nombre: string }[] = [
 
 export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; manual?: string | null }) {
   const campo = useCampo(usuarioId)
+  // Lo último de Inyección que ya bajó este teléfono (solo lectura, sin red): detalle de los movimientos de Inyección en la bitácora
+  const inyGuardada = useInyeccionGuardada(usuarioId)
   const estadoServidor = campo.estado
   const cola = campo.cola
   // Lo creado en el teléfono que aún no llega (productos y envases de campo) se ve en todas las listas al instante
@@ -447,6 +450,7 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
                 cola={cola}
                 estacionId={estacion.id}
                 productos={productosBitacora}
+                inyeccion={inyGuardada}
                 onProductos={setProductosBitacora}
                 onAbrir={(documentoTipo, documentoId) => setVentana({ tipo: 'documento', documentoTipo, documentoId })}
               />
