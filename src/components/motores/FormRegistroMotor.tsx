@@ -30,7 +30,6 @@ type Datos = {
   rpm: string
   horoCambiado: boolean
   visorCambiado: boolean
-  noTrabajo: boolean
   horoMalo?: boolean
   comentario: string
   caudalIni?: string
@@ -108,7 +107,6 @@ export function FormRegistroMotor({
   const [rpm, setRpm] = useState(b?.rpm ?? '')
   const [horoCambiado, setHoroCambiado] = useState(b?.horoCambiado ?? false)
   const [visorCambiado, setVisorCambiado] = useState(b?.visorCambiado ?? false)
-  const [noTrabajo, setNoTrabajo] = useState(b?.noTrabajo ?? false)
   // Horómetro dañado: no hay lectura; las horas quedan en 0, el diésel sí se registra y las horas se estiman solo para el mantenimiento
   const [horoMalo, setHoroMalo] = useState(b?.horoMalo ?? false)
   const [comentario, setComentario] = useState(b?.comentario ?? '')
@@ -116,18 +114,20 @@ export function FormRegistroMotor({
   const [caudalFin, setCaudalFin] = useState(b?.caudalFin ?? '')
   // sql/140 · Registro histórico: día pasado, sin custodia y SIN mover el diésel del tanque (la base lo vuelve a validar)
   const [esHistorico, setEsHistorico] = useState(false)
-  useAutoguardado(borrador, { fecha, horoIni, horoFin, visorIni, visorFin, rpm, horoCambiado, visorCambiado, noTrabajo, horoMalo, comentario, caudalIni, caudalFin })
+  useAutoguardado(borrador, { fecha, horoIni, horoFin, visorIni, visorFin, rpm, horoCambiado, visorCambiado, horoMalo, comentario, caudalIni, caudalFin })
 
   // El inicial propuesto es la lectura final del último registro ANTERIOR a esta fecha (cola incluida)
   const propuesta = useMemo(() => proponerInicial({ equipoId: motor.equipo_id, fecha, estado, pendientes }), [motor.equipo_id, fecha, estado, pendientes])
-  const horoIniTxt = horoIni ?? (propuesta.horoIni !== null ? String(propuesta.horoIni) : '')
+  // Horómetro dañado: no se escribe ninguna lectura; se usa donde terminó el motor la última vez
+  const horoBase = propuesta.horoIni ?? motor.horo_ultimo ?? 0
+  const horoIniTxt = horoMalo ? String(horoBase) : horoIni ?? (propuesta.horoIni !== null ? String(propuesta.horoIni) : '')
   // El visor inicial = donde terminó el último registro + lo recibido ese día en el tanque (ej.: terminó en 47 y hoy entraron 150 → 197).
   // En un registro histórico no se suma: no mueve el tanque.
   const tanqueId = motor.tanque?.id ?? ''
   const recibidoHoy = tanqueId ? recibidoEnDia(tanqueId, fecha, estado, pendientes) : 0
   const visorIniTxt = visorIni ?? (propuesta.visorIni !== null ? String(Math.round((propuesta.visorIni + (esHistorico ? 0 : recibidoHoy)) * 100) / 100) : '')
-  const horoFinEf = noTrabajo || horoMalo ? horoIniTxt : horoFin
-  const visorFinEf = noTrabajo ? visorIniTxt : visorFin
+  const horoFinEf = horoMalo ? horoIniTxt : horoFin
+  const visorFinEf = visorFin
 
   const hoy = hoyIso()
   // sql/147: el suministro del día = lo recibido ese día en el tanque (recepciones, también las pendientes de enviar)
@@ -140,7 +140,7 @@ export function FormRegistroMotor({
   const hi = num(horoIniTxt), hf = num(horoFinEf)
   const horasVivo = hi !== null && hf !== null ? (hf >= hi ? Math.round((hf - hi) * 100) / 100 : horoCambiado ? 0 : null) : null
   const completo = num(horoIniTxt) !== null && num(horoFinEf) !== null && num(visorIniTxt) !== null && num(visorFinEf) !== null
-  const visorSube = completo && !noTrabajo && (num(visorFinEf) as number) > (num(visorIniTxt) as number) && recibidoHoy === 0
+  const visorSube = completo && (num(visorFinEf) as number) > (num(visorIniTxt) as number) && recibidoHoy === 0
   const saldoLibro = tanqueId ? saldoTanqueLocal(tanqueId, estado, pendientes) : null
   const ultima = fechaUltimaLocal(motor, pendientes)
   // el libro solo se compara con el registro más reciente del motor (igual que la base)
@@ -303,10 +303,6 @@ export function FormRegistroMotor({
       </Campo>
 
       <label className="flex min-h-11 items-center gap-3 text-sm font-semibold text-slate-800">
-        <input type="checkbox" checked={noTrabajo} onChange={(e) => setNoTrabajo(e.target.checked)} className="h-6 w-6" data-no-trabajo />
-        No trabajó ese día (horas 0)
-      </label>
-      <label className="flex min-h-11 items-center gap-3 text-sm font-semibold text-slate-800">
         <input type="checkbox" checked={horoMalo} onChange={(e) => setHoroMalo(e.target.checked)} className="h-6 w-6" data-horo-malo />
         Horómetro dañado (sin lectura)
       </label>
@@ -314,10 +310,10 @@ export function FormRegistroMotor({
       <Seccion>Control de horas del motor</Seccion>
       <div className="grid grid-cols-2 gap-3">
         <Campo etiqueta="Horómetro inicial" requerido>
-          <CajaNumero valor={horoIniTxt} onCambiar={setHoroIni} dato="data-horo-ini" etiqueta="Horómetro inicial" />
+          <CajaNumero valor={horoIniTxt} onCambiar={setHoroIni} dato="data-horo-ini" etiqueta="Horómetro inicial" deshabilitado={horoMalo} />
         </Campo>
         <Campo etiqueta="Horómetro final" requerido>
-          <CajaNumero valor={horoFinEf} onCambiar={setHoroFin} dato="data-horo-fin" etiqueta="Horómetro final" deshabilitado={noTrabajo || horoMalo} />
+          <CajaNumero valor={horoFinEf} onCambiar={setHoroFin} dato="data-horo-fin" etiqueta="Horómetro final" deshabilitado={horoMalo} />
         </Campo>
         <Calculado etiqueta="Horas" valor={horasVivo === null ? '—' : String(horasVivo)} dato="data-horas" />
         <Campo etiqueta="Revoluciones (opcional)">
@@ -336,7 +332,7 @@ export function FormRegistroMotor({
           <CajaNumero valor={visorIniTxt} onCambiar={setVisorIni} dato="data-visor-ini" etiqueta="Galones iniciales del visor" />
         </Campo>
         <Campo etiqueta="Galones finales" requerido>
-          <CajaNumero valor={visorFinEf} onCambiar={setVisorFin} dato="data-visor-fin" etiqueta="Galones finales del visor" deshabilitado={noTrabajo} />
+          <CajaNumero valor={visorFinEf} onCambiar={setVisorFin} dato="data-visor-fin" etiqueta="Galones finales del visor" />
         </Campo>
         <Calculado etiqueta="Galones gastados" valor={calc.gastado === null ? '—' : String(calc.gastado)} dato="data-gastado" />
         <Calculado etiqueta="Rendimiento gal/h" valor={calc.rendimiento === null ? '—' : String(calc.rendimiento)} dato="data-rendimiento" />

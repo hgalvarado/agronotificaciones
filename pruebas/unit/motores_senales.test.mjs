@@ -30,13 +30,12 @@ test('semáforo de mantenimiento: verde, amarillo (aviso 10 %), rojo, gris y «i
   assert.match(S.semaforoMantenimiento(m, 460, 4).texto, / · 4 h estimadas$/)
 })
 
-test('semáforo del registro: al día, falta ayer, faltan varios días (rojo desde 3) y sin registros', () => {
+test('semáforo del registro: al día = verde; días sin registro NO son alerta (gris); sin registros amarillo', () => {
   assert.equal(S.semaforoRegistro('2026-11-23', HOY).nivel, 'verde')
-  assert.equal(S.semaforoRegistro('2026-11-22', HOY).texto, 'Falta el registro de ayer.')
-  assert.equal(S.semaforoRegistro('2026-11-21', HOY).nivel, 'amarillo')
+  assert.equal(S.semaforoRegistro('2026-11-22', HOY).nivel, 'gris')
   const r = S.semaforoRegistro('2026-11-20', HOY)
-  assert.equal(r.nivel, 'rojo')
-  assert.equal(r.texto, 'Faltan 3 días de registro.')
+  assert.equal(r.nivel, 'gris')
+  assert.equal(r.texto, 'Último registro hace 4 días.')
   assert.equal(S.semaforoRegistro(null, HOY).nivel, 'amarillo')
 })
 
@@ -53,8 +52,8 @@ test('semáforo del tanque: vacío rojo, ≤15 % amarillo, verde y sin tanque', 
 test('«qué toca ahora»: ordena por urgencia y el motor retirado no pide registro ni tanque', () => {
   const motor = { estado: 'EN_ESTACION', intervalo_horas: 500, aviso_horas: null, tanque: { id: 'T', nombre: 'T', capacidad_gal: 600, saldo_gal: 80 } }
   const a = S.ayudaLocal({ motor, saldoTanque: 80, horasDesdeMant: 460, horasEstimadas: 0, fechaUltima: '2026-11-20', hoy: HOY })
-  assert.equal(a.nivel, 'rojo')
-  assert.deepEqual(a.ahora.map((x) => x.codigo), ['FALTA_REGISTRO', 'MANTENIMIENTO', 'TANQUE'])
+  assert.equal(a.nivel, 'amarillo')
+  assert.deepEqual(a.ahora.map((x) => x.codigo), ['MANTENIMIENTO', 'TANQUE'])
   const taller = S.ayudaLocal({ motor: { ...motor, estado: 'TALLER' }, saldoTanque: null, horasDesdeMant: 10, horasEstimadas: 0, fechaUltima: null, hoy: HOY })
   assert.equal(taller.registro, null)
   assert.deepEqual(taller.ahora, [])
@@ -63,7 +62,7 @@ test('«qué toca ahora»: ordena por urgencia y el motor retirado no pide regis
     { motor: { equipo_id: 'A', codigo: 'M1' }, ayuda: a },
   ])
   assert.equal(lista[0].motor, 'M1') // lo rojo primero
-  assert.equal(lista[0].codigo, 'FALTA_REGISTRO')
+  assert.equal(lista[0].codigo, 'MANTENIMIENTO')
   assert.equal(lista[lista.length - 1].motor, 'M2')
 })
 
@@ -107,7 +106,7 @@ test('señales por día: horómetro retrocede y salta, hueco, visor, rendimiento
   assert.equal(retro.nivel, 'rojo')
   assert.equal(retro.texto, 'Horómetro retrocede: inicia 1000, antes 1015.')
   assert.deepEqual(sin(reg('2026-11-11', { horo_ini: 1020, visor_ini: 188 })), ['HORO_SALTA'])
-  assert.ok(sin(reg('2026-11-13', { horo_ini: 1015, visor_ini: 188 })).includes('HUECO_DIAS'))
+  assert.ok(!sin(reg('2026-11-13', { horo_ini: 1015, visor_ini: 188 })).includes('HUECO_DIAS')) // días sin registro ya no alertan si la continuidad cuadra
   assert.ok(sin(reg('2026-11-11', { horo_ini: 1015, visor_ini: 150 })).includes('VISOR_FALTA'))
   assert.ok(sin(reg('2026-11-11', { horo_ini: 1015, visor_ini: 230 })).includes('VISOR_SOBRA'))
   // un suministro recibido en el tanque explica el visor más alto

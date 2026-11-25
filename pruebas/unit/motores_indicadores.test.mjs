@@ -67,8 +67,8 @@ test('hoja: orden de la hoja, sin anulados, rango de fechas, motor y señal más
 test('hoja: totales y rendimiento medio ponderado (gal ÷ horas de los días que trabajaron)', () => {
   const f = H.filasDeHoja([reg('2026-11-10'), reg('2026-11-11', { horas: 4, gastado_gal: 20, recibido_gal: 40 }), reg('2026-11-12', { horas: 0, gastado_gal: 5, rendimiento_gal_h: null })], {})
   const t = H.totalesHoja(f)
-  assert.deepEqual(t, { dias: 3, horas: 10, gastado: 37, suministro: 40, rendimiento: 3.2 })
-  assert.deepEqual(H.totalesHoja([]), { dias: 0, horas: 0, gastado: 0, suministro: 0, rendimiento: null })
+  assert.deepEqual(t, { dias: 3, horas: 10, horasEst: 0, horasProy: 10, gastado: 37, suministro: 40, rendimiento: 3.2 })
+  assert.deepEqual(H.totalesHoja([]), { dias: 0, horas: 0, horasEst: 0, horasProy: 0, gastado: 0, suministro: 0, rendimiento: null })
 })
 
 test('hoja: formato corto de números y fechas', () => {
