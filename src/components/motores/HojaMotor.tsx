@@ -71,15 +71,16 @@ export function HojaMotor({ titulo, filas }: { titulo: string; filas: FilaHoja[]
       <div className="max-h-[60vh] overflow-y-auto overflow-x-hidden rounded-xl bg-white ring-1 ring-inset ring-slate-200">
         <table className="w-full table-fixed border-collapse" data-tabla-hoja>
           <colgroup>
-            <col style={{ width: '14%' }} />
-            <col style={{ width: '17%' }} />
+            <col style={{ width: '11%' }} />
+            <col style={{ width: '15%' }} />
             <col style={{ width: '7%' }} />
-            <col style={{ width: '12%' }} />
+            <col style={{ width: '7%' }} />
+            <col style={{ width: '11%' }} />
             <col style={{ width: '8%' }} />
             <col style={{ width: '8%' }} />
-            <col style={{ width: '9%' }} />
             <col style={{ width: '8%' }} />
-            <col style={{ width: '12%' }} />
+            <col style={{ width: '10%' }} />
+            <col style={{ width: '10%' }} />
             <col style={{ width: '5%' }} />
           </colgroup>
           <thead>
@@ -87,6 +88,7 @@ export function HojaMotor({ titulo, filas }: { titulo: string; filas: FilaHoja[]
               <th className={TH} scope="col">Fecha</th>
               <th className={TH} scope="col"><Par a="Horóm." b="ini · fin" /></th>
               <th className={TH} scope="col">Hrs</th>
+              <th className={TH} scope="col" title="Horas estimadas (horómetro dañado o sin lectura)">Est.</th>
               <th className={TH} scope="col"><Par a="Visor" b="ini · fin" /></th>
               <th className={TH} scope="col">Gast.</th>
               <th className={TH} scope="col">Rend.</th>
@@ -99,7 +101,7 @@ export function HojaMotor({ titulo, filas }: { titulo: string; filas: FilaHoja[]
           <tbody>
             {filas.length === 0 && (
               <tr>
-                <td colSpan={10} className="p-3 text-center text-xs text-slate-600">
+                <td colSpan={11} className="p-3 text-center text-xs text-slate-600">
                   Sin registros.
                 </td>
               </tr>
@@ -109,21 +111,24 @@ export function HojaMotor({ titulo, filas }: { titulo: string; filas: FilaHoja[]
               <tr key={f.id} className="border-t border-slate-100" data-fila-hoja={f.fecha}>
                 <td className="px-0.5 py-1 text-left text-[11px] leading-tight text-slate-900">
                   <span className="block font-medium tabular-nums">{ddmm(f.fecha)}</span>
-                  <span className="block truncate text-[10px] text-slate-600">{(f.operador ?? '').split(' ')[0]}</span>
                 </td>
                 {f.soloSuministro ? (
-                  <td className={TD} colSpan={6} />
+                  <td className={TD} colSpan={7} />
                 ) : (
                   <>
                     <td className={TD}><Par a={numHoja(f.horoIni)} b={numHoja(f.horoFin)} /></td>
                     <td className={TD}>{numHoja(f.horas)}</td>
+                    <td className={`${TD} text-amber-800`}>{f.horasEst ? numHoja(f.horasEst) : ''}</td>
                     <td className={TD}><Par a={numHoja(f.visorIni)} b={numHoja(f.visorFin)} /></td>
                     <td className={TD}>{numHoja(f.gastado)}</td>
                     <td className={TD}>{numHoja(f.rendimiento, 2)}</td>
                     <td className={TD}>{numHoja(f.rpm, 0)}</td>
                   </>
                 )}
-                <td className={`${TD} font-medium`}>{f.suministro > 0 ? numHoja(f.suministro) : ''}</td>
+                <td className={`${TD} font-medium`}>
+                  {f.suministro > 0 ? numHoja(f.suministro) : ''}
+                  {f.operador ? <span className="block truncate text-[10px] font-normal text-slate-600">{f.operador.split(' ')[0]}</span> : null}
+                </td>
                 <td className={TD}>{f.caudalIni === null && f.caudalFin === null ? '' : <Par a={numHoja(f.caudalIni)} b={numHoja(f.caudalFin)} />}</td>
                 <td className="px-0.5 py-1 text-center"><Marca senal={f.senal} /></td>
               </tr>
@@ -134,6 +139,7 @@ export function HojaMotor({ titulo, filas }: { titulo: string; filas: FilaHoja[]
               <td className="sticky bottom-0 z-10 border-t border-slate-300 bg-slate-100 px-0.5 py-1 text-left text-[11px] font-medium text-slate-900">Total</td>
               <td className="sticky bottom-0 z-10 border-t border-slate-300 bg-slate-100 px-0.5 py-1 text-right text-[10px] text-slate-700">{t.dias} d</td>
               <td className={`sticky bottom-0 z-10 border-t border-slate-300 bg-slate-100 ${TD} font-medium`}>{numHoja(t.horas)}</td>
+              <td className={`sticky bottom-0 z-10 border-t border-slate-300 bg-slate-100 ${TD} font-medium text-amber-800`}>{t.horasEst ? numHoja(t.horasEst) : ''}</td>
               <td className="sticky bottom-0 z-10 border-t border-slate-300 bg-slate-100" />
               <td className={`sticky bottom-0 z-10 border-t border-slate-300 bg-slate-100 ${TD} font-medium`}>{numHoja(t.gastado)}</td>
               <td className={`sticky bottom-0 z-10 border-t border-slate-300 bg-slate-100 ${TD} font-medium`}>{numHoja(t.rendimiento, 2)}</td>
