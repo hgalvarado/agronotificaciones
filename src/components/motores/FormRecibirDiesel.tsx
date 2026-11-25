@@ -95,12 +95,10 @@ export function FormRecibirDiesel({
           comentario,
         })
         if ('error' in a) return a.error
-        const nueva = crearOperacion('diesel_recibir', a.datos, { ubicacion, enNombreDe: corregir ? (corregir.registrado_por ?? enNombreDe) : enNombreDe, resumen: `${corregir ? 'Recepción CORREGIDA' : 'Combustible recibido'} · ${tanques.find((t) => t.id === tanque)?.nombre ?? estacion.nombre} · ${g} gal` })
-        if (!corregir) return [...nuevos, nueva]
-        // Corregir = anular la recepción vieja y guardar la corregida, EN ESE ORDEN (la cola se ordena por creado_en, a segundos)
-        const anula = crearOperacion('anulacion', { estacion_id: estacion.id, documento_tipo: 'diesel_recepcion', documento_id: corregir.id, motivo: `Corrección: ${motivo.trim()}` }, { ubicacion, enNombreDe, resumen: `Corrección · anula recepción de ${corregir.galones} gal` })
-        nueva.creado_en = ahoraIso(new Date(Date.parse(anula.creado_en) + 1000))
-        return [...nuevos, anula, nueva]
+        // sql/150: corregir = UNA sola operación que anula la vieja y guarda la nueva en la misma transacción (todo o nada)
+        const datos = corregir ? { ...a.datos, corrige_id: corregir.id, motivo: `Corrección: ${motivo.trim()}` } : a.datos
+        const nueva = crearOperacion('diesel_recibir', datos, { ubicacion, enNombreDe: corregir ? (corregir.registrado_por ?? enNombreDe) : enNombreDe, resumen: `${corregir ? 'Recepción CORREGIDA' : 'Combustible recibido'} · ${tanques.find((t) => t.id === tanque)?.nombre ?? estacion.nombre} · ${g} gal` })
+        return [...nuevos, nueva]
       }}
     >
       <p className="text-sm text-slate-700" data-bodega-recibir>

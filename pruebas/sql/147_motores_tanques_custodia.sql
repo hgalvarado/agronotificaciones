@@ -167,8 +167,9 @@ create temp table fi as select fn_mot_ficha_completa((select m1 from m)) as f;
 select pg_temp.ok((select count(*) = 4 from jsonb_array_elements((select f->'registros' from fi))), 'la ficha trae los 4 registros con todos sus campos');
 select pg_temp.ok((select bool_and(x ? 'caudal_ini' and x ? 'caudal_fin' and x ? 'operador' and x ? 'rpm' and x ? 'visor_ini' and x ? 'dif_visor_gal')
                      from jsonb_array_elements((select f->'registros' from fi)) x), 'cada registro lleva todos los campos de la hoja');
-select pg_temp.ok(exists (select 1 from jsonb_array_elements((select f->'senales' from fi)) s where s->>'codigo' = 'HUECO_DIAS' and s->>'texto' like 'Faltan 2 día(s)%'),
-                  'señal HUECO_DIAS: «Faltan 2 día(s) sin registro»');
+select pg_temp.ok(exists (select 1 from jsonb_array_elements((select f->'senales' from fi)) s where s->>'codigo' = 'HUECO_DIAS' and s->>'texto' like 'Faltan 2 día(s)%')
+                  <> (position('150:sin-hueco' in pg_get_functiondef('public._mot_senales(uuid[], date, date)'::regprocedure)) > 0),
+                  'señal HUECO_DIAS: «Faltan 2 día(s) sin registro» (sin la 150) / ausente (con la 150)');
 select pg_temp.ok(exists (select 1 from jsonb_array_elements((select f->'senales' from fi)) s where s->>'codigo' = 'VISOR_FALTA' and s->>'nivel' = 'rojo'), 'señal VISOR_FALTA (rojo)');
 select pg_temp.ok(exists (select 1 from jsonb_array_elements((select f->'senales' from fi)) s where s->>'codigo' = 'SALDO_FALTA' and s->>'texto' like '%faltan 10%'), 'señal SALDO_FALTA: faltan 10 gal');
 select pg_temp.ok(exists (select 1 from jsonb_array_elements((select f->'senales' from fi)) s where s->>'codigo' = 'HORO_RETROCEDE' and s->>'nivel' = 'rojo'), 'señal HORO_RETROCEDE (rojo)');
