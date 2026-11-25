@@ -1,8 +1,8 @@
 /**
  * Registro diario del motor (hoja FTR_F-MA-103), cuentas puras: horas, galones gastados, rendimiento, continuidad del
  * horómetro y del visor, y el armado de las operaciones. Sin React ni red. Las mismas fórmulas que la base (sql/130):
- *   horas = horómetro final − inicial · gastado = visor inicial − visor final + suministro del día · rendimiento = gastado ÷ horas.
- * El suministro de combustible (campo de la hoja) sale de la bodega de la estación y sube el tanque del motor (sql/144).
+ *   horas = horómetro final − inicial · gastado = visor inicial − visor final (como la hoja) · rendimiento = gastado ÷ horas.
+ * El suministro de combustible (campo de la hoja) sube el TANQUE; nunca toca la bodega (sql/147).
  * Las fechas son de Honduras (UTC-6): se registran jornadas de ayer o anteriores, nunca se asume «hoy».
  */
 
@@ -27,11 +27,11 @@ const hoyHonduras = () => diaLocal(new Date().toISOString())
 export function calcularRegistro(
   d: DatosRegistro,
   opciones: { horoCambiado?: boolean } = {}
-): { horas: number | null; gastado: number | null; rendimiento: number | null; errores: string[]; avisos: string[] } {
+): { horas: number | null; gastado: number | null; rendimiento: number | null; errores: string[]; avisos: string[]; duranteDia: boolean } {
   const errores: string[] = []
   const avisos: string[] = []
   if (![d.horoIni, d.horoFin, d.visorIni, d.visorFin].every(esNum) || !esNum(d.recibido)) {
-    return { horas: null, gastado: null, rendimiento: null, errores: ['Escribe un número válido.'], avisos }
+    return { horas: null, gastado: null, rendimiento: null, errores: ['Escribe un número válido.'], avisos, duranteDia: false }
   }
   const diff = r2((d.horoFin as number) - (d.horoIni as number))
   let horas = diff
@@ -42,11 +42,22 @@ export function calcularRegistro(
       horas = 0
     }
   }
-  const gastado = r2((d.visorIni as number) - (d.visorFin as number) + d.recibido)
-  if (gastado < 0) errores.push('El visor final es mayor que el inicial y no anotaste suministro de combustible ese día: escríbelo o corrige la lectura.')
-  const rendimiento = horas > 0 && gastado >= 0 ? r2(gastado / horas) : null
-  if (horas === 0 && gastado > 0) avisos.push('Gastó diésel sin horas de trabajo.')
-  return { horas, gastado, rendimiento, errores, avisos }
+  // sql/147: GASTADO = visor inicial − visor final (la hoja). Si el visor final es MAYOR, solo se acepta cuando el suministro lo explica
+  // (entró diésel durante el día): gastado = inicial + suministro − final.
+  let gastado: number | null = r2((d.visorIni as number) - (d.visorFin as number))
+  let duranteDia = false
+  if ((gastado as number) < 0) {
+    if (d.recibido > 0 && (d.visorFin as number) - (d.visorIni as number) <= d.recibido + 0.5) {
+      gastado = Math.max(r2((d.visorIni as number) + d.recibido - (d.visorFin as number)), 0)
+      duranteDia = true
+    } else {
+      errores.push('El visor final es mayor que el inicial y no anotaste suministro de combustible ese día: escríbelo o corrige la lectura.')
+      gastado = null
+    }
+  }
+  const rendimiento = horas > 0 && gastado !== null ? r2(gastado / horas) : null
+  if (horas === 0 && gastado !== null && gastado > 0) avisos.push('Gastó diésel sin horas de trabajo.')
+  return { horas, gastado, rendimiento, errores, avisos, duranteDia }
 }
 
 export type Propuesta = { horoIni: number | null; visorIni: number | null; origen: 'cola' | 'registro' | 'motor' | null; fechaBase: string | null }
@@ -110,10 +121,13 @@ export function armarRegistroDiario(args: {
   comentario: string
   estacionId?: string
   tanqueId?: string
-  /** Suministro de combustible del día (galones que pasaron de la bodega al tanque). Baja la bodega de la estación (sql/144). */
+  /** Suministro de combustible del día (columna de la hoja): sube el tanque solo por lo que falte de las recepciones (sql/147). */
   suministro?: number
-  /** El diésel de la bodega (producto de AGL): solo para que el teléfono rebaje su saldo local antes de enviar. */
-  dieselMaterialId?: string | null
+  /** Lectura de caudal inicial y final (opcionales, de la hoja). */
+  caudalIni?: number | null
+  caudalFin?: number | null
+  /** Firma del operador (nombre). */
+  operador?: string
   hoy?: string
 }): { datos: Record<string, unknown> } | { error: string } {
   if (![args.horoIni, args.horoFin, args.visorIni, args.visorFin].every(esNum)) return { error: 'Escribe un número válido.' }
@@ -122,6 +136,8 @@ export function armarRegistroDiario(args: {
   if (args.fecha > (args.hoy ?? hoyHonduras())) return { error: 'La fecha no puede ser posterior a hoy.' }
   if ((args.horoCambiado || args.visorCambiado) && !args.comentario.trim()) return { error: 'Explica el cambio del horómetro o del visor en las observaciones.' }
   if (args.rpm !== null && (!esNum(args.rpm) || args.rpm < 0 || args.rpm > 6000)) return { error: 'Las revoluciones deben estar entre 0 y 6000.' }
+  for (const q of [args.caudalIni, args.caudalFin]) if (q !== null && q !== undefined && (!esNum(q) || q < 0)) return { error: 'La lectura de caudal debe ser un número.' }
+  if ((args.operador ?? '').trim().length > 80) return { error: 'El nombre del operador es muy largo.' }
   const c = calcularRegistro(
     { horoIni: args.horoIni, horoFin: args.horoFin, visorIni: args.visorIni, visorFin: args.visorFin, recibido: args.suministro ?? 0 },
     { horoCambiado: args.horoCambiado }
@@ -143,46 +159,40 @@ export function armarRegistroDiario(args: {
       visor_cambiado: args.visorCambiado,
       comentario: args.comentario.trim() || null,
       suministro_gal: args.suministro && args.suministro > 0 ? args.suministro : undefined,
-      diesel_material_id: args.suministro && args.suministro > 0 ? (args.dieselMaterialId ?? undefined) : undefined,
-      gastado_local: c.gastado,
+      caudal_ini: args.caudalIni ?? undefined,
+      caudal_fin: args.caudalFin ?? undefined,
+      operador: args.operador?.trim() || undefined,
+      gastado_local: c.gastado ?? undefined,
     },
   }
 }
 
-/** Recibir diésel = entra a la bodega de la estación como un producto más (sql/144): sin tanque, sin motor. */
+/** Recibir diésel = entra al TANQUE de la estación (sql/147): no pasa por la bodega. */
 export function armarRecepcionDiesel(args: {
   estacionId: string
+  tanqueId: string | null
   galones: number
   fechaHora: string
   choferId: string | null
   vehiculoId: string | null
   comentario: string
-  /** El diésel de la bodega (producto de AGL): para que el teléfono suba su saldo local antes de enviar. */
-  dieselMaterialId?: string | null
 }): { datos: Record<string, unknown> } | { error: string } {
+  if (!args.tanqueId) return { error: 'Elige el tanque donde se recibe el diésel.' }
   if (!esNum(args.galones) || args.galones <= 0) return { error: 'Indica los galones recibidos.' }
   return {
     datos: {
       estacion_id: args.estacionId,
+      tanque_id: args.tanqueId,
       galones: args.galones,
       fecha_hora: args.fechaHora,
       chofer_id: args.choferId,
       vehiculo_id: args.vehiculoId,
       comentario: args.comentario.trim() || null,
-      diesel_material_id: args.dieselMaterialId ?? undefined,
     },
   }
 }
 
-export type DestinoSaldo = 'CON_EL_MOTOR' | 'DEVUELTO' | 'QUEDA_EN_TANQUE'
 export type TipoMovimientoMotor = 'INSTALADO' | 'TRASLADADO' | 'AL_TALLER' | 'DE_VUELTA' | 'RETIRADO'
-
-/** Qué se sugiere hacer con el diésel según el motivo: fin de temporada → con el motor; daño y reemplazo → queda en el tanque (fijo). */
-export function destinoSugerido(motivoCodigo: string): { destino: DestinoSaldo | null; fijo: boolean } {
-  if (motivoCodigo === 'DANO_REEMPLAZO') return { destino: 'QUEDA_EN_TANQUE', fijo: true }
-  if (motivoCodigo === 'FIN_TEMPORADA') return { destino: 'CON_EL_MOTOR', fijo: false }
-  return { destino: null, fijo: false }
-}
 
 /** Etiquetas claras de los motivos (mover o retirar). */
 export const ETIQUETA_MOTIVO: Record<string, string> = {
@@ -198,23 +208,18 @@ export function armarMovimientoMotor(args: {
   tipo: TipoMovimientoMotor
   fechaHora: string
   estacionDestino: string | null
+  /** Un tanque LIBRE asignado a la estación de destino (sql/147). */
   tanqueId: string | null
+  /** Solo quien tiene «Configurar» (o la práctica del modo de pruebas) puede crear un tanque. */
   tanqueNuevo: { nombre: string; capacidadGal: number | null; materialId?: string | null } | null
   motivo: string
   motivoCodigo: string
-  destinoSaldo: DestinoSaldo | null
-  destinoDevolucion: 'SUMINISTROS' | 'BODEGA' | 'TALLER' | null
   horasBase: number | null
   /** Solo al recibir (sql/138). */
   horometro?: number | null
-  dieselGal?: number | null
   observacion?: string
-  saldoActual: number
-  /** El motor trae su propio tanque (viajó con él): no hace falta elegir otro. */
-  traeTanque?: boolean
   estacionOrigen?: string | null
 }): { datos: Record<string, unknown>; operacion: 'motor_asignar' | 'motor_retiro' } | { error: string } {
-  const sale = args.tipo === 'TRASLADADO' || args.tipo === 'RETIRADO' || args.tipo === 'AL_TALLER'
   const entra = args.tipo === 'INSTALADO' || args.tipo === 'DE_VUELTA' || args.tipo === 'TRASLADADO'
   // Recibir (INSTALADO, DE_VUELTA) no tiene motivo; mover o retirar piden uno (el código o lo escrito)
   const recibe = args.tipo === 'INSTALADO' || args.tipo === 'DE_VUELTA'
@@ -222,13 +227,8 @@ export function armarMovimientoMotor(args: {
   if (!recibe && !motivoTexto) return { error: 'Elige el motivo.' }
   if (!recibe && args.motivoCodigo === 'OTRO' && !args.motivo.trim()) return { error: 'Escribe cuál es el motivo.' }
   if (args.horometro != null && (!esNum(args.horometro) || args.horometro < 0)) return { error: 'El horómetro no es válido.' }
-  if (args.dieselGal != null && (!esNum(args.dieselGal) || args.dieselGal < 0)) return { error: 'El diésel del tanque no es válido.' }
-  let destino = args.destinoSaldo
-  if (args.motivoCodigo === 'DANO_REEMPLAZO' && sale) destino = 'QUEDA_EN_TANQUE'
-  if (sale && args.saldoActual > 0.0001 && !destino) return { error: `El tanque tiene ${r2(args.saldoActual)} gal de diésel: indica qué pasa con ese diésel.` }
-  if (sale && destino === 'DEVUELTO' && !args.destinoDevolucion) return { error: 'Indica a dónde se devuelve el diésel (suministros, bodega o taller).' }
   if (entra && !args.estacionDestino) return { error: 'Elige la estación de destino.' }
-  if (entra && args.tipo !== 'TRASLADADO' && !args.tanqueId && !args.tanqueNuevo && !args.traeTanque) return { error: 'Indica el tanque del motor: elige uno de la estación o crea uno nuevo.' }
+  if (entra && !args.tanqueId && !args.tanqueNuevo) return { error: 'Elige el tanque del motor: uno libre de la estación de destino.' }
   if (args.tanqueNuevo && !args.tanqueNuevo.nombre.trim()) return { error: 'Escribe el nombre del tanque nuevo.' }
   if (args.horasBase !== null && (!esNum(args.horasBase) || args.horasBase < 0)) return { error: 'Las horas desde el último mantenimiento no son válidas.' }
   const datos: Record<string, unknown> = {
@@ -237,17 +237,15 @@ export function armarMovimientoMotor(args: {
     tipo: args.tipo === 'RETIRADO' ? undefined : args.tipo,
     fecha_hora: args.fechaHora,
     estacion_destino: entra ? args.estacionDestino : undefined,
-    tanque_id: args.tanqueId ?? undefined,
-    tanque_nuevo: args.tanqueNuevo
-      ? { nombre: args.tanqueNuevo.nombre.trim(), capacidad_gal: args.tanqueNuevo.capacidadGal, material_id: args.tanqueNuevo.materialId ?? undefined }
-      : undefined,
+    tanque_id: entra ? (args.tanqueId ?? undefined) : undefined,
+    tanque_nuevo:
+      entra && args.tanqueNuevo
+        ? { nombre: args.tanqueNuevo.nombre.trim(), capacidad_gal: args.tanqueNuevo.capacidadGal, material_id: args.tanqueNuevo.materialId ?? undefined }
+        : undefined,
     motivo: recibe ? undefined : motivoTexto,
     motivo_codigo: recibe ? undefined : args.motivoCodigo || undefined,
     horometro: args.horometro ?? undefined,
-    diesel_gal: args.dieselGal ?? undefined,
     observacion: args.observacion?.trim() || undefined,
-    destino_saldo: sale ? destino ?? undefined : undefined,
-    destino_devolucion: sale && destino === 'DEVUELTO' ? args.destinoDevolucion : undefined,
     horas_base: args.horasBase ?? undefined,
   }
   return { datos, operacion: args.tipo === 'RETIRADO' ? 'motor_retiro' : 'motor_asignar' }

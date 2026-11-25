@@ -12,7 +12,7 @@ import { createClient } from '@/lib/supabase/client'
 import { crearFreno } from '@/lib/datos/frenos'
 import { esperaMs } from '@/lib/errores/cola'
 import { AlmacenLocal } from '@/lib/fertirriego/almacenLocal'
-import type { EstadoMotores } from './estado'
+import { normalizarEstado, type EstadoMotores } from './estado'
 
 const CLAVE = 'mot_estado'
 
@@ -42,7 +42,7 @@ export function useMotores(usuarioId: string) {
       try {
         const { data, error: e } = await supabase.rpc('fn_mot_estado_campo')
         if (e) throw new Error(e.message)
-        const nuevo = data as EstadoMotores
+        const nuevo = normalizarEstado(data as EstadoMotores)
         setEstado(nuevo)
         setError(null)
         fallos.current = 0
@@ -75,7 +75,7 @@ export function useMotores(usuarioId: string) {
         if (!vivo) return
         almacen.current = a
         const guardado = await a.leerPreferencia<EstadoMotores>(CLAVE)
-        if (vivo && guardado) setEstado(guardado)
+        if (vivo && guardado) setEstado(normalizarEstado(guardado))
       } catch {
         // sin almacén: funciona con señal
       }

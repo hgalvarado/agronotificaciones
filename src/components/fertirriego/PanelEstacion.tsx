@@ -62,7 +62,7 @@ function MarcaBorrador({ si }: { si: boolean }) {
   )
 }
 
-export type Accion = 'recibir' | 'envases' | 'aplicar' | 'historico' | 'contar' | 'custodia' | 'entregar' | 'recibir_relevo' | 'codigo' | 'devolver_bodega' | 'trasladar' | 'recibir_diesel'
+export type Accion = 'recibir' | 'envases' | 'aplicar' | 'historico' | 'contar' | 'custodia' | 'entregar' | 'recibir_relevo' | 'codigo' | 'devolver_bodega' | 'trasladar'
 
 export function PanelEstacion({
   estado,
@@ -73,7 +73,6 @@ export function PanelEstacion({
   enLinea,
   tieneEntregaPendiente = false,
   permisoHistorico = null,
-  puedeRecibirDiesel = false,
   onAccion,
   onAplicarTurno,
   onVerProducto,
@@ -90,7 +89,6 @@ export function PanelEstacion({
   /** sql/116: permiso vigente de «Registro histórico» en esta estación (null = sin permiso: no hay botón). */
   permisoHistorico?: PermisoHistorico | null
   /** sql/144: AGL ya publicó el diésel: se ofrece «Recibir diésel» (entra a la bodega como un producto más). */
-  puedeRecibirDiesel?: boolean
   onAccion: (a: Accion) => void
   onAplicarTurno: (turnoId: string) => void
   onVerProducto: (materialId: string) => void
@@ -239,11 +237,6 @@ export function PanelEstacion({
         <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs font-bold uppercase tracking-wide text-slate-400">En bodega</p>
           <div className="flex flex-wrap gap-2">
-            {estacion.permisos.recibir && puedeRecibirDiesel && (
-              <Boton tamano="sm" variante="secundario" className="min-h-11" onClick={() => onAccion('recibir_diesel')} disabled={!regla.si} data-accion="recibir_diesel">
-                Recibir diésel
-              </Boton>
-            )}
             {estacion.permisos.trasladar && (
               <Boton tamano="sm" variante="secundario" className="min-h-11" onClick={() => onAccion('trasladar')} disabled={!regla.si} data-accion="trasladar">
                 Trasladar

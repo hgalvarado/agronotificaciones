@@ -1,7 +1,10 @@
 /**
- * Lo que el teléfono sabe de Motores y combustible (respuesta de fn_mot_estado_campo, sql/130) y las cuentas puras
+ * Lo que el teléfono sabe de Motores y combustible (respuesta de fn_mot_estado_campo, sql/130 y 147) y las cuentas puras
  * sobre eso. Ni React, ni IndexedDB, ni red. Motor = fila de `equipos` (catálogo existente), estación = `estaciones_riego`,
  * diésel = `materiales`: aquí solo viajan sus ids.
+ *
+ * sql/147: los tanques son FIJOS (catálogo de Torre de Control, asignados a una estación); el diésel se recibe al tanque y no
+ * pasa por la bodega. La base quita las claves vacías: `normalizarEstado` las vuelve null.
  */
 
 import type { Operacion } from '@/lib/fertirriego/tipos'
@@ -24,6 +27,8 @@ export type MotorEstacion = {
   intervalo_horas: number | null
   aviso_horas: number | null
   horas_desde_mant: number
+  /** sql/147: parte de `horas_desde_mant` que es ESTIMADA (horómetro sin avance con consumo); solo cuenta para el mantenimiento. */
+  horas_est_desde_mant?: number | null
   horas_para_mant: number | null
 }
 
@@ -57,6 +62,14 @@ export type RegistroMotor = {
   horo_cambiado: boolean
   visor_cambiado: boolean
   comentario: string | null
+  /** sql/147: lo demás de la hoja FTR_F-MA-103. */
+  caudal_ini: number | null
+  caudal_fin: number | null
+  operador: string | null
+  /** visor inicial − saldo del libro (gal); null si no se comparó. */
+  dif_visor_gal: number | null
+  horas_estimadas: number | null
+  rend_ref_gal_h: number | null
   registrado_por: string | null
   fecha_hora: string
   anulado_at: string | null
@@ -66,7 +79,7 @@ export type RegistroMotor = {
 
 export type RecepcionMotor = {
   id: string
-  /** null = recepción a nivel estación (sql/144: entra a la bodega, no al tanque). */
+  /** sql/147: el tanque donde entró el diésel (las de la 144 vienen sin tanque: nivel estación). */
   tanque_id: string | null
   estacion_id: string
   galones: number
@@ -106,6 +119,39 @@ export type AsignacionMotor = {
   anulado_at: string | null
 }
 
+export type NivelSemaforo = 'verde' | 'amarillo' | 'rojo' | 'gris'
+
+/** sql/147: una línea de «qué toca ahora» (ya ordenada por urgencia en la base). */
+export type AyudaAhora = { nivel: NivelSemaforo; codigo: 'MANTENIMIENTO' | 'FALTA_REGISTRO' | 'TANQUE' | 'SIN_TANQUE'; texto: string }
+export type AyudaMotor = { equipo_id: string; nivel: NivelSemaforo; ahora: AyudaAhora[] }
+
+/** sql/147: señal de un día de registro (la base y el teléfono usan las mismas reglas). */
+export type SenalRegistro = { registro_id: string; fecha: string; nivel: 'rojo' | 'amarillo' | 'info'; codigo: string; texto: string; equipo_id?: string }
+
+/** sql/147: tanque fijo (catálogo de Torre de Control); se asigna a una estación. */
+export type TanqueFijo = {
+  id: string
+  nombre: string
+  zona_id: string | null
+  estacion_id: string | null
+  capacidad_gal: number | null
+  motor_equipo_id: string | null
+  saldo_gal: number
+}
+
+/** sql/147: tramo de custodia del motor (dónde estuvo y con qué horómetro). */
+export type TramoMotor = {
+  id: string
+  equipo_id: string
+  ubicacion: 'ESTACION' | 'TALLER' | 'RETIRADO'
+  estacion_id: string | null
+  tanque_id: string | null
+  desde: string
+  hasta: string | null
+  horo_entrada: number | null
+  horo_salida: number | null
+}
+
 export type EstadoMotores = {
   servidor_en: string
   permisos: {
@@ -118,6 +164,8 @@ export type EstadoMotores = {
     motor_mover?: boolean
     motor_retirar?: boolean
     motor_mantenimiento?: boolean
+    /** sql/147: ve todos los motores con su ficha completa (nadie por defecto; el administrador sí). */
+    auditar?: boolean
   }
   material_diesel_id: string | null
   motores: MotorEstacion[]
@@ -128,6 +176,13 @@ export type EstadoMotores = {
   recepciones: RecepcionMotor[]
   mantenimientos: MantenimientoMotor[]
   asignaciones: AsignacionMotor[]
+  /** sql/147 (todo opcional: un teléfono con datos viejos no los trae). */
+  ayuda?: AyudaMotor[]
+  senales?: SenalRegistro[]
+  tanques?: TanqueFijo[]
+  tramos?: TramoMotor[]
+  /** {id de persona → nombre} de quienes registraron. */
+  personas?: Record<string, string>
 }
 
 /** Lo mínimo que se necesita de una operación pendiente (sirve también para las pruebas sin React). */
@@ -144,24 +199,46 @@ export function diaLocal(iso: string): string {
   return Number.isFinite(t) ? new Date(t - 6 * 3600_000).toISOString().slice(0, 10) : iso.slice(0, 10)
 }
 
+/** El tanque de una recepción pendiente: el que trae, o el único de la estación (sql/147: un envío viejo solo trae la estación). */
+function tanqueDeRecepcion(estado: EstadoMotores, d: Record<string, unknown>): string | null {
+  if (d.tanque_id) return String(d.tanque_id)
+  const l = (estado.tanques ?? []).filter((t) => t.estacion_id === d.estacion_id)
+  return l.length === 1 ? l[0].id : null
+}
+
+/** Galones recibidos en un tanque en un día (Honduras): lo ya bajado más lo pendiente de enviar. */
+export function recibidoEnDia(tanqueId: string, fecha: string, estado: EstadoMotores, pendientes: OperacionPendienteMotor[]): number {
+  const bajado = estado.recepciones.filter((r) => r.tanque_id === tanqueId && !r.anulado_at && diaLocal(r.fecha_hora) === fecha).reduce((t, r) => t + r.galones, 0)
+  const cola = pendientes
+    .filter((o) => o.estado_local === 'PENDIENTE' && o.tipo === 'diesel_recibir' && tanqueDeRecepcion(estado, o.datos) === tanqueId && diaLocal(String(o.datos.fecha_hora ?? '')) === fecha)
+    .reduce((t, o) => t + num(o.datos.galones), 0)
+  return bajado + cola
+}
+
 /**
- * Saldo del tanque contando lo pendiente de enviar: saldo bajado + suministros pendientes − consumos pendientes (sql/144: el diésel
- * recibido ya NO va al tanque, va a la bodega de la estación). El consumo de un registro pendiente es `gastado_local` (lo calculó el
- * teléfono al guardar) o, si falta, visor inicial − final.
- * No reproduce el ajuste por visor de la base (esa es la verdad al sincronizar); es solo para que el nivel baje sin señal.
+ * Saldo del tanque contando lo pendiente de enviar (sql/147): saldo bajado + diésel recibido pendiente (al tanque) + lo que un
+ * registro declara como suministro y no está en recepciones (solo la diferencia, igual que la base) − lo gastado (visor inicial −
+ * final). No reproduce el ajuste por visor de la base (esa es la verdad al sincronizar); es solo para que el nivel baje sin señal.
  */
 export function saldoTanqueLocal(tanqueId: string, estado: EstadoMotores, pendientes: OperacionPendienteMotor[]): number {
-  const motor = estado.motores.find((m) => m.tanque?.id === tanqueId)
-  const base = motor?.tanque?.saldo_gal ?? estado.tanques_sin_motor.find((t) => t.id === tanqueId)?.saldo_gal ?? 0
+  const base =
+    estado.tanques?.find((t) => t.id === tanqueId)?.saldo_gal ??
+    estado.motores.find((m) => m.tanque?.id === tanqueId)?.tanque?.saldo_gal ??
+    estado.tanques_sin_motor.find((t) => t.id === tanqueId)?.saldo_gal ??
+    0
   let saldo = base
-  for (const op of pendientes) {
-    if (op.estado_local !== 'PENDIENTE') continue
+  const activas = pendientes.filter((o) => o.estado_local === 'PENDIENTE')
+  for (const op of activas) {
+    if (op.tipo === 'diesel_recibir' && tanqueDeRecepcion(estado, op.datos) === tanqueId) saldo += num(op.datos.galones)
+  }
+  for (const op of activas) {
+    if (op.tipo !== 'motor_registro_diario') continue
     const d = op.datos
-    if (op.tipo === 'motor_registro_diario') {
-      const delMotor = estado.motores.find((m) => m.equipo_id === d.equipo_id)
-      const tanque = (d.tanque_id as string | undefined) ?? delMotor?.tanque?.id
-      if (tanque === tanqueId) saldo += num(d.suministro_gal) - Math.max(d.gastado_local !== undefined ? num(d.gastado_local) : num(d.visor_ini) - num(d.visor_fin), 0)
-    }
+    const delMotor = estado.motores.find((m) => m.equipo_id === d.equipo_id)
+    const tanque = (d.tanque_id as string | undefined) ?? delMotor?.tanque?.id
+    if (tanque !== tanqueId) continue
+    const extra = Math.max(num(d.suministro_gal) - recibidoEnDia(tanqueId, String(d.fecha ?? ''), estado, pendientes), 0)
+    saldo += extra - Math.max(d.gastado_local !== undefined ? num(d.gastado_local) : num(d.visor_ini) - num(d.visor_fin), 0)
   }
   return Math.round(saldo * 100) / 100
 }
@@ -202,4 +279,70 @@ export function motoresParaRecibir(estado: EstadoMotores, estacionId: string, no
     lista.push({ equipo_id: o.equipo_id, codigo: o.codigo, nombre: o.nombre, modelo: o.modelo, estado: o.estado, enEstacion: o.estacion_nombre })
   }
   return lista.sort((a, b) => a.codigo.localeCompare(b.codigo, 'es', { numeric: true }))
+}
+
+// ---------------------------------------------------------------- sql/147: normalizar lo que baja y tanques por estación
+
+const conNulos = <T extends object>(o: T, claves: string[]): T => {
+  const r = { ...o } as Record<string, unknown>
+  for (const k of claves) if (r[k] === undefined) r[k] = null
+  return r as T
+}
+
+/**
+ * La base quita las claves vacías (`jsonb_strip_nulls`): aquí una clave ausente pasa a ser null y las listas nuevas a [].
+ * Sirve igual con lo guardado por una versión anterior de la app.
+ */
+export function normalizarEstado(e: EstadoMotores): EstadoMotores {
+  return {
+    ...e,
+    motores: (e.motores ?? []).map((m) =>
+      conNulos(m, ['modelo', 'estacion_id', 'tanque', 'horo_ultimo', 'visor_ultimo', 'fecha_ultimo', 'intervalo_horas', 'aviso_horas', 'horas_para_mant', 'horas_est_desde_mant'])
+    ),
+    otras_estaciones: e.otras_estaciones ?? [],
+    tanques_sin_motor: e.tanques_sin_motor ?? [],
+    registros: (e.registros ?? []).map((r) =>
+      conNulos(r, ['comentario', 'rpm', 'rendimiento_gal_h', 'caudal_ini', 'caudal_fin', 'operador', 'dif_visor_gal', 'horas_estimadas', 'rend_ref_gal_h', 'registrado_por', 'anulado_at', 'motivo_anulacion', 'observaciones'])
+    ),
+    recepciones: (e.recepciones ?? []).map((r) => conNulos(r, ['tanque_id', 'chofer_id', 'vehiculo_id', 'comentario', 'registrado_por', 'anulado_at', 'motivo_anulacion'])),
+    mantenimientos: e.mantenimientos ?? [],
+    asignaciones: (e.asignaciones ?? []).map((a) =>
+      conNulos(a, ['estacion_origen', 'estacion_destino', 'tanque_id', 'motivo_codigo', 'destino_saldo', 'destino_devolucion', 'saldo_gal', 'anulado_at'])
+    ),
+    ayuda: e.ayuda ?? [],
+    senales: e.senales ?? [],
+    tanques: (e.tanques ?? []).map((t) => conNulos(t, ['zona_id', 'estacion_id', 'capacidad_gal', 'motor_equipo_id'])),
+    tramos: (e.tramos ?? []).map((t) => conNulos(t, ['estacion_id', 'tanque_id', 'hasta', 'horo_entrada', 'horo_salida'])),
+    personas: e.personas ?? {},
+  }
+}
+
+/** Los tanques de una estación (catálogo fijo; con datos viejos, los de los motores y los sueltos). */
+export function tanquesDeEstacion(estado: EstadoMotores, estacionId: string): TanqueFijo[] {
+  const catalogo = estado.tanques ?? []
+  if (catalogo.length > 0) return catalogo.filter((t) => t.estacion_id === estacionId)
+  const vistos = new Set<string>()
+  const lista: TanqueFijo[] = []
+  for (const m of estado.motores) {
+    if (m.estacion_id === estacionId && m.tanque && !vistos.has(m.tanque.id)) {
+      vistos.add(m.tanque.id)
+      lista.push({ id: m.tanque.id, nombre: m.tanque.nombre, zona_id: null, estacion_id: estacionId, capacidad_gal: m.tanque.capacidad_gal, motor_equipo_id: m.equipo_id, saldo_gal: m.tanque.saldo_gal })
+    }
+  }
+  for (const t of estado.tanques_sin_motor) {
+    if (t.estacion_id === estacionId && !vistos.has(t.id)) {
+      lista.push({ id: t.id, nombre: t.nombre, zona_id: null, estacion_id: estacionId, capacidad_gal: t.capacidad_gal, motor_equipo_id: null, saldo_gal: t.saldo_gal })
+    }
+  }
+  return lista.sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { numeric: true }))
+}
+
+/** Tanques de la estación libres (sin motor, o ya conectados a ESTE motor): los que se pueden elegir al recibir o mover un motor. */
+export function tanquesLibres(estado: EstadoMotores, estacionId: string, equipoId: string): TanqueFijo[] {
+  return tanquesDeEstacion(estado, estacionId).filter((t) => !t.motor_equipo_id || t.motor_equipo_id === equipoId)
+}
+
+/** Nombre de quien registró (los nombres bajan una sola vez en `personas`). */
+export function nombreQuien(estado: EstadoMotores, id: string | null | undefined): string | null {
+  return id ? (estado.personas?.[id] ?? null) : null
 }
