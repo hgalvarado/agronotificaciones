@@ -10,6 +10,7 @@ import { useMemo, useState } from 'react'
 import { IconChevronRight } from '@/components/ui/Icons'
 import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
 import { useAvisosCambios } from '@/lib/datos/useAvisosCambios'
+import { useMemoria } from '@/lib/memoria/useMemoria'
 import { Boton } from '@/components/ui/Primitivos'
 import { Modal } from '@/components/ui/Modal'
 import { SelectorMultiple } from '@/components/ui/SelectorMultiple'
@@ -52,14 +53,30 @@ export function VistaGeneral({ generadoPor }: { generadoPor: string }) {
   const [estaciones, setEstaciones] = useState<string[]>([])
   const [niveles, setNiveles] = useState<string[]>([])
   const [filtros, setFiltros] = useState(false)
-  const [limite, setLimite] = useState(40)
   const [ficha, setFicha] = useState<string | null>(null)
+  // Los motores van agrupados por estación (contraídos al abrir; cada persona recuerda cuáles dejó abiertas en su equipo)
+  const [abiertos, fijarAbiertos] = useMemoria<string[]>('motores-general-abiertos', [])
 
   const lista = datos ?? []
   const opcionesEstaciones = useMemo(() => [...new Set(lista.map((m) => m.estacion).filter((x): x is string => Boolean(x)))].sort((a, b) => a.localeCompare(b, 'es', { numeric: true })).map((x) => ({ valor: x, etiqueta: x })), [lista])
   const opcionesZonas = useMemo(() => [...new Set(lista.map((m) => m.zona).filter((x): x is string => Boolean(x)))].sort((a, b) => a.localeCompare(b, 'es', { numeric: true })).map((x) => ({ valor: x, etiqueta: x })), [lista])
   const visibles = useMemo(() => filtrarResumen(lista, { texto, estados, estaciones, niveles, zonas }), [lista, texto, estados, estaciones, niveles, zonas])
   const activos = [texto.trim(), estados.length, estaciones.length, niveles.length, zonas.length].filter(Boolean).length
+  const grupos = useMemo(() => {
+    const mapa = new Map<string, { clave: string; titulo: string; zona: string | null; motores: ResumenMotorAuditor[]; enEstacion: boolean }>()
+    for (const m of visibles) {
+      const enEstacion = m.estado === 'EN_ESTACION'
+      const titulo = enEstacion ? (m.estacion ?? 'Sin estación') : (NOMBRE_ESTADO[m.estado] ?? m.estado)
+      const clave = `${enEstacion ? 'e' : 'x'}:${titulo}`
+      const g = mapa.get(clave) ?? { clave, titulo, zona: enEstacion ? (m.zona ?? null) : null, motores: [], enEstacion }
+      g.motores.push(m)
+      mapa.set(clave, g)
+    }
+    return [...mapa.values()].sort((a, b) => Number(b.enEstacion) - Number(a.enEstacion) || (a.zona ?? '').localeCompare(b.zona ?? '', 'es', { numeric: true }) || a.titulo.localeCompare(b.titulo, 'es', { numeric: true }))
+  }, [visibles])
+  const alternar = (clave: string) => fijarAbiertos(abiertos.includes(clave) ? abiertos.filter((x) => x !== clave) : [...abiertos, clave])
+  // Buscando o filtrando se muestran todos los grupos abiertos (que no haga falta abrir uno por uno)
+  const todosAbiertos = activos > 0
 
   return (
     <div className="flex flex-col gap-2" data-vista-general>
@@ -93,14 +110,30 @@ export function VistaGeneral({ generadoPor }: { generadoPor: string }) {
         </div>
       )}
       <EstadoConsulta cargando={cargando} error={error} vacio={visibles.length === 0} textoVacio={lista.length === 0 ? 'No hay motores.' : 'No hay motores con esos filtros.'} />
-      {visibles.slice(0, limite).map((m) => (
-        <FilaMotorGeneral key={m.equipo_id} m={m} onToque={() => setFicha(m.equipo_id)} />
-      ))}
-      {visibles.length > limite && (
-        <Boton variante="fantasma" className="min-h-11" onClick={() => setLimite((l) => l + 40)} data-ver-mas>
-          Ver más ({visibles.length - limite})
-        </Boton>
-      )}
+      {grupos.map((g) => {
+        const abierto = todosAbiertos || abiertos.includes(g.clave)
+        const nivel = peorNivel(g.motores.map((m) => m.ayuda?.nivel ?? 'gris').filter((n): n is 'rojo' | 'amarillo' | 'verde' => n === 'rojo' || n === 'amarillo' || n === 'verde'))
+        return (
+          <section key={g.clave} data-grupo-estacion={g.titulo} className="flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => alternar(g.clave)}
+              aria-expanded={abierto}
+              className="flex min-h-11 w-full items-center gap-2 rounded-xl bg-slate-100 px-3 text-left active:bg-slate-200"
+              data-alternar-grupo
+            >
+              <IconChevronRight className={`h-4 w-4 shrink-0 text-slate-500 transition-transform ${abierto ? 'rotate-90' : ''}`} />
+              <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900">
+                {g.titulo}
+                {g.zona ? <span className="ml-1 font-normal text-slate-600">· {g.zona}</span> : null}
+              </span>
+              {nivel === 'rojo' || nivel === 'amarillo' ? <InsigniaNivel nivel={nivel} /> : null}
+              <span className="shrink-0 text-xs tabular-nums text-slate-600">{g.motores.length} motor{g.motores.length === 1 ? '' : 'es'}</span>
+            </button>
+            {abierto && g.motores.map((m) => <FilaMotorGeneral key={m.equipo_id} m={m} onToque={() => setFicha(m.equipo_id)} />)}
+          </section>
+        )
+      })}
       {ficha && <FichaMotorAuditor equipoId={ficha} generadoPor={generadoPor} temporadas={temporadasDatos ?? []} temporadasListas={!cargandoTemp} onCerrar={() => setFicha(null)} />}
     </div>
   )

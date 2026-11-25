@@ -136,8 +136,14 @@ function completar(base: Omit<FilaCumplimiento, 'cantidad_real' | 'fecha_real' |
  */
 export function comparativaPlanReal(plan: FilaPlanInyeccion[], aplicaciones: AplicacionInyeccion[], hoy: string): FilaCumplimiento[] {
   const grupos = new Map<string, FilaPlanInyeccion[]>()
+  // El plan del Ciclo 1 y el del Ciclo 2 son momentos distintos: la llave lleva el ciclo para que no se mezclen
+  const cicloDe = (c: string | null | undefined) => (c ?? '').trim().toLowerCase().replace(/[\s_-]+/g, ' ')
+  const llave = (marca: string, c: string | null | undefined) => `${marca}|${cicloDe(c)}`
+  const porMarca = new Map<string, string[]>()
   for (const f of plan) {
-    const k = marcaHecho(f.lote, f.ddt, f.material_id)
+    const m = marcaHecho(f.lote, f.ddt, f.material_id)
+    const k = llave(m, f.ciclo)
+    if (!grupos.has(k)) porMarca.set(m, [...(porMarca.get(m) ?? []), k])
     grupos.set(k, [...(grupos.get(k) ?? []), f])
   }
   const aplicadas = new Map<string, AplicacionDeFila[]>()
@@ -145,7 +151,13 @@ export function comparativaPlanReal(plan: FilaPlanInyeccion[], aplicaciones: Apl
   for (const a of aplicaciones) {
     if (a.anulado_at) continue
     for (const l of a.lineas) {
-      const k = l.ddt_plan !== null && l.ddt_plan !== undefined ? marcaHecho(a.lote, l.ddt_plan, l.material_id) : null
+      const m = l.ddt_plan !== null && l.ddt_plan !== undefined ? marcaHecho(a.lote, l.ddt_plan, l.material_id) : null
+      // Su ciclo; si la aplicación no lo trae, el único (o el primero) ciclo que tenga ese lote, DDT y producto
+      let k: string | null = null
+      if (m) {
+        const propio = llave(m, a.ciclo)
+        k = grupos.has(propio) ? propio : a.ciclo ? null : (porMarca.get(m)?.[0] ?? null)
+      }
       if (k && grupos.has(k)) aplicadas.set(k, [...(aplicadas.get(k) ?? []), aplicacionDe(a, l)])
       else
         sueltas.push(

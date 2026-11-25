@@ -35,18 +35,24 @@ export function VistaPlanVsReal({
 }) {
   const [cats, setCats] = useState<string[]>([])
   const [limite, setLimite] = useState(40)
+  const [ciclo, setCiclo] = useState<string>('') // '' = todos los ciclos
   const [abiertas, setAbiertas] = useState<Set<string>>(new Set())
   const disponibles = useMemo(() => new Set(filas.map((f) => f.categoria_clave).filter((x): x is string => Boolean(x))), [filas])
-  const visibles = useMemo(() => (cats.length ? filas.filter((f) => f.categoria_clave && cats.includes(f.categoria_clave)) : filas), [filas, cats])
+  const ciclos = useMemo(() => [...new Set(filas.map((f) => f.ciclo ?? ''))].sort((a, b) => a.localeCompare(b, 'es', { numeric: true })), [filas])
+  const visibles = useMemo(
+    () => filas.filter((f) => (!cats.length || (f.categoria_clave && cats.includes(f.categoria_clave))) && (!ciclo || (f.ciclo ?? '') === ciclo)),
+    [filas, cats, ciclo]
+  )
   const mostradas = agrupar ? visibles.slice(0, limite) : visibles
   const grupos = useMemo(() => {
     const m = new Map<string, FilaCumplimiento[]>()
     for (const f of mostradas) {
-      const k = f.tiempo === 'sin_plan' ? 'sp' : f.ddt === null ? 'x' : String(f.ddt)
+      const k = `${f.ciclo ?? ''}§${f.tiempo === 'sin_plan' ? 'sp' : f.ddt === null ? 'x' : String(f.ddt)}`
       m.set(k, [...(m.get(k) ?? []), f])
     }
     const orden = (k: string) => (k === 'sp' ? 99999 : k === 'x' ? 9999 : Number(k))
-    return [...m.entries()].sort((a, b) => orden(a[0]) - orden(b[0]))
+    const partes = (k: string) => { const i = k.indexOf('§'); return [k.slice(0, i), k.slice(i + 1)] as const }
+    return [...m.entries()].sort((a, b) => partes(a[0])[0].localeCompare(partes(b[0])[0], 'es', { numeric: true }) || orden(partes(a[0])[1]) - orden(partes(b[0])[1]))
   }, [mostradas])
 
   if (filas.length === 0) {
@@ -143,16 +149,39 @@ export function VistaPlanVsReal({
   return (
     <div className="flex flex-col gap-2" data-plan-vs-real>
       <ChipsCategoria categorias={categorias} elegidas={cats} onCambiar={setCats} disponibles={disponibles} />
-      {grupos.map(([k, fs]) => {
+      {ciclos.length > 1 && (
+        <div className="flex flex-wrap items-center gap-2" data-plan-real-ciclos>
+          {['', ...ciclos].map((c) => (
+            <button
+              key={c || 'todos'}
+              type="button"
+              onClick={() => setCiclo(c)}
+              aria-pressed={ciclo === c}
+              className={`min-h-11 rounded-full px-4 text-sm font-semibold ring-1 ring-inset ${ciclo === c ? 'bg-brand-600 text-white ring-brand-600' : 'text-slate-700 ring-slate-300'}`}
+              data-plan-real-ciclo={c || 'todos'}
+            >
+              {c === '' ? 'Todos los ciclos' : c || 'Sin ciclo'}
+            </button>
+          ))}
+        </div>
+      )}
+      {grupos.map(([clave, fs], i) => {
         const f0 = fs.find((f) => f.fecha_plan)
+        const sep = clave.indexOf('§')
+        const cicloG = clave.slice(0, sep)
+        const k = clave.slice(sep + 1)
+        const tituloCiclo = ciclos.length > 1 && (i === 0 || grupos[i - 1][0].slice(0, grupos[i - 1][0].indexOf('§')) !== cicloG)
         return (
-          <section key={k} className="overflow-hidden rounded-xl bg-white ring-1 ring-inset ring-slate-200" data-plan-real-ddt={k}>
+          <div key={clave} className="flex flex-col gap-2">
+          {tituloCiclo && <h3 className="pt-1 text-base font-semibold text-brand-700" data-plan-real-ciclo-titulo>{cicloG || 'Sin ciclo'}</h3>}
+          <section className="overflow-hidden rounded-xl bg-white ring-1 ring-inset ring-slate-200" data-plan-real-ddt={k}>
             <h3 className="sticky top-0 z-[1] flex items-baseline justify-between bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
               <span>{k === 'sp' ? 'Sin plan' : k === 'x' ? 'DDT sin dato' : `DDT ${k}`}{f0 ? ` · ${f0.fecha_estimada ? '≈ ' : ''}${fechaCorta(f0.fecha_plan)}` : ''}</span>
               <span className="font-semibold normal-case">{fs.length}</span>
             </h3>
             <div className="divide-y divide-slate-100">{fs.map((f) => fila(f, false))}</div>
           </section>
+          </div>
         )
       })}
       {visibles.length > mostradas.length && (
