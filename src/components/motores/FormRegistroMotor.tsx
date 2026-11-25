@@ -3,7 +3,7 @@
 /**
  * Registro diario del motor = la hoja física FTR_F-MA-103, con sus mismos campos y su mismo orden: fecha, control de horas del motor
  * (horómetro inicial, final, horas), lectura del visor del tanque (galones iniciales, finales, gastados), rendimiento, revoluciones,
- * lectura de caudal (inicial y final) y firma del operador. El suministro de combustible NO se escribe aquí: se recibe con «Recibir
+ * lectura de caudal (inicial y final). La firma es de quien ENTREGA el combustible y se anota al recibirlo. El suministro de combustible NO se escribe aquí: se recibe con «Recibir
  * combustible» y la base lo toma de las recepciones del día. El gastado (inicial − final) y el rendimiento
  * se calculan en vivo y las alertas salen al instante, con texto claro. Sin señal: se guarda en el teléfono y se envía solo
  * (operación `motor_registro_diario`). Se registran jornadas de ayer o anteriores: nunca se asume «hoy».
@@ -31,10 +31,10 @@ type Datos = {
   horoCambiado: boolean
   visorCambiado: boolean
   noTrabajo: boolean
+  horoMalo?: boolean
   comentario: string
   caudalIni?: string
   caudalFin?: string
-  operador?: string
 }
 
 const num = (t: string): number | null => {
@@ -109,30 +109,36 @@ export function FormRegistroMotor({
   const [horoCambiado, setHoroCambiado] = useState(b?.horoCambiado ?? false)
   const [visorCambiado, setVisorCambiado] = useState(b?.visorCambiado ?? false)
   const [noTrabajo, setNoTrabajo] = useState(b?.noTrabajo ?? false)
+  // Horómetro dañado: no hay lectura; las horas quedan en 0, el diésel sí se registra y las horas se estiman solo para el mantenimiento
+  const [horoMalo, setHoroMalo] = useState(b?.horoMalo ?? false)
   const [comentario, setComentario] = useState(b?.comentario ?? '')
   const [caudalIni, setCaudalIni] = useState(b?.caudalIni ?? '')
   const [caudalFin, setCaudalFin] = useState(b?.caudalFin ?? '')
-  const [operador, setOperador] = useState(b?.operador ?? yo.nombre)
   // sql/140 · Registro histórico: día pasado, sin custodia y SIN mover el diésel del tanque (la base lo vuelve a validar)
   const [esHistorico, setEsHistorico] = useState(false)
-  useAutoguardado(borrador, { fecha, horoIni, horoFin, visorIni, visorFin, rpm, horoCambiado, visorCambiado, noTrabajo, comentario, caudalIni, caudalFin, operador })
+  useAutoguardado(borrador, { fecha, horoIni, horoFin, visorIni, visorFin, rpm, horoCambiado, visorCambiado, noTrabajo, horoMalo, comentario, caudalIni, caudalFin })
 
   // El inicial propuesto es la lectura final del último registro ANTERIOR a esta fecha (cola incluida)
   const propuesta = useMemo(() => proponerInicial({ equipoId: motor.equipo_id, fecha, estado, pendientes }), [motor.equipo_id, fecha, estado, pendientes])
   const horoIniTxt = horoIni ?? (propuesta.horoIni !== null ? String(propuesta.horoIni) : '')
-  const visorIniTxt = visorIni ?? (propuesta.visorIni !== null ? String(propuesta.visorIni) : '')
-  const horoFinEf = noTrabajo ? horoIniTxt : horoFin
+  // El visor inicial = donde terminó el último registro + lo recibido ese día en el tanque (ej.: terminó en 47 y hoy entraron 150 → 197).
+  // En un registro histórico no se suma: no mueve el tanque.
+  const tanqueId = motor.tanque?.id ?? ''
+  const recibidoHoy = tanqueId ? recibidoEnDia(tanqueId, fecha, estado, pendientes) : 0
+  const visorIniTxt = visorIni ?? (propuesta.visorIni !== null ? String(Math.round((propuesta.visorIni + (esHistorico ? 0 : recibidoHoy)) * 100) / 100) : '')
+  const horoFinEf = noTrabajo || horoMalo ? horoIniTxt : horoFin
   const visorFinEf = noTrabajo ? visorIniTxt : visorFin
 
-  const tanqueId = motor.tanque?.id ?? ''
   const hoy = hoyIso()
   // sql/147: el suministro del día = lo recibido ese día en el tanque (recepciones, también las pendientes de enviar)
-  const recibidoHoy = tanqueId ? recibidoEnDia(tanqueId, fecha, estado, pendientes) : 0
   const recibido = recibidoHoy
   const calc = calcularRegistro(
     { horoIni: num(horoIniTxt), horoFin: num(horoFinEf), visorIni: num(visorIniTxt), visorFin: num(visorFinEf), recibido },
     { horoCambiado }
   )
+  // Las horas salen en cuanto se escribe el horómetro final (sin esperar los galones)
+  const hi = num(horoIniTxt), hf = num(horoFinEf)
+  const horasVivo = hi !== null && hf !== null ? (hf >= hi ? Math.round((hf - hi) * 100) / 100 : horoCambiado ? 0 : null) : null
   const completo = num(horoIniTxt) !== null && num(horoFinEf) !== null && num(visorIniTxt) !== null && num(visorFinEf) !== null
   const visorSube = completo && !noTrabajo && (num(visorFinEf) as number) > (num(visorIniTxt) as number) && recibidoHoy === 0
   const saldoLibro = tanqueId ? saldoTanqueLocal(tanqueId, estado, pendientes) : null
@@ -226,12 +232,11 @@ export function FormRegistroMotor({
           rpm: rpmNum,
           horoCambiado,
           visorCambiado,
-          comentario,
+          comentario: horoMalo && !/horómetro (malo|dañado)/i.test(comentario) ? `[Horómetro dañado] ${comentario}`.trim() : comentario,
           estacionId: estacion.id,
           tanqueId: tanqueId || undefined,
           caudalIni: ci,
           caudalFin: cf,
-          operador,
           hoy,
         })
         if ('error' in a) return a.error
@@ -301,6 +306,10 @@ export function FormRegistroMotor({
         <input type="checkbox" checked={noTrabajo} onChange={(e) => setNoTrabajo(e.target.checked)} className="h-6 w-6" data-no-trabajo />
         No trabajó ese día (horas 0)
       </label>
+      <label className="flex min-h-11 items-center gap-3 text-sm font-semibold text-slate-800">
+        <input type="checkbox" checked={horoMalo} onChange={(e) => setHoroMalo(e.target.checked)} className="h-6 w-6" data-horo-malo />
+        Horómetro dañado (sin lectura)
+      </label>
 
       <Seccion>Control de horas del motor</Seccion>
       <div className="grid grid-cols-2 gap-3">
@@ -308,9 +317,9 @@ export function FormRegistroMotor({
           <CajaNumero valor={horoIniTxt} onCambiar={setHoroIni} dato="data-horo-ini" etiqueta="Horómetro inicial" />
         </Campo>
         <Campo etiqueta="Horómetro final" requerido>
-          <CajaNumero valor={horoFinEf} onCambiar={setHoroFin} dato="data-horo-fin" etiqueta="Horómetro final" deshabilitado={noTrabajo} />
+          <CajaNumero valor={horoFinEf} onCambiar={setHoroFin} dato="data-horo-fin" etiqueta="Horómetro final" deshabilitado={noTrabajo || horoMalo} />
         </Campo>
-        <Calculado etiqueta="Horas" valor={calc.horas === null ? '—' : String(calc.horas)} dato="data-horas" />
+        <Calculado etiqueta="Horas" valor={horasVivo === null ? '—' : String(horasVivo)} dato="data-horas" />
         <Campo etiqueta="Revoluciones (opcional)">
           <CajaNumero valor={rpm} onCambiar={setRpm} dato="data-rpm" etiqueta="Revoluciones del motor" />
         </Campo>
@@ -367,17 +376,6 @@ export function FormRegistroMotor({
           Cambié el visor
         </label>
       </div>
-
-      <Campo etiqueta="Firma del operador">
-        <input
-          value={operador}
-          onChange={(e) => setOperador(e.target.value)}
-          maxLength={80}
-          aria-label="Firma del operador"
-          data-operador
-          className="min-h-11 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-base focus:border-brand-600 focus:outline-none"
-        />
-      </Campo>
 
       <Campo etiqueta={horoCambiado || visorCambiado ? 'Observaciones (obligatorias con el cambio)' : 'Observaciones'} requerido={horoCambiado || visorCambiado}>
         <AreaTexto value={comentario} onChange={(e) => setComentario(e.target.value)} rows={2} placeholder="Opcional" data-comentario />

@@ -243,13 +243,13 @@ export function PestanaHistorial({
     const elegidos = motoresSel.length > 0 ? motores.filter((m) => motoresSel.includes(m.equipo_id)) : motores
     return elegidos.map((m) => {
       const sumin = m.tanque?.id
-        ? estado.recepciones.filter((x) => x.estacion_id === estacion.id && x.tanque_id === m.tanque?.id && !x.anulado_at).map((x) => ({ id: x.id, dia: diaLocal(x.fecha_hora), galones: x.galones }))
+        ? estado.recepciones.filter((x) => x.estacion_id === estacion.id && x.tanque_id === m.tanque?.id && !x.anulado_at).map((x) => ({ id: x.id, dia: diaLocal(x.fecha_hora), galones: x.galones, entrego: choferes.find((c) => c.id === x.chofer_id)?.nombre ?? null }))
         : []
       let filas = filasDeHoja(estado.registros.filter((r) => r.estacion_id === estacion.id), { equipoId: m.equipo_id, desde, hasta }, senales, sumin)
       if (soloAlertas) filas = filas.filter((f) => f.senal !== null)
       return { motor: m, titulo: etiquetaMotor(m.codigo, m.nombre), filas }
     })
-  }, [motores, motoresSel, estado.registros, estacion.id, desde, hasta, soloAlertas, senales])
+  }, [motores, motoresSel, estado.registros, estado.recepciones, choferes, estacion.id, desde, hasta, soloAlertas, senales])
   // Resumen de la temporada (se calcula en el teléfono, también sin señal): motores elegidos (o todos los de la estación) y fechas del filtro
   const cifras = useMemo(() => {
     const ids = new Set(motoresSel.length > 0 ? motoresSel : motores.map((m) => m.equipo_id))

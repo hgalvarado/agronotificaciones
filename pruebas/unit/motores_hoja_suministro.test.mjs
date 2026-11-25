@@ -30,7 +30,7 @@ test('hoja: día con suministro y sin registro = fila «solo suministro», en or
   const solo = f.filter((x) => x.soloSuministro)
   assert.deepEqual(solo.map((x) => [x.fecha, x.suministro, x.horas, x.gastado]), [['2026-11-09', 40, 0, 0], ['2026-11-12', 15, 0, 0]])
   const t = H.totalesHoja(f)
-  assert.deepEqual(t, { dias: 1, horas: 6, gastado: 12, suministro: 55, rendimiento: 2 })
+  assert.deepEqual(t, { dias: 1, horas: 6, horasEst: 0, horasProy: 6, gastado: 12, suministro: 55, rendimiento: 2 })
 })
 
 test('hoja: el suministro de un día anulado sale como fila solo suministro', () => {
@@ -54,4 +54,12 @@ test('resumen temporada: días con horas, rendimiento ponderado, RPM ponderada, 
 test('resumen temporada: el suministro del registro y la recepción del mismo día no se cuentan doble', () => {
   const c = R.resumirRegistros([{ horas: 5, gastado_gal: 10, recibido_gal: 250 }], 0)
   assert.equal(c.gal_recibidos, 250)
+})
+
+test('hoja: la firma es quien entregó el combustible ese día (no el operador del registro)', () => {
+  const f = H.filasDeHoja([reg('2026-11-10', { recibido_gal: 50 }), reg('2026-11-11')], {}, undefined, [
+    { id: 'a', dia: '2026-11-10', galones: 50, entrego: 'Luis Pérez' },
+    { id: 'b', dia: '2026-11-12', galones: 20, entrego: 'Ana Gómez' },
+  ])
+  assert.deepEqual(f.map((x) => [x.fecha, x.operador]), [['2026-11-10', 'Luis Pérez'], ['2026-11-11', null], ['2026-11-12', 'Ana Gómez']])
 })

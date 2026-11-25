@@ -34,14 +34,15 @@ export function ResumenTemporada({ titulo = 'Resumen de la temporada', cifras, s
       ) : (
         <>
           <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2">
-            <Cifra etiqueta="Horas" valor={cantidad(cifras.horas)} unidad="h" />
+            <Cifra etiqueta="Horas (horómetro)" valor={cantidad(cifras.horas)} unidad="h" />
+            {cifras.horas_estimadas > 0 && <Cifra etiqueta="Horas estimadas" valor={cantidad(cifras.horas_estimadas)} unidad="h" />}
+            {cifras.horas_estimadas > 0 && <Cifra etiqueta="Horas proyectadas" valor={cantidad(cifras.horas + cifras.horas_estimadas)} unidad="h" />}
             <Cifra etiqueta="Gastado" valor={cantidad(cifras.gal_gastados)} unidad="gal" />
             <Cifra etiqueta="Rendimiento" valor={cifras.rendimiento_gal_h === null ? '—' : cantidad(cifras.rendimiento_gal_h)} unidad="gal/h" />
             <Cifra etiqueta="RPM promedio" valor={cifras.rpm_prom === null ? '—' : String(cifras.rpm_prom)} />
           </dl>
           <p className="mt-2 text-xs leading-snug text-slate-600">
             {cifras.dias} día{cifras.dias === 1 ? '' : 's'} trabajado{cifras.dias === 1 ? '' : 's'} · recibido {cantidad(cifras.gal_recibidos)} gal
-            {cifras.horas_estimadas > 0 ? ` · ${cantidad(cifras.horas_estimadas)} h estimadas` : ''}
             {cifras.mantenimientos === undefined ? '' : ` · ${cifras.mantenimientos} mantenimiento${cifras.mantenimientos === 1 ? '' : 's'}`}
           </p>
         </>
