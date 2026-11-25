@@ -9,6 +9,23 @@
             "command": "node \"$CLAUDE_PROJECT_DIR/scripts/revisar-bucles.mjs\"",
             "timeout": 20,
             "statusMessage": "Revisando bucles y reconsultas…"
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/revisar-ui.mjs\"",
+            "timeout": 20,
+            "statusMessage": "Revisando UI/UX…"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/revisar-ui.mjs\" --recordatorio",
+            "timeout": 15
           }
         ]
       }

@@ -52,10 +52,10 @@ export function FormMantenimiento({
       sinCustodia
       construir={({ ubicacion, enNombreDe }) => {
         const fh = deEntradaLocal(fechaHora)
-        if (!fh) return 'Indica la fecha y hora del mantenimiento.'
-        if (Date.parse(fh) > Date.now() + 5 * 60_000) return 'El mantenimiento no puede ser en el futuro.'
+        if (!fh) return 'Falta la fecha y hora.'
+        if (Date.parse(fh) > Date.now() + 5 * 60_000) return 'La fecha no puede ser futura.'
         const h = horometro.trim() ? Number(horometro.replace(',', '.')) : null
-        if (h !== null && (!Number.isFinite(h) || h < 0)) return 'Escribe un número válido en el horómetro.'
+        if (h !== null && (!Number.isFinite(h) || h < 0)) return 'Horómetro: escribe un número.'
         return [
           crearOperacion(
             'motor_mantenimiento',

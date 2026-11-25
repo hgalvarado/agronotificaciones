@@ -487,3 +487,35 @@ html[data-tema='oscuro'] input[type='date']::-webkit-calendar-picker-indicator {
     color: #0f172a !important;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Colores por tipo de movimiento (bitácora de Fertirriego e Inyección)  */
+/* ------------------------------------------------------------------ */
+/* Tabla única: fondo suave, borde (la franja de la izquierda) y texto de cada familia, en claro y en oscuro.
+ * Se usan desde src/lib/fertirriego/coloresMovimiento.ts; el color nunca va solo (siempre con icono y texto). */
+:root {
+  --mov-recepcion-fondo: #e8f6ec; --mov-recepcion-borde: #1f9d4a; --mov-recepcion-texto: #14602e;
+  --mov-aplicacion-fondo: #fdecea; --mov-aplicacion-borde: #d93025; --mov-aplicacion-texto: #a3231a;
+  --mov-conteo-fondo: #e0f5f3; --mov-conteo-borde: #00a99d; --mov-conteo-texto: #005c56;
+  --mov-inyeccion-fondo: #f0eafb; --mov-inyeccion-borde: #7c4dcc; --mov-inyeccion-texto: #4b2a96;
+  --mov-devolucion-fondo: #f3f6dc; --mov-devolucion-borde: #8da40f; --mov-devolucion-texto: #566607;
+  --mov-traslado-fondo: #e5eefb; --mov-traslado-borde: #2f6fd6; --mov-traslado-texto: #1d4690;
+  --mov-relevo-fondo: #fdf0e2; --mov-relevo-borde: #e07a10; --mov-relevo-texto: #8a4a05;
+  --mov-envase-fondo: #f1ece6; --mov-envase-borde: #9a7653; --mov-envase-texto: #5c4429;
+  --mov-historico-fondo: #fbe9f3; --mov-historico-borde: #cc3d8a; --mov-historico-texto: #8a1f5b;
+  --mov-motor-fondo: #e9eef2; --mov-motor-borde: #4f7a99; --mov-motor-texto: #2b4a63;
+  --mov-neutro-fondo: #eef1f4; --mov-neutro-borde: #8396a8; --mov-neutro-texto: #3c5065;
+}
+html[data-tema='oscuro'] {
+  --mov-recepcion-fondo: #0f2a1b; --mov-recepcion-borde: #34c466; --mov-recepcion-texto: #7ee8a2;
+  --mov-aplicacion-fondo: #2e1416; --mov-aplicacion-borde: #f0584c; --mov-aplicacion-texto: #ffa59d;
+  --mov-conteo-fondo: #0d2a29; --mov-conteo-borde: #2cc9bd; --mov-conteo-texto: #7fe6df;
+  --mov-inyeccion-fondo: #241a3a; --mov-inyeccion-borde: #a07ae8; --mov-inyeccion-texto: #cdb6fa;
+  --mov-devolucion-fondo: #262b0c; --mov-devolucion-borde: #b8d12e; --mov-devolucion-texto: #dbea85;
+  --mov-traslado-fondo: #10243f; --mov-traslado-borde: #5b97ee; --mov-traslado-texto: #a7c8f8;
+  --mov-relevo-fondo: #2e1c0b; --mov-relevo-borde: #f5973a; --mov-relevo-texto: #fbc78c;
+  --mov-envase-fondo: #2a2218; --mov-envase-borde: #bf9a74; --mov-envase-texto: #e0c9ae;
+  --mov-historico-fondo: #331528; --mov-historico-borde: #e569ab; --mov-historico-texto: #f6a9d0;
+  --mov-motor-fondo: #14222d; --mov-motor-borde: #6fa3c7; --mov-motor-texto: #b4d3ea;
+  --mov-neutro-fondo: #1c2230; --mov-neutro-borde: #78849a; --mov-neutro-texto: #bcc6d6;
+}

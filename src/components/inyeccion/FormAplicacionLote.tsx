@@ -54,6 +54,7 @@ export function FormAplicacionLote({
   loteInicial,
   categoriaInicial,
   historico,
+  materialesCampo,
   registrar,
   onCerrar,
   onGuardado,
@@ -67,6 +68,8 @@ export function FormAplicacionLote({
   categoriaInicial?: string
   /** sql/140: permiso temporal «Registro histórico» de esta estación (si lo tiene, se ofrece la casilla). */
   historico?: PermisoHistorico | null
+  /** Los demás productos que AGL publicó a las estaciones (catálogo `materiales` de Fertirriego): también se pueden aplicar sin plan. */
+  materialesCampo?: Material[]
   registrar: (...ops: Operacion[]) => Promise<void>
   onCerrar: () => void
   onGuardado: (m: string) => void
@@ -123,12 +126,15 @@ export function FormAplicacionLote({
   const areaTexto = area ?? (propuesta !== null ? String(propuesta) : '')
   const areaNum = areaTexto.trim() ? num(areaTexto) : NaN
 
-  const productos = useMemo<Material[]>(
-    () =>
-      inyeccion.materiales.map((m) => ({ id: m.id, codigo: m.codigo, descripcion: m.descripcion, unidad: m.unidad, grupo: m.grupo, origen: 'MARA', validado: true, analisis: false })),
-    [inyeccion.materiales]
-  )
+  // TODOS los productos publicados desde AGL: los de Inyección (materiales con iny_activo) y los demás que ya están publicados a las
+  // estaciones (mismo catálogo `materiales`; nada de listas paralelas). Primero salen «Del plan» y luego «Otros productos (buscar)».
+  const productos = useMemo<Material[]>(() => {
+    const deInyeccion: Material[] = inyeccion.materiales.map((m) => ({ id: m.id, codigo: m.codigo, descripcion: m.descripcion, unidad: m.unidad, grupo: m.grupo, origen: 'MARA', validado: true, analisis: false }))
+    const ids = new Set(deInyeccion.map((m) => m.id))
+    return [...deInyeccion, ...(materialesCampo ?? []).filter((m) => !ids.has(m.id))]
+  }, [inyeccion.materiales, materialesCampo])
   const tecnico = (id: string) => inyeccion.materiales.find((m) => m.id === id)
+  const nombreDe = (id: string) => tecnico(id)?.descripcion ?? productos.find((m) => m.id === id)?.descripcion ?? 'producto'
   const plan = useMemo(() => new Map(grupo.map((g) => [g.material_id, g.cantidad_plan])), [grupo])
   const datosPlan = useMemo(() => new Map(grupo.map((g) => [g.material_id, g])), [grupo])
   const propuestas = useMemo<LineaEditable[]>(
@@ -145,7 +151,7 @@ export function FormAplicacionLote({
   const faltante = esHistorico ? [] : lineas.filter((l) => usaLinea(l) && num(l.cantidad) > (saldos.get(l.material_id) ?? 0))
   const firmaFaltante = faltante.map((l) => `${l.material_id}:${l.cantidad.trim()}`).join('|')
   const aceptaNegativo = faltante.length > 0 && aceptada === firmaFaltante
-  const nombre = (id: string) => tecnico(id)?.descripcion ?? 'producto'
+  const nombre = nombreDe
 
   const avisoArea = areaLote !== null && Number.isFinite(areaNum) && areaNum > areaLote + 0.0001
   const avisoPie =
@@ -347,7 +353,7 @@ export function FormAplicacionLote({
 
       <div className="flex flex-col gap-2" data-productos-aplicacion>
         <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Productos y su objetivo</p>
-        {inyeccion.materiales.length === 0 && <Alerta tono="ambar">No hay productos de inyección publicados desde AGL todavía.</Alerta>}
+        {productos.length === 0 && <Alerta tono="ambar">No hay productos publicados desde AGL todavía.</Alerta>}
         <EditorLineas
           materiales={productos}
           lineas={lineas}

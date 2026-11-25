@@ -1,26 +1,30 @@
 'use client'
 
 /**
- * Recibir diésel a la BODEGA de la estación (sql/144): el diésel es un producto más de la bodega y los motores lo consumen de
- * ahí en el registro diario (suministro). Operación `diesel_recibir`, a nivel estación (sin elegir motor). El chofer y el
- * vehículo son los del catálogo de campo (mismos selectores que Recibir producto).
+ * Recibir diésel al TANQUE de la estación (sql/147): se elige el tanque (de los tanques fijos asignados a la estación; con uno solo
+ * ya viene elegido) y no se toca la bodega. Operación `diesel_recibir`. El chofer y el vehículo son los del catálogo de campo
+ * (mismos selectores que Recibir producto).
  */
 
 import { useMemo, useState } from 'react'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/Primitivos'
+import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
 import { aEntradaLocal, ahoraIso, deEntradaLocal } from '@/lib/fechas/zona'
 import { claveBorrador, useAutoguardado, useBorrador } from '@/lib/fertirriego/borrador'
 import { crearOperacion } from '@/lib/fertirriego/operaciones'
 import type { Chofer, EstadoCampo, Estacion, Operacion, Persona, Vehiculo } from '@/lib/fertirriego/tipos'
+import type { TanqueFijo } from '@/lib/motores/estado'
 import { armarRecepcionDiesel } from '@/lib/motores/registroDiario'
 import { SelectorChofer, SelectorVehiculo } from '@/components/fertirriego/ChoferVehiculo'
 import { MarcoRegistro } from '@/components/fertirriego/MarcoRegistro'
 
-type Datos = { fechaHora: string; galones: string; chofer: string; vehiculo: string; comentario: string; nuevos: Operacion[]; choferesAqui: Chofer[]; vehiculosAqui: Vehiculo[] }
+type Datos = { tanque?: string; fechaHora: string; galones: string; chofer: string; vehiculo: string; comentario: string; nuevos: Operacion[]; choferesAqui: Chofer[]; vehiculosAqui: Vehiculo[] }
 
 export function FormRecibirDiesel({
-  dieselMaterialId,
-  saldoGal,
+  tanques,
+  tanqueInicial,
+  fechaInicial,
+  saldoDe,
   campo,
   estacion,
   yo,
@@ -28,10 +32,14 @@ export function FormRecibirDiesel({
   onCerrar,
   onGuardado,
 }: {
-  /** El diésel que publica AGL (producto de la bodega). Sin él no se puede recibir. */
-  dieselMaterialId: string | null
-  /** Lo que hay hoy en la bodega de la estación (con lo pendiente), para mostrarlo. */
-  saldoGal: number | null
+  /** Los tanques de la estación (fijos). */
+  tanques: TanqueFijo[]
+  /** El tanque que ya viene elegido (el del motor o el que se tocó). */
+  tanqueInicial?: string
+  /** Día (AAAA-MM-DD) con el que viene la recepción (el del registro que la pidió); sin esto, ahora. */
+  fechaInicial?: string
+  /** Saldo del tanque contando lo pendiente de enviar. */
+  saldoDe: (tanqueId: string) => number
   campo: EstadoCampo
   estacion: Estacion
   yo: Persona
@@ -41,7 +49,8 @@ export function FormRecibirDiesel({
 }) {
   const borrador = useBorrador<Datos>(claveBorrador('diesel_recibir', yo.id, estacion.id))
   const b = borrador.inicial
-  const [fechaHora, setFechaHora] = useState(b?.fechaHora ?? aEntradaLocal(ahoraIso()))
+  const [tanque, setTanque] = useState(b?.tanque ?? tanqueInicial ?? (tanques.length === 1 ? tanques[0].id : ''))
+  const [fechaHora, setFechaHora] = useState(b?.fechaHora ?? (fechaInicial ? `${fechaInicial}T12:00` : aEntradaLocal(ahoraIso())))
   const [galones, setGalones] = useState(b?.galones ?? '')
   const [chofer, setChofer] = useState(b?.chofer ?? '')
   const [vehiculo, setVehiculo] = useState(b?.vehiculo ?? '')
@@ -49,7 +58,7 @@ export function FormRecibirDiesel({
   const [nuevos, setNuevos] = useState<Operacion[]>(b?.nuevos ?? [])
   const [choferesAqui, setChoferesAqui] = useState<Chofer[]>(b?.choferesAqui ?? [])
   const [vehiculosAqui, setVehiculosAqui] = useState<Vehiculo[]>(b?.vehiculosAqui ?? [])
-  useAutoguardado(borrador, { fechaHora, galones, chofer, vehiculo, comentario, nuevos, choferesAqui, vehiculosAqui })
+  useAutoguardado(borrador, { tanque, fechaHora, galones, chofer, vehiculo, comentario, nuevos, choferesAqui, vehiculosAqui })
 
   const choferes = useMemo(() => [...campo.choferes, ...choferesAqui], [campo.choferes, choferesAqui])
   const vehiculos = useMemo(() => [...campo.vehiculos, ...vehiculosAqui], [campo.vehiculos, vehiculosAqui])
@@ -57,7 +66,7 @@ export function FormRecibirDiesel({
 
   return (
     <MarcoRegistro
-      titulo={`Recibir diésel · ${estacion.nombre}`}
+      titulo={`Recibir combustible · ${estacion.nombre}`}
       estacion={estacion}
       yo={yo}
       registrar={registrar}
@@ -66,27 +75,43 @@ export function FormRecibirDiesel({
       borrador={borrador}
       rapido
       construir={({ ubicacion, enNombreDe }) => {
-        if (!dieselMaterialId) return 'AGL todavía no publica el producto diésel. Avisa a la Torre de Control.'
+        if (tanques.length === 0) return 'Sin tanques. Pide uno a Torre de Control.'
         const fh = deEntradaLocal(fechaHora)
-        if (!fh) return 'Indica la fecha y hora de la recepción.'
-        if (Date.parse(fh) > Date.now() + 5 * 60_000) return 'La recepción no puede ser en el futuro.'
+        if (!fh) return 'Falta la fecha y hora.'
+        if (Date.parse(fh) > Date.now() + 5 * 60_000) return 'La fecha no puede ser futura.'
         const a = armarRecepcionDiesel({
           estacionId: estacion.id,
+          tanqueId: tanque || null,
           galones: g,
           fechaHora: fh,
           choferId: chofer || null,
           vehiculoId: vehiculo || null,
           comentario,
-          dieselMaterialId,
         })
         if ('error' in a) return a.error
-        return [...nuevos, crearOperacion('diesel_recibir', a.datos, { ubicacion, enNombreDe, resumen: `Diésel recibido · ${estacion.nombre} · ${g} gal` })]
+        return [...nuevos, crearOperacion('diesel_recibir', a.datos, { ubicacion, enNombreDe, resumen: `Combustible recibido · ${tanques.find((t) => t.id === tanque)?.nombre ?? estacion.nombre} · ${g} gal` })]
       }}
     >
       <p className="text-sm text-slate-700" data-bodega-recibir>
-        Entra a la bodega de <strong>{estacion.nombre}</strong>
-        {saldoGal !== null ? ` · ahora hay ${saldoGal} gal de diésel` : ''}. Los motores lo toman de ahí con el suministro del registro diario.
+        Entra al <strong>tanque</strong>, no a la bodega.
       </p>
+      <Campo etiqueta="Tanque" requerido>
+        <div data-selector-tanque-diesel>
+          <SelectorBuscable
+            valor={tanque}
+            opciones={tanques.map((t) => ({
+              id: t.id,
+              titulo: t.nombre,
+              subtitulo: `${saldoDe(t.id)} gal${t.capacidad_gal ? ` de ${t.capacidad_gal}` : ''}${t.motor_equipo_id ? ' · con motor' : ' · sin motor'}`,
+            }))}
+            onCambiar={setTanque}
+            placeholder="Elegir tanque…"
+            etiquetaBusqueda="Buscar tanque"
+            permitirVacio={false}
+          />
+        </div>
+        {tanque && <p className="mt-1 text-xs text-slate-600">Hay {saldoDe(tanque)} gal.</p>}
+      </Campo>
       <Campo etiqueta="Galones recibidos" requerido>
         <input
           inputMode="decimal"

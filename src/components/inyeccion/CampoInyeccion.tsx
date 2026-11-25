@@ -14,6 +14,7 @@ import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
 import { RegistroServiceWorker } from '@/components/fertirriego/RegistroServiceWorker'
 import { CLAVE_BODEGA_GENERAL, type BodegaGeneral } from '@/lib/fertirriego/bodegaGeneral'
 import { conCustodiaLocal, saldosLocales } from '@/lib/fertirriego/calculos'
+import { nombrePersona } from '@/lib/fertirriego/bitacora'
 import { EVENTO_GUARDADO_FALLIDO, type GuardadoFallido } from '@/lib/fertirriego/guardadoFondo'
 import { useCampo } from '@/lib/fertirriego/useCampo'
 import { EncabezadoEnvios } from '@/components/fertirriego/EncabezadoEnvios'
@@ -99,7 +100,9 @@ export function CampoInyeccion({ usuarioId }: { usuarioId: string }) {
     setTimeout(() => setAviso((a) => (a === m ? null : a)), 6000)
   }
 
-  const nombreProducto = (id: string) => iny.estado?.materiales.find((m) => m.id === id)?.descripcion ?? 'un producto'
+  // Los productos de Inyección y, si no están ahí, los demás publicados a las estaciones (mismo catálogo `materiales`)
+  const nombreProducto = (id: string) => iny.estado?.materiales.find((m) => m.id === id)?.descripcion ?? estado?.materiales.find((m) => m.id === id)?.descripcion ?? 'un producto'
+  const unidadProducto = (id: string) => iny.estado?.materiales.find((m) => m.id === id)?.unidad ?? estado?.materiales.find((m) => m.id === id)?.unidad ?? ''
   const puedeRegistrar = iny.estado?.permisos?.registrar ?? false
 
   /** «Corregir y reenviar» (Envíos): abre «Aplicar por lote» con el lote de ese envío. */
@@ -196,6 +199,8 @@ export function CampoInyeccion({ usuarioId }: { usuarioId: string }) {
               puedeAnular={iny.estado.permisos?.anular ?? false}
               puedeEliminar={extras.eliminar_definitivo}
               nombreProducto={nombreProducto}
+              unidadProducto={unidadProducto}
+              nombreQuien={(id) => nombrePersona(estado, id)}
               registrar={campo.registrar}
               onGuardado={guardado}
               onEliminado={(m) => {
@@ -232,6 +237,7 @@ export function CampoInyeccion({ usuarioId }: { usuarioId: string }) {
               loteInicial={ventana.lote}
               categoriaInicial={ventana.categoria}
               historico={permisoHistoricoDe(extras, estacion.id)}
+              materialesCampo={estado.materiales}
               registrar={campo.registrar}
               onCerrar={() => setVentana(null)}
               onGuardado={guardado}
