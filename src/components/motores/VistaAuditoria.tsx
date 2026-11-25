@@ -14,10 +14,14 @@ import { formatearFechaHora } from '@/lib/estados'
 import { cantidad } from '@/lib/fertirriego/calculos'
 import { filtrarResumen, type FichaMotor, type RegistroFicha, type ResumenMotorAuditor, type TramoFicha } from '@/lib/motores/auditoria'
 import type { RegistroMotor } from '@/lib/motores/estado'
+import { filasDeHoja } from '@/lib/motores/hoja'
+import { htmlHoja } from '@/lib/motores/hojaPdf'
+import { imprimirHtml } from '@/lib/motores/imprimir'
 import { peorNivel, type Aviso } from '@/lib/motores/senales'
 import { useLlamadaRpc } from '@/lib/motores/useLlamadaRpc'
 import { DetalleRegistroMotor, fechaCorta } from './DetalleRegistroMotor'
 import { ChipsSenales, EstadoConsulta, etiquetaMotor, FilaToque } from './ElementosMotor'
+import { BarraVistaHistorial, HojaMotor, type VistaHistorial } from './HojaMotor'
 
 const NOMBRE_ESTADO: Record<string, string> = { EN_ESTACION: 'En estación', TALLER: 'En el taller', RETIRADO: 'Retirado', SIN_ASIGNAR: 'Sin asignar' }
 const NOMBRE_NIVEL_FILTRO = [
@@ -29,7 +33,7 @@ const NOMBRE_NIVEL_FILTRO = [
 const NOMBRE_MOV: Record<string, string> = { INSTALADO: 'Motor recibido', TRASLADADO: 'Motor movido', RETIRADO: 'Motor retirado', AL_TALLER: 'Al taller', DE_VUELTA: 'De vuelta del taller' }
 const NOMBRE_UBICACION: Record<string, string> = { ESTACION: 'En estación', TALLER: 'En el taller', RETIRADO: 'Retirado' }
 
-export function VistaAuditoria() {
+export function VistaAuditoria({ generadoPor }: { generadoPor: string }) {
   const { datos, cargando, error, recargar } = useLlamadaRpc<ResumenMotorAuditor[]>('fn_mot_motores_resumen', undefined)
   const [texto, setTexto] = useState('')
   const [estados, setEstados] = useState<string[]>([])
@@ -96,18 +100,19 @@ export function VistaAuditoria() {
           Ver más ({visibles.length - limite})
         </Boton>
       )}
-      {ficha && <FichaMotorAuditor equipoId={ficha} onCerrar={() => setFicha(null)} />}
+      {ficha && <FichaMotorAuditor equipoId={ficha} generadoPor={generadoPor} onCerrar={() => setFicha(null)} />}
     </div>
   )
 }
 
-function FichaMotorAuditor({ equipoId, onCerrar }: { equipoId: string; onCerrar: () => void }) {
+function FichaMotorAuditor({ equipoId, generadoPor, onCerrar }: { equipoId: string; generadoPor: string; onCerrar: () => void }) {
   const [desde, setDesde] = useState('')
   const [hasta, setHasta] = useState('')
   const [estaciones, setEstaciones] = useState<string[]>([])
   const [codigosSenal, setCodigosSenal] = useState<string[]>([])
   const [limite, setLimite] = useState(40)
   const [abierta, setAbierta] = useState<string | null>(null)
+  const [vista, setVista] = useState<VistaHistorial>('lista')
   const argumentos = useMemo(() => ({ p_equipo: equipoId, p_desde: desde || null, p_hasta: hasta || null }), [equipoId, desde, hasta])
   const { datos, cargando, error, recargar } = useLlamadaRpc<FichaMotor>('fn_mot_ficha_completa', argumentos)
 
@@ -134,6 +139,18 @@ function FichaMotorAuditor({ equipoId, onCerrar }: { equipoId: string; onCerrar:
   const activos = [desde, hasta, estaciones.length, codigosSenal.length].filter(Boolean).length
   const [filtros, setFiltros] = useState(false)
   const m = datos?.motor
+  const filasTabla = useMemo(() => filasDeHoja(registros, {}, senalesDe), [registros, senalesDe])
+  /** PDF: una sección por estación donde estuvo el motor (con su zona y tanque). */
+  const exportar = () => {
+    if (!m) return
+    const tramoDe = new Map((datos?.tramos ?? []).filter((t) => t.estacion_id).map((t) => [t.estacion_id as string, t]))
+    const ids = [...new Set(registros.map((r) => r.estacion_id ?? ''))]
+    const secciones = ids.map((id) => {
+      const t = id ? tramoDe.get(id) : undefined
+      return { motor: etiquetaMotor(m.codigo, m.nombre), estacion: t?.estacion ?? m.estacion, zona: t?.zona ?? null, tanque: t?.tanque ?? null, filas: filasDeHoja(registros.filter((r) => (r.estacion_id ?? '') === id), {}, senalesDe) }
+    })
+    imprimirHtml(htmlHoja({ secciones, desde, hasta, generadoPor, generadoEn: formatearFechaHora(new Date().toISOString()) }))
+  }
 
   return (
     <Modal abierto ancho="ancho" titulo={`Ficha · ${m?.codigo ?? ''}`} onCerrar={onCerrar}>
@@ -194,11 +211,13 @@ function FichaMotorAuditor({ equipoId, onCerrar }: { equipoId: string; onCerrar:
                 )}
               </div>
             )}
-            {registros.length === 0 && <p className="rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-500 ring-1 ring-inset ring-slate-200">No hay registros con esos filtros.</p>}
-            {registros.slice(0, limite).map((r) => (
+            <BarraVistaHistorial vista={vista} onVista={setVista} onExportar={exportar} puedeExportar={registros.length > 0} />
+            {registros.length === 0 && <p className="rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-500 ring-1 ring-inset ring-slate-200">Nada con esos filtros.</p>}
+            {vista === 'tabla' && registros.length > 0 && <HojaMotor titulo={etiquetaMotor(m.codigo, m.nombre)} filas={filasTabla} />}
+            {vista === 'lista' && registros.slice(0, limite).map((r) => (
               <FilaRegistroFicha key={r.id} r={r} equipoId={m.equipo_id} senales={senalesDe.get(r.id) ?? []} abierta={abierta === r.id} onToque={() => setAbierta((a) => (a === r.id ? null : r.id))} />
             ))}
-            {registros.length > limite && (
+            {vista === 'lista' && registros.length > limite && (
               <Boton variante="fantasma" className="min-h-11" onClick={() => setLimite((l) => l + 40)} data-ver-mas>
                 Ver más ({registros.length - limite})
               </Boton>

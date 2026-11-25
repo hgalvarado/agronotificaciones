@@ -16,10 +16,14 @@ import { cantidad } from '@/lib/fertirriego/calculos'
 import type { TipoEliminable } from '@/lib/fertirriego/eliminar'
 import type { Chofer, Estacion, Operacion, Persona, Vehiculo } from '@/lib/fertirriego/tipos'
 import { diaLocal, nombreQuien, type EstadoMotores, type MotorEstacion } from '@/lib/motores/estado'
+import { filasDeHoja } from '@/lib/motores/hoja'
+import { htmlHoja } from '@/lib/motores/hojaPdf'
+import { imprimirHtml } from '@/lib/motores/imprimir'
 import { peorNivel, senalesPorRegistro } from '@/lib/motores/senales'
 import { DatoHoja, etiquetaMotor, FilaToque, ChipsSenales } from './ElementosMotor'
 import { DetalleRegistroMotor, fechaCorta } from './DetalleRegistroMotor'
 import { FormAnularMotor, type AnulableMotor } from './FormAnularMotor'
+import { BarraVistaHistorial, HojaMotor, type VistaHistorial } from './HojaMotor'
 
 const NOMBRE_MOV: Record<string, string> = { INSTALADO: 'Motor recibido', TRASLADADO: 'Motor movido', RETIRADO: 'Motor retirado', AL_TALLER: 'Al taller', DE_VUELTA: 'De vuelta del taller' }
 const TIPOS_PENDIENTES = ['motor_registro_diario', 'diesel_recibir', 'motor_mantenimiento', 'motor_asignar', 'motor_retiro']
@@ -65,6 +69,9 @@ export function PestanaHistorial({
   const [soloAlertas, setSoloAlertas] = useState(false)
   const [filtrosAbiertos, setFiltrosAbiertos] = useState(Boolean(motorInicial))
   const [limite, setLimite] = useState(40)
+  const [vista, setVista] = useState<VistaHistorial>('lista')
+  const [desde, setDesde] = useState('')
+  const [hasta, setHasta] = useState('')
 
   const puede = puedeAnular && estacion.permisos.anular
   const codigoDe = useMemo(() => new Map(estado.motores.map((m) => [m.equipo_id, etiquetaMotor(m.codigo, m.nombre)])), [estado.motores])
@@ -142,8 +149,8 @@ export function PestanaHistorial({
             key={clave}
             atributos={{ 'data-recepcion-motor': x.id }}
             nivel={x.anulado_at ? 'gris' : 'verde'}
-            titulo={<span className={x.anulado_at ? 'line-through opacity-60' : ''}>Diésel recibido · {cantidad(x.galones)} gal</span>}
-            linea2={x.tanque_id ? `Tanque ${tanqueNombre.get(x.tanque_id) ?? '—'}` : 'Recibido antes del tanque fijo (nivel estación)'}
+            titulo={<span className={x.anulado_at ? 'line-through opacity-60' : ''}>Combustible recibido · {cantidad(x.galones)} gal</span>}
+            linea2={x.tanque_id ? `Tanque ${tanqueNombre.get(x.tanque_id) ?? '—'}` : 'Antes del tanque fijo'}
             onToque={() => alternar(clave)}
             abierta={abierta === clave}
           >
@@ -214,9 +221,10 @@ export function PestanaHistorial({
         if (e.motorId ? !sel.has(e.motorId) : !(e.tanqueId === null || tanquesSel.has(e.tanqueId))) return false
       }
       if (soloAlertas && !e.conAlerta) return false
+      if ((desde && e.dia < desde) || (hasta && e.dia > hasta)) return false
       return true
     })
-  }, [eventos, motoresSel, soloAlertas, tanquesDeMotores])
+  }, [eventos, motoresSel, soloAlertas, tanquesDeMotores, desde, hasta])
 
   const pendientes = cola.filter((o) => TIPOS_PENDIENTES.includes(o.tipo) && o.estado_local !== 'ACEPTADO' && (o.datos.estacion_id === estacion.id || motores.some((m) => m.equipo_id === o.datos.equipo_id)))
   const mostradas = visibles.slice(0, limite)
@@ -226,7 +234,27 @@ export function PestanaHistorial({
     return [...m.entries()]
   }, [mostradas])
   const fechaDia = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString('es-HN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })
-  const activos = (motoresSel.length > 0 ? 1 : 0) + (soloAlertas ? 1 : 0)
+  const activos = (motoresSel.length > 0 ? 1 : 0) + (soloAlertas ? 1 : 0) + (desde ? 1 : 0) + (hasta ? 1 : 0)
+
+  // Formato de campo: una tabla por motor (los elegidos, o todos los de la estación)
+  const secciones = useMemo(() => {
+    const elegidos = motoresSel.length > 0 ? motores.filter((m) => motoresSel.includes(m.equipo_id)) : motores
+    return elegidos.map((m) => {
+      let filas = filasDeHoja(estado.registros.filter((r) => r.estacion_id === estacion.id), { equipoId: m.equipo_id, desde, hasta }, senales)
+      if (soloAlertas) filas = filas.filter((f) => f.senal !== null)
+      return { motor: m, titulo: etiquetaMotor(m.codigo, m.nombre), filas }
+    })
+  }, [motores, motoresSel, estado.registros, estacion.id, desde, hasta, soloAlertas, senales])
+  const exportar = () =>
+    imprimirHtml(
+      htmlHoja({
+        secciones: secciones.map((x) => ({ motor: x.titulo, estacion: estacion.nombre, zona: estacion.zona ?? null, tanque: x.motor.tanque?.nombre ?? null, filas: x.filas })),
+        desde,
+        hasta,
+        generadoPor: yo.nombre,
+        generadoEn: formatearFechaHora(new Date().toISOString()),
+      })
+    )
 
   return (
     <div className="flex flex-col gap-2" data-historial-motores>
@@ -240,8 +268,9 @@ export function PestanaHistorial({
         >
           Filtros{activos > 0 ? ` · ${activos} activo${activos === 1 ? '' : 's'}` : ''}
         </button>
-        <span className="text-xs text-slate-500">{visibles.length} movimiento{visibles.length === 1 ? '' : 's'}</span>
+        <span className="text-xs text-slate-500">{vista === 'tabla' ? `${secciones.reduce((n, x) => n + x.filas.length, 0)} días` : `${visibles.length} movimiento${visibles.length === 1 ? '' : 's'}`}</span>
       </div>
+      <BarraVistaHistorial vista={vista} onVista={setVista} onExportar={exportar} puedeExportar={secciones.some((x) => x.filas.length > 0)} />
       {filtrosAbiertos && (
         <div className="flex flex-col gap-2 rounded-xl bg-slate-50 p-3 ring-1 ring-inset ring-slate-200">
           <SelectorMultiple
@@ -250,6 +279,16 @@ export function PestanaHistorial({
             valores={motoresSel}
             onCambiar={setMotoresSel}
           />
+          <div className="grid grid-cols-2 gap-2">
+            <label className="text-xs text-slate-600">
+              Desde
+              <input type="date" value={desde} max={hasta || undefined} onChange={(e) => setDesde(e.target.value)} className="mt-0.5 min-h-11 w-full rounded-lg border border-slate-200 bg-white px-2 text-base" data-filtro-desde />
+            </label>
+            <label className="text-xs text-slate-600">
+              Hasta
+              <input type="date" value={hasta} min={desde || undefined} onChange={(e) => setHasta(e.target.value)} className="mt-0.5 min-h-11 w-full rounded-lg border border-slate-200 bg-white px-2 text-base" data-filtro-hasta />
+            </label>
+          </div>
           <button
             type="button"
             aria-pressed={soloAlertas}
@@ -257,10 +296,10 @@ export function PestanaHistorial({
             className={`min-h-11 rounded-lg px-3 text-sm font-semibold ring-1 ring-inset ${soloAlertas ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-700 ring-slate-300'}`}
             data-solo-alertas
           >
-            Solo con alertas
+            Solo con señales
           </button>
           {activos > 0 && (
-            <button type="button" className="min-h-11 text-sm font-semibold text-brand-700 underline" onClick={() => { setMotoresSel([]); setSoloAlertas(false) }}>
+            <button type="button" className="min-h-11 text-sm font-semibold text-brand-700 underline" onClick={() => { setMotoresSel([]); setSoloAlertas(false); setDesde(''); setHasta('') }}>
               Quitar filtros
             </button>
           )}
@@ -273,22 +312,23 @@ export function PestanaHistorial({
           atributos={{ 'data-motor-pendiente': true }}
           nivel={o.estado_local === 'RECHAZADO' ? 'rojo' : 'amarillo'}
           titulo={o.resumen}
-          linea2={o.estado_local === 'RECHAZADO' ? (o.mensaje ?? 'Rechazado') : 'Por enviar: se manda sola cuando haya señal.'}
+          linea2={o.estado_local === 'RECHAZADO' ? (o.mensaje ?? 'Rechazado') : 'Por enviar. Sale sola con señal.'}
         />
       ))}
 
-      {visibles.length === 0 && (
+      {vista === 'lista' && visibles.length === 0 && (
         <p className="rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-500 ring-1 ring-inset ring-slate-200">
-          {activos > 0 ? 'No hay movimientos con esos filtros.' : 'Todavía no hay registros de motores en esta estación (últimos 45 días).'}
+          {activos > 0 ? 'Nada con esos filtros.' : 'Sin registros en 45 días.'}
         </p>
       )}
-      {porDia.map(([dia, lista]) => (
+      {vista === 'tabla' && secciones.map((x) => <HojaMotor key={x.motor.equipo_id} titulo={x.titulo} filas={x.filas} />)}
+      {vista === 'lista' && porDia.map(([dia, lista]) => (
         <section key={dia} className="flex flex-col gap-1.5" data-dia-motores={dia}>
           <h3 className="mt-1 text-xs font-bold uppercase tracking-wide text-slate-500">{fechaDia(dia)} · {fechaCorta(dia)}</h3>
           {lista.map((e) => e.fila)}
         </section>
       ))}
-      {visibles.length > limite && (
+      {vista === 'lista' && visibles.length > limite && (
         <Boton variante="fantasma" className="min-h-11" onClick={() => setLimite((l) => l + 40)} data-ver-mas>
           Ver más ({visibles.length - limite})
         </Boton>
