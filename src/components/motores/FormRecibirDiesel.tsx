@@ -13,7 +13,7 @@ import { aEntradaLocal, ahoraIso, deEntradaLocal } from '@/lib/fechas/zona'
 import { claveBorrador, useAutoguardado, useBorrador } from '@/lib/fertirriego/borrador'
 import { crearOperacion } from '@/lib/fertirriego/operaciones'
 import type { Chofer, EstadoCampo, Estacion, Operacion, Persona, Vehiculo } from '@/lib/fertirriego/tipos'
-import type { TanqueFijo } from '@/lib/motores/estado'
+import type { RecepcionMotor, TanqueFijo } from '@/lib/motores/estado'
 import { armarRecepcionDiesel } from '@/lib/motores/registroDiario'
 import { SelectorChofer, SelectorVehiculo } from '@/components/fertirriego/ChoferVehiculo'
 import { MarcoRegistro } from '@/components/fertirriego/MarcoRegistro'
@@ -25,6 +25,7 @@ export function FormRecibirDiesel({
   tanqueInicial,
   fechaInicial,
   saldoDe,
+  corregir,
   campo,
   estacion,
   yo,
@@ -40,6 +41,8 @@ export function FormRecibirDiesel({
   fechaInicial?: string
   /** Saldo del tanque contando lo pendiente de enviar. */
   saldoDe: (tanqueId: string) => number
+  /** Solo administrador: corrige una recepción ya guardada (se anula la vieja y se guarda la corregida, con motivo). */
+  corregir?: RecepcionMotor
   campo: EstadoCampo
   estacion: Estacion
   yo: Persona
@@ -47,14 +50,15 @@ export function FormRecibirDiesel({
   onCerrar: () => void
   onGuardado: (m: string) => void
 }) {
-  const borrador = useBorrador<Datos>(claveBorrador('diesel_recibir', yo.id, estacion.id))
+  const borrador = useBorrador<Datos>(claveBorrador('diesel_recibir', yo.id, estacion.id, corregir ? `corregir-${corregir.id}` : ''))
   const b = borrador.inicial
-  const [tanque, setTanque] = useState(b?.tanque ?? tanqueInicial ?? (tanques.length === 1 ? tanques[0].id : ''))
-  const [fechaHora, setFechaHora] = useState(b?.fechaHora ?? (fechaInicial ? `${fechaInicial}T12:00` : aEntradaLocal(ahoraIso())))
-  const [galones, setGalones] = useState(b?.galones ?? '')
-  const [chofer, setChofer] = useState(b?.chofer ?? '')
-  const [vehiculo, setVehiculo] = useState(b?.vehiculo ?? '')
-  const [comentario, setComentario] = useState(b?.comentario ?? '')
+  const [tanque, setTanque] = useState(b?.tanque ?? corregir?.tanque_id ?? tanqueInicial ?? (tanques.length === 1 ? tanques[0].id : ''))
+  const [fechaHora, setFechaHora] = useState(b?.fechaHora ?? (corregir ? aEntradaLocal(corregir.fecha_hora) : fechaInicial ? `${fechaInicial}T12:00` : aEntradaLocal(ahoraIso())))
+  const [galones, setGalones] = useState(b?.galones ?? (corregir ? String(corregir.galones) : ''))
+  const [chofer, setChofer] = useState(b?.chofer ?? corregir?.chofer_id ?? '')
+  const [vehiculo, setVehiculo] = useState(b?.vehiculo ?? corregir?.vehiculo_id ?? '')
+  const [comentario, setComentario] = useState(b?.comentario ?? corregir?.comentario ?? '')
+  const [motivo, setMotivo] = useState('')
   const [nuevos, setNuevos] = useState<Operacion[]>(b?.nuevos ?? [])
   const [choferesAqui, setChoferesAqui] = useState<Chofer[]>(b?.choferesAqui ?? [])
   const [vehiculosAqui, setVehiculosAqui] = useState<Vehiculo[]>(b?.vehiculosAqui ?? [])
@@ -66,7 +70,8 @@ export function FormRecibirDiesel({
 
   return (
     <MarcoRegistro
-      titulo={`Recibir combustible · ${estacion.nombre}`}
+      titulo={corregir ? `Corregir recepción · ${estacion.nombre}` : `Recibir combustible · ${estacion.nombre}`}
+      {...(corregir ? { permiso: 'anular' as const, sinCustodia: true, textoGuardar: 'Guardar corrección' } : {})}
       estacion={estacion}
       yo={yo}
       registrar={registrar}
@@ -76,6 +81,7 @@ export function FormRecibirDiesel({
       rapido
       construir={({ ubicacion, enNombreDe }) => {
         if (tanques.length === 0) return 'Sin tanques. Pide uno a Torre de Control.'
+        if (corregir && motivo.trim().length < 10) return 'Escribe por qué se corrige (mínimo 10 letras).'
         const fh = deEntradaLocal(fechaHora)
         if (!fh) return 'Falta la fecha y hora.'
         if (Date.parse(fh) > Date.now() + 5 * 60_000) return 'La fecha no puede ser futura.'
@@ -89,7 +95,12 @@ export function FormRecibirDiesel({
           comentario,
         })
         if ('error' in a) return a.error
-        return [...nuevos, crearOperacion('diesel_recibir', a.datos, { ubicacion, enNombreDe, resumen: `Combustible recibido · ${tanques.find((t) => t.id === tanque)?.nombre ?? estacion.nombre} · ${g} gal` })]
+        const nueva = crearOperacion('diesel_recibir', a.datos, { ubicacion, enNombreDe, resumen: `${corregir ? 'Recepción CORREGIDA' : 'Combustible recibido'} · ${tanques.find((t) => t.id === tanque)?.nombre ?? estacion.nombre} · ${g} gal` })
+        if (!corregir) return [...nuevos, nueva]
+        // Corregir = anular la recepción vieja y guardar la corregida, EN ESE ORDEN (la cola se ordena por creado_en, a segundos)
+        const anula = crearOperacion('anulacion', { estacion_id: estacion.id, documento_tipo: 'diesel_recepcion', documento_id: corregir.id, motivo: `Corrección: ${motivo.trim()}` }, { ubicacion, enNombreDe, resumen: `Corrección · anula recepción de ${corregir.galones} gal` })
+        nueva.creado_en = ahoraIso(new Date(Date.parse(anula.creado_en) + 1000))
+        return [...nuevos, anula, nueva]
       }}
     >
       <p className="text-sm text-slate-700" data-bodega-recibir>
@@ -149,6 +160,11 @@ export function FormRecibirDiesel({
           }}
         />
       </Campo>
+      {corregir && (
+        <Campo etiqueta="Motivo de la corrección" requerido>
+          <AreaTexto value={motivo} onChange={(e) => setMotivo(e.target.value)} rows={2} placeholder="Qué estaba mal" data-motivo-correccion />
+        </Campo>
+      )}
       <Campo etiqueta="Observaciones">
         <AreaTexto value={comentario} onChange={(e) => setComentario(e.target.value)} rows={2} placeholder="Opcional" data-comentario />
       </Campo>

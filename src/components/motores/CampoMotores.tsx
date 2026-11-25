@@ -41,13 +41,14 @@ const RUTAS_SW = ['/motores']
 type Pestana = 'hoy' | 'motores' | 'historial' | 'tanques' | 'general'
 
 type Ventana = {
-  tipo: 'registro' | 'corregir' | 'recibir' | 'mover' | 'retirar' | 'mantenimiento' | 'detalle_motor' | 'detalle_tanque' | 'elegir_motor' | 'recibir_motor' | 'administrar_tanques'
+  tipo: 'registro' | 'corregir' | 'corregir_recepcion' | 'recibir' | 'mover' | 'retirar' | 'mantenimiento' | 'detalle_motor' | 'detalle_tanque' | 'elegir_motor' | 'recibir_motor' | 'administrar_tanques'
   equipoId: string
   tanqueId?: string
   /** Día del registro que pidió recibir combustible (la recepción viene con esa fecha). */
   fecha?: string
   /** Registro del día que se corrige (solo administrador). */
   registroId?: string
+  recepcionId?: string
 }
 
 export function CampoMotores({ usuarioId }: { usuarioId: string }) {
@@ -265,6 +266,7 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
               nombreEstacion={(id) => (id ? (estaciones.find((e) => e.id === id)?.nombre ?? null) : null)}
               puedeAnular={p?.anular ?? false}
               onCorregir={(r) => setVentana({ tipo: 'corregir', equipoId: r.equipo_id, registroId: r.id })}
+              onCorregirRecepcion={(r) => setVentana({ tipo: 'corregir_recepcion', equipoId: '', recepcionId: r.id })}
               puedeEliminar={extras.eliminar_definitivo}
               registrar={campo.registrar}
               onGuardado={guardado}
@@ -338,6 +340,19 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
               historico={permisoHistoricoDe(extras, estacion.id)}
               registrar={campo.registrar}
               onAbrirRecibir={(f) => setVentana({ tipo: 'recibir', equipoId: motorVentana.equipo_id, fecha: f })}
+              onCerrar={() => setVentana(null)}
+              onGuardado={guardado}
+            />
+          )}
+          {ventana?.tipo === 'corregir_recepcion' && me.recepciones.find((x) => x.id === ventana.recepcionId) && (
+            <FormRecibirDiesel
+              tanques={tanques}
+              saldoDe={saldoDe}
+              corregir={me.recepciones.find((x) => x.id === ventana.recepcionId)}
+              campo={estado}
+              estacion={estacion}
+              yo={estado.yo}
+              registrar={campo.registrar}
               onCerrar={() => setVentana(null)}
               onGuardado={guardado}
             />
