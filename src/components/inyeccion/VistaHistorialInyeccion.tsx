@@ -332,9 +332,9 @@ export function VistaHistorialInyeccion({
                         const u = unidad(l.material_id)
                         const punto = fila ? PUNTO_TONO[TONO_TIEMPO[fila.tiempo].tono] : 'bg-slate-400'
                         return (
-                          <span key={l.material_id} className="mb-1 grid grid-cols-[0.25rem_1fr] items-stretch gap-2.5 last:mb-0" data-linea-aplicada={l.material_id}>
+                          <span key={l.material_id} className="mb-1 flex items-stretch gap-2.5 last:mb-0" data-linea-aplicada={l.material_id}>
                             <BandaLateral clase={punto} />
-                            <span className="min-w-0">
+                            <span className="min-w-0 flex-1">
                               <span className="flex items-baseline justify-between gap-2">
                                 <span className={`min-w-0 truncate text-[15px] font-medium leading-tight text-slate-900 ${a.anulado_at ? 'line-through' : ''}`}>{nombreProducto(l.material_id)}</span>
                                 <span className="shrink-0 text-[15px] font-semibold leading-tight tabular-nums text-slate-900">{l.dosis_mz !== null ? `${cantidad(l.dosis_mz)} ${u}/mz` : 'sin dosis'}</span>

@@ -140,9 +140,9 @@ export function VistaPlanGeneral({
                   const ab = productosAbiertos.has(`${clave}|${p.material_id}`)
                   return (
                     <div key={p.material_id} data-plan-producto={p.material_id}>
-                      <button type="button" aria-expanded={ab} onClick={() => alternarProducto(`${clave}|${p.material_id}`)} className="grid min-h-14 w-full grid-cols-[0.25rem_1fr] items-stretch gap-2.5 px-3 py-2 text-left">
+                      <button type="button" aria-expanded={ab} onClick={() => alternarProducto(`${clave}|${p.material_id}`)} className="flex min-h-14 w-full items-stretch gap-2.5 px-3 py-2 text-left">
                         <BandaLateral clase={puntoCategoria(estado.categorias, catDe.get(p.material_id) ?? null)} />
-                        <span className="min-w-0">
+                        <span className="min-w-0 flex-1">
                           <span className="flex items-baseline justify-between gap-2">
                             <span className="min-w-0 truncate text-[15px] font-medium leading-tight text-slate-900">{m?.descripcion ?? m?.codigo ?? 'Producto'}</span>
                             <span className="shrink-0 text-[15px] font-semibold leading-tight tabular-nums text-slate-900">{p.dosis_mz !== null ? `${cantidad(p.dosis_mz)} ${m?.unidad ?? ''}/mz` : 'sin dosis'}</span>

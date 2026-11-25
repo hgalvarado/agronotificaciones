@@ -43,7 +43,7 @@ export function ChipsCategoria({
             className="inline-flex min-h-11 items-center"
           >
             <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${on ? 'bg-slate-100 text-slate-900 ring-slate-500' : 'text-slate-700 ring-slate-300'}`}>
-              <span className="flex h-3 w-1"><BandaLateral clase={puntoCategoria(categorias, c.clave)} /></span>
+              <BandaLateral clase={puntoCategoria(categorias, c.clave)} />
               {etiquetaCategoria(c)}
             </span>
           </button>

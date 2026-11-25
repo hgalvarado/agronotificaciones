@@ -19,9 +19,19 @@ export function BandaLateral({ clase = '', color, absoluta = false }: { clase?: 
     <span
       aria-hidden="true"
       data-banda
-      className={`block w-1 rounded-full ${absoluta ? 'absolute inset-y-2 left-1' : 'self-stretch'} ${clase}`}
-      style={estilo}
+      className={`block shrink-0 rounded-full ${absoluta ? 'absolute inset-y-2 left-1' : 'self-stretch'} ${clase}`}
+      style={{ width: 4, minHeight: 12, ...estilo }}
     />
+  )
+}
+
+/** Fila con banda: banda de 4 px + contenido que ocupa el resto (flex estándar, sin clases arbitrarias). */
+export function FilaConBanda({ clase, color, className = '', children }: { clase?: string; color?: string; className?: string; children: ReactNode }) {
+  return (
+    <span className={`flex items-stretch gap-2.5 ${className}`}>
+      <BandaLateral clase={clase} color={color} />
+      <span className="min-w-0 flex-1">{children}</span>
+    </span>
   )
 }
 

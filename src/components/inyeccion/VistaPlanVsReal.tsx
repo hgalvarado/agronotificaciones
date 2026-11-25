@@ -71,10 +71,10 @@ export function VistaPlanVsReal({
           type="button"
           aria-expanded={abierta}
           onClick={() => !abiertaFija && setAbiertas((p) => { const n = new Set(p); if (n.has(f.clave)) n.delete(f.clave); else n.add(f.clave); return n })}
-          className="grid min-h-14 w-full grid-cols-[0.25rem_1fr] items-stretch gap-2.5 px-3 py-2 text-left"
+          className="flex min-h-14 w-full items-stretch gap-2.5 px-3 py-2 text-left"
         >
           <BandaLateral clase={punto} />
-          <span className="min-w-0">
+          <span className="min-w-0 flex-1">
             <span className="flex items-baseline justify-between gap-2">
               <span className="min-w-0 truncate text-[15px] font-medium leading-tight text-slate-900">{producto(f.material_id)}</span>
               <span className="shrink-0 text-[15px] font-semibold leading-tight tabular-nums text-slate-900">{dosis !== null ? `${cantidad(dosis)} ${u}/mz` : '—'}</span>
