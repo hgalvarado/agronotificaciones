@@ -41,11 +41,13 @@ const RUTAS_SW = ['/motores']
 type Pestana = 'hoy' | 'motores' | 'historial' | 'tanques' | 'general'
 
 type Ventana = {
-  tipo: 'registro' | 'recibir' | 'mover' | 'retirar' | 'mantenimiento' | 'detalle_motor' | 'detalle_tanque' | 'elegir_motor' | 'recibir_motor' | 'administrar_tanques'
+  tipo: 'registro' | 'corregir' | 'recibir' | 'mover' | 'retirar' | 'mantenimiento' | 'detalle_motor' | 'detalle_tanque' | 'elegir_motor' | 'recibir_motor' | 'administrar_tanques'
   equipoId: string
   tanqueId?: string
   /** Día del registro que pidió recibir combustible (la recepción viene con esa fecha). */
   fecha?: string
+  /** Registro del día que se corrige (solo administrador). */
+  registroId?: string
 }
 
 export function CampoMotores({ usuarioId }: { usuarioId: string }) {
@@ -262,6 +264,7 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
               vehiculos={estado.vehiculos}
               nombreEstacion={(id) => (id ? (estaciones.find((e) => e.id === id)?.nombre ?? null) : null)}
               puedeAnular={p?.anular ?? false}
+              onCorregir={(r) => setVentana({ tipo: 'corregir', equipoId: r.equipo_id, registroId: r.id })}
               puedeEliminar={extras.eliminar_definitivo}
               registrar={campo.registrar}
               onGuardado={guardado}
@@ -311,6 +314,20 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
               />
             )
           })()}
+          {motorVentana && ventana?.tipo === 'corregir' && me.registros.find((x) => x.id === ventana.registroId) && (
+            <FormRegistroMotor
+              motor={motorVentana}
+              estado={me}
+              pendientes={cola}
+              estacion={estacion}
+              yo={estado.yo}
+              corregir={me.registros.find((x) => x.id === ventana.registroId)}
+              registrar={campo.registrar}
+              onAbrirRecibir={(f) => setVentana({ tipo: 'recibir', equipoId: motorVentana.equipo_id, fecha: f })}
+              onCerrar={() => setVentana(null)}
+              onGuardado={guardado}
+            />
+          )}
           {motorVentana && ventana?.tipo === 'registro' && (
             <FormRegistroMotor
               motor={motorVentana}

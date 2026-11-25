@@ -15,7 +15,7 @@ import { ayerIso, deEntradaLocal, ahoraIso, hoyIso } from '@/lib/fechas/zona'
 import { claveBorrador, useAutoguardado, useBorrador } from '@/lib/fertirriego/borrador'
 import { crearOperacion } from '@/lib/fertirriego/operaciones'
 import type { Estacion, Operacion, Persona, PermisoHistorico } from '@/lib/fertirriego/tipos'
-import { recibidoEnDia, saldoTanqueLocal, type EstadoMotores, type MotorEstacion, type OperacionPendienteMotor } from '@/lib/motores/estado'
+import { recibidoEnDia, saldoTanqueLocal, type EstadoMotores, type MotorEstacion, type OperacionPendienteMotor, type RegistroMotor } from '@/lib/motores/estado'
 import { armarRegistroDiario, calcularRegistro, proponerInicial } from '@/lib/motores/registroDiario'
 import { alertasRegistro, fechaUltimaLocal, horasEstimadas, rendimientoReferencia } from '@/lib/motores/senales'
 import { MarcoRegistro } from '@/components/fertirriego/MarcoRegistro'
@@ -79,6 +79,7 @@ export function FormRegistroMotor({
   estacion,
   yo,
   historico,
+  corregir,
   registrar,
   onAbrirRecibir,
   onCerrar,
@@ -91,27 +92,32 @@ export function FormRegistroMotor({
   yo: Persona
   /** sql/140: permiso temporal «Registro histórico» de esta estación (si lo tiene, se ofrece la casilla). */
   historico?: PermisoHistorico | null
+  /** Solo administrador: corrige un registro ya guardado (se anula el viejo y se guarda el corregido, con motivo). */
+  corregir?: RegistroMotor
   registrar: (...ops: Operacion[]) => Promise<void>
   /** «Recibir combustible»: abre la recepción al tanque, con la fecha de este registro. */
   onAbrirRecibir: (fecha: string) => void
   onCerrar: () => void
   onGuardado: (m: string) => void
 }) {
-  const borrador = useBorrador<Datos>(claveBorrador('motor_registro', yo.id, estacion.id, motor.equipo_id))
+  const borrador = useBorrador<Datos>(claveBorrador('motor_registro', yo.id, estacion.id, corregir ? `corregir-${corregir.id}` : motor.equipo_id))
+  const c0 = corregir
+  const t0 = (v: number | null | undefined) => (v === null || v === undefined ? '' : String(v))
   const b = borrador.inicial
-  const [fecha, setFecha] = useState(b?.fecha ?? ayerIso())
-  const [horoIni, setHoroIni] = useState<string | null>(b?.horoIni ?? null)
-  const [horoFin, setHoroFin] = useState(b?.horoFin ?? '')
-  const [visorIni, setVisorIni] = useState<string | null>(b?.visorIni ?? null)
-  const [visorFin, setVisorFin] = useState(b?.visorFin ?? '')
-  const [rpm, setRpm] = useState(b?.rpm ?? '')
-  const [horoCambiado, setHoroCambiado] = useState(b?.horoCambiado ?? false)
-  const [visorCambiado, setVisorCambiado] = useState(b?.visorCambiado ?? false)
+  const [motivo, setMotivo] = useState('')
+  const [fecha, setFecha] = useState(b?.fecha ?? c0?.fecha ?? ayerIso())
+  const [horoIni, setHoroIni] = useState<string | null>(b?.horoIni ?? (c0 ? t0(c0.horo_ini) : null))
+  const [horoFin, setHoroFin] = useState(b?.horoFin ?? (c0 ? t0(c0.horo_fin) : ''))
+  const [visorIni, setVisorIni] = useState<string | null>(b?.visorIni ?? (c0 ? t0(c0.visor_ini) : null))
+  const [visorFin, setVisorFin] = useState(b?.visorFin ?? (c0 ? t0(c0.visor_fin) : ''))
+  const [rpm, setRpm] = useState(b?.rpm ?? (c0 ? t0(c0.rpm) : ''))
+  const [horoCambiado, setHoroCambiado] = useState(b?.horoCambiado ?? c0?.horo_cambiado ?? false)
+  const [visorCambiado, setVisorCambiado] = useState(b?.visorCambiado ?? c0?.visor_cambiado ?? false)
   // Horómetro dañado: no hay lectura; las horas quedan en 0, el diésel sí se registra y las horas se estiman solo para el mantenimiento
   const [horoMalo, setHoroMalo] = useState(b?.horoMalo ?? false)
-  const [comentario, setComentario] = useState(b?.comentario ?? '')
-  const [caudalIni, setCaudalIni] = useState(b?.caudalIni ?? '')
-  const [caudalFin, setCaudalFin] = useState(b?.caudalFin ?? '')
+  const [comentario, setComentario] = useState(b?.comentario ?? c0?.comentario ?? '')
+  const [caudalIni, setCaudalIni] = useState(b?.caudalIni ?? (c0 ? t0(c0.caudal_ini) : ''))
+  const [caudalFin, setCaudalFin] = useState(b?.caudalFin ?? (c0 ? t0(c0.caudal_fin) : ''))
   // sql/140 · Registro histórico: día pasado, sin custodia y SIN mover el diésel del tanque (la base lo vuelve a validar)
   const [esHistorico, setEsHistorico] = useState(false)
   useAutoguardado(borrador, { fecha, horoIni, horoFin, visorIni, visorFin, rpm, horoCambiado, visorCambiado, horoMalo, comentario, caudalIni, caudalFin })
@@ -202,7 +208,8 @@ export function FormRegistroMotor({
 
   return (
     <MarcoRegistro
-      titulo={`Registro diario · ${motor.codigo}`}
+      titulo={`${corregir ? 'Corregir registro' : 'Registro diario'} · ${motor.codigo}`}
+      {...(corregir ? { permiso: 'anular' as const, sinCustodia: true, textoGuardar: 'Guardar corrección' } : {})}
       estacion={estacion}
       yo={yo}
       registrar={registrar}
@@ -214,6 +221,7 @@ export function FormRegistroMotor({
       permisoHistorico={esHistorico}
       construir={({ ubicacion, enNombreDe }) => {
         if (!fecha) return 'Falta la fecha.'
+        if (corregir && motivo.trim().length < 10) return 'Escribe por qué se corrige (mínimo 10 letras).'
         if (esHistorico && fecha >= hoy) return 'Histórico: elige un día anterior a hoy.'
         if (!completo) return 'Escribe un número válido.'
         const rpmNum = rpm.trim() ? num(rpm) : null
@@ -240,16 +248,18 @@ export function FormRegistroMotor({
           hoy,
         })
         if ('error' in a) return a.error
-        return [
-          crearOperacion('motor_registro_diario', { ...a.datos, ...(esHistorico ? { historica: true } : {}) }, {
-            ubicacion,
-            enNombreDe,
-            resumen: `${esHistorico ? 'Registro HISTÓRICO' : 'Registro diario'} · ${motor.codigo} · ${fmtFecha(fecha).slice(0, 5)}${calc.horas !== null ? ` · ${calc.horas} h` : ''}`,
-          }),
-        ]
+        const nuevo = crearOperacion('motor_registro_diario', { ...a.datos, ...(esHistorico ? { historica: true } : {}) }, {
+          ubicacion,
+          enNombreDe,
+          resumen: `${corregir ? 'Registro CORREGIDO' : esHistorico ? 'Registro HISTÓRICO' : 'Registro diario'} · ${motor.codigo} · ${fmtFecha(fecha).slice(0, 5)}${calc.horas !== null ? ` · ${calc.horas} h` : ''}`,
+        })
+        if (!corregir) return [nuevo]
+        // Corregir = anular el registro viejo (el tanque vuelve a como estaba) y guardar el corregido, en ese orden
+        const anula = crearOperacion('anulacion', { estacion_id: estacion.id, documento_tipo: 'motor_registro', documento_id: corregir.id, motivo: `Corrección: ${motivo.trim()}` }, { ubicacion, enNombreDe, resumen: `Corrección · anula registro del ${fmtFecha(corregir.fecha).slice(0, 5)}` })
+        return [anula, nuevo]
       }}
     >
-      {historico && (
+      {historico && !corregir && (
         <label className="flex items-start gap-2 rounded-xl bg-sky-50 p-3 text-xs leading-snug text-slate-700 ring-1 ring-inset ring-sky-600/20" data-registro-historico-motor>
           <input
             type="checkbox"
@@ -277,6 +287,7 @@ export function FormRegistroMotor({
             type="date"
             value={fecha}
             max={hoy}
+            disabled={Boolean(corregir)}
             onChange={(e) => {
               setFecha(e.target.value)
               setHoroIni(null)
@@ -285,7 +296,7 @@ export function FormRegistroMotor({
             className="min-h-11 w-44 rounded-lg border border-slate-200 bg-white px-3 py-2 text-base focus:border-brand-600 focus:outline-none"
             data-fecha-registro
           />
-          {[['Hoy', hoy], ['Ayer', ayerIso()]].map(([txt, v]) => (
+          {(corregir ? [] : [['Hoy', hoy], ['Ayer', ayerIso()]]).map(([txt, v]) => (
             <button
               key={txt}
               type="button"
@@ -373,6 +384,11 @@ export function FormRegistroMotor({
         </label>
       </div>
 
+      {corregir && (
+        <Campo etiqueta="Motivo de la corrección" requerido>
+          <AreaTexto value={motivo} onChange={(e) => setMotivo(e.target.value)} rows={2} placeholder="Qué estaba mal" data-motivo-correccion />
+        </Campo>
+      )}
       <Campo etiqueta={horoCambiado || visorCambiado ? 'Observaciones (obligatorias con el cambio)' : 'Observaciones'} requerido={horoCambiado || visorCambiado}>
         <AreaTexto value={comentario} onChange={(e) => setComentario(e.target.value)} rows={2} placeholder="Opcional" data-comentario />
       </Campo>
