@@ -18,8 +18,7 @@ import type { Chofer, Estacion, Operacion, Persona, Vehiculo } from '@/lib/ferti
 import { diaLocal, nombreQuien, type EstadoMotores, type MotorEstacion, type RecepcionMotor, type RegistroMotor } from '@/lib/motores/estado'
 import { filasDeHoja } from '@/lib/motores/hoja'
 import { resumirRegistros } from '@/lib/motores/resumenTemporada'
-import { htmlHoja } from '@/lib/motores/hojaPdf'
-import { imprimirHtml } from '@/lib/motores/imprimir'
+import { descargarHoja } from '@/lib/motores/hojaArchivo'
 import { peorNivel, senalesPorRegistro } from '@/lib/motores/senales'
 import { DatoHoja, etiquetaMotor, FilaToque, ChipsSenales } from './ElementosMotor'
 import { DetalleRegistroMotor, fechaCorta } from './DetalleRegistroMotor'
@@ -278,15 +277,17 @@ export function PestanaHistorial({
       .reduce((n, x) => n + x.galones, 0)
     return resumirRegistros(regs, recibido)
   }, [estado.registros, estado.recepciones, estacion.id, motores, motoresSel, desde, hasta])
-  const exportar = () =>
-    imprimirHtml(
-      htmlHoja({
+  const exportar = (formato: 'pdf' | 'excel') =>
+    descargarHoja(
+      formato,
+      {
         secciones: secciones.map((x) => ({ motor: x.titulo, estacion: estacion.nombre, zona: estacion.zona ?? null, tanque: x.motor.tanque?.nombre ?? null, filas: x.filas })),
         desde,
         hasta,
         generadoPor: yo.nombre,
         generadoEn: formatearFechaHora(new Date().toISOString()),
-      })
+      },
+      `Motores_${estacion.nombre}`
     )
 
   return (

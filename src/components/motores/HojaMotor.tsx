@@ -12,8 +12,8 @@ import { ddmm, numHoja, totalesHoja, type FilaHoja } from '@/lib/motores/hoja'
 
 export type VistaHistorial = 'lista' | 'tabla'
 
-/** Interruptor «Lista | Tabla» y botón «Exportar PDF». */
-export function BarraVistaHistorial({ vista, onVista, onExportar, puedeExportar }: { vista: VistaHistorial; onVista: (v: VistaHistorial) => void; onExportar: () => void; puedeExportar: boolean }) {
+/** Interruptor «Lista | Tabla» y botones «PDF» y «Excel» (bajan el archivo directo). */
+export function BarraVistaHistorial({ vista, onVista, onExportar, puedeExportar }: { vista: VistaHistorial; onVista: (v: VistaHistorial) => void; onExportar: (formato: 'pdf' | 'excel') => void; puedeExportar: boolean }) {
   return (
     <div className="flex items-center gap-2">
       <div role="group" aria-label="Vista del historial" className="grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1" data-vista-historial>
@@ -30,8 +30,11 @@ export function BarraVistaHistorial({ vista, onVista, onExportar, puedeExportar 
           </button>
         ))}
       </div>
-      <Boton tamano="sm" variante="secundario" className="min-h-11" onClick={onExportar} disabled={!puedeExportar} data-exportar-pdf>
-        Exportar PDF
+      <Boton tamano="sm" variante="secundario" className="min-h-11" onClick={() => onExportar('pdf')} disabled={!puedeExportar} data-exportar-pdf>
+        PDF
+      </Boton>
+      <Boton tamano="sm" variante="secundario" className="min-h-11" onClick={() => onExportar('excel')} disabled={!puedeExportar} data-exportar-excel>
+        Excel
       </Boton>
     </div>
   )
