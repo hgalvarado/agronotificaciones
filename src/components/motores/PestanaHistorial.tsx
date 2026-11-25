@@ -245,6 +245,15 @@ export function PestanaHistorial({
       return { motor: m, titulo: etiquetaMotor(m.codigo, m.nombre), filas }
     })
   }, [motores, motoresSel, estado.registros, estacion.id, desde, hasta, soloAlertas, senales])
+  // Combustible recibido (misma vista de tabla): quién, cuándo, cuánto y qué vehículo lo entregó
+  const recibos = useMemo(() => {
+    const tanquesSel = new Set(motoresSel.map((id) => tanquesDeMotores.get(id)).filter((x): x is string => Boolean(x)))
+    return estado.recepciones
+      .filter((x) => x.estacion_id === estacion.id && !x.anulado_at)
+      .filter((x) => motoresSel.length === 0 || x.tanque_id === null || tanquesSel.has(x.tanque_id))
+      .filter((x) => (!desde || diaLocal(x.fecha_hora) >= desde) && (!hasta || diaLocal(x.fecha_hora) <= hasta))
+      .sort((a, b) => b.fecha_hora.localeCompare(a.fecha_hora))
+  }, [estado.recepciones, estacion.id, motoresSel, tanquesDeMotores, desde, hasta])
   const exportar = () =>
     imprimirHtml(
       htmlHoja({
@@ -322,6 +331,33 @@ export function PestanaHistorial({
         </p>
       )}
       {vista === 'tabla' && secciones.map((x) => <HojaMotor key={x.motor.equipo_id} titulo={x.titulo} filas={x.filas} />)}
+      {vista === 'tabla' && recibos.length > 0 && (
+        <div className="overflow-hidden rounded-xl bg-white ring-1 ring-inset ring-slate-200" data-tabla-recibos>
+          <p className="bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">Combustible recibido · {recibos.reduce((t, x) => t + x.galones, 0).toLocaleString('es-HN')} gal</p>
+          <table className="w-full table-fixed text-[11px] leading-tight">
+            <thead>
+              <tr className="text-[10px] font-medium text-slate-600">
+                <th className="px-1 py-1 text-left">Fecha y hora</th>
+                <th className="px-1 py-1 text-left">Tanque</th>
+                <th className="px-1 py-1 text-right">Gal</th>
+                <th className="px-1 py-1 text-left">Entregó</th>
+                <th className="px-1 py-1 text-left">Registró</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recibos.map((x) => (
+                <tr key={x.id} className="border-t border-slate-100 align-top">
+                  <td className="px-1 py-1 tabular-nums">{formatearFechaHora(x.fecha_hora)}</td>
+                  <td className="break-words px-1 py-1">{x.tanque_id ? (tanqueNombre.get(x.tanque_id) ?? '—') : '—'}</td>
+                  <td className="px-1 py-1 text-right font-medium tabular-nums">{cantidad(x.galones)}</td>
+                  <td className="break-words px-1 py-1">{choferes.find((c) => c.id === x.chofer_id)?.nombre ?? '—'}{vehiculos.find((v) => v.id === x.vehiculo_id)?.placa ? ` · ${vehiculos.find((v) => v.id === x.vehiculo_id)?.placa}` : ''}</td>
+                  <td className="break-words px-1 py-1">{nombreQuien(estado, x.registrado_por) ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
       {vista === 'lista' && porDia.map(([dia, lista]) => (
         <section key={dia} className="flex flex-col gap-1.5" data-dia-motores={dia}>
           <h3 className="mt-1 text-xs font-bold uppercase tracking-wide text-slate-500">{fechaDia(dia)} · {fechaCorta(dia)}</h3>
