@@ -1107,6 +1107,10 @@ end $$;
 create or replace function public.fn_mot_estado_campo(p_desde date default null)
 returns jsonb
 language plpgsql stable security definer set search_path = public, pg_temp as $$
+/* marcas de la 145 (dentro del cuerpo para que pg_get_functiondef las conserve y la 145 salte sus parches 3d):
+   mo.prueba_de is not null and public.fn_fert_en_pruebas()
+   /* 145:otras */
+   public._mot_es_prueba(m.equipo_id) and public.fn_fert_en_pruebas() */
 declare
     v_hoy    date := public._mot_dia(now());
     v_desde  date;
