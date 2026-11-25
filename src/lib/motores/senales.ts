@@ -59,9 +59,9 @@ export function semaforoMantenimiento(m: { intervalo_horas: number | null; aviso
 export function semaforoRegistro(fechaUltima: string | null, hoy: string): Semaforo & { dias: number | null } {
   if (!fechaUltima) return { nivel: 'amarillo', dias: null, texto: 'Sin registros: registra el primer día.' }
   const dias = Math.max(diasEntre(fechaUltima, hoy) - 1, 0)
+  // Un día sin registro NO es una alerta: si el motor no trabajó, no se registra (la continuidad del horómetro y del visor lo confirma)
   if (dias === 0) return { nivel: 'verde', dias, texto: 'Registro al día.' }
-  if (dias === 1) return { nivel: 'amarillo', dias, texto: 'Falta el registro de ayer.' }
-  return { nivel: dias >= 3 ? 'rojo' : 'amarillo', dias, texto: `Faltan ${dias} días de registro.` }
+  return { nivel: 'gris', dias, texto: `Último registro hace ${dias + 1} día${dias === 0 ? '' : 's'}.` }
 }
 
 export function semaforoTanque(saldo: number | null, capacidad: number | null): Semaforo & { pct: number | null } {
@@ -109,7 +109,6 @@ export function ayudaLocal(args: {
   let tanque: AyudaLocal['tanque'] = null
   if (motor.estado === 'EN_ESTACION') {
     registro = semaforoRegistro(args.fechaUltima, args.hoy)
-    if (registro.nivel !== 'verde') ahora.push({ nivel: registro.nivel, codigo: 'FALTA_REGISTRO', texto: registro.texto })
     if (!motor.tanque) {
       tanque = semaforoTanque(null, null)
       ahora.push({ nivel: 'rojo', codigo: 'SIN_TANQUE', texto: tanque.texto })
@@ -202,9 +201,6 @@ export function senalesDeRegistro(r: RegSenal, prev: RegSenal | null, hist: RegS
   if (prev && !r.horo_cambiado) {
     if (r.horo_ini < prev.horo_fin - 0.005) add('rojo', 'HORO_RETROCEDE', `Horómetro retrocede: inicia ${t(r.horo_ini, 2)}, antes ${t(prev.horo_fin, 2)}.`)
     else if (r.horo_ini > prev.horo_fin + 0.005) add('amarillo', 'HORO_SALTA', `Horómetro salta ${t(r.horo_ini - prev.horo_fin, 2)} h.`)
-  }
-  if (prev && diasEntre(prev.fecha, r.fecha) > 1 && prev.estacion_id === r.estacion_id) {
-    add('amarillo', 'HUECO_DIAS', `Faltan ${diasEntre(prev.fecha, r.fecha) - 1} día(s) de registro.`)
   }
   if (prev && prev.tanque_id === r.tanque_id && !r.visor_cambiado) {
     // suministros entre el día anterior y este día (este incluido): lo recibido en el tanque o lo declarado en el registro
