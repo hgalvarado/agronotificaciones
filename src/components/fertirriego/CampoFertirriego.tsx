@@ -9,6 +9,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AvisoDestinoPerdido, useAplicarDestino, useDestinoAlerta, useResaltarDestino } from '@/lib/alertas/useDestinoAlerta'
 import { Alerta, Boton, ListaEsqueleto } from '@/components/ui/Primitivos'
 import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
 import { formatearFechaHora } from '@/lib/estados'
@@ -80,6 +81,9 @@ type Ventana =
   | { tipo: 'resolver_traslado'; traslado: Traslado; accion: AccionTraslado }
   | null
 
+/** Enlace profundo de una alerta: sin pestana, un registro o un día llevan a la Bitácora. */
+const pestanaPorDefectoFert = (d: { registro?: string; fecha?: string }) => (d.registro || d.fecha ? 'bitacora' : null)
+
 const PESTANAS: { clave: Pestana; nombre: string }[] = [
   { clave: 'estacion', nombre: 'Bodega' },
   { clave: 'general', nombre: 'General' },
@@ -143,12 +147,21 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
     }
   }, [])
 
+  // Enlace profundo de una alerta (?pestana=&estacion=&registro=&fecha=): manda sobre la preferencia
+  const alerta = useDestinoAlerta()
+  const [preparado, setPreparado] = useState(false)
+  const alListo = useCallback(() => setPreparado(true), [])
+  const ponerPestana = useCallback((p: string) => setPestana(p as Pestana), [])
+  const destinoEstacion = alerta.destino.estacion
   // La estación que eligió la última vez (en este teléfono)
   useEffect(() => {
+    if (destinoEstacion) return
     void campo.preferencia<string>('estacion').then((v) => v && setEstacionId(v))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   const estaciones = estado?.estaciones ?? []
+  useAplicarDestino({ alerta, hayEstado: Boolean(estado), estaciones, pestanasValidas: PESTANAS.map((p) => p.clave), pestanaPorDefecto: pestanaPorDefectoFert, setEstacionId, setPestana: ponerPestana, alListo })
+  useResaltarDestino(alerta, { listo: preparado, ids: [alerta.destino.registro, alerta.destino.fecha] })
   const estacionServidor = estaciones.find((e) => e.id === estacionId) ?? estaciones[0] ?? null
   // La custodia como la ve ESTE teléfono (incluye los relevos que aún no se envían)
   const estacion = useMemo(
@@ -377,6 +390,7 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
               <span className="text-xs text-slate-600">{estacion.zona}</span>
             </div>
 
+            <AvisoDestinoPerdido alerta={alerta} />
             <div className="flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1" role="tablist">
               {PESTANAS.map((p) => (
                 <button

@@ -310,7 +310,7 @@ export function VistaHistorialInyeccion({
 
       {vista === 'aplicaciones' && modo === 'lista' &&
         porDia.map(([dia, items]) => (
-          <section key={dia} className="overflow-hidden rounded-xl bg-white ring-1 ring-inset ring-slate-200" data-dia-historial={dia}>
+          <section key={dia} className="overflow-hidden rounded-xl bg-white ring-1 ring-inset ring-slate-200" data-dia-historial={dia} data-destino={dia}>
             <h3 className="sticky top-0 z-[1] flex items-baseline justify-between bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
               <span>{fechaDia(dia)}</span>
               <span className="font-semibold normal-case">{items.length} aplicación(es)</span>

@@ -308,7 +308,7 @@ export function VistaBitacora({
         </div>
       )}
       {[...porDia.entries()].map(([dia, delDia]) => (
-        <div key={dia} data-dia={dia}>
+        <div key={dia} data-dia={dia} data-destino={dia}>
           <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">{DIA.format(new Date(`${dia}T12:00:00Z`))}</p>
           <div className="divide-y divide-slate-100 overflow-hidden rounded-xl bg-white ring-1 ring-inset ring-slate-200">
             {bloquesDe(delDia).map((b) => {
@@ -399,6 +399,7 @@ export function VistaBitacora({
         disabled={x.pendiente && x.tipo !== 'DEVOLUCION_BODEGA'}
         onClick={() => onAbrir(x.documento_tipo, x.documento_id)}
         data-movimiento={x.tipo}
+        data-destino={`${x.documento_id} ${x.clave}`}
         data-historico={esHistorico ? '' : undefined}
         data-quien={quien ?? ''}
         className={`relative grid min-h-14 w-full ${enBloque ? 'grid-cols-[1fr_auto]' : 'grid-cols-[3rem_1fr_auto]'} items-center gap-2 py-2 pl-4 pr-3 text-left ${x.anulado ? 'opacity-50' : ''}`}

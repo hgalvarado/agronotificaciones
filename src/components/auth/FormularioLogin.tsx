@@ -4,7 +4,7 @@
  * El formulario de entrada. Sólo eso.
  *
  * Hotfix de emergencia (2026-10-27): entrar es `signInWithPassword` y,
- * si sale bien, `window.location.href = '/'`. Una carga COMPLETA del
+ * si sale bien, `window.location.href = destinoDespuesDeEntrar()`. Una carga COMPLETA del
  * navegador: la primera petición HTTP ya lleva las cookies que Supabase
  * acaba de escribir. Nada de `router.push`/`replace`/`refresh` —su fetch
  * `?_rsc=` es el que llegaba al middleware y rebotaba—, ni esperas, ni
@@ -17,6 +17,16 @@
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Alerta, Boton, Campo, Entrada } from '@/components/ui/Primitivos'
+
+/** Adónde ir al entrar: el enlace profundo guardado en ?next= (solo ruta interna) o la portada. */
+function destinoDespuesDeEntrar(): string {
+  try {
+    const n = new URLSearchParams(window.location.search).get('next') ?? ''
+    return n.startsWith('/') && !n.startsWith('//') && !n.includes('\\') && !n.startsWith('/login') ? n : '/'
+  } catch {
+    return '/'
+  }
+}
 
 export function FormularioLogin({ sesionExpirada = false }: { sesionExpirada?: boolean }) {
   const [email, setEmail] = useState('')

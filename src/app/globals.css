@@ -519,3 +519,16 @@ html[data-tema='oscuro'] {
   --mov-motor-fondo: #14222d; --mov-motor-borde: #6fa3c7; --mov-motor-texto: #b4d3ea;
   --mov-neutro-fondo: #1c2230; --mov-neutro-borde: #78849a; --mov-neutro-texto: #bcc6d6;
 }
+
+/* Enlace profundo de las alertas: el registro al que llevó el aviso parpadea un momento. */
+@keyframes destino-resaltado {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  30%, 70% { box-shadow: 0 0 0 3px var(--color-brand-500, #16a34a); background-color: color-mix(in srgb, var(--color-brand-500, #16a34a) 14%, transparent); }
+}
+.destino-resaltado {
+  animation: destino-resaltado 1.2s ease-in-out 3;
+  border-radius: 0.75rem;
+}
+@media (prefers-reduced-motion: reduce) {
+  .destino-resaltado { animation: none; box-shadow: 0 0 0 3px var(--color-brand-500, #16a34a); }
+}

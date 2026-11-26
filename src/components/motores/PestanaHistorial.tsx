@@ -129,7 +129,7 @@ export function PestanaHistorial({
         fila: (
           <FilaToque
             key={clave}
-            atributos={{ 'data-registro-motor': r.id }}
+            atributos={{ 'data-registro-motor': r.id, 'data-destino': r.id }}
             nivel={nivel}
             titulo={
               <span className={r.anulado_at ? 'line-through opacity-60' : ''}>
@@ -164,7 +164,7 @@ export function PestanaHistorial({
         fila: (
           <FilaToque
             key={clave}
-            atributos={{ 'data-recepcion-motor': x.id }}
+            atributos={{ 'data-recepcion-motor': x.id, 'data-destino': x.id }}
             nivel={x.anulado_at ? 'gris' : 'verde'}
             titulo={<span className={x.anulado_at ? 'line-through opacity-60' : ''}>Combustible recibido · {cantidad(x.galones)} gal</span>}
             linea2={x.tanque_id ? `Tanque ${tanqueNombre.get(x.tanque_id) ?? '—'}` : 'Antes del tanque fijo'}
@@ -358,7 +358,7 @@ export function PestanaHistorial({
       )}
       {vista === 'tabla' && secciones.map((x) => <HojaMotor key={x.motor.equipo_id} titulo={x.titulo} filas={x.filas} />)}
       {vista === 'lista' && porDia.map(([dia, lista]) => (
-        <section key={dia} className="flex flex-col gap-1.5" data-dia-motores={dia}>
+        <section key={dia} className="flex flex-col gap-1.5" data-dia-motores={dia} data-destino={dia}>
           <h3 className="mt-1 text-xs font-bold uppercase tracking-wide text-slate-500">{fechaDia(dia)} · {fechaCorta(dia)}</h3>
           {lista.map((e) => e.fila)}
         </section>

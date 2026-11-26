@@ -104,7 +104,7 @@ export function PestanaMotores({
       )}
       <div data-motores className="flex flex-col gap-2">
         {lista.map((v, k) => (
-          <div key={v.motor.equipo_id} className="flex items-stretch gap-1.5">
+          <div key={v.motor.equipo_id} data-destino={v.motor.equipo_id} className="flex items-stretch gap-1.5">
             <div className="min-w-0 flex-1">
           <TarjetaMotor
             v={v}

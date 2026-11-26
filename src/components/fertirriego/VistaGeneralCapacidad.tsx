@@ -60,7 +60,7 @@ export function VistaGeneralCapacidad({
       {tarjetas.map(({ e, caps, filas, total, peor }) => {
         const abierta = abiertas.includes(e.id)
         return (
-          <section key={e.id} data-tarjeta-capacidad={e.nombre} className="flex flex-col gap-2">
+          <section key={e.id} data-tarjeta-capacidad={e.nombre} data-destino={e.id} className="flex flex-col gap-2">
             <button
               type="button"
               aria-expanded={abierta}

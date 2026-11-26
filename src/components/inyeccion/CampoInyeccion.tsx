@@ -8,7 +8,8 @@
  * El estado de la conexión y los envíos están en el encabezado de toda la app.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AvisoDestinoPerdido, useAplicarDestino, useDestinoAlerta, useResaltarDestino } from '@/lib/alertas/useDestinoAlerta'
 import { Alerta, Boton, ListaEsqueleto } from '@/components/ui/Primitivos'
 import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
 import { RegistroServiceWorker } from '@/components/fertirriego/RegistroServiceWorker'
@@ -32,6 +33,9 @@ import { VistaBodegaInyeccion } from './VistaBodegaInyeccion'
 const RUTAS_SW = ['/inyeccion']
 
 type Pestana = 'historial' | 'plan' | 'lote' | 'bodega'
+/** Enlace profundo de una alerta: sin pestana, un registro o un día llevan al Historial. */
+const pestanaPorDefectoIny = (d: { registro?: string; fecha?: string }) => (d.registro || d.fecha ? 'historial' : null)
+
 const PESTANAS: [Pestana, string][] = [
   ['historial', 'Historial'],
   ['plan', 'Plan'],
@@ -54,11 +58,20 @@ export function CampoInyeccion({ usuarioId }: { usuarioId: string }) {
 
   // La estación que eligió la última vez (en este teléfono; la misma preferencia que Fertirriego)
   const { preferencia, guardarPreferencia } = campo
+  // Enlace profundo de una alerta (?pestana=&estacion=&registro=&fecha=): manda sobre la preferencia
+  const alerta = useDestinoAlerta()
+  const [preparado, setPreparado] = useState(false)
+  const alListo = useCallback(() => setPreparado(true), [])
+  const ponerPestana = useCallback((p: string) => setPestana(p as Pestana), [])
+  const destinoEstacion = alerta.destino.estacion
   useEffect(() => {
+    if (destinoEstacion) return
     void preferencia<string>('estacion').then((v) => v && setEstacionId(v))
-  }, [preferencia])
+  }, [preferencia, destinoEstacion])
 
   const estaciones = estado?.estaciones ?? []
+  useAplicarDestino({ alerta, hayEstado: Boolean(estado), estaciones, pestanasValidas: PESTANAS.map(([id]) => id), pestanaPorDefecto: pestanaPorDefectoIny, setEstacionId, setPestana: ponerPestana, alListo })
+  useResaltarDestino(alerta, { listo: preparado, ids: [alerta.destino.registro, alerta.destino.fecha] })
   const estacionServidor = estaciones.find((e) => e.id === estacionId) ?? estaciones[0] ?? null
   const estacion = useMemo(
     () => (estacionServidor && estado ? conCustodiaLocal(estacionServidor, cola, estado.yo) : estacionServidor),
@@ -158,6 +171,7 @@ export function CampoInyeccion({ usuarioId }: { usuarioId: string }) {
               />
             </div>
           )}
+          <AvisoDestinoPerdido alerta={alerta} />
           <AvisoModoPruebas estacionNombre={estacion.nombre} />
           <div className="flex flex-wrap items-baseline justify-between gap-x-2">
             <h1 className="text-xl font-bold tracking-tight text-slate-900" data-estacion={estacion.nombre}>
