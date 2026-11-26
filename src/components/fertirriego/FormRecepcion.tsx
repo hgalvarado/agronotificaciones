@@ -21,7 +21,8 @@ import { useMemo, useState } from 'react'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/Primitivos'
 import { aEntradaLocal, ahoraIso, deEntradaLocal, hoyIso } from '@/lib/fechas/zona'
 import { claveBorrador, useAutoguardado, useBorrador } from '@/lib/fertirriego/borrador'
-import { productosDelPlan } from '@/lib/fertirriego/calculos'
+import { cantidad, productosDelPlan } from '@/lib/fertirriego/calculos'
+import { capacidadesDeEstacion, excedentesDeRecepcion } from '@/lib/fertirriego/capacidad'
 import { leerEnvases, type FilaEnvase } from '@/lib/fertirriego/envases'
 import { crearOperacion, nuevoId } from '@/lib/fertirriego/operaciones'
 import { productosUsados } from '@/lib/fertirriego/productos'
@@ -124,6 +125,26 @@ export function FormRecepcion({
     productosNuevos: productos.nuevos,
   })
 
+  // sql/152: si lo recibido pasa la capacidad de una solución, se pide confirmar (no se bloquea)
+  const caps = useMemo(() => capacidadesDeEstacion(estado.capacidades, estacion.id), [estado.capacidades, estacion.id])
+  const excesos = useMemo(
+    () => excedentesDeRecepcion(caps, saldos, lineas.map((l) => ({ material_id: l.material_id, cantidad: Number(String(l.cantidad).replace(',', '.')) || 0 }))),
+    [caps, saldos, lineas]
+  )
+  const firmaExceso = excesos.map((x) => `${x.material_id}:${x.exceso}`).join('|')
+  const [excesoAceptado, setExcesoAceptado] = useState<string | null>(null)
+  const aceptaExceso = excesos.length === 0 || excesoAceptado === firmaExceso
+  const avisoExceso =
+    excesos.length > 0 ? (
+      <label className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 ring-1 ring-inset ring-amber-300" role="alert" data-alerta-capacidad>
+        <input type="checkbox" checked={aceptaExceso} onChange={(e) => setExcesoAceptado(e.target.checked ? firmaExceso : null)} className="h-6 w-6 shrink-0" data-acepta-exceso />
+        <span className="min-w-0 flex-1 break-words leading-snug">
+          {excesos.map((x) => `${estado.materiales.find((m) => m.id === x.material_id)?.descripcion ?? 'Producto'} excede la capacidad por ${cantidad(x.exceso)}`).join(' · ')}.{' '}
+          <span className="font-semibold">Marca para confirmar que sí llegó.</span>
+        </span>
+      </label>
+    ) : null
+
   const choferes = useMemo(
     () => [...estado.choferes, ...choferesPendientes, ...choferesAqui],
     [estado.choferes, choferesPendientes, choferesAqui]
@@ -146,6 +167,7 @@ export function FormRecepcion({
       onGuardado={onGuardado}
       borrador={borrador}
       rapido
+      avisoPie={avisoExceso}
       construir={({ ubicacion, enNombreDe }) => {
         if (!chofer) return 'Indica quién entregó (chofer).'
         const fh = deEntradaLocal(fechaHora)
@@ -155,6 +177,7 @@ export function FormRecepcion({
         if ('error' in r) {
           return r.error === SIN_LINEAS ? 'Escribe la cantidad de al menos un producto recibido (lo que no llegó, déjalo vacío).' : r.error
         }
+        if (excesos.length > 0 && !aceptaExceso) return 'Lo recibido pasa la capacidad de una solución. Marca la casilla de abajo para confirmar, o corrige la cantidad.'
         const filas: FilaEnvase[] = tiposEnvase.map((t) => ({ envase_id: t.id, recibidos: envases[t.id]?.recibidos ?? '', entregados: envases[t.id]?.entregados ?? '' }))
         const e = con99 ? leerEnvases(filas) : { envases: [] }
         if ('error' in e) return e.error

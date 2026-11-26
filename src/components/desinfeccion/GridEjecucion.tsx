@@ -14,7 +14,7 @@
  * trae la ejecución que ya exista con todo lo que cuelga de ella.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alerta, Boton, Insignia } from '@/components/ui/Primitivos'
 import { DataGrid } from '@/components/ui/DataGrid'
 import { IconPlus } from '@/components/ui/Icons'
@@ -109,6 +109,12 @@ export function GridEjecucion({
   const [filas, setFilas] = useState<FilaEjecucion[]>([])
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // El aviso del padre va por ref: un callback nuevo en cada dibujo no debe volver a disparar las consultas (bucle)
+  const sinMigracionRef = useRef(onSinMigracion)
+  useEffect(() => {
+    sinMigracionRef.current = onSinMigracion
+  }, [onSinMigracion])
+  const avisar = useCallback((falta: boolean, causa?: string | null) => sinMigracionRef.current(falta, causa), [])
   const [aviso, setAviso] = useState<string | null>(null)
   const [ocupado, setOcupado] = useState(false)
   const [buscando, setBuscando] = useState(false)
@@ -202,10 +208,10 @@ export function GridEjecucion({
   const diagnosticar = useCallback(
     (mensaje: string, codigo?: string | null) => {
       const d = diagnosticarLectura(AVISO_SIN_MIGRACION, { message: mensaje, code: codigo })
-      onSinMigracion(d.falta, d.avisoModulo)
+      avisar(d.falta, d.avisoModulo)
       setError(d.mensaje)
     },
-    [onSinMigracion],
+    [avisar],
   )
 
   const recargar = useCallback(async () => {
@@ -232,7 +238,7 @@ export function GridEjecucion({
         setFilas([])
         return
       }
-      onSinMigracion(false, null)
+      avisar(false, null)
       setError(null)
       setFilas(datos)
     }
@@ -240,7 +246,7 @@ export function GridEjecucion({
     return () => {
       vivo = false
     }
-  }, [temporadaId, onSinMigracion, diagnosticar])
+  }, [temporadaId, avisar, diagnosticar])
 
   /* ------------------------------ Columnas ----------------------------- */
 

@@ -122,7 +122,7 @@ export type AsignacionMotor = {
 export type NivelSemaforo = 'verde' | 'amarillo' | 'rojo' | 'gris'
 
 /** sql/147: una línea de «qué toca ahora» (ya ordenada por urgencia en la base). */
-export type AyudaAhora = { nivel: NivelSemaforo; codigo: 'MANTENIMIENTO' | 'FALTA_REGISTRO' | 'TANQUE' | 'SIN_TANQUE'; texto: string }
+export type AyudaAhora = { nivel: NivelSemaforo; codigo: 'MANTENIMIENTO' | 'TANQUE' | 'SIN_TANQUE'; texto: string }
 export type AyudaMotor = { equipo_id: string; nivel: NivelSemaforo; ahora: AyudaAhora[] }
 
 /** sql/147: señal de un día de registro (la base y el teléfono usan las mismas reglas). */

@@ -59,6 +59,7 @@ export function FormRecibirDiesel({
   const [vehiculo, setVehiculo] = useState(b?.vehiculo ?? corregir?.vehiculo_id ?? '')
   const [comentario, setComentario] = useState(b?.comentario ?? corregir?.comentario ?? '')
   const [motivo, setMotivo] = useState('')
+  const [aceptaNegativo, setAceptaNegativo] = useState(false)
   const [nuevos, setNuevos] = useState<Operacion[]>(b?.nuevos ?? [])
   const [choferesAqui, setChoferesAqui] = useState<Chofer[]>(b?.choferesAqui ?? [])
   const [vehiculosAqui, setVehiculosAqui] = useState<Vehiculo[]>(b?.vehiculosAqui ?? [])
@@ -96,7 +97,7 @@ export function FormRecibirDiesel({
         })
         if ('error' in a) return a.error
         // sql/150: corregir = UNA sola operación que anula la vieja y guarda la nueva en la misma transacción (todo o nada)
-        const datos = corregir ? { ...a.datos, corrige_id: corregir.id, motivo: `Corrección: ${motivo.trim()}` } : a.datos
+        const datos = corregir ? { ...a.datos, corrige_id: corregir.id, motivo: `Corrección: ${motivo.trim()}`, ...(aceptaNegativo ? { acepta_saldo_negativo: true } : {}) } : a.datos
         const nueva = crearOperacion('diesel_recibir', datos, { ubicacion, enNombreDe: corregir ? (corregir.registrado_por ?? enNombreDe) : enNombreDe, resumen: `${corregir ? 'Recepción CORREGIDA' : 'Combustible recibido'} · ${tanques.find((t) => t.id === tanque)?.nombre ?? estacion.nombre} · ${g} gal` })
         return [...nuevos, nueva]
       }}
@@ -162,6 +163,12 @@ export function FormRecibirDiesel({
         <Campo etiqueta="Motivo de la corrección" requerido>
           <AreaTexto value={motivo} onChange={(e) => setMotivo(e.target.value)} rows={2} placeholder="Qué estaba mal" data-motivo-correccion />
         </Campo>
+      )}
+      {corregir && (
+        <label className="flex min-h-11 items-center gap-2 text-sm text-slate-700">
+          <input type="checkbox" checked={aceptaNegativo} onChange={(e) => setAceptaNegativo(e.target.checked)} data-acepta-saldo-negativo />
+          Aceptar si el tanque queda en negativo
+        </label>
       )}
       <Campo etiqueta="Observaciones">
         <AreaTexto value={comentario} onChange={(e) => setComentario(e.target.value)} rows={2} placeholder="Opcional" data-comentario />
