@@ -15,7 +15,7 @@ import { ayerIso, deEntradaLocal, ahoraIso, hoyIso } from '@/lib/fechas/zona'
 import { claveBorrador, useAutoguardado, useBorrador } from '@/lib/fertirriego/borrador'
 import { crearOperacion } from '@/lib/fertirriego/operaciones'
 import type { Estacion, Operacion, Persona, PermisoHistorico } from '@/lib/fertirriego/tipos'
-import { recibidoEnDia, saldoTanqueLocal, type EstadoMotores, type MotorEstacion, type OperacionPendienteMotor, type RegistroMotor } from '@/lib/motores/estado'
+import { devueltoEnRango, recibidoEnDia, saldoTanqueLocal, type EstadoMotores, type MotorEstacion, type OperacionPendienteMotor, type RegistroMotor } from '@/lib/motores/estado'
 import { armarRegistroDiario, calcularRegistro, proponerInicial } from '@/lib/motores/registroDiario'
 import { alertasRegistro, fechaUltimaLocal, horasEstimadas, rendimientoReferencia } from '@/lib/motores/senales'
 import { MarcoRegistro } from '@/components/fertirriego/MarcoRegistro'
@@ -132,7 +132,10 @@ export function FormRegistroMotor({
   // En un registro histórico no se suma: no mueve el tanque.
   const tanqueId = motor.tanque?.id ?? ''
   const recibidoHoy = tanqueId ? recibidoEnDia(tanqueId, fecha, estado, pendientes) : 0
-  const visorIniTxt = visorIni ?? (propuesta.visorIni !== null ? String(Math.round((propuesta.visorIni + (esHistorico ? 0 : recibidoHoy)) * 100) / 100) : '')
+  // sql/155: lo devuelto a bodega desde el último registro (ese día incluido) hasta antes de esta fecha baja el visor esperado
+  const devuelto = tanqueId && propuesta.fechaBase && !esHistorico ? devueltoEnRango(tanqueId, propuesta.fechaBase, fecha, estado, pendientes) : 0
+  const visorPrevio = propuesta.visorIni !== null ? Math.round((propuesta.visorIni - devuelto) * 100) / 100 : null
+  const visorIniTxt = visorIni ?? (visorPrevio !== null ? String(Math.round((visorPrevio + (esHistorico ? 0 : recibidoHoy)) * 100) / 100) : '')
   const horoFinEf = horoMalo ? horoIniTxt : horoFin
   const visorFinEf = visorFin
 
@@ -163,14 +166,14 @@ export function FormRegistroMotor({
         suministro: recibido,
         horoCambiado,
         visorCambiado,
-        previo: { horoIni: propuesta.horoIni, visorIni: propuesta.visorIni, fechaBase: propuesta.fechaBase },
+        previo: { horoIni: propuesta.horoIni, visorIni: visorPrevio, fechaBase: propuesta.fechaBase },
         saldoTanque: compararLibro ? saldoLibro : null,
         recibidoHoyTanque: recibidoHoy,
         registros: estado.registros,
         equipoId: motor.equipo_id,
         historico: esHistorico,
       }),
-    [fecha, horoIniTxt, horoFinEf, visorIniTxt, visorFinEf, recibido, horoCambiado, visorCambiado, propuesta, compararLibro, saldoLibro, recibidoHoy, estado.registros, motor.equipo_id, esHistorico]
+    [fecha, horoIniTxt, horoFinEf, visorIniTxt, visorFinEf, recibido, horoCambiado, visorCambiado, propuesta, visorPrevio, compararLibro, saldoLibro, recibidoHoy, estado.registros, motor.equipo_id, esHistorico]
   )
   const estimadas = completo && calc.horas === 0 && calc.gastado !== null ? horasEstimadas(0, calc.gastado, rendimientoReferencia(estado.registros, motor.equipo_id, fecha)) : null
 

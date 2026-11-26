@@ -195,7 +195,14 @@ type RegSenal = Pick<
 >
 
 /** Las señales de un día, con el registro anterior del mismo motor (`prev`) y los 10 anteriores con rendimiento (`hist`). */
-export function senalesDeRegistro(r: RegSenal, prev: RegSenal | null, hist: RegSenal[], recepciones: Pick<RecepcionMotor, 'tanque_id' | 'galones' | 'fecha_hora' | 'anulado_at'>[]): Aviso[] {
+export function senalesDeRegistro(
+  r: RegSenal,
+  prev: RegSenal | null,
+  hist: RegSenal[],
+  recepciones: Pick<RecepcionMotor, 'tanque_id' | 'galones' | 'fecha_hora' | 'anulado_at'>[],
+  /** sql/155: diésel devuelto a bodega (resta entre el día anterior, incluido, y este día, excluido: igual que la base). */
+  devoluciones: Pick<RecepcionMotor, 'tanque_id' | 'galones' | 'fecha_hora' | 'anulado_at'>[] = []
+): Aviso[] {
   const out: Aviso[] = []
   const add = (nivel: NivelAviso, codigo: string, texto: string) => out.push({ nivel, codigo, texto })
   if (prev && !r.horo_cambiado) {
@@ -206,7 +213,8 @@ export function senalesDeRegistro(r: RegSenal, prev: RegSenal | null, hist: RegS
     // suministros entre el día anterior y este día (este incluido): lo recibido en el tanque o lo declarado en el registro
     const enRango = recepciones.filter((x) => !x.anulado_at && x.tanque_id === r.tanque_id && diaLocal(x.fecha_hora) > prev.fecha && diaLocal(x.fecha_hora) < r.fecha).reduce((s, x) => s + x.galones, 0)
     const delDia = recepciones.filter((x) => !x.anulado_at && x.tanque_id === r.tanque_id && diaLocal(x.fecha_hora) === r.fecha).reduce((s, x) => s + x.galones, 0)
-    const esperado = prev.visor_fin + enRango + Math.max(delDia, r.recibido_gal)
+    const devuelto = devoluciones.filter((x) => !x.anulado_at && x.tanque_id === r.tanque_id && diaLocal(x.fecha_hora) >= prev.fecha && diaLocal(x.fecha_hora) < r.fecha).reduce((s, x) => s + x.galones, 0)
+    const esperado = prev.visor_fin + enRango + Math.max(delDia, r.recibido_gal) - devuelto
     const d = r.visor_ini - esperado
     if (d < -TOLERANCIA_GAL) add('rojo', 'VISOR_FALTA', `Visor inicial: faltan ${t(-d)} gal.`)
     else if (d > TOLERANCIA_GAL) add('amarillo', 'VISOR_SOBRA', `Visor inicial: sobran ${t(d)} gal. ¿Falta recibir combustible?`)
@@ -235,7 +243,11 @@ export function senalesDeRegistro(r: RegSenal, prev: RegSenal | null, hist: RegS
 }
 
 /** Señales de TODOS los registros bajados (por registro), con las mismas reglas de la base. Sin red. */
-export function senalesPorRegistro(registros: RegSenal[], recepciones: Pick<RecepcionMotor, 'tanque_id' | 'galones' | 'fecha_hora' | 'anulado_at'>[]): Map<string, Aviso[]> {
+export function senalesPorRegistro(
+  registros: RegSenal[],
+  recepciones: Pick<RecepcionMotor, 'tanque_id' | 'galones' | 'fecha_hora' | 'anulado_at'>[],
+  devoluciones: Pick<RecepcionMotor, 'tanque_id' | 'galones' | 'fecha_hora' | 'anulado_at'>[] = []
+): Map<string, Aviso[]> {
   const mapa = new Map<string, Aviso[]>()
   const porMotor = new Map<string, RegSenal[]>()
   for (const r of registros) if (!r.anulado_at) porMotor.set(r.equipo_id, [...(porMotor.get(r.equipo_id) ?? []), r])
@@ -243,7 +255,7 @@ export function senalesPorRegistro(registros: RegSenal[], recepciones: Pick<Rece
     const asc = [...lista].sort((a, b) => a.fecha.localeCompare(b.fecha))
     asc.forEach((r, i) => {
       const hist = asc.slice(0, i).reverse()
-      mapa.set(r.id, senalesDeRegistro(r, i > 0 ? asc[i - 1] : null, hist, recepciones))
+      mapa.set(r.id, senalesDeRegistro(r, i > 0 ? asc[i - 1] : null, hist, recepciones, devoluciones))
     })
   }
   return mapa

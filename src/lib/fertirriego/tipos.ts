@@ -376,6 +376,8 @@ export type TipoOperacion =
   | 'motor_registro_diario'
   | 'motor_mantenimiento'
   | 'diesel_recibir'
+  /** sql/155: devolver diésel de un tanque a suministros, bodega o taller. */
+  | 'diesel_devolver'
   | 'anulacion'
   | 'chofer'
   | 'vehiculo'

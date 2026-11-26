@@ -8,7 +8,7 @@ import { MarcoRegistro } from '@/components/fertirriego/MarcoRegistro'
 import { crearOperacion } from '@/lib/fertirriego/operaciones'
 import type { Estacion, Operacion, Persona } from '@/lib/fertirriego/tipos'
 
-export type AnulableMotor = { tipo: 'motor_registro' | 'diesel_recepcion' | 'motor_asignacion'; id: string; texto: string }
+export type AnulableMotor = { tipo: 'motor_registro' | 'diesel_recepcion' | 'diesel_devolucion' | 'motor_asignacion'; id: string; texto: string }
 
 export function FormAnularMotor({
   doc,

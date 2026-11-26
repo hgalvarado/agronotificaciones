@@ -3,7 +3,7 @@
 /**
  * «Tanques»: los tanques fijos asignados a la estación, una fila compacta por tanque con su nivel, saldo y el motor conectado.
  * Tocar la fila abre el detalle (lo último que se recibió) con la acción «Recibir diésel» en ese tanque. Arriba, el botón grande
- * «Recibir diésel»; quien tiene «Configurar» ve además «Administrar tanques».
+ * «Recibir diésel» y «Devolver a bodega» (sql/155); quien tiene «Configurar» ve además «Administrar tanques».
  */
 
 import { Boton } from '@/components/ui/Primitivos'
@@ -22,6 +22,7 @@ export function PestanaTanques({
   puedeRecibir,
   puedeConfigurar,
   onRecibir,
+  onDevolver,
   onAbrir,
   onAdministrar,
 }: {
@@ -31,6 +32,8 @@ export function PestanaTanques({
   puedeRecibir: boolean
   puedeConfigurar: boolean
   onRecibir: () => void
+  /** sql/155: devolver diésel del tanque a bodega. */
+  onDevolver: () => void
   onAbrir: (id: string) => void
   onAdministrar: () => void
 }) {
@@ -39,6 +42,11 @@ export function PestanaTanques({
       {puedeRecibir && tanques.length > 0 && (
         <Boton className="min-h-14 w-full text-base" onClick={onRecibir} data-recibir-diesel>
           Recibir combustible
+        </Boton>
+      )}
+      {puedeRecibir && tanques.some((t) => saldoDe(t.id) > 0) && (
+        <Boton variante="secundario" className="min-h-11 w-full" onClick={onDevolver} data-devolver-diesel>
+          Devolver a bodega
         </Boton>
       )}
       {tanques.length === 0 && (
@@ -80,6 +88,7 @@ export function DetalleTanque({
   estado,
   puedeRecibir,
   onRecibir,
+  onDevolver,
   onCerrar,
 }: {
   tanque: TanqueFijo
@@ -88,6 +97,7 @@ export function DetalleTanque({
   estado: EstadoMotores
   puedeRecibir: boolean
   onRecibir: () => void
+  onDevolver: () => void
   onCerrar: () => void
 }) {
   const sem = semaforoTanque(saldo, tanque.capacidad_gal)
@@ -107,6 +117,11 @@ export function DetalleTanque({
         {puedeRecibir && (
           <Boton className="mt-1 min-h-14 w-full text-base" onClick={onRecibir} data-recibir-en-tanque>
             Recibir combustible
+          </Boton>
+        )}
+        {puedeRecibir && saldo > 0 && (
+          <Boton variante="secundario" className="min-h-11 w-full" onClick={onDevolver} data-devolver-en-tanque>
+            Devolver a bodega
           </Boton>
         )}
         <Boton variante="fantasma" className="min-h-11" onClick={onCerrar}>

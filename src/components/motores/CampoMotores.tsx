@@ -3,7 +3,7 @@
 /**
  * Motores y combustible (Campo, bloque 3 + rediseño sql/147). Funciona sin señal igual que Fertirriego e Inyección (misma cola,
  * misma custodia). Cuatro pestañas claras: «Hoy» (qué toca ahora, por urgencia), «Motores» (semáforos y acciones de cada motor),
- * «Historial» (por día, todos los campos de la hoja) y «Tanques» (diésel por tanque fijo); con «Vista general» o «Auditar», una quinta («General») con todos los
+ * «Historial» (por día, todos los campos de la hoja) y «Tanques» (diésel por tanque fijo; recibir y devolver a bodega, sql/155); con «Vista general» o «Auditar», una quinta («General») con todos los
  * motores, al día, y su ficha completa. Semáforos y señales se calculan en el teléfono (lib/motores/senales). El diésel entra a los
  * TANQUES, no a la bodega. El consumo, el rendimiento y los reportes largos son de AGL.
  */
@@ -29,6 +29,7 @@ import { AdministrarTanques } from './AdministrarTanques'
 import { FormMantenimiento } from './FormMantenimiento'
 import { FormMoverMotor } from './FormMoverMotor'
 import { FormRecibirDiesel } from './FormRecibirDiesel'
+import { FormDevolverDiesel } from './FormDevolverDiesel'
 import { AvisoModoPruebas } from '@/components/campo/AvisoModoPruebas'
 import { FormRegistroMotor } from './FormRegistroMotor'
 import { PestanaHistorial } from './PestanaHistorial'
@@ -42,7 +43,7 @@ const RUTAS_SW = ['/motores']
 type Pestana = 'hoy' | 'motores' | 'historial' | 'tanques' | 'general'
 
 type Ventana = {
-  tipo: 'registro' | 'corregir' | 'corregir_recepcion' | 'recibir' | 'mover' | 'retirar' | 'mantenimiento' | 'detalle_motor' | 'detalle_tanque' | 'elegir_motor' | 'recibir_motor' | 'administrar_tanques'
+  tipo: 'registro' | 'corregir' | 'corregir_recepcion' | 'recibir' | 'devolver' | 'mover' | 'retirar' | 'mantenimiento' | 'detalle_motor' | 'detalle_tanque' | 'elegir_motor' | 'recibir_motor' | 'administrar_tanques'
   equipoId: string
   tanqueId?: string
   /** Día del registro que pidió recibir combustible (la recepción viene con esa fecha). */
@@ -157,12 +158,13 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
     const tipo: Ventana['tipo'] | null =
       o.tipo === 'motor_registro_diario' ? 'registro'
       : o.tipo === 'diesel_recibir' ? 'recibir'
+      : o.tipo === 'diesel_devolver' ? 'devolver'
       : o.tipo === 'motor_asignar' || o.tipo === 'motor_retiro' ? 'mover'
       : o.tipo === 'motor_mantenimiento' ? 'mantenimiento'
       : null
-    if (tipo === 'recibir') setVentana({ tipo, equipoId: '', tanqueId })
+    if (tipo === 'recibir' || tipo === 'devolver') setVentana({ tipo, equipoId: '', tanqueId })
     else if (tipo && equipoId) setVentana({ tipo, equipoId })
-    guardado(tipo && (equipoId || tipo === 'recibir') ? 'Corrige y guarda. Luego quita el rechazado en «Envíos».' : 'Haz el registro de nuevo. Luego quita el rechazado en «Envíos».')
+    guardado(tipo && (equipoId || tipo === 'recibir' || tipo === 'devolver') ? 'Corrige y guarda. Luego quita el rechazado en «Envíos».' : 'Haz el registro de nuevo. Luego quita el rechazado en «Envíos».')
   }
 
   // Aplica el enlace profundo una sola vez cuando ya hay datos: estación, pestaña y (en useResaltarDestino) el elemento.
@@ -313,6 +315,7 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
               puedeRecibir={puedeRegistrar}
               puedeConfigurar={puedeConfigurar}
               onRecibir={() => setVentana({ tipo: 'recibir', equipoId: '' })}
+              onDevolver={() => setVentana({ tipo: 'devolver', equipoId: '' })}
               onAbrir={(id) => setVentana({ tipo: 'detalle_tanque', equipoId: '', tanqueId: id })}
               onAdministrar={() => setVentana({ tipo: 'administrar_tanques', equipoId: '' })}
             />
@@ -341,6 +344,7 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
                 estado={me}
                 puedeRecibir={puedeRegistrar}
                 onRecibir={() => setVentana({ tipo: 'recibir', equipoId: '', tanqueId: t.id })}
+                onDevolver={() => setVentana({ tipo: 'devolver', equipoId: '', tanqueId: t.id })}
                 onCerrar={() => setVentana(null)}
               />
             )
@@ -391,6 +395,19 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
               tanques={tanques}
               tanqueInicial={tanqueInicial(ventana)}
               fechaInicial={ventana.fecha}
+              saldoDe={saldoDe}
+              campo={estado}
+              estacion={estacion}
+              yo={estado.yo}
+              registrar={campo.registrar}
+              onCerrar={() => setVentana(null)}
+              onGuardado={guardado}
+            />
+          )}
+          {ventana?.tipo === 'devolver' && (
+            <FormDevolverDiesel
+              tanques={tanques}
+              tanqueInicial={ventana.tanqueId}
               saldoDe={saldoDe}
               campo={estado}
               estacion={estacion}
