@@ -4,6 +4,8 @@
 -- Correr DESDE LA RAÍZ DEL REPO con:
 --   psql -d <base> -v ON_ERROR_STOP=1 -f pruebas/sql/150_motores_correcciones.sql
 -- Autosuficiente (crea su propio admin, diésel y motor T150-M1). NO ejecutada todavía (la corre Opus).
+-- OJO: describe el estado SIN la 153 (aquí anular una recepción gastada se acepta con SALDO_NEGATIVO y el saldo no se realinea con el visor).
+-- Con la 153 aplicada, las secciones 5 y 6 cambian de regla: las reemplaza pruebas/sql/153_motores_integridad.sql.
 -- Órdenes a probar después: 147 > 150, 150 > 147 > 150, 150 > 150 y 144…149 > 150 (el bloque 7 repite 147/148/149/150).
 -- =====================================================================
 \set ON_ERROR_STOP 1
@@ -158,21 +160,25 @@ create temp table a1 as select pg_temp.op(pg_temp.uid(31), 'anulacion', jsonb_bu
 select pg_temp.ok((select r->>'estado' like 'ACEPTADO%' from a1), 'anular la recepción de 6 gal: ' || (select r::text from a1));
 select pg_temp.ok((select recibido_gal = 0 and gastado_gal = 0 and rendimiento_gal_h = 0 from mot_registros where id = pg_temp.uid(21)),
                   'el registro del día quedó recibido 0, gastado 0 (el visor subió sin diésel que lo explique)');
-select pg_temp.ok(pg_temp.saldo() = 50, 'saldo 50 = 55 − 6 (recepción) + 1 (consumo recalculado)');
+select pg_temp.ok(pg_temp.saldo() = 55, 'saldo 55: el tanque se realinea con el visor del último registro (153; antes 55 − 6 + 1 = 50)');
 select pg_temp.ok((select not (r::text like '%SALDO_NEGATIVO%') from a1), 'sin saldo negativo no hay observación SALDO_NEGATIVO');
 
--- ---------------------------------------------------------------- 6 · saldo negativo: se acepta con la observación
+-- ---------------------------------------------------------------- 6 · anular una recepción ya gastada (153): se rechaza; solo el administrador con la señal la acepta
 create temp table a2 as select pg_temp.op(pg_temp.uid(32), 'anulacion', jsonb_build_object('documento_tipo', 'diesel_recepcion', 'documento_id', pg_temp.uid(16),
     'motivo', 'recepción cargada dos veces'), 3) as r;
-select pg_temp.ok((select r->>'estado' like 'ACEPTADO%' and r::text like '%SALDO_NEGATIVO%' from a2), 'anular 100 gal con el tanque en 50: se acepta con SALDO_NEGATIVO: ' || (select r::text from a2));
-select pg_temp.ok(pg_temp.saldo() = -50, 'el saldo queda en −50 (el visor es la realidad)');
--- la corrección también avisa: se recibe y se corrige a una cantidad que sigue dejando negativo
+select pg_temp.ok((select r->>'estado' = 'RECHAZADO' and r::text like '%Usa «Corregir recepción»%' from a2), 'anular 100 gal ya gastados: RECHAZADO con «Usa Corregir recepción»: ' || (select r::text from a2));
+select pg_temp.ok((select anulado_at is null from mot_recepciones where id = pg_temp.uid(16)) and pg_temp.saldo() = 55, 'rechazada: la recepción sigue vigente y el saldo no cambió');
+create temp table a3 as select pg_temp.op(pg_temp.uid(33), 'anulacion', jsonb_build_object('documento_tipo', 'diesel_recepcion', 'documento_id', pg_temp.uid(16),
+    'motivo', 'recepción cargada dos veces', 'acepta_saldo_negativo', true), 3) as r;
+select pg_temp.ok((select r->>'estado' like 'ACEPTADO%' and r::text like '%SALDO_NEGATIVO%' from a3), 'administrador con acepta_saldo_negativo: aceptada con SALDO_NEGATIVO: ' || (select r::text from a3));
+select pg_temp.ok(pg_temp.saldo() = 55, 'el saldo sigue en el visor del último registro (55): se realinea (153), no queda en −45');
+-- corregir una recepción posterior al último registro
 create temp table c3 as select pg_temp.op(pg_temp.uid(41), 'diesel_recibir', jsonb_build_object('tanque_id', (select t from tk), 'galones', 20,
     'fecha_hora', pg_temp.ts(2), 'chofer_id', '10000000-0000-0000-0000-000000000001'), 2) as r;
 create temp table c4 as select pg_temp.op(pg_temp.uid(42), 'diesel_recibir', jsonb_build_object('tanque_id', (select t from tk), 'galones', 10,
     'fecha_hora', pg_temp.ts(2), 'corrige_id', pg_temp.uid(41), 'motivo', 'eran 10 galones y no 20'), 2) as r;
-select pg_temp.ok((select r->>'estado' like 'ACEPTADO%' and r::text like '%SALDO_NEGATIVO%' from c4) and pg_temp.saldo() = -40,
-                  'corregir 20 → 10 con el tanque aún negativo: aceptada con SALDO_NEGATIVO, saldo −40');
+select pg_temp.ok((select r->>'estado' like 'ACEPTADO%' and r::text not like '%SALDO_NEGATIVO%' from c4) and pg_temp.saldo() = 65,
+                  'corregir 20 → 10 (153: el tanque ya no queda negativo): aceptada sin SALDO_NEGATIVO, saldo 65 = visor 55 + 10 recibidos después');
 
 -- ---------------------------------------------------------------- 7 · «días sin registro» tampoco sale en las señales
 select pg_temp.como((select e1 from k));
@@ -182,7 +188,7 @@ select pg_temp.ok((select r->>'estado' like 'ACEPTADO%' from r2), 'registro del 
 select pg_temp.ok(not exists (select 1 from public._mot_senales(array[(select m1 from m)], null, null) s where s.codigo = 'HUECO_DIAS'),
                   '_mot_senales ya no emite HUECO_DIAS');
 
--- ---------------------------------------------------------------- 8 · idempotencia y orden (147 > 148 > 149 > 150 deja lo mismo)
+-- ---------------------------------------------------------------- 8 · idempotencia y orden (147 > 148 > 149 > 150 > 153 deja lo mismo)
 create temp table h0 as select md5(string_agg(pg_get_functiondef(p.oid), '|' order by p.proname)) as h
   from pg_proc p where p.pronamespace = 'public'::regnamespace
    and p.proname in ('_mot_op_diesel_recibir', '_mot_op_anulacion', '_mot_estado_motor', '_mot_senales', '_mot_recalcular_recibido');
@@ -194,8 +200,9 @@ select pg_temp.ok((select md5(string_agg(pg_get_functiondef(p.oid), '|' order by
 \i sql/148_motores_recepciones_recientes.sql
 \i sql/149_motores_general_temporada.sql
 \i sql/150_motores_correcciones.sql
+\i sql/153_motores_integridad.sql
 select pg_temp.ok((select md5(string_agg(pg_get_functiondef(p.oid), '|' order by p.proname)) from pg_proc p where p.pronamespace = 'public'::regnamespace
                    and p.proname in ('_mot_op_diesel_recibir', '_mot_op_anulacion', '_mot_estado_motor', '_mot_senales', '_mot_recalcular_recibido')) = (select h from h0),
-                  'orden 150 > 147 > 148 > 149 > 150: las funciones quedan igual (la 150 trae su parche tras volver a correr la 147)');
+                  'orden 150 > 147 > 148 > 149 > 150 > 153: las funciones quedan igual (la 150 trae su parche tras volver a correr la 147; la 153 va al final)');
 
 \echo 'PRUEBAS 150 TERMINADAS'

@@ -16,6 +16,8 @@ export type PermisosEstacion = {
   gestionar_choferes: boolean
   /** sql/119: «Eliminar por completo» (puede faltar si la base aún no tiene la 119). */
   eliminar_definitivo?: boolean
+  /** sql/152: puede declarar el préstamo de tanque Vegetativa↔Generativa. */
+  capacidad?: boolean
 }
 
 export type Persona = { id: string; nombre: string }
@@ -353,6 +355,8 @@ export type EstadoCampo = {
   historico_permisos?: PermisoHistorico[]
   /** sql/131 (puede faltar si la base aún no tiene la 131) */
   devoluciones_bodega?: DevolucionBodega[]
+  /** sql/152 (puede faltar si la base aún no tiene la 152): capacidad de almacenaje por estación y solución */
+  capacidades?: import('./capacidad').CapacidadSolucion[]
 }
 
 export type TipoOperacion =

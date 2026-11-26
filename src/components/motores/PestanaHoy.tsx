@@ -31,7 +31,6 @@ export function PestanaHoy({
   const items = queTocaAhora(vistas.map((v) => ({ motor: v.motor, ayuda: v.ayuda })))
   /** Qué se puede hacer con cada tipo de pendiente (según los permisos); null = solo informativo. */
   const accionDe = (i: ItemAhora): { texto: string; accion: AccionHoy } | null => {
-    if (i.codigo === 'FALTA_REGISTRO' && puedeRegistrar) return { texto: 'Registrar día', accion: { tipo: 'registro', equipoId: i.equipo_id } }
     if (i.codigo === 'MANTENIMIENTO' && puedeMantenimiento) return { texto: 'Registrar mantenimiento', accion: { tipo: 'mantenimiento', equipoId: i.equipo_id } }
     if (i.codigo === 'TANQUE' && puedeRegistrar) return { texto: 'Recibir combustible', accion: { tipo: 'recibir', equipoId: i.equipo_id } }
     return null

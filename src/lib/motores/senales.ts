@@ -292,8 +292,11 @@ export function alertasRegistro(e: EntradaAlertas): Aviso[] {
     if (horoIni < p.horoIni - 0.005) out.push({ nivel: 'rojo', codigo: 'HORO_RETROCEDE', texto: `Horómetro retrocede: antes terminó en ${t(p.horoIni, 2)}.` })
     else if (horoIni > p.horoIni + 0.005) out.push({ nivel: 'amarillo', codigo: 'HORO_SALTA', texto: `Horómetro salta ${t(horoIni - p.horoIni, 2)} h.` })
   }
-  if (visorIni !== null && p.visorIni !== null && !e.visorCambiado && e.suministro === 0 && Math.abs(visorIni - p.visorIni) > 0.005) {
-    out.push({ nivel: 'amarillo', codigo: 'VISOR_NO_CONTINUA', texto: `Visor no continúa: antes terminó en ${t(p.visorIni)}.` })
+  // Hueco del visor: debe iniciar donde terminó el último registro más lo recibido ese día (un histórico no suma lo recibido).
+  // Solo informa: no bloquea el guardado.
+  const visorEsperado = p.visorIni !== null ? p.visorIni + (e.historico ? 0 : e.suministro) : null
+  if (visorIni !== null && visorEsperado !== null && !e.visorCambiado && Math.abs(visorIni - visorEsperado) > 0.005) {
+    out.push({ nivel: 'amarillo', codigo: 'VISOR_NO_CONTINUA', texto: `Visor no continúa: debía iniciar en ${t(visorEsperado)}.` })
   }
   if (!e.historico && visorIni !== null && e.saldoTanque !== null && p.visorIni !== null && !e.visorCambiado) {
     const extra = Math.max(e.suministro - e.recibidoHoyTanque, 0)

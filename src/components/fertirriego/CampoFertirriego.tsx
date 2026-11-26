@@ -26,10 +26,13 @@ import {
 import { productosPendientes } from '@/lib/fertirriego/productos'
 import { crearOperacion } from '@/lib/fertirriego/operaciones'
 import { obtenerUbicacion } from '@/lib/fertirriego/ubicacion'
-import type { Chofer, Estacion, Operacion, PermisoHistorico, Relevo, Traslado, Vehiculo } from '@/lib/fertirriego/tipos'
+import type { Chofer, EstadoCampo, Estacion, Operacion, PermisoHistorico, Relevo, Traslado, Vehiculo } from '@/lib/fertirriego/tipos'
 import { useCampo } from '@/lib/fertirriego/useCampo'
 import { useInyeccionGuardada } from '@/lib/inyeccion/useInyeccionGuardada'
 import { AsignarCustodia } from './AsignarCustodia'
+import { FormPrestamoTanque } from './FormPrestamoTanque'
+import { VistaGeneralCapacidad } from './VistaGeneralCapacidad'
+import { capacidadesDeEstacion } from '@/lib/fertirriego/capacidad'
 import { AyudaFertirriego } from './AyudaFertirriego'
 import { DetalleDocumento } from './DetalleDocumento'
 import { EncabezadoEnvios } from './EncabezadoEnvios'
@@ -56,7 +59,7 @@ import { VistaTraslados } from './VistaTraslados'
 import { VistaTurnos } from './VistaTurnos'
 import { AvisoModoPruebas } from '@/components/campo/AvisoModoPruebas'
 
-type Pestana = 'estacion' | 'turnos' | 'bitacora' | 'relevos' | 'traslados'
+type Pestana = 'estacion' | 'general' | 'turnos' | 'bitacora' | 'relevos' | 'traslados'
 type Ventana =
   | { tipo: 'recibir' }
   | { tipo: 'envases' }
@@ -67,6 +70,7 @@ type Ventana =
   | { tipo: 'horas'; turno: string; fecha: string }
   | { tipo: 'documento'; documentoTipo: string; documentoId: string }
   | { tipo: 'custodia' }
+  | { tipo: 'prestamo'; estacionId: string }
   | { tipo: 'entregar' }
   | { tipo: 'recibir_relevo'; pendiente: Relevo | null }
   | { tipo: 'codigo' }
@@ -78,6 +82,7 @@ type Ventana =
 
 const PESTANAS: { clave: Pestana; nombre: string }[] = [
   { clave: 'estacion', nombre: 'Bodega' },
+  { clave: 'general', nombre: 'General' },
   { clave: 'turnos', nombre: 'Por turno' },
   { clave: 'bitacora', nombre: 'Bitácora' },
   { clave: 'relevos', nombre: 'Relevos' },
@@ -180,6 +185,10 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
     estacionIdRef.current = estacion?.id ?? ''
   }, [estacion])
 
+  const saldosPorEstacion = useMemo(
+    () => new Map((estado?.estaciones ?? []).map((e) => [e.id, saldosLocales(estado as EstadoCampo, cola, e.id)] as const)),
+    [estado, cola]
+  )
   const saldos = useMemo(() => (estado && estacion ? saldosLocales(estado, cola, estacion.id) : new Map<string, number>()), [estado, cola, estacion])
   const saldosEnvases = useMemo(
     () => (estado && estacion ? saldosEnvasesLocales(estado, cola, estacion.id) : new Map<string, number>()),
@@ -385,6 +394,15 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
                 </button>
               ))}
             </div>
+
+            {pestana === 'general' && (
+              <VistaGeneralCapacidad
+                estado={estado}
+                saldosPorEstacion={saldosPorEstacion}
+                enLinea={enLinea}
+                onPrestar={(e) => setVentana({ tipo: 'prestamo', estacionId: e.id })}
+              />
+            )}
 
             {pestana === 'estacion' && (
               <PanelEstacion
@@ -636,6 +654,22 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
                 onGuardado={guardado}
               />
             )}
+            {ventana?.tipo === 'prestamo' && (() => {
+              const destino = estaciones.find((x) => x.id === ventana.estacionId)
+              return destino ? (
+                <FormPrestamoTanque
+                  supabase={campo.supabase}
+                  estacion={destino}
+                  caps={capacidadesDeEstacion(estado.capacidades, destino.id)}
+                  materiales={estado.materiales}
+                  onCerrar={() => setVentana(null)}
+                  onHecho={(m) => {
+                    guardado(m)
+                    void campo.sincronizarAhora()
+                  }}
+                />
+              ) : null
+            })()}
             {ventana?.tipo === 'custodia' && (
               <AsignarCustodia
                 supabase={campo.supabase}

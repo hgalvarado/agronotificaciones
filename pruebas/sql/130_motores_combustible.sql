@@ -5,6 +5,7 @@
 --   psql -d <base> -v ON_ERROR_STOP=1 -f pruebas/sql/130_motores_combustible.sql
 -- Al final repite la 130 y la corre en otros órdenes (129>130>129, 128>129>130>128, 116>130>116, 121>130, 130>121, 102>130>102).
 -- NO ejecutada todavía (la corre Opus, Task 6 del plan).
+-- Con 147/153 aplicadas esta prueba se adapta sola (n147/n153): diésel solo al tanque, gastado = visor inicial − final y sin desplazar el saldo.
 -- =====================================================================
 \set ON_ERROR_STOP 1
 set client_min_messages = warning;
@@ -19,6 +20,12 @@ begin
 end $$;
 create or replace function pg_temp.m144() returns boolean language sql as $f$
     select exists (select 1 from pg_proc where proname = '_mot_op_diesel_recibir' and prosrc like '%_fert_mover%') $f$;
+-- sql/147: el diésel entra solo al tanque, el gastado es visor inicial − visor final (el visor inicial ya trae lo recibido) y el tanque tiene custodia
+create or replace function pg_temp.n147() returns boolean language sql as $f$
+    select exists (select 1 from pg_proc where proname = '_mot_op_diesel_recibir' and prosrc like '%147:diesel-tanque%') $f$;
+-- sql/153: un día que no es el último ya no desplaza el saldo del tanque (se realinea con el visor del último registro)
+create or replace function pg_temp.n153() returns boolean language sql as $f$
+    select exists (select 1 from pg_proc where proname = '_mot_op_registro_diario' and prosrc like '%153:realinear%') $f$;
 
 -- p_dias_atras > 0 = llegó de la cola (no inmediata)
 create or replace function pg_temp.op(p_id uuid, p_tipo text, p_datos jsonb, p_dias_atras integer default 0) returns jsonb language sql as $$
@@ -160,8 +167,9 @@ create temp table c1 as select pg_temp.op(pg_temp.uid(21), 'diesel_recibir', jso
     'fecha_hora', pg_temp.ts(3), 'chofer_id', '10000000-0000-0000-0000-000000000001'), 3) as r;
 select pg_temp.ok((select r->>'estado' like 'ACEPTADO%' from c1), 'recibir 140 gal en el tanque del motor: ' || (select r::text from c1));
 select pg_temp.ok(pg_temp.m144() or (select disponible = 235 + 140 from mot_saldos where tanque_id = (select t from tk)), 'la recepción suma al saldo');
-create temp table r4 as select pg_temp.reg(pg_temp.uid(14), 3, 19200.7, 19210.7, 235, 221, '{}', 3) as r;
-select pg_temp.ok(pg_temp.m144() or (select recibido_gal = 140 and gastado_gal = 154 from mot_registros where id = pg_temp.uid(14)), 'gastado = visor_ini − visor_fin + recibido del día (235 − 221 + 140 = 154)');
+-- con la 147 el visor inicial del día ya incluye lo recibido (235 + 140 = 375) y gastado = visor inicial − visor final = 154
+create temp table r4 as select pg_temp.reg(pg_temp.uid(14), 3, 19200.7, 19210.7, case when pg_temp.n147() then 375 else 235 end, 221, '{}', 3) as r;
+select pg_temp.ok(pg_temp.m144() or (select recibido_gal = 140 and gastado_gal = 154 from mot_registros where id = pg_temp.uid(14)), 'gastado 154 con 140 recibidos (antes de la 147: 235 − 221 + 140; con la 147: 375 − 221)');
 select pg_temp.ok((select disponible = 221 from mot_saldos where tanque_id = (select t from tk)), 'el saldo queda en el visor final (221)');
 -- día sin horas
 create temp table r5 as select pg_temp.reg(pg_temp.uid(15), 2, 19210.7, 19210.7, 221, 221, '{}', 2) as r;
@@ -188,7 +196,7 @@ select pg_temp.ok((select r->>'estado' = 'RECHAZADO' and r::text like '%posterio
 create temp table sa as select disponible as s from mot_saldos where tanque_id = (select t from tk);
 create temp table r11 as select pg_temp.reg(pg_temp.uid(22), 7, 19100, 19110, 300, 290, '{}', 7) as r;
 select pg_temp.ok((select r->>'estado' like 'ACEPTADO%' and r::text like '%FUERA_DE_ORDEN%' from r11), 'registro de un día anterior a otros: FUERA_DE_ORDEN');
-select pg_temp.ok((select disponible = (select s from sa) - 10 from mot_saldos where tanque_id = (select t from tk))
+select pg_temp.ok((select disponible = (select s from sa) - case when pg_temp.n153() then 0 else 10 end from mot_saldos where tanque_id = (select t from tk))   -- 153: el tanque se realinea con el visor del último registro
                    and not exists (select 1 from mot_movimientos where documento_id = pg_temp.uid(22) and tipo in ('AJUSTE_VISOR', 'SALDO_INICIAL')),
                   'fuera de orden: solo el consumo, sin ajuste de visor');
 select pg_temp.ok((select horo_ultimo = 19305 or horo_ultimo = 19300 from mot_motores where equipo_id = (select m1 from m)), 'las últimas lecturas del motor no retroceden');
@@ -246,30 +254,34 @@ create temp table t3 as select pg_temp.op(pg_temp.uid(63), 'motor_registro_diari
     'horo_ini', 1, 'horo_fin', 2, 'visor_ini', 5, 'visor_fin', 4)) as r;
 select pg_temp.ok((select r->>'estado' = 'RECHAZADO' and (r::text like '%taller%' or r::text like '%no hay dónde asentar%') from t3), 'un motor en el taller (sin estación ni tanque) no acepta registros (136)');
 
--- ---------------------------------------------------------------- 9 · fin de temporada con saldo
+-- ---------------------------------------------------------------- 9 · retiro / fin de temporada (147: el tanque es fijo y se queda en la estación)
 select pg_temp.como((select adm from k));
+create temp table s9 as select public._mot_saldo_actual((select t from tk)) as s;
 create temp table f1 as select pg_temp.op(pg_temp.uid(71), 'motor_retiro', jsonb_build_object('equipo_id', (select m2 from m), 'fecha_hora', pg_temp.ts(0),
     'motivo', 'Fin de temporada', 'motivo_codigo', 'FIN_TEMPORADA')) as r;
-select pg_temp.ok((select r->>'estado' = 'RECHAZADO' and r::text like '%diésel%' from f1), 'retiro con saldo y sin destino del diésel: rechazado');
+select pg_temp.ok((select r->>'estado' like 'ACEPTADO%' from f1), 'retiro sin preguntar por el diésel: aceptado ' || (select r::text from f1));
+select pg_temp.ok((select estado = 'RETIRADO' and estacion_id is null and tanque_id is null from mot_motores where equipo_id = (select m2 from m)), 'el motor queda retirado, sin estación ni tanque');
+select pg_temp.ok((select estacion_id = (select est from k) and motor_equipo_id is null and activo from mot_tanques where id = (select t from tk))
+                   and public._mot_saldo_actual((select t from tk)) = (select s from s9), 'el tanque NO viaja con el motor: se queda activo en la estación con su saldo');
+select pg_temp.ok(not exists (select 1 from mot_movimientos where documento_id = pg_temp.uid(71) and tipo = 'DEVOLUCION_TANQUE'), 'el retiro no genera movimientos de diésel');
+-- un motor que ya no está en una estación no se puede retirar otra vez
 create temp table f2 as select pg_temp.op(pg_temp.uid(72), 'motor_retiro', jsonb_build_object('equipo_id', (select m2 from m), 'fecha_hora', pg_temp.ts(0),
-    'motivo', 'Fin de temporada', 'motivo_codigo', 'FIN_TEMPORADA', 'destino_saldo', 'DEVUELTO')) as r;
-select pg_temp.ok((select r->>'estado' = 'RECHAZADO' from f2), '«devuelto» sin destino: rechazado');
-create temp table s9 as select disponible as s from mot_saldos where tanque_id = (select t from tk);
-create temp table f3 as select pg_temp.op(pg_temp.uid(73), 'motor_retiro', jsonb_build_object('equipo_id', (select m2 from m), 'fecha_hora', pg_temp.ts(0),
-    'motivo', 'Fin de temporada', 'motivo_codigo', 'FIN_TEMPORADA', 'destino_saldo', 'DEVUELTO', 'destino_devolucion', 'SUMINISTROS')) as r;
-select pg_temp.ok((select r->>'estado' like 'ACEPTADO%' from f3) and (select disponible = 0 from mot_saldos where tanque_id = (select t from tk))
-                   and exists (select 1 from mot_movimientos where documento_id = pg_temp.uid(73) and tipo = 'DEVOLUCION_TANQUE' and cantidad = -(select s from s9))
-                   and (select not activo from mot_tanques where id = (select t from tk)), 'DEVUELTO: saldo 0, DEVOLUCION_TANQUE y tanque inactivo');
+    'motivo', 'Fin de temporada', 'motivo_codigo', 'FIN_TEMPORADA')) as r;
+select pg_temp.ok((select r->>'estado' = 'RECHAZADO' and r::text like '%El motor no está instalado en una estación%' from f2), 'retirar un motor que no está en una estación: rechazado');
 -- anular el retiro lo deshace
-create temp table f4 as select pg_temp.op(pg_temp.uid(74), 'anulacion', jsonb_build_object('documento_tipo', 'motor_asignacion', 'documento_id', pg_temp.uid(73), 'motivo', 'error')) as r;
-select pg_temp.ok((select r->>'estado' like 'ACEPTADO%' from f4) and (select activo from mot_tanques where id = (select t from tk))
-                   and (select disponible = (select s from s9) from mot_saldos where tanque_id = (select t from tk)) and (select estado = 'EN_ESTACION' from mot_motores where equipo_id = (select m2 from m)),
-                  'anular el retiro: el tanque y el saldo vuelven y el motor sigue en la estación');
--- traslado CON_EL_MOTOR
+create temp table f4 as select pg_temp.op(pg_temp.uid(74), 'anulacion', jsonb_build_object('documento_tipo', 'motor_asignacion', 'documento_id', pg_temp.uid(71), 'motivo', 'error')) as r;
+select pg_temp.ok((select r->>'estado' like 'ACEPTADO%' from f4) and (select activo and motor_equipo_id = (select m2 from m) from mot_tanques where id = (select t from tk))
+                   and public._mot_saldo_actual((select t from tk)) = (select s from s9) and (select estado = 'EN_ESTACION' from mot_motores where equipo_id = (select m2 from m)),
+                  'anular el retiro: el motor vuelve a su tanque, el saldo no cambia y sigue en la estación');
+-- traslado: el tanque de origen se queda con su saldo; el motor usa un tanque de la estación destino
+select fn_mot_tanque_guardar(jsonb_build_object('nombre', 'T130-TQ2', 'capacidad_gal', 200));
+select fn_mot_tanque_asignar((select id from mot_tanques where nombre = 'T130-TQ2'), (select est2 from k), 'prueba 130');
 create temp table f5 as select pg_temp.op(pg_temp.uid(75), 'motor_asignar', jsonb_build_object('equipo_id', (select m2 from m), 'tipo', 'TRASLADADO', 'fecha_hora', pg_temp.ts(0),
-    'estacion_destino', (select est2 from k), 'motivo', 'Cambio', 'motivo_codigo', 'CAMBIO_ESTACION', 'destino_saldo', 'CON_EL_MOTOR')) as r;
-select pg_temp.ok((select r->>'estado' like 'ACEPTADO%' from f5) and (select estacion_id = (select est2 from k) and motor_equipo_id = (select m2 from m) from mot_tanques where id = (select t from tk))
-                   and (select disponible = (select s from s9) from mot_saldos where tanque_id = (select t from tk)), 'CON_EL_MOTOR: el tanque y su saldo viajan a la otra estación');
+    'estacion_destino', (select est2 from k), 'tanque_id', (select id from mot_tanques where nombre = 'T130-TQ2'), 'motivo', 'Cambio', 'motivo_codigo', 'CAMBIO_ESTACION')) as r;
+select pg_temp.ok((select r->>'estado' like 'ACEPTADO%' from f5) and (select estacion_id = (select est from k) and motor_equipo_id is null from mot_tanques where id = (select t from tk))
+                   and public._mot_saldo_actual((select t from tk)) = (select s from s9)
+                   and (select estacion_id = (select est2 from k) and tanque_id = (select id from mot_tanques where nombre = 'T130-TQ2') from mot_motores where equipo_id = (select m2 from m)),
+                  'traslado: el tanque y su saldo se quedan en la estación de origen; el motor usa el tanque del destino ' || (select r::text from f5));
 
 -- ---------------------------------------------------------------- 10 · sin permisos
 select pg_temp.como((select sin from k));

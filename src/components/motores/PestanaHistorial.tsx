@@ -381,7 +381,7 @@ export function PestanaHistorial({
           }}
         />
       )}
-      {anulando && <FormAnularMotor doc={anulando} estacion={estacion} yo={yo} registrar={registrar} onCerrar={() => setAnulando(null)} onGuardado={onGuardado} />}
+      {anulando && <FormAnularMotor doc={anulando} estacion={estacion} yo={yo} registrar={registrar} puedeAceptarNegativo={puedeEliminar} onCerrar={() => setAnulando(null)} onGuardado={onGuardado} />}
     </div>
   )
 }

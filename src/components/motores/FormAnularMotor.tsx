@@ -15,6 +15,7 @@ export function FormAnularMotor({
   estacion,
   yo,
   registrar,
+  puedeAceptarNegativo = false,
   onCerrar,
   onGuardado,
 }: {
@@ -22,10 +23,13 @@ export function FormAnularMotor({
   estacion: Estacion
   yo: Persona
   registrar: (...ops: Operacion[]) => Promise<void>
+  /** Solo administrador: permite anular una recepción ya gastada aunque el tanque quede en negativo (la base lo vuelve a comprobar). */
+  puedeAceptarNegativo?: boolean
   onCerrar: () => void
   onGuardado: (m: string) => void
 }) {
   const [motivo, setMotivo] = useState('')
+  const [aceptaNegativo, setAceptaNegativo] = useState(false)
   return (
     <MarcoRegistro
       titulo="Anular registro del motor"
@@ -40,7 +44,7 @@ export function FormAnularMotor({
       construir={({ ubicacion, enNombreDe }) => {
         if (!motivo.trim()) return 'Escribe por qué se anula.'
         return [
-          crearOperacion('anulacion', { estacion_id: estacion.id, documento_tipo: doc.tipo, documento_id: doc.id, motivo: motivo.trim() }, { ubicacion, enNombreDe, resumen: `Anulación · ${doc.texto}` }),
+          crearOperacion('anulacion', { estacion_id: estacion.id, documento_tipo: doc.tipo, documento_id: doc.id, motivo: motivo.trim(), ...(aceptaNegativo ? { acepta_saldo_negativo: true } : {}) }, { ubicacion, enNombreDe, resumen: `Anulación · ${doc.texto}` }),
         ]
       }}
     >
@@ -48,6 +52,12 @@ export function FormAnularMotor({
       <Campo etiqueta="Motivo" requerido>
         <AreaTexto value={motivo} onChange={(e) => setMotivo(e.target.value)} rows={2} data-motivo-anulacion />
       </Campo>
+      {puedeAceptarNegativo && doc.tipo === 'diesel_recepcion' && (
+        <label className="flex min-h-11 items-center gap-2 text-sm text-slate-700">
+          <input type="checkbox" checked={aceptaNegativo} onChange={(e) => setAceptaNegativo(e.target.checked)} data-acepta-saldo-negativo />
+          Aceptar si el tanque queda en negativo
+        </label>
+      )}
     </MarcoRegistro>
   )
 }
