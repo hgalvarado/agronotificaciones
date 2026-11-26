@@ -118,6 +118,9 @@ export function FormMoverMotor({
   const libres = useMemo(() => (destino ? tanquesLibres(estado, destino, motor.equipo_id) : []), [estado, destino, motor.equipo_id])
   // Con un solo tanque libre ya viene elegido (la base hace lo mismo si no se envía ninguno)
   const tanqueEf = tanque || (libres.length === 1 ? libres[0].id : '')
+  // Modo de pruebas: la estación de práctica sin ningún tanque recibe uno de práctica que crea la base (sql/147)
+  const destinoPrueba = !!destino && (estaciones.find((e) => e.id === destino)?.nombre ?? '').startsWith('PRUEBA · ')
+  const tanquePractica = destinoPrueba && libres.length === 0 && !(estado.tanques ?? []).some((t) => t.estacion_id === destino)
 
   return (
     <MarcoRegistro
@@ -150,6 +153,7 @@ export function FormMoverMotor({
           horometro: modo === 'recibir' && horometro.trim() ? Number(horometro.replace(',', '.')) : null,
           observacion: modo === 'recibir' ? observacion : '',
           estacionOrigen: motor.estacion_id,
+          tanquePractica,
         })
         if ('error' in a) return a.error
         return [crearOperacion(a.operacion, a.datos, { ubicacion, enNombreDe, resumen: `${NOMBRE_TIPO[tipo]} · ${motor.codigo}` })]
@@ -215,12 +219,16 @@ export function FormMoverMotor({
                 permitirVacio={false}
               />
             </div>
+          ) : tanquePractica ? (
+            <p className="rounded-xl bg-brand-50 px-3 py-2 text-xs text-brand-800" data-tanque-practica>
+              Práctica: al guardar se crea un tanque de prueba.
+            </p>
           ) : (
             <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-900 ring-1 ring-inset ring-amber-600/20" data-sin-tanque-libre>
               Sin tanque libre. Pide uno a Torre de Control.
             </p>
           )}
-          {libres.length === 0 && puedeCrearTanque && (
+          {libres.length === 0 && puedeCrearTanque && !tanquePractica && (
             <div className="mt-2 grid grid-cols-2 gap-2">
               <input
                 value={tanqueNombre}

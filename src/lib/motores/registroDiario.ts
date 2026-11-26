@@ -218,6 +218,8 @@ export function armarMovimientoMotor(args: {
   horometro?: number | null
   observacion?: string
   estacionOrigen?: string | null
+  /** Modo de pruebas: la estación de prueba aún no tiene tanque; la base crea uno de práctica (sql/147). */
+  tanquePractica?: boolean
 }): { datos: Record<string, unknown>; operacion: 'motor_asignar' | 'motor_retiro' } | { error: string } {
   const entra = args.tipo === 'INSTALADO' || args.tipo === 'DE_VUELTA' || args.tipo === 'TRASLADADO'
   // Recibir (INSTALADO, DE_VUELTA) no tiene motivo; mover o retirar piden uno (el código o lo escrito)
@@ -227,7 +229,7 @@ export function armarMovimientoMotor(args: {
   if (!recibe && args.motivoCodigo === 'OTRO' && !args.motivo.trim()) return { error: 'Escribe cuál es el motivo.' }
   if (args.horometro != null && (!esNum(args.horometro) || args.horometro < 0)) return { error: 'Horómetro no válido.' }
   if (entra && !args.estacionDestino) return { error: 'Elige la estación de destino.' }
-  if (entra && !args.tanqueId && !args.tanqueNuevo) return { error: 'Elige un tanque libre.' }
+  if (entra && !args.tanqueId && !args.tanqueNuevo && !args.tanquePractica) return { error: 'Elige un tanque libre.' }
   if (args.tanqueNuevo && !args.tanqueNuevo.nombre.trim()) return { error: 'Escribe el nombre del tanque nuevo.' }
   if (args.horasBase !== null && (!esNum(args.horasBase) || args.horasBase < 0)) return { error: 'Horas de mantenimiento no válidas.' }
   const datos: Record<string, unknown> = {
