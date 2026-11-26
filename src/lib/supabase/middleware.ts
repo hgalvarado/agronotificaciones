@@ -3,6 +3,11 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { esSesionMuerta, limpiarSesion } from './sesion'
 import { decidirProxy } from './decisionProxy'
 
+/** Solo se recuerda una ruta interna normal (no el login, no archivos, no //otro-sitio). */
+function esRutaDeVuelta(ruta: string): boolean {
+  return ruta.startsWith('/') && !ruta.startsWith('//') && !ruta.includes('\\') && ruta !== '/' && !ruta.startsWith('/login') && !ruta.startsWith('/api/') && ruta.length < 500
+}
+
 /**
  * Middleware de sesión: el patrón estándar de `@supabase/ssr`, sin más.
  *
@@ -82,8 +87,10 @@ export async function updateSession(request: NextRequest) {
 
   if (!usuario && !isAuthRoute && !esPublica) {
     const url = request.nextUrl.clone()
+    // Se recuerda a dónde iba (enlace profundo de una alerta): el login lo devuelve ahí.
+    const destino = request.nextUrl.pathname + request.nextUrl.search
     url.pathname = '/login'
-    url.search = ''
+    url.search = esRutaDeVuelta(destino) ? '?next=' + encodeURIComponent(destino) : ''
     const redireccion = NextResponse.redirect(url)
     return muerta ? limpiarSesion(request, redireccion) : redireccion
   }

@@ -19,6 +19,7 @@ import { useCampo } from '@/lib/fertirriego/useCampo'
 import { EncabezadoEnvios } from '@/components/fertirriego/EncabezadoEnvios'
 import type { Operacion } from '@/lib/fertirriego/tipos'
 import { hoyIso } from '@/lib/fechas/zona'
+import { AvisoDestinoPerdido, useDestinoAlerta, useResaltarDestino } from '@/lib/alertas/useDestinoAlerta'
 import { motoresDeEstacion, motoresParaRecibir, saldoTanqueLocal, tanquesDeEstacion, type MotorEstacion } from '@/lib/motores/estado'
 import { queTocaAhora } from '@/lib/motores/senales'
 import { useMotores } from '@/lib/motores/useMotores'
@@ -59,6 +60,7 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
   const { estado, cola } = campo
   const [estacionId, setEstacionId] = useState('')
   const [pestana, setPestana] = useState<Pestana>('hoy')
+  const [preparado, setPreparado] = useState(false)
   const [ventana, setVentana] = useState<Ventana | null>(null)
   const [motorHistorial, setMotorHistorial] = useState<string | undefined>(undefined)
   const [aviso, setAviso] = useState<string | null>(null)
@@ -66,9 +68,14 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
 
   // La estación que eligió la última vez (en este teléfono; la misma preferencia que Fertirriego)
   const { preferencia, guardarPreferencia } = campo
+  // Enlace profundo de una alerta (?pestana=&estacion=&tanque=&motor=&registro=&fecha=): manda sobre la preferencia
+  const alerta = useDestinoAlerta()
+  const dest = alerta.destino
+  const destinoEstacion = dest.estacion
   useEffect(() => {
+    if (destinoEstacion) return
     void preferencia<string>('estacion').then((v) => v && setEstacionId(v))
-  }, [preferencia])
+  }, [preferencia, destinoEstacion])
 
   const estaciones = estado?.estaciones ?? []
   const estacionServidor = estaciones.find((e) => e.id === estacionId) ?? estaciones[0] ?? null
@@ -158,6 +165,26 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
     guardado(tipo && (equipoId || tipo === 'recibir') ? 'Corrige y guarda. Luego quita el rechazado en «Envíos».' : 'Haz el registro de nuevo. Luego quita el rechazado en «Envíos».')
   }
 
+  // Aplica el enlace profundo una sola vez cuando ya hay datos: estación, pestaña y (en useResaltarDestino) el elemento.
+  const alertaAplicada = useRef(false)
+  const { activo: alertaActiva, terminar: terminarAlerta } = alerta
+  const hayEstado = Boolean(estado)
+  const hayEstacionDestino = Boolean(destinoEstacion && estaciones.some((e) => e.id === destinoEstacion))
+  useEffect(() => {
+    if (!alertaActiva || alertaAplicada.current || !hayEstado) return
+    alertaAplicada.current = true
+    setTimeout(() => {
+      if (destinoEstacion && !hayEstacionDestino) return terminarAlerta(true) // esa estación ya no es suya o no existe
+      if (destinoEstacion) setEstacionId(destinoEstacion)
+      const valida: Pestana[] = ['hoy', 'motores', 'historial', 'tanques', ...(puedeGeneral ? (['general'] as Pestana[]) : [])]
+      const pedida = valida.find((v) => v === dest.pestana)
+      const p = pedida ?? (dest.tanque ? 'tanques' : dest.motor ? 'motores' : dest.registro || dest.fecha ? 'historial' : null)
+      if (p) setPestana(p)
+      setPreparado(true)
+    }, 0) // fuera del cuerpo del efecto (regla set-state-in-effect); no se cancela: solo corre una vez
+  }, [alertaActiva, hayEstado, hayEstacionDestino, destinoEstacion, puedeGeneral, dest.pestana, dest.tanque, dest.motor, dest.registro, dest.fecha, terminarAlerta])
+  useResaltarDestino(alerta, { listo: preparado, ids: [dest.registro, dest.tanque, dest.motor, dest.fecha] })
+
   if (campo.cargando && !estado) return <ListaEsqueleto filas={4} />
 
   const pestanas: [Pestana, string][] = [
@@ -211,6 +238,7 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
               />
             </div>
           )}
+          <AvisoDestinoPerdido alerta={alerta} />
           <AvisoModoPruebas estacionNombre={estacion.nombre} />
           <div className="flex flex-wrap items-baseline justify-between gap-x-2">
             <h1 className="text-xl font-bold tracking-tight text-slate-900" data-estacion={estacion.nombre}>

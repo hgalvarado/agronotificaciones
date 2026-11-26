@@ -148,3 +148,51 @@ self.addEventListener('fetch', (evento) => {
     })
   )
 })
+
+/* ---------------------------------------------------------------- Avisos push (alertas de Campo)
+ * Payload mínimo: {titulo, cuerpo, url, tag}. `tag` = clave de la alerta: una alerta repetida reemplaza a la anterior.
+ * No toca el caché de campo. */
+self.addEventListener('push', (evento) => {
+  let d = {}
+  try {
+    d = evento.data ? evento.data.json() : {}
+  } catch {
+    d = { titulo: 'AgroNotificaciones', cuerpo: evento.data ? evento.data.text() : '' }
+  }
+  const url = typeof d.url === 'string' && d.url.startsWith('/') && !d.url.startsWith('//') && !d.url.includes('\\') ? d.url : '/alertas'
+  evento.waitUntil(
+    self.registration.showNotification(d.titulo || 'AgroNotificaciones', {
+      body: d.cuerpo || '',
+      icon: '/marca/icono-192.png',
+      badge: '/marca/icono-192.png',
+      tag: d.tag || undefined,
+      renotify: Boolean(d.tag),
+      data: { url },
+    })
+  )
+})
+
+/* Al tocar el aviso: si la app ya está abierta se enfoca y se lleva a la URL exacta; si no, se abre. */
+self.addEventListener('notificationclick', (evento) => {
+  evento.notification.close()
+  const destino = new URL((evento.notification.data && evento.notification.data.url) || '/alertas', self.location.origin).href
+  evento.waitUntil(
+    (async () => {
+      const ventanas = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+      for (const v of ventanas) {
+        if (new URL(v.url).origin === self.location.origin && 'focus' in v) {
+          await v.focus()
+          if ('navigate' in v) {
+            try {
+              await v.navigate(destino)
+            } catch {
+              /* si no deja navegar, al menos queda enfocada */
+            }
+          }
+          return
+        }
+      }
+      await self.clients.openWindow(destino)
+    })()
+  )
+})

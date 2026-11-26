@@ -29,6 +29,9 @@ const sondeo = crearSondeo(120_000)
 // El número se comparte entre las dos campanas (escritorio y celular): solo una consulta, las dos lo muestran
 let ultimoNumero = 0
 const oyentes = new Set<(n: number) => void>()
+// Alertas de Campo sin leer (sql/154): mismo sondeo, misma consulta cada 2 min; 0 si la persona no tiene el permiso
+let ultimoAlertas = 0
+const oyentesAlertas = new Set<(n: number) => void>()
 
 /**
  * Campana de avisos.
@@ -49,6 +52,7 @@ const oyentes = new Set<(n: number) => void>()
 export function CampanaNotificaciones({ compacta = false }: { compacta?: boolean }) {
   const supabase = createClient()
   const [pendientes, setPendientes] = useState(ultimoNumero)
+  const [alertas, setAlertas] = useState(ultimoAlertas)
   const [abierto, setAbierto] = useState(false)
   const [avisos, setAvisos] = useState<Aviso[] | null>(null)
   const contenedor = useRef<HTMLDivElement>(null)
@@ -80,12 +84,18 @@ export function CampanaNotificaciones({ compacta = false }: { compacta?: boolean
           ultimoNumero = data
           oyentes.forEach((f) => f(data))
         }
+        const { data: nAlertas } = await supabase.rpc('fn_alertas_no_leidas')
+        if (typeof nAlertas === 'number') {
+          ultimoAlertas = nAlertas
+          oyentesAlertas.forEach((f) => f(nAlertas))
+        }
       } catch {
         /* sin señal: se conserva el número anterior; el próximo intento es en 2 min como mínimo */
       }
     }
 
     oyentes.add(setPendientes)
+    oyentesAlertas.add(setAlertas)
     contar()
     const id = setInterval(contar, INTERVALO)
 
@@ -98,6 +108,7 @@ export function CampanaNotificaciones({ compacta = false }: { compacta?: boolean
 
     return () => {
       oyentes.delete(setPendientes)
+      oyentesAlertas.delete(setAlertas)
       clearInterval(id)
       document.removeEventListener('visibilitychange', alVolver)
     }
@@ -177,6 +188,12 @@ export function CampanaNotificaciones({ compacta = false }: { compacta?: boolean
           </button>
         </div>
 
+        {alertas > 0 && (
+          <Link href="/alertas" onClick={() => setAbierto(false)} data-campana-alertas className="flex min-h-11 items-center justify-between gap-2 border-b border-slate-100 bg-red-50 px-4 py-2 text-sm font-bold text-red-700">
+            <span>Alertas de Campo sin leer</span>
+            <span>{alertas}</span>
+          </Link>
+        )}
         <div
           className="overflow-y-auto overscroll-contain"
           style={{ maxHeight: compacta ? 'calc(70svh - 3.25rem)' : (caja?.maxAlto ?? 420) - 52 }}
@@ -233,13 +250,13 @@ export function CampanaNotificaciones({ compacta = false }: { compacta?: boolean
         ref={boton}
         onClick={alternar}
         className="relative rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
-        aria-label={pendientes > 0 ? `${pendientes} avisos sin leer` : 'Avisos'}
+        aria-label={pendientes + alertas > 0 ? `${pendientes + alertas} avisos sin leer` : 'Avisos'}
         title="Avisos"
       >
         <IconCampana />
-        {pendientes > 0 && (
+        {pendientes + alertas > 0 && (
           <span className="absolute -right-0.5 -top-0.5 flex min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-[18px] text-white ring-2 ring-white">
-            {pendientes > 99 ? '99+' : pendientes}
+            {pendientes + alertas > 99 ? '99+' : pendientes + alertas}
           </span>
         )}
       </button>

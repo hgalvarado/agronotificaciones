@@ -54,7 +54,7 @@ export function PestanaTanques({
           return (
             <FilaToque
               key={t.id}
-              atributos={{ 'data-tanque': t.nombre }}
+              atributos={{ 'data-tanque': t.nombre, 'data-destino': t.id }}
               nivel={sem.nivel}
               titulo={t.nombre}
               linea2={<MedidorTanque saldo={saldo} capacidad={t.capacidad_gal} />}
