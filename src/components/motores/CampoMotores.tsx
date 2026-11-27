@@ -122,6 +122,20 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
   const motores = useMemo(() => (me && estacion ? motoresDeEstacion(me, estacion.id) : []), [me, estacion])
   const vistas = useMemo(() => (me ? motores.map((m) => vistaMotor(m, me, cola, hoy)) : []), [me, motores, cola, hoy])
   const tanques = useMemo(() => (me && estacion ? tanquesDeEstacion(me, estacion.id) : []), [me, estacion])
+  // Historial: los motores de hoy y también los que pasaron por la estación (un sustituto que ya se fue, uno en reparación)
+  const motoresHistorial = useMemo(() => {
+    if (!me || !estacion) return motores
+    const ids = new Set(motores.map((m) => m.equipo_id))
+    // solo de la temporada activa (los registros ya bajan desde su inicio; los movimientos traen los últimos de cada motor)
+    const desde = me.temporada?.desde ?? ''
+    for (const a of me.asignaciones) {
+      if (a.anulado_at || (desde && a.fecha_hora.slice(0, 10) < desde)) continue
+      if (a.estacion_origen === estacion.id || a.estacion_destino === estacion.id) ids.add(a.equipo_id)
+    }
+    for (const r of me.registros) if (r.estacion_id === estacion.id) ids.add(r.equipo_id)
+    const extra = me.motores.filter((m) => ids.has(m.equipo_id) && !motores.some((x) => x.equipo_id === m.equipo_id))
+    return [...motores, ...extra.sort((a, b) => a.codigo.localeCompare(b.codigo, 'es', { numeric: true }))]
+  }, [me, estacion, motores])
   const enReparacion = useMemo(() => (me && estacion ? reemplazosDeEstacion(me, estacion.id) : []), [me, estacion])
   const saldoDe = (id: string): number => (me ? saldoTanqueLocal(id, me, cola) : 0)
   const urgentes = useMemo(() => queTocaAhora(vistas.map((v) => ({ motor: v.motor, ayuda: v.ayuda }))).filter((i) => i.nivel === 'rojo').length, [vistas])
@@ -277,7 +291,7 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
               cola={cola}
               estacion={estacion}
               yo={estado.yo}
-              motores={motores}
+              motores={motoresHistorial}
               motorInicial={motorHistorial}
               choferes={estado.choferes}
               vehiculos={estado.vehiculos}
