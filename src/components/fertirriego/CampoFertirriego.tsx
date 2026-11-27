@@ -34,6 +34,7 @@ import { useCampo } from '@/lib/fertirriego/useCampo'
 import { useInyeccionGuardada } from '@/lib/inyeccion/useInyeccionGuardada'
 import { AsignarCustodia } from './AsignarCustodia'
 import { FormPrestamoTanque } from './FormPrestamoTanque'
+import { FormCapacidadEstacion } from './FormCapacidadEstacion'
 import { VistaGeneralCapacidad } from './VistaGeneralCapacidad'
 import { capacidadesDeEstacion } from '@/lib/fertirriego/capacidad'
 import { AyudaFertirriego } from './AyudaFertirriego'
@@ -74,6 +75,7 @@ type Ventana =
   | { tipo: 'documento'; documentoTipo: string; documentoId: string }
   | { tipo: 'custodia' }
   | { tipo: 'prestamo'; estacionId: string }
+  | { tipo: 'capacidad'; estacionId: string }
   | { tipo: 'entregar' }
   | { tipo: 'recibir_relevo'; pendiente: Relevo | null }
   | { tipo: 'codigo' }
@@ -403,6 +405,7 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
                 saldosPorEstacion={saldosPorEstacion}
                 enLinea={enLinea}
                 onPrestar={(e) => setVentana({ tipo: 'prestamo', estacionId: e.id })}
+                onCambiarCapacidad={(e) => setVentana({ tipo: 'capacidad', estacionId: e.id })}
               />
             )}
 
@@ -656,6 +659,22 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
                 onGuardado={guardado}
               />
             )}
+            {ventana?.tipo === 'capacidad' && (() => {
+              const destino = estaciones.find((x) => x.id === ventana.estacionId)
+              return destino ? (
+                <FormCapacidadEstacion
+                  supabase={campo.supabase}
+                  estacion={destino}
+                  caps={capacidadesDeEstacion(estado.capacidades, destino.id)}
+                  materiales={estado.materiales}
+                  onCerrar={() => setVentana(null)}
+                  onHecho={(m) => {
+                    guardado(m)
+                    void campo.sincronizarAhora()
+                  }}
+                />
+              ) : null
+            })()}
             {ventana?.tipo === 'prestamo' && (() => {
               const destino = estaciones.find((x) => x.id === ventana.estacionId)
               return destino ? (

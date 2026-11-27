@@ -3,7 +3,7 @@
 /**
  * Pestaña «General» de Fertirriego: por estación, cuánto cabe de cada solución (Calcio, Vegetativa, Generativa…), cuánto
  * hay y cuánto puede recibir, con el préstamo de tanque Vegetativa↔Generativa ya sumado. Las tarjetas van contraídas y las
- * más críticas (más llenas) arriba. Solo lectura; el único botón (uno por tarjeta) declara el préstamo.
+ * más críticas (más llenas) arriba. Con el permiso «Capacidad de almacenaje»: cambiar la capacidad (sql/162) y prestar el tanque.
  */
 
 import { useMemo, useState } from 'react'
@@ -18,12 +18,14 @@ export function VistaGeneralCapacidad({
   saldosPorEstacion,
   enLinea,
   onPrestar,
+  onCambiarCapacidad,
 }: {
   estado: EstadoCampo
   /** Saldo por estación y material (incluye lo pendiente de enviar). */
   saldosPorEstacion: Map<string, Map<string, number>>
   enLinea: boolean
   onPrestar: (estacion: Estacion) => void
+  onCambiarCapacidad: (estacion: Estacion) => void
 }) {
   const [abiertas, setAbiertas] = useState<string[]>([])
   const nombre = (id: string) => estado.materiales.find((m) => m.id === id)?.descripcion ?? 'Solución'
@@ -35,7 +37,7 @@ export function VistaGeneralCapacidad({
         const caps = capacidadesDeEstacion(estado.capacidades, e.id)
         const saldos = saldosPorEstacion.get(e.id) ?? new Map<string, number>()
         const filas = [...caps.values()]
-          .filter((c) => c.capacidad_base > 0)
+          .filter((c) => c.capacidad_base > 0 || e.permisos.capacidad)
           .map((c) => ({ c, saldo: saldos.get(c.material_id) ?? 0 }))
           .sort((a, b) => nombre(a.c.material_id).localeCompare(nombre(b.c.material_id), 'es'))
         const total = resumenDeNiveles(filas.map((f) => ({ saldo: f.saldo, capacidad: f.c.capacidad })))
@@ -87,10 +89,17 @@ export function VistaGeneralCapacidad({
                     nota={notaPrestamo(c, nombre)}
                   />
                 ))}
-                {e.permisos.capacidad && [...caps.values()].some((c) => c.prestable_con) && (
-                  <Boton tamano="sm" variante="secundario" className="min-h-11 self-start" disabled={!enLinea} onClick={() => onPrestar(e)} data-prestar-tanque>
-                    {enLinea ? 'Prestar tanque' : 'Prestar tanque (necesita señal)'}
-                  </Boton>
+                {e.permisos.capacidad && (
+                  <div className="flex flex-wrap gap-2">
+                    <Boton tamano="sm" variante="secundario" className="min-h-11" disabled={!enLinea} onClick={() => onCambiarCapacidad(e)} data-cambiar-capacidad>
+                      {enLinea ? 'Cambiar capacidad' : 'Cambiar capacidad (necesita señal)'}
+                    </Boton>
+                    {[...caps.values()].some((c) => c.prestable_con) && (
+                      <Boton tamano="sm" variante="secundario" className="min-h-11" disabled={!enLinea} onClick={() => onPrestar(e)} data-prestar-tanque>
+                        {enLinea ? 'Prestar tanque' : 'Prestar tanque (necesita señal)'}
+                      </Boton>
+                    )}
+                  </div>
                 )}
               </div>
             )}

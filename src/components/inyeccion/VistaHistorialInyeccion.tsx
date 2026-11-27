@@ -198,6 +198,7 @@ export function VistaHistorialInyeccion({
             <div key={l.material_id} className="mt-1">
               <strong className="text-slate-800">{nombreProducto(l.material_id)}</strong>
               {objetivos.length > 0 ? ` · Objetivo: ${objetivos.join(', ')}` : ''}
+              {l.de_bodega === false && !a.observaciones?.includes('REGISTRO_HISTORICO') && <span className="ml-1 font-semibold text-slate-700" data-llego-directo> · Llegó directo (no salió de bodega)</span>}
               {fila && fila.tiempo !== 'sin_plan' && (
                 <div className="mt-0.5">
                   Plan: {cantidad(fila.cantidad_plan)} {u} · DDT {fila.ddt ?? '—'}

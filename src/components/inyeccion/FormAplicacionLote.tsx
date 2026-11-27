@@ -2,7 +2,7 @@
 
 /**
  * Aplicar por lote (Inyección / Drench / Aseguramiento de calidad): la persona con la estación a cargo registra un
- * lote completo (o una parte: área editable) con sus productos. El producto se elige del catálogo. Todo producto se descuenta de la bodega de la estación (sin saldo: confirmar con la casilla roja). Sin señal:
+ * lote completo (o una parte: área editable) con sus productos. El producto se elige del catálogo. Cada producto dice si salió de la bodega de la estación (por defecto sí: descuenta; sin saldo, confirmar con la casilla roja) o llegó directo al lote (no descuenta, sql/163). Sin señal:
  * se guarda en el teléfono y se envía solo (operación `aplicacion_lote`, sql/129).
  *
  * Sin plan también se puede registrar: queda «Sin plan» y la base lo anota (SIN_PLAN).
@@ -42,6 +42,8 @@ type Datos = {
   editadas: LineaEditable[] | null
   /** Objetivos creados en este teléfono (sin señal) que aún no bajan con el catálogo. */
   objetivosNuevos?: ObjetivoCatalogo[]
+  /** sql/163: productos que NO salieron de la bodega de la estación (llegaron directo al lote): no descuentan. */
+  fueraDeBodega?: string[]
 }
 
 const num = (t: string) => Number(t.replace(',', '.'))
@@ -93,6 +95,8 @@ export function FormAplicacionLote({
     return [...new Set(ids.filter((x): x is string => Boolean(x)))]
   })
   const [objProducto, setObjProducto] = useState<Record<string, string[]>>(b?.objetivosPorProducto ?? {})
+  const [fueraDeBodega, setFueraDeBodega] = useState<string[]>(b?.fueraDeBodega ?? [])
+  const deBodega = (id: string) => !fueraDeBodega.includes(id)
   const objetivosDe = (materialId: string) => objProducto[materialId] ?? objetivosBase
   const [comentario, setComentario] = useState(b?.comentario ?? '')
   const [verObservaciones, setVerObservaciones] = useState(Boolean(b?.comentario))
@@ -101,7 +105,7 @@ export function FormAplicacionLote({
   // sql/140 · Registro histórico: día pasado, sin custodia y SIN descontar la bodega (la base lo vuelve a validar)
   const [esHistorico, setEsHistorico] = useState(false)
   const [ficha, setFicha] = useState<string | null>(null)
-  useAutoguardado(borrador, { lote, categoria, fechaHora, area, objetivosPorProducto: objProducto, comentario, editadas, objetivosNuevos })
+  useAutoguardado(borrador, { lote, categoria, fechaHora, area, objetivosPorProducto: objProducto, comentario, editadas, objetivosNuevos, fueraDeBodega })
 
   const planEstacion = useMemo(() => inyeccion.plan.filter((p) => p.estacion_id === null || p.estacion_id === estacion.id), [inyeccion.plan, estacion.id])
   // Los lotes con plan en la estación salen primero y marcados; se puede elegir cualquier lote de SUS zonas (sin plan = «sin plan»)
@@ -141,8 +145,8 @@ export function FormAplicacionLote({
   )
   const lineas = editadas ?? propuestas
 
-  // 143: todo se consume de la bodega de la estación (salvo el registro histórico, que no mueve inventario)
-  const usaLinea = (l: LineaEditable) => Boolean(l.material_id) && num(l.cantidad || '0') > 0
+  // 163: se descuenta de la bodega de la estación lo que salió de ahí (por defecto sí); el registro histórico no mueve inventario
+  const usaLinea = (l: LineaEditable) => Boolean(l.material_id) && num(l.cantidad || '0') > 0 && deBodega(l.material_id)
   const faltante = esHistorico ? [] : lineas.filter((l) => usaLinea(l) && num(l.cantidad) > (saldos.get(l.material_id) ?? 0))
   const firmaFaltante = faltante.map((l) => `${l.material_id}:${l.cantidad.trim()}`).join('|')
   const aceptaNegativo = faltante.length > 0 && aceptada === firmaFaltante
@@ -203,7 +207,7 @@ export function FormAplicacionLote({
           sinInventario: faltante.length > 0,
           lineas: r.lineas.map((l) => ({
             ...l,
-            de_bodega: !esHistorico,
+            de_bodega: !esHistorico && deBodega(l.material_id),
             objetivos: objetivosParaEnviar(objetivosDe(l.material_id), todosObjetivos),
           })),
           fechaHora: fh,
@@ -387,6 +391,23 @@ export function FormAplicacionLote({
                     </button>
                   )}
                 </div>
+                {!esHistorico && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2" role="group" aria-label={`¿${nombre(l.material_id)} salió de la bodega de la estación?`} data-origen-producto={l.material_id}>
+                    <span className="text-xs font-semibold text-slate-700">¿Salió de la bodega de la estación?</span>
+                    {[true, false].map((si) => (
+                      <button
+                        key={String(si)}
+                        type="button"
+                        aria-pressed={deBodega(l.material_id) === si}
+                        onClick={() => setFueraDeBodega((x) => (si ? x.filter((y) => y !== l.material_id) : x.includes(l.material_id) ? x : [...x, l.material_id]))}
+                        className={`min-h-11 rounded-full px-4 py-1.5 text-sm font-semibold ring-1 ring-inset ${deBodega(l.material_id) === si ? 'bg-brand-700 text-white ring-brand-700' : 'bg-white text-slate-700 ring-slate-300'}`}
+                        data-de-bodega={si ? 'si' : 'no'}
+                      >
+                        {si ? 'Sí' : 'No, llegó directo'}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-slate-600">
                   {dosis !== null && (
                     <span data-dosis-mz>
