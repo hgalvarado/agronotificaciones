@@ -184,27 +184,32 @@ function FilaMotorGeneral({ m, p, resaltar, onToque }: { m: ResumenMotorAuditor;
             {m.zona ? ` · ${m.zona}` : ''}
             {m.fecha_ultimo ? ` · último registro ${fechaCorta(m.fecha_ultimo).slice(0, 5)}` : ''}
           </span>
-          <span className="mt-1.5 grid grid-cols-2 gap-3">
-            <MedidorTanque saldo={m.tanque_id ? (m.saldo_gal ?? 0) : null} capacidad={m.capacidad_gal ?? null} />
-            <BarraMantenimiento horas={m.horas_desde_mant ?? 0} estimadas={m.horas_est_desde_mant ?? 0} intervalo={m.intervalo_horas ?? null} aviso={m.aviso_horas ?? null} />
-          </span>
-          <span className="mt-1.5 grid grid-cols-2 gap-3" data-pronostico>
-            <DatoPronostico
-              titulo="Diésel para"
-              valor={m.tanque_id ? textoDias(p.diasCombustible, 'Sin diésel') : 'Sin tanque'}
-              detalle={p.galDia !== null ? `${cantidad(p.galDia)} gal/día` : null}
-              alerta={p.diasCombustible !== null && p.diasCombustible < 3}
-              fuerte={resaltar === 'combustible'}
-              data-dias-combustible={p.diasCombustible === null ? '' : Math.floor(p.diasCombustible)}
-            />
-            <DatoPronostico
-              titulo="Mantenimiento en"
-              valor={m.intervalo_horas ? textoDias(p.diasMantenimiento) : 'Sin intervalo'}
-              detalle={p.horasDia !== null ? `${cantidad(p.horasDia)} h/día` : null}
-              alerta={p.diasMantenimiento !== null && p.diasMantenimiento < 7}
-              fuerte={resaltar === 'mantenimiento'}
-              data-dias-mantenimiento={p.diasMantenimiento === null ? '' : Math.floor(p.diasMantenimiento)}
-            />
+          {/* En el teléfono: combustible arriba y mantenimiento abajo (una sola columna, nada encimado); en pantalla ancha, lado a lado */}
+          <span className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2" data-pronostico>
+            <span className="block min-w-0">
+              <MedidorTanque saldo={m.tanque_id ? (m.saldo_gal ?? 0) : null} capacidad={m.capacidad_gal ?? null} />
+              {m.tanque_id && (
+                <LineaPronostico
+                  texto={p.diasCombustible === null ? textoDias(null) : p.diasCombustible <= 0 ? 'Sin diésel' : `Alcanza para ${textoDias(p.diasCombustible)}`}
+                  detalle={p.galDia !== null ? `${cantidad(p.galDia)} gal/día` : null}
+                  alerta={p.diasCombustible !== null && p.diasCombustible < 3}
+                  fuerte={resaltar === 'combustible'}
+                  data-dias-combustible={p.diasCombustible === null ? '' : Math.floor(p.diasCombustible)}
+                />
+              )}
+            </span>
+            <span className="block min-w-0">
+              <BarraMantenimiento horas={m.horas_desde_mant ?? 0} estimadas={m.horas_est_desde_mant ?? 0} intervalo={m.intervalo_horas ?? null} aviso={m.aviso_horas ?? null} />
+              {Boolean(m.intervalo_horas) && (
+                <LineaPronostico
+                  texto={p.diasMantenimiento === null ? textoDias(null) : p.diasMantenimiento <= 0 ? 'Le toca ya' : `Le toca en ${textoDias(p.diasMantenimiento)}`}
+                  detalle={p.horasDia !== null ? `${cantidad(p.horasDia)} h/día` : null}
+                  alerta={p.diasMantenimiento !== null && p.diasMantenimiento < 7}
+                  fuerte={resaltar === 'mantenimiento'}
+                  data-dias-mantenimiento={p.diasMantenimiento === null ? '' : Math.floor(p.diasMantenimiento)}
+                />
+              )}
+            </span>
           </span>
         </span>
         <IconChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
@@ -213,16 +218,15 @@ function FilaMotorGeneral({ m, p, resaltar, onToque }: { m: ResumenMotorAuditor;
   )
 }
 
-/** Un dato del pronóstico: título chico, días en grande; si es poco, en naranja con ⚠ (no solo color). */
-function DatoPronostico({ titulo, valor, detalle, alerta, fuerte, ...props }: { titulo: string; valor: string; detalle: string | null; alerta: boolean; fuerte?: boolean } & Record<`data-${string}`, string | number>) {
+/** Una línea bajo el medidor: «Alcanza para 6 días · 14.4 gal/día». Si es poco, naranja con ⚠ (no solo color). Se parte en dos renglones si no cabe. */
+function LineaPronostico({ texto, detalle, alerta, fuerte, ...props }: { texto: string; detalle: string | null; alerta: boolean; fuerte?: boolean } & Record<`data-${string}`, string | number>) {
   return (
-    <span className={`block rounded-lg px-2 py-1 ring-1 ring-inset ${alerta ? 'bg-amber-50 ring-amber-300' : 'bg-slate-50 ring-slate-200'} ${fuerte ? 'ring-2' : ''}`} {...props}>
-      <span className="block text-[12px] font-semibold text-slate-700">{titulo}</span>
-      <span className={`block text-base font-extrabold leading-tight ${alerta ? 'text-amber-800' : 'text-slate-900'}`}>
+    <span className="mt-1 flex flex-wrap items-baseline gap-x-2 leading-snug" {...props}>
+      <span className={`text-sm ${fuerte || alerta ? 'font-extrabold' : 'font-bold'} ${alerta ? 'text-amber-800' : 'text-slate-900'}`}>
         {alerta ? '⚠ ' : ''}
-        {valor}
+        {texto}
       </span>
-      {detalle && <span className="block text-[12px] text-slate-600">{detalle}</span>}
+      {detalle && <span className="text-xs text-slate-600">{detalle}</span>}
     </span>
   )
 }
