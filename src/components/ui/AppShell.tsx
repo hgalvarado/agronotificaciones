@@ -103,7 +103,7 @@ export function AppShell({
   const verAvisos = sinMigracion || concedidos.has('tickets:editar')
   // El indicador «En línea / Sin señal» va en el encabezado de todas las pantallas; con cola de envíos y panel solo
   // para quien usa Campo (el menú nunca da permisos: se mira la matriz)
-  const usaCampo = sinMigracion || ['campo', 'fertirriego', 'inyeccion', 'motores', 'agrometricas'].some((p) => concedidos.has(`${p}:ver`)) || concedidos.has('motores:ver_general')
+  const usaCampo = sinMigracion || ['campo', 'fertirriego', 'inyeccion', 'motores', 'agrometricas'].some((p) => concedidos.has(`${p}:ver`)) || concedidos.has('motores:ver_general') || concedidos.has('agrometricas:ver_registros')
 
   // En el celular los grupos se aplanan: cada avance es su propia
   // entrada, que es más directo que un desplegable dentro de una hoja.
