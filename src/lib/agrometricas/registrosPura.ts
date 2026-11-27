@@ -271,13 +271,17 @@ export interface FiltrosRegistros {
 }
 export const FILTROS_VACIOS: FiltrosRegistros = { temporada: [], zona: [], turno: [], lotes: [], desde: '', hasta: '', texto: '' }
 export const POR_PAGINA = 50
+/** Gráficas (pedido 2026-11-27: «deben salir completas»): se traen todos los registros en bloques de 1000 (máximo de la base),
+ *  solos, sin «Ver más», hasta un tope de bloques para no cargar sin fin. */
+export const POR_PAGINA_GRAFICAS = 1000
+export const TOPE_PAGINAS_GRAFICAS = 10
 
 /**
  * Parámetros para fn_agm_mis_registros. La base filtra por UNA temporada/zona/turno: con una sola elegida se manda;
  * con varias se pide sin ese filtro y `filtrarLocal` recorta. Los lotes sí van en lista (turno_lotes).
  */
-export function paramsConsulta(f: FiltrosRegistros, pagina: number): Record<string, unknown> {
-  const p: Record<string, unknown> = { limite: POR_PAGINA, pagina, orden: 'desc' }
+export function paramsConsulta(f: FiltrosRegistros, pagina: number, limite: number = POR_PAGINA): Record<string, unknown> {
+  const p: Record<string, unknown> = { limite, pagina, orden: 'desc' }
   if (f.temporada.length === 1) p.temporada = f.temporada[0]
   if (f.zona.length === 1) p.zona_id = f.zona[0]
   if (f.turno.length === 1) p.turno = f.turno[0]
