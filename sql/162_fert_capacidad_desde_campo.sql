@@ -177,3 +177,27 @@ begin
              where x.hecho_at > now() - interval '90 days'), '[]'::jsonb));
 end $$;
 grant execute on function public.fn_fert_capacidad_exportar() to authenticated;
+
+-- ---------------------------------------------------------------- 7 · estación de PRUEBA: primero su propio valor
+-- (152) una estación de prueba usa la capacidad de su estación real; ahora, si se le cambió la suya desde campo, manda esa.
+do $$
+declare
+    v_def text := replace(pg_get_functiondef('public._fert_cap_efectiva(uuid,date)'::regprocedure), E'\r\n', E'\n');
+    v_viejo text := $v$        select s.material_id, s.prestable_con, coalesce(o.capacidad, s.capacidad) as cap
+          from public.fert_capacidad_estandar s
+          cross join cfg
+          left join public.fert_capacidad_estacion o on o.estacion_id = cfg.id and o.material_id = s.material_id),$v$;
+begin
+    if position('162:prueba' in v_def) > 0 then
+        return;
+    end if;
+    if position(v_viejo in v_def) = 0 then
+        raise exception '162: no se encontró la capacidad base en _fert_cap_efectiva (¿cambió la 152?)';
+    end if;
+    execute replace(v_def, v_viejo, $v$        select s.material_id, s.prestable_con, coalesce(op.capacidad, o.capacidad, s.capacidad) as cap   /* 162:prueba */
+          from public.fert_capacidad_estandar s
+          cross join cfg
+          left join public.fert_capacidad_estacion op on op.estacion_id = p_estacion and p_estacion <> cfg.id and op.material_id = s.material_id
+          left join public.fert_capacidad_estacion o on o.estacion_id = cfg.id and o.material_id = s.material_id),$v$);
+end $$;
+revoke execute on function public._fert_cap_efectiva(uuid, date) from public, anon, authenticated;
