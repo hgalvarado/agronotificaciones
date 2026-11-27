@@ -39,9 +39,17 @@ const FICHAS: FichaConPantalla[] = [
     codigo: 'agrometricas',
     pantalla: 'agrometricas',
     nombre: 'Parámetros de riego',
-    descripcion: 'Tensiómetros, agua, suelo, clima e índice de crecimiento por turno; ahí mismo ves los registros de la temporada.',
+    descripcion: 'Registrar tensiómetros, agua, suelo, clima e índice de crecimiento por turno.',
     ruta: '/agrometricas/parametros',
     icono: 'gota',
+  },
+  {
+    codigo: 'agrometricas_registros',
+    pantalla: 'agrometricas',
+    nombre: 'Registros de parámetros',
+    descripcion: 'Ver lo registrado en la temporada en tus zonas, por turno y lote.',
+    ruta: '/agrometricas/registros',
+    icono: 'chart',
   },
   {
     codigo: 'analisis_savia',

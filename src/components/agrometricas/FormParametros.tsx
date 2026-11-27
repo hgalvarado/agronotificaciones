@@ -31,6 +31,7 @@ import { RUTAS_SIN_SENAL } from '@/lib/agrometricas/colaPura'
 import { resumirRegistro, unirItems, type EntradaHistorial } from '@/lib/agrometricas/historialPura'
 import { armarDatosIC, ddtEnRangoIC, normalizarVersiones, resultadoIC, validarHojas, type VersionFormula } from '@/lib/agrometricas/indicePura'
 import { MisRegistros } from './MisRegistros'
+import { EncabezadoModulo } from '@/components/campo/EncabezadoModulo'
 import { RegistroServiceWorker } from '@/components/fertirriego/RegistroServiceWorker'
 
 type Turno = { id: string; turno: string; temporada: string; ciclo: string | null; fecha_siembra: string | null;
@@ -285,16 +286,13 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
   const enMedicion = midiendo && midiendo !== 'iniciando' ? midiendo : null
 
   return (
-    <>
+    <div className="campo-legible flex flex-col gap-3">
       <RegistroServiceWorker rutas={RUTAS_SIN_SENAL} />
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <BotonLink href="/campo" variante="secundario" tamano="md" className="self-start">← Regresar a Campo</BotonLink>
-        <BotonLink href="/agrometricas/registros" variante="secundario" tamano="md" data-enlace-registros>Registros de la temporada</BotonLink>
-      </div>
+      <BotonLink href="/campo" variante="secundario" tamano="md" className="self-start">← Regresar a Campo</BotonLink>
+      <EncabezadoModulo titulo="Parámetros de riego" icono="gota" />
 
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-lg font-semibold text-slate-900">Parámetros de riego</h1>
           <p className="text-sm text-slate-500">
             {datos?.bajado ? `Turnos al ${new Date(datos.bajado).toLocaleString('es-HN', { timeZone: 'America/Tegucigalpa', dateStyle: 'short', timeStyle: 'short' })}` : 'Cargando turnos…'}
           </p>
@@ -449,6 +447,6 @@ export function FormParametros({ usuarioId, puedeRegistrar }: { usuarioId: strin
           <Boton type="button" tamano="lg" className="w-full" disabled={!puedeRegistrar} onClick={guardar} data-guardar>Guardar</Boton>
         </div>
       </div>
-    </>
+    </div>
   )
 }

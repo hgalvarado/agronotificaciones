@@ -16,6 +16,7 @@ import { Modal } from '@/components/ui/Modal'
 import { SelectorMultiple } from '@/components/ui/SelectorMultiple'
 import { formatearFechaHora } from '@/lib/estados'
 import { cantidad } from '@/lib/fertirriego/calculos'
+import { compararPor, pronosticar, textoDias, type OrdenGeneral, type Pronostico } from '@/lib/motores/pronostico'
 import { filtrarResumen, type CifrasTemporada, type FichaMotor, type RegistroFicha, type ResumenMotorAuditor, type ResumenTemporadaServidor, type TemporadaInfo, type TramoFicha } from '@/lib/motores/auditoria'
 import type { RegistroMotor } from '@/lib/motores/estado'
 import { filasDeHoja } from '@/lib/motores/hoja'
@@ -54,6 +55,8 @@ export function VistaGeneral({ generadoPor }: { generadoPor: string }) {
   const [niveles, setNiveles] = useState<string[]>([])
   const [filtros, setFiltros] = useState(false)
   const [ficha, setFicha] = useState<string | null>(null)
+  // Orden: normal (por estación) o los de menos días de combustible / mantenimiento más cerca primero (lista plana)
+  const [orden, fijarOrden] = useMemoria<OrdenGeneral>('motores-general-orden', 'normal')
   // Los motores van agrupados por estación (contraídos al abrir; cada persona recuerda cuáles dejó abiertas en su equipo)
   const [abiertos, fijarAbiertos] = useMemoria<string[]>('motores-general-abiertos', [])
 
@@ -74,6 +77,11 @@ export function VistaGeneral({ generadoPor }: { generadoPor: string }) {
     }
     return [...mapa.values()].sort((a, b) => Number(b.enEstacion) - Number(a.enEstacion) || (a.zona ?? '').localeCompare(b.zona ?? '', 'es', { numeric: true }) || a.titulo.localeCompare(b.titulo, 'es', { numeric: true }))
   }, [visibles])
+  const pronosticos = useMemo(() => new Map(visibles.map((m) => [m.equipo_id, pronosticar(m)])), [visibles])
+  const ordenados = useMemo(
+    () => (orden === 'normal' ? [] : [...visibles].sort((a, b) => compararPor(orden, pronosticos.get(a.equipo_id)!, pronosticos.get(b.equipo_id)!))),
+    [orden, visibles, pronosticos]
+  )
   const alternar = (clave: string) => fijarAbiertos(abiertos.includes(clave) ? abiertos.filter((x) => x !== clave) : [...abiertos, clave])
   // Buscando o filtrando se muestran todos los grupos abiertos (que no haga falta abrir uno por uno)
   const todosAbiertos = activos > 0
@@ -109,8 +117,28 @@ export function VistaGeneral({ generadoPor }: { generadoPor: string }) {
           )}
         </div>
       )}
+      <div role="group" aria-label="Ordenar" className="flex flex-wrap gap-2" data-orden-general>
+        {([
+          ['normal', 'Por estación'],
+          ['combustible', '⛽ Menos días de diésel'],
+          ['mantenimiento', '🔧 Mantenimiento más cerca'],
+        ] as const).map(([valor, etiqueta]) => (
+          <button
+            key={valor}
+            type="button"
+            aria-pressed={orden === valor}
+            onClick={() => fijarOrden(valor)}
+            data-orden={valor}
+            className={`min-h-11 rounded-xl px-3 text-sm font-bold ring-2 ring-inset ${orden === valor ? 'bg-brand-700 text-white ring-brand-700' : 'bg-white text-slate-800 ring-slate-300'}`}
+          >
+            {orden === valor ? '✓ ' : ''}
+            {etiqueta}
+          </button>
+        ))}
+      </div>
       <EstadoConsulta cargando={cargando} error={error} vacio={visibles.length === 0} textoVacio={lista.length === 0 ? 'No hay motores.' : 'No hay motores con esos filtros.'} />
-      {grupos.map((g) => {
+      {orden !== 'normal' && ordenados.map((m) => <FilaMotorGeneral key={m.equipo_id} m={m} p={pronosticos.get(m.equipo_id)!} resaltar={orden} onToque={() => setFicha(m.equipo_id)} />)}
+      {orden === 'normal' && grupos.map((g) => {
         const abierto = todosAbiertos || abiertos.includes(g.clave)
         const nivel = peorNivel(g.motores.map((m) => m.ayuda?.nivel ?? 'gris').filter((n): n is 'rojo' | 'amarillo' | 'verde' => n === 'rojo' || n === 'amarillo' || n === 'verde'))
         return (
@@ -130,7 +158,7 @@ export function VistaGeneral({ generadoPor }: { generadoPor: string }) {
               {nivel === 'rojo' || nivel === 'amarillo' ? <InsigniaNivel nivel={nivel} /> : null}
               <span className="shrink-0 text-xs tabular-nums text-slate-600">{g.motores.length} motor{g.motores.length === 1 ? '' : 'es'}</span>
             </button>
-            {abierto && g.motores.map((m) => <FilaMotorGeneral key={m.equipo_id} m={m} onToque={() => setFicha(m.equipo_id)} />)}
+            {abierto && g.motores.map((m) => <FilaMotorGeneral key={m.equipo_id} m={m} p={pronosticos.get(m.equipo_id)!} onToque={() => setFicha(m.equipo_id)} />)}
           </section>
         )
       })}
@@ -140,7 +168,7 @@ export function VistaGeneral({ generadoPor }: { generadoPor: string }) {
 }
 
 /** Una fila por motor: dónde está, medidor del tanque y barra de mantenimiento a la vista (sin abrir nada). */
-function FilaMotorGeneral({ m, onToque }: { m: ResumenMotorAuditor; onToque: () => void }) {
+function FilaMotorGeneral({ m, p, resaltar, onToque }: { m: ResumenMotorAuditor; p: Pronostico; resaltar?: OrdenGeneral; onToque: () => void }) {
   const nivel = m.ayuda?.nivel ?? 'gris'
   return (
     <div data-motor-auditor={m.codigo}>
@@ -160,10 +188,42 @@ function FilaMotorGeneral({ m, onToque }: { m: ResumenMotorAuditor; onToque: () 
             <MedidorTanque saldo={m.tanque_id ? (m.saldo_gal ?? 0) : null} capacidad={m.capacidad_gal ?? null} />
             <BarraMantenimiento horas={m.horas_desde_mant ?? 0} estimadas={m.horas_est_desde_mant ?? 0} intervalo={m.intervalo_horas ?? null} aviso={m.aviso_horas ?? null} />
           </span>
+          <span className="mt-1.5 grid grid-cols-2 gap-3" data-pronostico>
+            <DatoPronostico
+              titulo="Diésel para"
+              valor={m.tanque_id ? textoDias(p.diasCombustible, 'Sin diésel') : 'Sin tanque'}
+              detalle={p.galDia !== null ? `${cantidad(p.galDia)} gal/día` : null}
+              alerta={p.diasCombustible !== null && p.diasCombustible < 3}
+              fuerte={resaltar === 'combustible'}
+              data-dias-combustible={p.diasCombustible === null ? '' : Math.floor(p.diasCombustible)}
+            />
+            <DatoPronostico
+              titulo="Mantenimiento en"
+              valor={m.intervalo_horas ? textoDias(p.diasMantenimiento) : 'Sin intervalo'}
+              detalle={p.horasDia !== null ? `${cantidad(p.horasDia)} h/día` : null}
+              alerta={p.diasMantenimiento !== null && p.diasMantenimiento < 7}
+              fuerte={resaltar === 'mantenimiento'}
+              data-dias-mantenimiento={p.diasMantenimiento === null ? '' : Math.floor(p.diasMantenimiento)}
+            />
+          </span>
         </span>
         <IconChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
       </button>
     </div>
+  )
+}
+
+/** Un dato del pronóstico: título chico, días en grande; si es poco, en naranja con ⚠ (no solo color). */
+function DatoPronostico({ titulo, valor, detalle, alerta, fuerte, ...props }: { titulo: string; valor: string; detalle: string | null; alerta: boolean; fuerte?: boolean } & Record<`data-${string}`, string | number>) {
+  return (
+    <span className={`block rounded-lg px-2 py-1 ring-1 ring-inset ${alerta ? 'bg-amber-50 ring-amber-300' : 'bg-slate-50 ring-slate-200'} ${fuerte ? 'ring-2' : ''}`} {...props}>
+      <span className="block text-[12px] font-semibold text-slate-700">{titulo}</span>
+      <span className={`block text-base font-extrabold leading-tight ${alerta ? 'text-amber-800' : 'text-slate-900'}`}>
+        {alerta ? '⚠ ' : ''}
+        {valor}
+      </span>
+      {detalle && <span className="block text-[12px] text-slate-600">{detalle}</span>}
+    </span>
   )
 }
 

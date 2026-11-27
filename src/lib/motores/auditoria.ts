@@ -31,6 +31,8 @@ export type ResumenMotorAuditor = {
   aviso_horas?: number | null
   horas_desde_mant?: number | null
   horas_est_desde_mant?: number | null
+  /** sql/157: lo de los últimos 14 días (pronóstico de días de diésel y de mantenimiento). */
+  reciente?: { dias: number; desde: string; horas: number; gal: number } | null
   horo_ultimo: number | null
   fecha_ultimo: string | null
   tramos: number

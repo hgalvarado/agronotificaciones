@@ -27,6 +27,7 @@ import { DetalleIC } from './DetalleIC'
 import { GraficasIC, TablaIC, TarjetasIC } from './VistasIC'
 import { validarHojas } from '@/lib/agrometricas/registrosIC'
 import { ModalEliminar } from './ModalEliminar'
+import { EncabezadoModulo } from '@/components/campo/EncabezadoModulo'
 
 type Vista = 'resumen' | 'rapida' | 'tabla' | 'graficas'
 type Datos = 'parametros' | 'ic'
@@ -188,15 +189,9 @@ export function RegistrosTemporada() {
   }
 
   return (
-    <div className="flex flex-col gap-3" data-registros-temporada>
+    <div className="campo-legible flex flex-col gap-3" data-registros-temporada>
       <BotonLink href="/campo" variante="secundario" tamano="md" className="self-start">← Regresar a Campo</BotonLink>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-lg font-semibold text-slate-900">Registros de la temporada</h1>
-          <p className="text-sm text-slate-500">Lo registrado en toda tu zona, por turno y lote. Requiere conexión.</p>
-        </div>
-        <BotonLink href="/agrometricas/parametros" variante="secundario" tamano="md">Parámetros de riego</BotonLink>
-      </div>
+      <EncabezadoModulo titulo="Registros de parámetros" icono="chart" subtitulo="Lo registrado en tus zonas, por turno y lote" />
 
       {vista !== 'resumen' && <FiltrosRegistrosPanel filtros={filtros} opciones={opciones} onCambiar={cambiar} turnosDeLotes={turnosDeLotes} />}
 

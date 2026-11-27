@@ -11,7 +11,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AvisoDestinoPerdido, useAplicarDestino, useDestinoAlerta, useResaltarDestino } from '@/lib/alertas/useDestinoAlerta'
 import { Alerta, Boton, ListaEsqueleto } from '@/components/ui/Primitivos'
-import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
+import { EncabezadoModulo } from '@/components/campo/EncabezadoModulo'
+import { FiltroEstaciones } from '@/components/campo/FiltroEstaciones'
+import { useEstacionElegida } from '@/lib/campo/estacionElegida'
 import { formatearFechaHora } from '@/lib/estados'
 import { hoyIso } from '@/lib/fechas/zona'
 import { CLAVE_BODEGA_GENERAL, armarBodega, type BodegaGeneral } from '@/lib/fertirriego/bodegaGeneral'
@@ -111,7 +113,7 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
       envases_tipos: estadoServidor.envases_tipos ? [...estadoServidor.envases_tipos, ...envases] : estadoServidor.envases_tipos,
     }
   }, [estadoServidor, cola])
-  const [estacionId, setEstacionId] = useState('')
+  const { estacionId, elegirEstacion: setEstacionId, zona, elegirZona } = useEstacionElegida(usuarioId)
   const [pestana, setPestana] = useState<Pestana>('estacion')
   const [ventana, setVentana] = useState<Ventana>(null)
   const [aviso, setAviso] = useState<string | null>(null)
@@ -153,12 +155,7 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
   const alListo = useCallback(() => setPreparado(true), [])
   const ponerPestana = useCallback((p: string) => setPestana(p as Pestana), [])
   const destinoEstacion = alerta.destino.estacion
-  // La estación que eligió la última vez (en este teléfono)
-  useEffect(() => {
-    if (destinoEstacion) return
-    void campo.preferencia<string>('estacion').then((v) => v && setEstacionId(v))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+
   const estaciones = estado?.estaciones ?? []
   useAplicarDestino({ alerta, hayEstado: Boolean(estado), estaciones, pestanasValidas: PESTANAS.map((p) => p.clave), pestanaPorDefecto: pestanaPorDefectoFert, setEstacionId, setPestana: ponerPestana, alListo })
   useResaltarDestino(alerta, { listo: preparado, ids: [alerta.destino.registro, alerta.destino.fecha] })
@@ -289,8 +286,9 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
   if (campo.cargando && !estado) return <ListaEsqueleto filas={4} />
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="campo-legible flex flex-col gap-3">
       <RegistroServiceWorker />
+      <EncabezadoModulo titulo="Fertirriego" icono="gota" subtitulo={estacion ? `${estacion.nombre}${estacion.zona ? ` · ${estacion.zona}` : ''}` : null} />
 
       {/* ---- Regresar + estado de conexión (como WhatsApp) + panel Envíos ---- */}
       <EncabezadoEnvios campo={campo} onCorregir={corregirEnvio} />
@@ -367,28 +365,18 @@ export function CampoFertirriego({ usuarioId, manual }: { usuarioId: string; man
       ) : (
         estacion && (
           <>
-            {estaciones.length > 1 && (
-              <div data-selector-estacion>
-                <SelectorBuscable
-                  valor={estacion.id}
-                  opciones={estaciones.map((e) => ({ id: e.id, titulo: e.nombre, subtitulo: e.zona ?? undefined }))}
-                  onCambiar={(id) => {
-                    setEstacionId(id)
-                    setProductosBitacora([])
-                    void campo.guardarPreferencia('estacion', id)
-                  }}
-                  placeholder="Elegir estación…"
-                  etiquetaBusqueda="Buscar estación"
-                />
-              </div>
-            )}
+            <FiltroEstaciones
+              estaciones={estaciones}
+              valor={estacion.id}
+              onCambiar={(id) => {
+                setEstacionId(id)
+                setProductosBitacora([])
+              }}
+              zona={zona}
+              onZona={elegirZona}
+            />
             <AvisoModoPruebas estacionNombre={estacion.nombre} />
-            <div className="flex flex-wrap items-baseline justify-between gap-x-2">
-              <h1 className="text-xl font-bold tracking-tight text-slate-900" data-estacion={estacion.nombre}>
-                {estacion.nombre}
-              </h1>
-              <span className="text-xs text-slate-600">{estacion.zona}</span>
-            </div>
+            <span hidden data-estacion={estacion.nombre} />
 
             <AvisoDestinoPerdido alerta={alerta} />
             <div className="flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1" role="tablist">

@@ -12,6 +12,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Alerta, Boton, ListaEsqueleto } from '@/components/ui/Primitivos'
 import { Modal } from '@/components/ui/Modal'
 import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
+import { EncabezadoModulo } from '@/components/campo/EncabezadoModulo'
+import { FiltroEstaciones } from '@/components/campo/FiltroEstaciones'
+import { useEstacionElegida } from '@/lib/campo/estacionElegida'
 import { RegistroServiceWorker } from '@/components/fertirriego/RegistroServiceWorker'
 import { conCustodiaLocal } from '@/lib/fertirriego/calculos'
 import { EVENTO_GUARDADO_FALLIDO, type GuardadoFallido } from '@/lib/fertirriego/guardadoFondo'
@@ -59,7 +62,7 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
   // sql/140: permiso temporal de «Registro histórico» y «Eliminar por completo» (de Motores)
   const extras = useCampoExtras(usuarioId, 'motores')
   const { estado, cola } = campo
-  const [estacionId, setEstacionId] = useState('')
+  const { estacionId, elegirEstacion: setEstacionId, zona, elegirZona } = useEstacionElegida(usuarioId)
   const [pestana, setPestana] = useState<Pestana>('hoy')
   const [preparado, setPreparado] = useState(false)
   const [ventana, setVentana] = useState<Ventana | null>(null)
@@ -67,16 +70,11 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
   const [aviso, setAviso] = useState<string | null>(null)
   const [fallo, setFallo] = useState<GuardadoFallido | null>(null)
 
-  // La estación que eligió la última vez (en este teléfono; la misma preferencia que Fertirriego)
-  const { preferencia, guardarPreferencia } = campo
   // Enlace profundo de una alerta (?pestana=&estacion=&tanque=&motor=&registro=&fecha=): manda sobre la preferencia
   const alerta = useDestinoAlerta()
   const dest = alerta.destino
   const destinoEstacion = dest.estacion
-  useEffect(() => {
-    if (destinoEstacion) return
-    void preferencia<string>('estacion').then((v) => v && setEstacionId(v))
-  }, [preferencia, destinoEstacion])
+
 
   const estaciones = estado?.estaciones ?? []
   const estacionServidor = estaciones.find((e) => e.id === estacionId) ?? estaciones[0] ?? null
@@ -198,7 +196,8 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
   ]
 
   return (
-    <div className="flex flex-col gap-3 pb-24">
+    <div className="campo-legible flex flex-col gap-3 pb-24">
+      <EncabezadoModulo titulo="Motores y combustible" icono="tractor" subtitulo={estacion ? `${estacion.nombre}${estacion.zona ? ` · ${estacion.zona}` : ''}` : null} />
       <RegistroServiceWorker rutas={RUTAS_SW} />
 
       <EncabezadoEnvios campo={campo} onActualizar={mot.actualizar} actualizando={mot.cargando} onCorregir={corregirEnvio} />
@@ -226,28 +225,10 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
         <Alerta tono="ambar">Sin estaciones. Pide a tu jefe que te asigne.</Alerta>
       ) : (
         <>
-          {estaciones.length > 1 && (
-            <div data-selector-estacion>
-              <SelectorBuscable
-                valor={estacion.id}
-                opciones={estaciones.map((e) => ({ id: e.id, titulo: e.nombre, subtitulo: e.zona ?? undefined }))}
-                onCambiar={(id) => {
-                  setEstacionId(id)
-                  void guardarPreferencia('estacion', id)
-                }}
-                placeholder="Elegir estación…"
-                etiquetaBusqueda="Buscar estación"
-              />
-            </div>
-          )}
+          <FiltroEstaciones estaciones={estaciones} valor={estacion.id} onCambiar={setEstacionId} zona={zona} onZona={elegirZona} />
           <AvisoDestinoPerdido alerta={alerta} />
           <AvisoModoPruebas estacionNombre={estacion.nombre} />
-          <div className="flex flex-wrap items-baseline justify-between gap-x-2">
-            <h1 className="text-xl font-bold tracking-tight text-slate-900" data-estacion={estacion.nombre}>
-              Motores · {estacion.nombre}
-            </h1>
-            <span className="text-xs text-slate-600">{estacion.zona}</span>
-          </div>
+          <span hidden data-estacion={estacion.nombre} />
 
           <div role="tablist" aria-label="Motores" className={`grid gap-1 rounded-xl bg-slate-100 p-1 ${pestanas.length > 4 ? 'grid-cols-5' : 'grid-cols-4'}`} data-pestanas-motores>
             {pestanas.map(([id, texto]) => (

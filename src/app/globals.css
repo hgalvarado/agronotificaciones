@@ -532,3 +532,63 @@ html[data-tema='oscuro'] {
 @media (prefers-reduced-motion: reduce) {
   .destino-resaltado { animation: none; box-shadow: 0 0 0 3px var(--color-brand-500, #16a34a); }
 }
+
+/* ------------------------------------------------------------------ */
+/* Campo: legibilidad (pedido 2026-11-27, usuarios con baja visión)     */
+/* ------------------------------------------------------------------ */
+/* Base para TODOS en Fertirriego, Inyección, Motores y Parámetros: grises de texto un paso más oscuros y casillas con
+ * borde visible. */
+.campo-legible .text-slate-400 { color: var(--color-slate-600); }
+.campo-legible .text-slate-500 { color: var(--color-slate-700); }
+.campo-legible .text-slate-600 { color: var(--color-slate-700); }
+.campo-legible input:not([type='checkbox']):not([type='radio']),
+.campo-legible textarea,
+.campo-legible select { border-color: var(--color-slate-400); }
+html[data-tema='oscuro'] .campo-legible .text-slate-400,
+html[data-tema='oscuro'] .campo-legible .text-slate-500,
+html[data-tema='oscuro'] .campo-legible .text-slate-600 { color: #d2dae6; }
+
+/* «Ver mejor» (botón del encabezado, por teléfono): letra ~19 px, texto casi negro, casillas de escribir/buscar con
+ * borde grueso oscuro y fondo blanco puro, ayuda (placeholder) legible y foco muy marcado. Va en <html> para cubrir
+ * también las ventanas (Modal), que se dibujan fuera del módulo. */
+html.ver-mejor { font-size: 118.75%; }
+html.ver-mejor body { font-weight: 500; }
+html.ver-mejor .text-slate-300,
+html.ver-mejor .text-slate-400,
+html.ver-mejor .text-slate-500,
+html.ver-mejor .text-slate-600,
+html.ver-mejor .text-slate-700 { color: var(--color-slate-900); }
+html.ver-mejor .text-xs { font-size: 0.875rem; line-height: 1.3; }
+html.ver-mejor input:not([type='checkbox']):not([type='radio']),
+html.ver-mejor textarea,
+html.ver-mejor select {
+  border: 2px solid var(--color-slate-800) !important;
+  background-color: #fff;
+  color: var(--color-slate-900);
+  font-weight: 600;
+}
+html.ver-mejor input::placeholder,
+html.ver-mejor textarea::placeholder,
+html.ver-mejor .placeholder\:text-slate-300::placeholder { color: var(--color-slate-600); opacity: 1; }
+html.ver-mejor input[type='checkbox'],
+html.ver-mejor input[type='radio'] { width: 1.4rem; height: 1.4rem; accent-color: var(--color-brand-700); }
+html.ver-mejor :focus-visible { outline: 4px solid var(--color-naranja-500) !important; outline-offset: 2px; }
+html.ver-mejor button,
+html.ver-mejor [role='tab'] { font-weight: 700; }
+html.ver-mejor .rounded-2xl.border,
+html.ver-mejor .rounded-xl.border { border-color: var(--color-slate-500); border-width: 2px; }
+html.ver-mejor .ring-slate-200,
+html.ver-mejor .ring-slate-300 { --tw-ring-color: var(--color-slate-600); }
+/* Oscuro: el mismo criterio invertido (texto casi blanco, casillas con borde claro) */
+html.ver-mejor[data-tema='oscuro'] .text-slate-300,
+html.ver-mejor[data-tema='oscuro'] .text-slate-400,
+html.ver-mejor[data-tema='oscuro'] .text-slate-500,
+html.ver-mejor[data-tema='oscuro'] .text-slate-600,
+html.ver-mejor[data-tema='oscuro'] .text-slate-700 { color: #f2f6fb; }
+html.ver-mejor[data-tema='oscuro'] input:not([type='checkbox']):not([type='radio']),
+html.ver-mejor[data-tema='oscuro'] textarea,
+html.ver-mejor[data-tema='oscuro'] select { border-color: #e4eaf3 !important; background-color: #0f1720; color: #f8fafc; }
+html.ver-mejor[data-tema='oscuro'] input::placeholder,
+html.ver-mejor[data-tema='oscuro'] textarea::placeholder { color: #bcc6d6; }
+html.ver-mejor[data-tema='oscuro'] .rounded-2xl.border,
+html.ver-mejor[data-tema='oscuro'] .rounded-xl.border { border-color: #8d99ad; }

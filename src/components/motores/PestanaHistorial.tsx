@@ -7,9 +7,8 @@
  * filas y «Ver más». Las señales se calculan aquí con las reglas de la base, así que funcionan sin señal.
  */
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Boton } from '@/components/ui/Primitivos'
-import { SelectorMultiple } from '@/components/ui/SelectorMultiple'
 import { EliminarPorCompleto } from '@/components/fertirriego/EliminarPorCompleto'
 import { formatearFechaHora } from '@/lib/estados'
 import { cantidad } from '@/lib/fertirriego/calculos'
@@ -73,9 +72,14 @@ export function PestanaHistorial({
   const [abierta, setAbierta] = useState<string | null>(null)
   const [anulando, setAnulando] = useState<AnulableMotor | null>(null)
   const [eliminando, setEliminando] = useState<{ tipo: TipoEliminable; id: string; texto: string } | null>(null)
-  const [motoresSel, setMotoresSel] = useState<string[]>(motorInicial ? [motorInicial] : [])
+  // Los registros van POR MOTOR: se abre con un motor elegido (el que pidieron, o el primero). «Todos» sigue disponible.
+  const [motoresSel, setMotoresSel] = useState<string[]>(motorInicial ? [motorInicial] : motores[0] ? [motores[0].equipo_id] : [])
+  // Al cambiar de estación (otros motores) se elige el primero de la nueva
+  useEffect(() => {
+    if (motoresSel.length > 0 && !motoresSel.every((id) => motores.some((m) => m.equipo_id === id))) setMotoresSel(motores[0] ? [motores[0].equipo_id] : [])
+  }, [motores, motoresSel])
   const [soloAlertas, setSoloAlertas] = useState(false)
-  const [filtrosAbiertos, setFiltrosAbiertos] = useState(Boolean(motorInicial))
+  const [filtrosAbiertos, setFiltrosAbiertos] = useState(false)
   const [limite, setLimite] = useState(40)
   const [vista, setVista] = useState<VistaHistorial>('lista')
   const [desde, setDesde] = useState('')
@@ -134,11 +138,16 @@ export function PestanaHistorial({
             nivel={nivel}
             titulo={
               <span className={r.anulado_at ? 'line-through opacity-60' : ''}>
-                {codigoDe.get(r.equipo_id) ?? 'Motor'} · {cantidad(r.horas)} h · {cantidad(r.gastado_gal)} gal
+                {codigoDe.get(r.equipo_id) ?? 'Motor'}
+                <span className="mt-1 grid grid-cols-3 gap-1.5" data-cifras-registro>
+                  <CifraRegistro etiqueta="Horas" valor={cantidad(r.horas)} />
+                  <CifraRegistro etiqueta="Galones" valor={cantidad(r.gastado_gal)} />
+                  <CifraRegistro etiqueta="RPM" valor={r.rpm === null ? '—' : cantidad(r.rpm)} />
+                </span>
               </span>
             }
             derecha={r.rendimiento_gal_h === null ? undefined : <span>{cantidad(r.rendimiento_gal_h)} <span className="text-[11px] font-normal text-slate-500">gal/h</span></span>}
-            linea2={`Horómetro ${cantidad(r.horo_ini)} → ${cantidad(r.horo_fin)} · Visor ${cantidad(r.visor_ini)} → ${cantidad(r.visor_fin)}`}
+            linea2={`Horómetro ${cantidad(r.horo_ini)} → ${cantidad(r.horo_fin)} · Visor ${cantidad(r.visor_ini)} → ${cantidad(r.visor_fin)} · Toca para ver todo`}
             linea3={<ChipsSenales avisos={r.anulado_at ? [] : s} />}
             onToque={() => alternar(clave)}
             abierta={abierta === clave}
@@ -306,7 +315,8 @@ export function PestanaHistorial({
     return [...m.entries()]
   }, [mostradas])
   const fechaDia = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString('es-HN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })
-  const activos = (motoresSel.length > 0 ? 1 : 0) + (soloAlertas ? 1 : 0) + (desde ? 1 : 0) + (hasta ? 1 : 0)
+  // El motor se elige con los botones de arriba: no cuenta como filtro
+  const activos = (soloAlertas ? 1 : 0) + (desde ? 1 : 0) + (hasta ? 1 : 0)
 
   // Formato de campo: una tabla por motor (los elegidos, o todos los de la estación)
   const secciones = useMemo(() => {
@@ -347,6 +357,38 @@ export function PestanaHistorial({
 
   return (
     <div className="flex flex-col gap-2" data-historial-motores>
+      <div role="group" aria-label="Motor" className="flex flex-col gap-1" data-motores-historial>
+        <p className="text-xs font-bold uppercase tracking-wide text-slate-700">Motor</p>
+        <div className="flex flex-wrap gap-2">
+          {motores.map((m) => {
+            const activo = motoresSel.length === 1 && motoresSel[0] === m.equipo_id
+            return (
+              <button
+                key={m.equipo_id}
+                type="button"
+                aria-pressed={activo}
+                onClick={() => setMotoresSel([m.equipo_id])}
+                data-motor-boton={m.codigo}
+                className={`min-h-11 rounded-xl px-3 text-sm font-bold ring-2 ring-inset ${activo ? 'bg-brand-700 text-white ring-brand-700' : 'bg-white text-slate-800 ring-slate-400'}`}
+              >
+                {activo ? '✓ ' : ''}
+                {etiquetaMotor(m.codigo, m.nombre)}
+              </button>
+            )
+          })}
+          {motores.length > 1 && (
+            <button
+              type="button"
+              aria-pressed={motoresSel.length === 0}
+              onClick={() => setMotoresSel([])}
+              data-motor-boton="todos"
+              className={`min-h-11 rounded-xl px-3 text-sm font-bold ring-2 ring-inset ${motoresSel.length === 0 ? 'bg-brand-700 text-white ring-brand-700' : 'bg-white text-slate-800 ring-slate-400'}`}
+            >
+              {motoresSel.length === 0 ? '✓ ' : ''}Todos
+            </button>
+          )}
+        </div>
+      </div>
       <ResumenTemporada cifras={cifras} subtitulo={desde || hasta ? 'Fechas elegidas' : (estado.temporada?.nombre ?? 'Últimos 45 días')} />
       <div className="flex items-center justify-between gap-2">
         <button
@@ -363,12 +405,6 @@ export function PestanaHistorial({
       <BarraVistaHistorial vista={vista} onVista={setVista} onExportar={exportar} puedeExportar={secciones.some((x) => x.filas.length > 0)} />
       {filtrosAbiertos && (
         <div className="flex flex-col gap-2 rounded-xl bg-slate-50 p-3 ring-1 ring-inset ring-slate-200">
-          <SelectorMultiple
-            etiqueta="Motor"
-            opciones={motores.map((m) => ({ valor: m.equipo_id, etiqueta: m.codigo }))}
-            valores={motoresSel}
-            onCambiar={setMotoresSel}
-          />
           <div className="grid grid-cols-2 gap-2">
             <label className="text-xs text-slate-600">
               Desde
@@ -389,7 +425,7 @@ export function PestanaHistorial({
             Solo con señales
           </button>
           {activos > 0 && (
-            <button type="button" className="min-h-11 text-sm font-semibold text-brand-700 underline" onClick={() => { setMotoresSel([]); setSoloAlertas(false); setDesde(''); setHasta('') }}>
+            <button type="button" className="min-h-11 text-sm font-semibold text-brand-700 underline" onClick={() => { setSoloAlertas(false); setDesde(''); setHasta('') }}>
               Quitar filtros
             </button>
           )}
@@ -438,5 +474,15 @@ export function PestanaHistorial({
       )}
       {anulando && <FormAnularMotor doc={anulando} estacion={estacion} yo={yo} registrar={registrar} puedeAceptarNegativo={puedeEliminar} onCerrar={() => setAnulando(null)} onGuardado={onGuardado} />}
     </div>
+  )
+}
+
+/** Cifra del registro a la vista (sin tocar): etiqueta chica arriba, número grande. */
+function CifraRegistro({ etiqueta, valor }: { etiqueta: string; valor: string }) {
+  return (
+    <span className="block rounded-lg bg-slate-50 px-2 py-1 text-center ring-1 ring-inset ring-slate-200">
+      <span className="block text-[11px] font-semibold text-slate-700">{etiqueta}</span>
+      <span className="block text-base font-extrabold tabular-nums text-slate-900">{valor}</span>
+    </span>
   )
 }
