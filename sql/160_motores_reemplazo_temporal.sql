@@ -16,7 +16,8 @@
 -- Por dentro son los movimientos de siempre (_mot_aplicar_asignacion): mismos permisos (retirar/recibir/mover), mismo
 -- historial, custodia y AGL sin cambios. La tabla `mot_reemplazos` solo recuerda el par para mostrarlo y deshacerlo.
 --
--- Si se vuelve a correr la 130 (redefine _mot_op_asignar) o la 147 (redefine fn_mot_estado_campo) → CORRER LA 160 OTRA VEZ.
+-- Si se vuelve a correr la 130 (y con ella su cadena 144 → 147 → … → 153) o la 147 → CORRER LA 160 OTRA VEZ AL FINAL.
+-- La 160 se niega a correr si fn_mot_estado_campo no es la de la 147 (sin `v_ests`).
 -- Idempotente. Sin UPDATE/DELETE sin WHERE.
 -- =====================================================================
 \set ON_ERROR_STOP 1
@@ -239,6 +240,13 @@ begin
         raise exception '160: en % se esperaba 1 aparición de «%» y hay %', p_fn, left(v_viejo, 80), v_n;
     end if;
     execute replace(v_def, v_viejo, v_nuevo);
+end $$;
+
+do $$
+begin
+    if position('v_ests' in pg_get_functiondef('public.fn_mot_estado_campo(date)'::regprocedure)) = 0 then
+        raise exception '160: fn_mot_estado_campo no es la de la 147 (falta v_ests). Corre antes la cadena 147 → 153.';
+    end if;
 end $$;
 
 select pg_temp.parchar('public.fn_mot_estado_campo(date)',
