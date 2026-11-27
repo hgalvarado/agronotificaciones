@@ -94,7 +94,7 @@ export function PestanaHistorial({
   const puede = puedeAnular && estacion.permisos.anular
   const codigoDe = useMemo(() => new Map(estado.motores.map((m) => [m.equipo_id, etiquetaMotor(m.codigo, m.nombre)])), [estado.motores])
   const tanqueNombre = useMemo(() => new Map((estado.tanques ?? []).map((t) => [t.id, t.nombre])), [estado.tanques])
-  const senales = useMemo(() => senalesPorRegistro(estado.registros, estado.recepciones, estado.devoluciones ?? []), [estado.registros, estado.recepciones, estado.devoluciones])
+  const senales = useMemo(() => senalesPorRegistro(estado.registros, estado.recepciones, estado.devoluciones ?? [], (id) => estado.motores.find((m) => m.equipo_id === id)?.codigo ?? null), [estado.registros, estado.recepciones, estado.devoluciones, estado.motores])
   const tanquesDeMotores = useMemo(() => new Map(estado.motores.map((m) => [m.equipo_id, m.tanque?.id ?? null])), [estado.motores])
 
   const acciones = (tipo: AnulableMotor['tipo'], elim: TipoEliminable, id: string, texto: string, anulado: boolean, reg?: RegistroMotor, rec?: RecepcionMotor) => (
