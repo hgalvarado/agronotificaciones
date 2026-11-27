@@ -77,6 +77,8 @@ export type AccionCatalogo = {
   escribe?: boolean | null
   /** Migración 92: 1 Ver · 2 Operar · 3 Supervisar · 4 Administrar. */
   nivel?: number | null
+  /** 159: da acceso por sí sola (no depende de «Ver» ni lo enciende). */
+  abre_sola?: boolean | null
 }
 
 /** Una llave que la base exige y la matriz no ofrece. Tiene que venir vacía. */
@@ -158,6 +160,7 @@ export function PermisosPantallas({
           descripcion: a?.descripcion ?? null,
           nivel: a?.nivel ?? null,
           escribe: a?.escribe ?? codigo !== 'ver',
+          abreSola: Boolean(a?.abre_sola),
           orden: a?.orden ?? 999,
         }
       })
@@ -171,16 +174,18 @@ export function PermisosPantallas({
   /** La misma cascada que fn_guardar_permiso, para que la pantalla muestre lo que la base dejará. */
   function conCascada(p: Pantalla, rolId: number, cambios: CambioCelda[]): CambioCelda[] {
     const final = new Map(cambios.map((c) => [c.accion, c.config]))
+    // 159: las acciones que abren solas («Ver registros») quedan fuera de la cascada, igual que en la base
+    const abreSola = (a: string) => Boolean(catalogo.get(a)?.abre_sola)
     const tieneVer = p.acciones.includes('ver')
     const verApagado = final.get('ver')?.permitido === false
     if (tieneVer && verApagado) {
       for (const a of p.acciones) {
-        if (a !== 'ver' && (final.get(a) ?? configDe(rolId, p.codigo, a)).permitido) {
+        if (a !== 'ver' && !abreSola(a) && (final.get(a) ?? configDe(rolId, p.codigo, a)).permitido) {
           final.set(a, { ...(final.get(a) ?? configDe(rolId, p.codigo, a)), permitido: false })
         }
       }
     } else if (tieneVer) {
-      const enciende = [...final.entries()].find(([a, c]) => a !== 'ver' && c.permitido)
+      const enciende = [...final.entries()].find(([a, c]) => a !== 'ver' && !abreSola(a) && c.permitido)
       const ver = final.get('ver') ?? configDe(rolId, p.codigo, 'ver')
       if (enciende && !ver.permitido) {
         final.set('ver', { permitido: true, alcance: enciende[1].alcance, condicion: 'sin_restriccion' })
@@ -430,7 +435,7 @@ export function PermisosPantallas({
               >
                 Copiar
               </Boton>
-              {!rol.de_sistema && (
+              {!rol.acceso_total && (   // 159: solo el rol con acceso total no se elimina
                 <Boton variante="secundario" tamano="sm" disabled={trabajando} onClick={() => void eliminarRol(rol)}>
                   Eliminar
                 </Boton>
