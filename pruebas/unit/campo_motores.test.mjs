@@ -228,5 +228,5 @@ test('ficha «Motores y combustible»: ruta /motores, entre Inyección y AgroMé
   assert.equal(f[0].ruta, '/motores')
   assert.equal(f[0].nombre, 'Motores y combustible')
   const todas = fichasCampo((p, a) => a === 'ver' && ['fertirriego', 'inyeccion', 'motores', 'agrometricas'].includes(p))
-  assert.deepEqual(todas.map((x) => x.ruta), ['/fertirriego', '/inyeccion', '/motores', '/agrometricas/parametros', '/agrometricas/registros', ''])
+  assert.deepEqual(todas.map((x) => x.ruta), ['/fertirriego', '/inyeccion', '/motores', '/agrometricas/parametros', ''])
 })

@@ -46,8 +46,9 @@ export function RegistrosTemporada() {
   const [vistaGuardada, setVista, vistaLista] = useMemoria<Vista>('agrometricas:registros:vista', 'resumen')
   const [datos, setDatos, datosLista] = useMemoria<Datos>('agrometricas:registros:datos', 'parametros')
   const esIC = datos === 'ic'
-  const vista: Vista = esIC && vistaGuardada === 'resumen' ? 'rapida' : vistaGuardada   // el Resumen es solo de parámetros
-  const vistas = esIC ? VISTAS.filter((v) => v.clave !== 'resumen') : VISTAS
+  const vista: Vista = esIC && vistaGuardada === 'resumen' ? 'graficas' : vistaGuardada   // el Resumen es solo de parámetros; en IC abre la gráfica
+  // Índice de crecimiento (pedido 2026-11-27): primero la gráfica, después la vista rápida y por último la tabla
+  const vistas = esIC ? (['graficas', 'rapida', 'tabla'] as Vista[]).map((c) => VISTAS.find((v) => v.clave === c)!) : VISTAS
   const [registros, setRegistros] = useState<Registro[]>([])
   const [total, setTotal] = useState(0)
   const [recibidos, setRecibidos] = useState(0)
@@ -138,6 +139,7 @@ export function RegistrosTemporada() {
     if (d === datos) return
     setRegistros([]); setRecibidos(0); setTotal(0); setPagina(0); setAbiertoId(null)   // no mezclar filas de parámetros con las de IC
     setDatos(d)
+    if (d === 'ic') setVista('graficas')   // el índice de crecimiento abre en la gráfica
   }
   const parchar = useCallback((nuevo: Record<string, unknown>) => {
     setRegistros((previos) => previos.map((r) => (r.id === nuevo.id ? { ...r, ...nuevo } : r)))

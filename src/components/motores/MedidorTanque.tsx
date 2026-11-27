@@ -16,7 +16,7 @@ export function MedidorTanque({ saldo, capacidad }: { saldo: number | null; capa
   const etiqueta = saldo === null ? 'Combustible: sin tanque conectado' : `Combustible: ${texto}${pct === null ? '' : `, ${pct} % lleno`}`
   return (
     <span className="block w-full" data-medidor-tanque={zona}>
-      <span className="flex items-baseline justify-between gap-2">
+      <span className="flex flex-wrap items-baseline justify-between gap-x-2">
         <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Combustible</span>
         <span className="text-sm font-medium tabular-nums text-slate-900">{texto}</span>
       </span>
