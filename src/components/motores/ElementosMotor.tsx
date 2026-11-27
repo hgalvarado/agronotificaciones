@@ -19,9 +19,10 @@ const ICONO: Record<string, typeof IconX> = { rojo: IconX, amarillo: IconInfo, v
 const BANDA_NIVEL: Record<string, string> = { rojo: 'bg-red-600', amarillo: 'bg-amber-500', verde: 'bg-emerald-600/70', gris: 'bg-slate-300', info: 'bg-sky-500' }
 
 /** «Nombre · código» del motor (si no hay nombre distinto del código, solo el código). */
+/** Solo el código del equipo (pedido 2026-11-27: la descripción es muy larga). `nombre` se ignora; queda por compatibilidad. */
 export function etiquetaMotor(codigo: string, nombre?: string | null): string {
-  const n = (nombre ?? '').trim()
-  return n && n !== codigo ? `${n} · ${codigo}` : codigo
+  void nombre
+  return codigo
 }
 
 /** Banda lateral del color del nivel (el color no va en fondos ni en cuadros de icono). */
