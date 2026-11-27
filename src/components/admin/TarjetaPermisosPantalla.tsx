@@ -32,6 +32,8 @@ export type AccionDePantalla = {
   descripcion: string | null
   nivel: number | null
   escribe: boolean
+  /** 159: abre la pantalla por sí sola (p. ej. «Ver registros»), sin «Ver». */
+  abreSola?: boolean
 }
 
 export type CambioCelda = { accion: string; config: ConfigPermiso }
@@ -78,7 +80,7 @@ export function TarjetaPermisosPantalla({
   const conCondicion = configs.some(
     (c, i) => c.permitido && acciones[i].escribe && c.condicion === 'solo_abiertos_registrando'
   )
-  const ve = encendidas.has('ver') || (!acciones.some((a) => a.codigo === 'ver') && encendidas.size > 0)
+  const ve = encendidas.has('ver') || acciones.some((a) => a.abreSola && encendidas.has(a.codigo)) || (!acciones.some((a) => a.codigo === 'ver') && encendidas.size > 0)
   const difiere = comparacion && (comparacion.deMas.length > 0 || comparacion.deMenos.length > 0)
 
   /** Encender exactamente lo de un nivel, conservando el alcance y la condición que ya tenía. */

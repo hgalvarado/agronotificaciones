@@ -34,7 +34,7 @@ export default async function PermisosPage() {
     // `permitido` puede venir en falso y la fila sigue ahí, guardando el alcance y la condición.
     supabase.from('permisos').select('rol_id, recurso, accion, permitido, alcance, condicion'),
     // El catálogo de acciones: nombres, si escribe y (92) su nivel para los niveles rápidos.
-    supabase.from('acciones').select('codigo, nombre, descripcion, orden, escribe, nivel').order('orden'),
+    supabase.from('acciones').select('*').order('orden'),   // * : trae nivel (92) y abre_sola (159) si existen
     // El guardián: lo que la base exige y la matriz no ofrece. Tiene que venir vacío.
     supabase.rpc('fn_permisos_sin_casilla'),
   ])
