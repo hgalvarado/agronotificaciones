@@ -28,6 +28,7 @@ import { FiltrosHistorialInyeccion } from './FiltrosHistorialInyeccion'
 import { EstadoCompacto, InsigniasCumplimiento, PUNTO_TONO, TONO_TIEMPO } from './InsigniasCumplimiento'
 import { VistaCalendarioLote } from './VistaCalendarioLote'
 import { VistaPlanVsReal } from './VistaPlanVsReal'
+import { EncabezadoDia } from '@/components/campo/EncabezadoDia'
 
 function FormAnular({
   aplicacion,
@@ -310,12 +311,9 @@ export function VistaHistorialInyeccion({
 
       {vista === 'aplicaciones' && modo === 'lista' &&
         porDia.map(([dia, items]) => (
-          <section key={dia} className="overflow-hidden rounded-xl bg-white ring-1 ring-inset ring-slate-200" data-dia-historial={dia} data-destino={dia}>
-            <h3 className="sticky top-0 z-[1] flex items-baseline justify-between bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
-              <span>{fechaDia(dia)}</span>
-              <span className="font-semibold normal-case">{items.length} aplicación(es)</span>
-            </h3>
-            <div className="divide-y divide-slate-100">
+          <section key={dia} data-dia-historial={dia} data-destino={dia}>
+            <EncabezadoDia derecha={`${items.length} aplicación(es)`}>{fechaDia(dia)}</EncabezadoDia>
+            <div className="divide-y divide-slate-100 overflow-hidden rounded-xl bg-white ring-1 ring-inset ring-slate-200">
               {items.map(({ a, lineas }) => {
                 const abierta = abiertas.has(a.id)
                 const quien = nombreQuien(a.registrado_por)

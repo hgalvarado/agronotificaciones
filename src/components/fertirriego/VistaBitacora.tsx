@@ -34,6 +34,7 @@ import { detalleAplicacion, indiceDeCumplimiento } from '@/lib/inyeccion/detalle
 import type { EstadoInyeccion } from '@/lib/inyeccion/estado'
 import { BandaLateral } from '@/components/ui/Banda'
 import { InsigniaMovimiento, LeyendaMovimientos } from './InsigniaMovimiento'
+import { EncabezadoDia } from '@/components/campo/EncabezadoDia'
 
 const RELOJ = new Intl.DateTimeFormat('es-HN', { timeZone: 'America/Tegucigalpa', hour: '2-digit', minute: '2-digit' })
 const DIA = new Intl.DateTimeFormat('es-HN', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long' })
@@ -309,7 +310,7 @@ export function VistaBitacora({
       )}
       {[...porDia.entries()].map(([dia, delDia]) => (
         <div key={dia} data-dia={dia} data-destino={dia}>
-          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">{DIA.format(new Date(`${dia}T12:00:00Z`))}</p>
+          <EncabezadoDia>{DIA.format(new Date(`${dia}T12:00:00Z`))}</EncabezadoDia>
           <div className="divide-y divide-slate-100 overflow-hidden rounded-xl bg-white ring-1 ring-inset ring-slate-200">
             {bloquesDe(delDia).map((b) => {
               if (b.filas.length === 1) return filaMovimiento(b.filas[0])

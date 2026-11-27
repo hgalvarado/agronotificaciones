@@ -257,7 +257,7 @@ export function AppShell({
       {/* ---------------- Contenido ---------------- */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Encabezado móvil */}
-        <header className="no-imprimir sticky top-0 z-20 flex items-center justify-between border-b border-slate-200 bg-white/85 px-4 py-3 backdrop-blur-md lg:hidden">
+        <header ref={medirEncabezado} className="no-imprimir sticky top-0 z-20 flex items-center justify-between border-b border-slate-200 bg-white/85 px-4 py-3 backdrop-blur-md lg:hidden">
           <Link href="/" className="flex min-w-0 items-center gap-2.5" aria-label="Ir al inicio">
             <Logo tamano={32} className="rounded-lg" />
             <div className="min-w-0">
@@ -384,4 +384,18 @@ function EnlaceNav({
       {children}
     </Link>
   )
+}
+
+/**
+ * Alto real del encabezado móvil en la variable CSS --alto-encabezado: lo usan las fechas fijas de las bitácoras
+ * (EncabezadoDia) para quedar justo debajo, aunque el nombre ocupe dos renglones.
+ */
+function medirEncabezado(el: HTMLElement | null) {
+  if (!el || typeof ResizeObserver === "undefined") return
+  const raiz = document.documentElement
+  const poner = () => raiz.style.setProperty("--alto-encabezado", `${el.offsetHeight}px`)
+  poner()
+  const ro = new ResizeObserver(poner)
+  ro.observe(el)
+  return () => ro.disconnect()
 }

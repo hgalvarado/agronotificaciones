@@ -25,6 +25,7 @@ import { DetalleRegistroMotor, fechaCorta } from './DetalleRegistroMotor'
 import { FormAnularMotor, type AnulableMotor } from './FormAnularMotor'
 import { BarraVistaHistorial, HojaMotor, type VistaHistorial } from './HojaMotor'
 import { ResumenTemporada } from './ResumenTemporada'
+import { EncabezadoDia } from '@/components/campo/EncabezadoDia'
 
 const NOMBRE_MOV: Record<string, string> = { INSTALADO: 'Motor recibido', TRASLADADO: 'Motor movido', RETIRADO: 'Motor retirado', AL_TALLER: 'Al taller', DE_VUELTA: 'De vuelta del taller' }
 const TIPOS_PENDIENTES = ['motor_registro_diario', 'diesel_recibir', 'diesel_devolver', 'motor_mantenimiento', 'motor_asignar', 'motor_retiro']
@@ -450,7 +451,7 @@ export function PestanaHistorial({
       {vista === 'tabla' && secciones.map((x) => <HojaMotor key={x.motor.equipo_id} titulo={x.titulo} filas={x.filas} />)}
       {vista === 'lista' && porDia.map(([dia, lista]) => (
         <section key={dia} className="flex flex-col gap-1.5" data-dia-motores={dia} data-destino={dia}>
-          <h3 className="mt-1 text-xs font-bold uppercase tracking-wide text-slate-500">{fechaDia(dia)} · {fechaCorta(dia)}</h3>
+          <EncabezadoDia>{fechaDia(dia)} · {fechaCorta(dia)}</EncabezadoDia>
           {lista.map((e) => e.fila)}
         </section>
       ))}
