@@ -123,8 +123,18 @@ declare
     v_leido timestamptz := nullif(p->>'leido_at', '')::timestamptz;
     v_n     integer := 0;
     c       record;
+    v_prueba jsonb;
 begin
+    -- las estaciones de PRUEBA no las maneja AGL: lo suyo se guarda y se devuelve tras la publicación completa
+    select coalesce(jsonb_agg(to_jsonb(o)), '[]'::jsonb) into v_prueba
+      from public.fert_capacidad_estacion o join public.estaciones_riego e on e.id = o.estacion_id
+     where e.prueba_de is not null;
     v_res := public._fert_publicar_capacidades_152(p);
+    insert into public.fert_capacidad_estacion (estacion_id, material_id, capacidad, actualizado_at)
+    select x.estacion_id, x.material_id, x.capacidad, x.actualizado_at
+      from jsonb_populate_recordset(null::public.fert_capacidad_estacion, v_prueba) x
+     where exists (select 1 from public.fert_capacidad_estandar s where s.material_id = x.material_id)
+    on conflict (estacion_id, material_id) do nothing;
     if v_leido is not null then
         for c in select distinct on (x.estacion_id, x.material_id) x.*
                    from public.fert_capacidad_cambios x
@@ -143,6 +153,7 @@ begin
     end if;
     return v_res || jsonb_build_object('cambios_campo_respetados', v_n);
 end $$;
+revoke execute on function public.fn_fert_publicar_capacidades(jsonb) from public, anon;
 grant execute on function public.fn_fert_publicar_capacidades(jsonb) to authenticated;
 
 -- ---------------------------------------------------------------- 6 · AGL lee también los cambios de campo
@@ -176,6 +187,7 @@ begin
               left join public.perfiles p on p.id = x.hecho_por
              where x.hecho_at > now() - interval '90 days'), '[]'::jsonb));
 end $$;
+revoke execute on function public.fn_fert_capacidad_exportar() from public, anon;
 grant execute on function public.fn_fert_capacidad_exportar() to authenticated;
 
 -- ---------------------------------------------------------------- 7 · estación de PRUEBA: primero su propio valor
