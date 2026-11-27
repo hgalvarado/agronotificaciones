@@ -215,6 +215,25 @@ export type EstadoMotores = {
   tramos?: TramoMotor[]
   /** {id de persona → nombre} de quienes registraron. */
   personas?: Record<string, string>
+  /** sql/160 (opcional: sin la 160 no viene). */
+  reemplazos?: ReemplazoMotor[]
+}
+
+/** sql/160: reemplazo temporal abierto (el dañado está «En reparación» y otro motor trabaja en su tanque). */
+export type ReemplazoMotor = {
+  id: string
+  estacion_id: string
+  tanque_id: string
+  motor_danado: string
+  motor_sustituto: string
+  danado_codigo: string | null
+  danado_nombre: string | null
+  sustituto_codigo: string | null
+  /** Estación de donde vino el sustituto (null = era de repuesto). */
+  origen_estacion_id: string | null
+  origen_estacion: string | null
+  desde: string
+  motivo: string | null
 }
 
 /** Lo mínimo que se necesita de una operación pendiente (sirve también para las pruebas sin React). */
@@ -364,7 +383,18 @@ export function normalizarEstado(e: EstadoMotores): EstadoMotores {
     tanques: (e.tanques ?? []).map((t) => conNulos(t, ['zona_id', 'estacion_id', 'capacidad_gal', 'motor_equipo_id'])),
     tramos: (e.tramos ?? []).map((t) => conNulos(t, ['estacion_id', 'tanque_id', 'hasta', 'horo_entrada', 'horo_salida'])),
     personas: e.personas ?? {},
+    reemplazos: (e.reemplazos ?? []).map((r) => conNulos(r, ['danado_codigo', 'danado_nombre', 'sustituto_codigo', 'origen_estacion_id', 'origen_estacion', 'motivo'])),
   }
+}
+
+/** sql/160: reemplazos temporales abiertos de una estación. */
+export function reemplazosDeEstacion(estado: EstadoMotores, estacionId: string): ReemplazoMotor[] {
+  return (estado.reemplazos ?? []).filter((r) => r.estacion_id === estacionId)
+}
+
+/** sql/160: motores que pueden reemplazar a otro en esta estación (de repuesto o de otra estación; nunca uno en reparación). */
+export function candidatosReemplazo(estado: EstadoMotores, estacionId: string, nombreEstacion: (id: string) => string | null): MotorElegible[] {
+  return motoresParaRecibir(estado, estacionId, nombreEstacion).filter((m) => m.estado !== 'TALLER')
 }
 
 /** Los tanques de una estación (catálogo fijo; con datos viejos, los de los motores y los sueltos). */

@@ -23,7 +23,7 @@ import { EncabezadoEnvios } from '@/components/fertirriego/EncabezadoEnvios'
 import type { Operacion } from '@/lib/fertirriego/tipos'
 import { hoyIso } from '@/lib/fechas/zona'
 import { AvisoDestinoPerdido, useDestinoAlerta, useResaltarDestino } from '@/lib/alertas/useDestinoAlerta'
-import { motoresDeEstacion, motoresParaRecibir, saldoTanqueLocal, tanquesDeEstacion, type MotorEstacion } from '@/lib/motores/estado'
+import { motoresDeEstacion, motoresParaRecibir, reemplazosDeEstacion, saldoTanqueLocal, tanquesDeEstacion, type MotorEstacion } from '@/lib/motores/estado'
 import { queTocaAhora } from '@/lib/motores/senales'
 import { useMotores } from '@/lib/motores/useMotores'
 import { vistaMotor } from '@/lib/motores/vistaMotor'
@@ -31,6 +31,7 @@ import { permisoHistoricoDe, useCampoExtras } from '@/lib/campo/useCampoExtras'
 import { AdministrarTanques } from './AdministrarTanques'
 import { FormMantenimiento } from './FormMantenimiento'
 import { FormMoverMotor } from './FormMoverMotor'
+import { FormReemplazoMotor } from './FormReemplazoMotor'
 import { FormRecibirDiesel } from './FormRecibirDiesel'
 import { FormDevolverDiesel } from './FormDevolverDiesel'
 import { AvisoModoPruebas } from '@/components/campo/AvisoModoPruebas'
@@ -46,7 +47,7 @@ const RUTAS_SW = ['/motores']
 type Pestana = 'hoy' | 'motores' | 'historial' | 'tanques' | 'general'
 
 type Ventana = {
-  tipo: 'registro' | 'corregir' | 'corregir_recepcion' | 'recibir' | 'devolver' | 'mover' | 'retirar' | 'mantenimiento' | 'detalle_motor' | 'detalle_tanque' | 'elegir_motor' | 'recibir_motor' | 'administrar_tanques'
+  tipo: 'registro' | 'corregir' | 'corregir_recepcion' | 'recibir' | 'devolver' | 'mover' | 'retirar' | 'reemplazo' | 'reactivar' | 'mantenimiento' | 'detalle_motor' | 'detalle_tanque' | 'elegir_motor' | 'recibir_motor' | 'administrar_tanques'
   equipoId: string
   tanqueId?: string
   /** Día del registro que pidió recibir combustible (la recepción viene con esa fecha). */
@@ -115,10 +116,13 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
   const puedeMover = puedeConfigurar || (p?.motor_mover ?? false)
   const puedeRetirar = puedeConfigurar || (p?.motor_retirar ?? false)
   const puedeMantenimiento = puedeConfigurar || (p?.motor_mantenimiento ?? false)
+  // sql/160: el reemplazo temporal saca un motor y mete otro (retirar + recibir o mover)
+  const puedeReemplazar = puedeRetirar && (puedeRecibirMotor || puedeMover)
   const hoy = hoyIso()
   const motores = useMemo(() => (me && estacion ? motoresDeEstacion(me, estacion.id) : []), [me, estacion])
   const vistas = useMemo(() => (me ? motores.map((m) => vistaMotor(m, me, cola, hoy)) : []), [me, motores, cola, hoy])
   const tanques = useMemo(() => (me && estacion ? tanquesDeEstacion(me, estacion.id) : []), [me, estacion])
+  const enReparacion = useMemo(() => (me && estacion ? reemplazosDeEstacion(me, estacion.id) : []), [me, estacion])
   const saldoDe = (id: string): number => (me ? saldoTanqueLocal(id, me, cola) : 0)
   const urgentes = useMemo(() => queTocaAhora(vistas.map((v) => ({ motor: v.motor, ayuda: v.ayuda }))).filter((i) => i.nivel === 'rojo').length, [vistas])
   const pendientesHoy = useMemo(() => queTocaAhora(vistas.map((v) => ({ motor: v.motor, ayuda: v.ayuda }))).length, [vistas])
@@ -261,6 +265,9 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
               onAbrir={(id) => setVentana({ tipo: 'detalle_motor', equipoId: id })}
               onRegistrar={(id) => setVentana({ tipo: 'registro', equipoId: id })}
               onRecibir={(id) => setVentana({ tipo: 'recibir', equipoId: id })}
+              enReparacion={enReparacion}
+              puedeReactivar={puedeReemplazar}
+              onReactivar={(id) => setVentana({ tipo: 'reactivar', equipoId: id })}
             />
           )}
           {pestana === 'historial' && (
@@ -309,6 +316,7 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
               puedeRegistrar={puedeRegistrar}
               puedeMover={puedeMover}
               puedeRetirar={puedeRetirar}
+              puedeReemplazar={puedeReemplazar}
               puedeMantenimiento={puedeMantenimiento}
               onAccion={(a) => alAccionMotor(a, vistaVentana.motor.equipo_id)}
               onCerrar={() => setVentana(null)}
@@ -468,6 +476,28 @@ export function CampoMotores({ usuarioId }: { usuarioId: string }) {
               onGuardado={guardado}
             />
           )}
+          {(ventana?.tipo === 'reemplazo' || ventana?.tipo === 'reactivar') && (() => {
+            // Reactivar sale del reemplazo abierto (el motor en reparación no está en ninguna estación)
+            const r = enReparacion.find((x) => x.motor_danado === ventana.equipoId) ?? null
+            const codigo = motorVentana?.codigo ?? r?.danado_codigo ?? ''
+            if (ventana.tipo === 'reemplazo' ? !motorVentana : !r) return null
+            return (
+            <FormReemplazoMotor
+              modo={ventana.tipo === 'reemplazo' ? 'inicio' : 'fin'}
+              equipoId={ventana.equipoId}
+              codigo={codigo}
+              horoUltimo={motorVentana?.horo_ultimo ?? null}
+              reemplazo={r}
+              estado={me}
+              estaciones={estaciones}
+              estacion={estacion}
+              yo={estado.yo}
+              registrar={campo.registrar}
+              onCerrar={() => setVentana(null)}
+              onGuardado={guardado}
+            />
+            )
+          })()}
           {motorVentana && ventana?.tipo === 'mantenimiento' && (
             <FormMantenimiento motor={motorVentana} estacion={estacion} yo={estado.yo} registrar={campo.registrar} onCerrar={() => setVentana(null)} onGuardado={guardado} />
           )}
