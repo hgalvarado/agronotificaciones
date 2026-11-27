@@ -19,6 +19,11 @@ declare
     n integer;
 begin
     if position('161:tanque' in v_def) > 0 then
+        -- 161b · empate del mismo día y hora: primero el de visor más alto (dentro del día el tanque solo baja), no el uuid
+        if position('x.fecha_hora, x.visor_ini desc, x.id' in v_def) = 0 then
+            v_def := replace(v_def, 'partition by x.tanque_id order by x.fecha, x.fecha_hora, x.id', 'partition by x.tanque_id order by x.fecha, x.fecha_hora, x.visor_ini desc, x.id');
+            execute v_def;
+        end if;
         return;
     end if;
     -- 1 · base con los registros de los mismos tanques y el anterior por tanque
@@ -42,7 +47,7 @@ begin
     n := (length(v_def) - length(replace(v_def, 'window w as (partition by x.equipo_id order by x.fecha)', ''))) / length('window w as (partition by x.equipo_id order by x.fecha)');
     if n <> 1 then raise exception '161: no se encontró la ventana de _mot_senales (%)', n; end if;
     v_def := replace(v_def, 'window w as (partition by x.equipo_id order by x.fecha)',
-        'window w as (partition by x.equipo_id order by x.fecha, x.fecha_hora), wt as (partition by x.tanque_id order by x.fecha, x.fecha_hora, x.id)');
+        'window w as (partition by x.equipo_id order by x.fecha, x.fecha_hora), wt as (partition by x.tanque_id order by x.fecha, x.fecha_hora, x.visor_ini desc, x.id)');
 
     -- 2 · suministros entre el anterior del tanque y este
     if position('r.p_fecha is not null   -- 155:senales' in v_def) = 0 then raise exception '161: falta el parche de la 155 en _mot_senales'; end if;

@@ -267,7 +267,7 @@ export function senalesPorRegistro(
 ): Map<string, Aviso[]> {
   const mapa = new Map<string, Aviso[]>()
   const vigentes = registros.filter((r) => !r.anulado_at)
-  const orden = (a: RegSenal, b: RegSenal) => a.fecha.localeCompare(b.fecha) || (a.fecha_hora ?? '').localeCompare(b.fecha_hora ?? '') || a.id.localeCompare(b.id)
+  const orden = (a: RegSenal, b: RegSenal) => a.fecha.localeCompare(b.fecha) || (a.fecha_hora ?? '').localeCompare(b.fecha_hora ?? '') || b.visor_ini - a.visor_ini || a.id.localeCompare(b.id)
   // el visor sigue al TANQUE: el anterior del tanque puede ser de otro motor (reemplazo temporal)
   const anteriorTanque = new Map<string, RegSenal | null>()
   const porTanque = new Map<string, RegSenal[]>()
