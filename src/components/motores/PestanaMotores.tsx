@@ -13,12 +13,17 @@ import { IconChevronRight } from '@/components/ui/Icons'
 import { cantidad } from '@/lib/fertirriego/calculos'
 import { useMemoria } from '@/lib/memoria/useMemoria'
 import type { VistaMotor } from '@/lib/motores/vistaMotor'
+import type { ReemplazoMotor } from '@/lib/motores/estado'
+
+/** Fecha corta en hora de Honduras (UTC-6) para «En reparación desde …». */
+const FECHA_REPARACION = new Intl.DateTimeFormat('es-HN', { timeZone: 'America/Tegucigalpa', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
+const fechaCortaReparacion = (iso: string) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? '' : FECHA_REPARACION.format(d) }
 import { BandaNivel, etiquetaMotor, FilaToque, InsigniaNivel } from './ElementosMotor'
 import { BarraMantenimiento } from './BarraMantenimiento'
 import { MedidorTanque } from './MedidorTanque'
 
 
-export type AccionMotor = 'registro' | 'recibir' | 'mover' | 'retirar' | 'mantenimiento' | 'historial'
+export type AccionMotor = 'registro' | 'recibir' | 'mover' | 'retirar' | 'reemplazo' | 'mantenimiento' | 'historial'
 
 function TarjetaMotor({ v, puedeRegistrar, onAbrir, onRegistrar, onRecibir }: { v: VistaMotor; puedeRegistrar: boolean; onAbrir: () => void; onRegistrar: () => void; onRecibir: () => void }) {
   const m = v.motor
@@ -67,6 +72,9 @@ export function PestanaMotores({
   onAbrir,
   onRegistrar,
   onRecibir,
+  enReparacion = [],
+  puedeReactivar = false,
+  onReactivar,
 }: {
   vistas: VistaMotor[]
   puedeAsignar: boolean
@@ -75,6 +83,10 @@ export function PestanaMotores({
   onAbrir: (equipoId: string) => void
   onRegistrar: (equipoId: string) => void
   onRecibir: (equipoId: string) => void
+  /** sql/160: motores de esta estación en reparación con un reemplazo temporal. */
+  enReparacion?: ReemplazoMotor[]
+  puedeReactivar?: boolean
+  onReactivar?: (equipoId: string) => void
 }) {
   // Orden propio de cada persona (el que más usa, primero): se recuerda en su equipo; los motores nuevos van al final
   const [orden, fijarOrden] = useMemoria<string[]>('motores-orden', [])
@@ -123,6 +135,27 @@ export function PestanaMotores({
           </div>
         ))}
       </div>
+      {enReparacion.length > 0 && (
+        <div className="flex flex-col gap-2" data-en-reparacion>
+          {enReparacion.map((r) => (
+            <div key={r.id} className="flex flex-col gap-2 rounded-xl bg-amber-50 p-3 ring-1 ring-inset ring-amber-600/30" data-reparacion={r.danado_codigo ?? r.motor_danado}>
+              <div className="flex flex-wrap items-baseline justify-between gap-x-2">
+                <p className="text-base font-bold text-amber-950">🔧 {r.danado_codigo ?? 'Motor'} · En reparación</p>
+                <p className="text-xs font-semibold text-amber-900">desde {fechaCortaReparacion(r.desde)}</p>
+              </div>
+              <p className="text-sm text-amber-900">
+                Lo reemplaza <strong>{r.sustituto_codigo ?? 'otro motor'}</strong>
+                {r.origen_estacion ? ` (de ${r.origen_estacion})` : ' (de repuesto)'}.
+              </p>
+              {puedeReactivar && onReactivar && (
+                <Boton className="min-h-12" onClick={() => onReactivar(r.motor_danado)} data-reactivar-motor>
+                  Ya está reparado · Reactivar
+                </Boton>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
       {puedeAsignar && (
         <button type="button" onClick={onAsignar} className="min-h-11 self-center rounded-lg px-3 text-sm font-medium text-brand-700 underline" data-asignar-motor>
           Asignar motor
@@ -138,6 +171,7 @@ export function DetalleMotor({
   puedeRegistrar,
   puedeMover,
   puedeRetirar,
+  puedeReemplazar = false,
   puedeMantenimiento,
   onAccion,
   onCerrar,
@@ -146,6 +180,8 @@ export function DetalleMotor({
   puedeRegistrar: boolean
   puedeMover: boolean
   puedeRetirar: boolean
+  /** sql/160: reemplazo temporal (retirar + recibir o mover). */
+  puedeReemplazar?: boolean
   puedeMantenimiento: boolean
   onAccion: (a: AccionMotor) => void
   onCerrar: () => void
@@ -201,6 +237,11 @@ export function DetalleMotor({
           {instalado && puedeRetirar && (
             <Boton tamano="sm" variante="secundario" className="min-h-11" onClick={() => onAccion('retirar')} data-retirar-motor>
               Retirar
+            </Boton>
+          )}
+          {instalado && puedeReemplazar && (
+            <Boton tamano="sm" variante="secundario" className="min-h-11" onClick={() => onAccion('reemplazo')} data-reemplazo-motor>
+              Dañado · poner otro
             </Boton>
           )}
           {puedeMantenimiento && (

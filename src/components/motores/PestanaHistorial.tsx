@@ -28,6 +28,11 @@ import { ResumenTemporada } from './ResumenTemporada'
 import { EncabezadoDia } from '@/components/campo/EncabezadoDia'
 
 const NOMBRE_MOV: Record<string, string> = { INSTALADO: 'Motor recibido', TRASLADADO: 'Motor movido', RETIRADO: 'Motor retirado', AL_TALLER: 'Al taller', DE_VUELTA: 'De vuelta del taller' }
+/** sql/160: el reemplazo temporal se lee como reparación, no como taller. */
+const nombreMovimiento = (a: { tipo: string; motivo_codigo: string | null }) =>
+  a.motivo_codigo === 'DANO_REEMPLAZO' && a.tipo === 'AL_TALLER' ? 'En reparación'
+  : a.motivo_codigo === 'DANO_REEMPLAZO' && a.tipo === 'DE_VUELTA' ? 'Reparado y reactivado'
+  : (NOMBRE_MOV[a.tipo] ?? a.tipo)
 const TIPOS_PENDIENTES = ['motor_registro_diario', 'diesel_recibir', 'diesel_devolver', 'motor_mantenimiento', 'motor_asignar', 'motor_retiro']
 
 type Evento = { clave: string; dia: string; ts: string; motorId: string | null; tanqueId: string | null; conAlerta: boolean; fila: React.ReactNode }
@@ -268,14 +273,14 @@ export function PestanaHistorial({
             key={clave}
             atributos={{ 'data-movimiento-motor': a.id }}
             nivel={a.anulado_at ? 'gris' : 'info'}
-            titulo={<span className={a.anulado_at ? 'line-through opacity-60' : ''}>{NOMBRE_MOV[a.tipo] ?? a.tipo} · {codigoDe.get(a.equipo_id) ?? 'Motor'}</span>}
+            titulo={<span className={a.anulado_at ? 'line-through opacity-60' : ''}>{nombreMovimiento(a)} · {codigoDe.get(a.equipo_id) ?? 'Motor'}</span>}
             linea2={a.motivo}
             onToque={() => alternar(clave)}
             abierta={abierta === clave}
           >
             <div className="mx-3 mb-2 mt-1 rounded-xl bg-slate-50 p-3 ring-1 ring-inset ring-slate-200" data-detalle-movimiento-motor>
               <dl className="grid grid-cols-2 gap-x-3 gap-y-2">
-                <DatoHoja etiqueta="Qué pasó" valor={NOMBRE_MOV[a.tipo] ?? a.tipo} />
+                <DatoHoja etiqueta="Qué pasó" valor={nombreMovimiento(a)} />
                 <DatoHoja etiqueta="Fecha y hora" valor={formatearFechaHora(a.fecha_hora)} />
                 <DatoHoja etiqueta="De la estación" valor={nombreEstacion(a.estacion_origen)} />
                 <DatoHoja etiqueta="A la estación" valor={nombreEstacion(a.estacion_destino)} />

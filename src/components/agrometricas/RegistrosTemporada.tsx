@@ -14,7 +14,7 @@ import { useMemoria } from '@/lib/memoria/useMemoria'
 import { createClient } from '@/lib/supabase/client'
 import type { Rango } from '@/lib/agrometricas/parametros'
 import {
-  FILTROS_VACIOS, POR_PAGINA, cambiosDeEdicion, filtrarLocal, nombreZona, paramsConsulta, unirPagina, validarEdicion,
+  FILTROS_VACIOS, POR_PAGINA, POR_PAGINA_GRAFICAS, TOPE_PAGINAS_GRAFICAS, cambiosDeEdicion, filtrarLocal, nombreZona, paramsConsulta, unirPagina, validarEdicion,
   type FiltrosRegistros, type Registro,
 } from '@/lib/agrometricas/registrosPura'
 import { FiltrosRegistrosPanel } from './FiltrosRegistros'
@@ -53,6 +53,7 @@ export function RegistrosTemporada() {
   const [total, setTotal] = useState(0)
   const [recibidos, setRecibidos] = useState(0)
   const [pagina, setPagina] = useState(0)
+  const [limiteCargado, setLimiteCargado] = useState(POR_PAGINA)   // tamaño de bloque de lo que hay en pantalla
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [catalogo, setCatalogo] = useState<TurnoCatalogo[]>([])
@@ -63,18 +64,18 @@ export function RegistrosTemporada() {
   const { aviso, mostrar } = useAvisoFlotante()
   const lectura = useRef(0)
 
-  const cargar = useCallback(async (pag: number, f: FiltrosRegistros, d: Datos) => {
+  const cargar = useCallback(async (pag: number, f: FiltrosRegistros, d: Datos, lim: number = POR_PAGINA) => {
     const mia = ++lectura.current
     setCargando(true); setError(null)
     try {
       if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new Error(MSG_SIN_CONEXION)
-      const { data, error: e } = await createClient().rpc(d === 'ic' ? 'fn_agm_ic_mis_registros' : 'fn_agm_mis_registros', { p: paramsConsulta(f, pag) })
+      const { data, error: e } = await createClient().rpc(d === 'ic' ? 'fn_agm_ic_mis_registros' : 'fn_agm_mis_registros', { p: paramsConsulta(f, pag, lim) })
       if (mia !== lectura.current) return
       if (e) throw new Error(e.message)
       const r = data as { total: number; registros: Registro[] }
       setRegistros((previos) => (pag === 0 ? r.registros : unirPagina(previos, r.registros)))
       setRecibidos((n) => (pag === 0 ? r.registros.length : n + r.registros.length))
-      setTotal(r.total); setPagina(pag)
+      setTotal(r.total); setPagina(pag); setLimiteCargado(lim)
     } catch (e) {
       if (mia !== lectura.current) return
       setError(mensaje(e))
@@ -87,8 +88,9 @@ export function RegistrosTemporada() {
   const clave = JSON.stringify(filtros)
   useEffect(() => {
     if (!lista || !vistaLista || !datosLista || vista === 'resumen') return   // el Resumen pide lo suyo (ResumenRegistros)
-    const t = setTimeout(() => { cargar(0, JSON.parse(clave) as FiltrosRegistros, datos) }, 0)
-    const alVolver = () => { cargar(0, JSON.parse(clave) as FiltrosRegistros, datos) }
+    const lim = vista === 'graficas' ? POR_PAGINA_GRAFICAS : POR_PAGINA
+    const t = setTimeout(() => { cargar(0, JSON.parse(clave) as FiltrosRegistros, datos, lim) }, 0)
+    const alVolver = () => { cargar(0, JSON.parse(clave) as FiltrosRegistros, datos, lim) }
     window.addEventListener('online', alVolver)
     return () => { clearTimeout(t); window.removeEventListener('online', alVolver) }
   }, [lista, vistaLista, datosLista, vista, datos, clave, cargar])
@@ -133,6 +135,13 @@ export function RegistrosTemporada() {
   const visibles = useMemo(() => filtrarLocal(registros, filtros), [registros, filtros])
   const abierto = abiertoId ? registros.find((r) => r.id === abiertoId) ?? null : null
   const hayMas = recibidos < total
+  // Gráficas completas: sigue trayendo bloques solo, uno tras otro (se detiene si falla, si ya están todos o al llegar al tope)
+  const enGraficas = vista === 'graficas' && limiteCargado === POR_PAGINA_GRAFICAS
+  const completandoGraficas = enGraficas && hayMas && pagina + 1 < TOPE_PAGINAS_GRAFICAS
+  useEffect(() => {
+    if (!completandoGraficas || cargando || error) return
+    cargar(pagina + 1, JSON.parse(clave) as FiltrosRegistros, datos, POR_PAGINA_GRAFICAS)
+  }, [completandoGraficas, cargando, error, pagina, clave, datos, cargar])
 
   const cambiar = (cambio: Partial<FiltrosRegistros>) => setFiltros((previos) => ({ ...previos, ...cambio }))
   const elegirDatos = (d: Datos) => {
@@ -246,9 +255,12 @@ export function RegistrosTemporada() {
         </div>
       )}
 
-      {vista !== 'resumen' && !error && hayMas && (
-        <Boton type="button" variante="secundario" tamano="lg" disabled={cargando} onClick={() => cargar(pagina + 1, filtros, datos)} data-ver-mas>
-          {cargando ? 'Cargando…' : `Ver más (${Math.min(POR_PAGINA, total - recibidos)} de ${total - recibidos} restantes)`}
+      {vista === 'graficas' && !error && hayMas && completandoGraficas && (
+        <p className="text-center text-sm font-semibold text-slate-600" data-cargando-graficas>Cargando todos los registros… {recibidos} de {total}</p>
+      )}
+      {vista !== 'resumen' && !error && hayMas && !completandoGraficas && (
+        <Boton type="button" variante="secundario" tamano="lg" disabled={cargando} onClick={() => cargar(pagina + 1, filtros, datos, limiteCargado)} data-ver-mas>
+          {cargando ? 'Cargando…' : `Ver más (${Math.min(limiteCargado, total - recibidos)} de ${total - recibidos} restantes)`}
         </Boton>
       )}
 

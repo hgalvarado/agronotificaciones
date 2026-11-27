@@ -251,3 +251,37 @@ export function armarMovimientoMotor(args: {
   }
   return { datos, operacion: args.tipo === 'RETIRADO' ? 'motor_retiro' : 'motor_asignar' }
 }
+
+/**
+ * sql/160 · Reemplazo temporal: el motor dañado queda «En reparación» (sin moverlo) y otro motor trabaja en su tanque.
+ * `inicio`: equipoId = dañado, sustitutoId = el que entra (de repuesto o de otra estación), horometro = del sustituto.
+ * `fin`: equipoId = el reparado (vuelve a su tanque), horometro = del reparado; el sustituto vuelve solo a donde estaba.
+ * Una sola operación `motor_asignar` (la base hace los movimientos de siempre en una transacción).
+ */
+export function armarReemplazoMotor(args: {
+  modo: 'inicio' | 'fin'
+  equipoId: string
+  sustitutoId?: string | null
+  estacionId: string
+  fechaHora: string
+  horometro: number | null
+  horometroOtro: number | null
+  motivo?: string
+}): { datos: Record<string, unknown>; operacion: 'motor_asignar' } | { error: string } {
+  if (args.modo === 'inicio' && !args.sustitutoId) return { error: 'Elige el motor que lo reemplaza.' }
+  if (args.modo === 'inicio' && args.sustitutoId === args.equipoId) return { error: 'Elige otro motor.' }
+  for (const h of [args.horometro, args.horometroOtro]) if (h != null && (!esNum(h) || h < 0)) return { error: 'Horómetro no válido.' }
+  if (!args.fechaHora) return { error: 'Falta la fecha y hora.' }
+  const datos: Record<string, unknown> = {
+    equipo_id: args.equipoId,
+    estacion_id: args.estacionId,
+    tipo: args.modo === 'inicio' ? 'REEMPLAZO' : 'REEMPLAZO_FIN',
+    fecha_hora: args.fechaHora,
+    sustituto_id: args.modo === 'inicio' ? args.sustitutoId : undefined,
+    horometro: args.horometro ?? undefined,
+    horometro_danado: args.modo === 'inicio' ? (args.horometroOtro ?? undefined) : undefined,
+    horometro_sustituto: args.modo === 'fin' ? (args.horometroOtro ?? undefined) : undefined,
+    motivo: args.motivo?.trim() || undefined,
+  }
+  return { datos, operacion: 'motor_asignar' }
+}
