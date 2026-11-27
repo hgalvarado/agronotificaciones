@@ -23,6 +23,7 @@ returns boolean language sql stable security definer set search_path = public, p
         else case public.fn_mi_alcance('agrometricas', 'ver')
             when 'global' then true
             when 'zonal' then public.fn_ve_zona_estricta((select zona from z))
+                or exists (select 1 from public.perfiles p where p.id = (select auth.uid()) and p.todas_las_zonas)
             else exists (select 1 from public.perfiles_estaciones pe join public.estaciones_riego e on e.id = pe.estacion_id
                          where e.zona_id = (select zona from z) and e.prueba_de is null and pe.perfil_id = (select auth.uid()))
         end
