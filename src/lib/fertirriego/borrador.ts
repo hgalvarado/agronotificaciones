@@ -17,7 +17,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 const PREFIJO = 'fert:borrador:'
 const VIGENCIA_MS = 7 * 24 * 3600_000
 
-export type TipoBorrador = 'recepcion' | 'envases' | 'aplicacion' | 'aplicacion_historica' | 'conteo' | 'bitacora' | 'relevo' | 'traslado' | 'devolucion_bodega' | 'aplicacion_lote' | 'motor_registro' | 'diesel_recibir' | 'motor_recibir' | 'motor_mover' | 'motor_retirar' | 'motor_mantenimiento'
+export type TipoBorrador = 'recepcion' | 'envases' | 'aplicacion' | 'aplicacion_historica' | 'conteo' | 'bitacora' | 'relevo' | 'traslado' | 'devolucion_bodega' | 'aplicacion_lote' | 'motor_registro' | 'diesel_recibir' | 'diesel_devolver' | 'motor_recibir' | 'motor_mover' | 'motor_retirar' | 'motor_mantenimiento'
 
 export const NOMBRE_BORRADOR: Record<TipoBorrador, string> = {
   recepcion: 'Recibir producto',
@@ -32,6 +32,7 @@ export const NOMBRE_BORRADOR: Record<TipoBorrador, string> = {
   aplicacion_lote: 'Inyección por lote',
   motor_registro: 'Registro diario del motor',
   diesel_recibir: 'Recibir diésel',
+  diesel_devolver: 'Devolver diésel a bodega',
   motor_recibir: 'Recibir motor',
   motor_mover: 'Mover motor',
   motor_retirar: 'Retirar motor',

@@ -27,6 +27,7 @@ export const NOMBRE_TIPO: Record<string, string> = {
   motor_registro_diario: 'Registro diario del motor',
   motor_mantenimiento: 'Mantenimiento de motor',
   diesel_recibir: 'Diésel recibido',
+  diesel_devolver: 'Diésel devuelto a bodega',
   anulacion: 'Anulación',
   chofer: 'Chofer nuevo',
   vehiculo: 'Vehículo nuevo',

@@ -13,6 +13,7 @@ import { SelectorMultiple } from '@/components/ui/SelectorMultiple'
 import { EliminarPorCompleto } from '@/components/fertirriego/EliminarPorCompleto'
 import { formatearFechaHora } from '@/lib/estados'
 import { cantidad } from '@/lib/fertirriego/calculos'
+import { DESTINOS_DEVOLUCION } from '@/lib/fertirriego/devolucionBodega'
 import type { TipoEliminable } from '@/lib/fertirriego/eliminar'
 import type { Chofer, Estacion, Operacion, Persona, Vehiculo } from '@/lib/fertirriego/tipos'
 import { diaLocal, nombreQuien, type EstadoMotores, type MotorEstacion, type RecepcionMotor, type RegistroMotor } from '@/lib/motores/estado'
@@ -27,7 +28,7 @@ import { BarraVistaHistorial, HojaMotor, type VistaHistorial } from './HojaMotor
 import { ResumenTemporada } from './ResumenTemporada'
 
 const NOMBRE_MOV: Record<string, string> = { INSTALADO: 'Motor recibido', TRASLADADO: 'Motor movido', RETIRADO: 'Motor retirado', AL_TALLER: 'Al taller', DE_VUELTA: 'De vuelta del taller' }
-const TIPOS_PENDIENTES = ['motor_registro_diario', 'diesel_recibir', 'motor_mantenimiento', 'motor_asignar', 'motor_retiro']
+const TIPOS_PENDIENTES = ['motor_registro_diario', 'diesel_recibir', 'diesel_devolver', 'motor_mantenimiento', 'motor_asignar', 'motor_retiro']
 
 type Evento = { clave: string; dia: string; ts: string; motorId: string | null; tanqueId: string | null; conAlerta: boolean; fila: React.ReactNode }
 
@@ -83,7 +84,7 @@ export function PestanaHistorial({
   const puede = puedeAnular && estacion.permisos.anular
   const codigoDe = useMemo(() => new Map(estado.motores.map((m) => [m.equipo_id, etiquetaMotor(m.codigo, m.nombre)])), [estado.motores])
   const tanqueNombre = useMemo(() => new Map((estado.tanques ?? []).map((t) => [t.id, t.nombre])), [estado.tanques])
-  const senales = useMemo(() => senalesPorRegistro(estado.registros, estado.recepciones), [estado.registros, estado.recepciones])
+  const senales = useMemo(() => senalesPorRegistro(estado.registros, estado.recepciones, estado.devoluciones ?? []), [estado.registros, estado.recepciones, estado.devoluciones])
   const tanquesDeMotores = useMemo(() => new Map(estado.motores.map((m) => [m.equipo_id, m.tanque?.id ?? null])), [estado.motores])
 
   const acciones = (tipo: AnulableMotor['tipo'], elim: TipoEliminable, id: string, texto: string, anulado: boolean, reg?: RegistroMotor, rec?: RecepcionMotor) => (
@@ -183,6 +184,60 @@ export function PestanaHistorial({
               </dl>
               {x.anulado_at && <p className="mt-2 text-xs font-semibold text-red-700">Anulado{x.motivo_anulacion ? `: ${x.motivo_anulacion}` : ''}</p>}
               {(puede || puedeEliminar) && <div className="mt-3 flex flex-wrap gap-2">{acciones('diesel_recepcion', 'mot_recepcion', x.id, `Recepción de ${x.galones} gal`, Boolean(x.anulado_at), undefined, x)}</div>}
+            </div>
+          </FilaToque>
+        ),
+      })
+    }
+    // sql/155: diésel devuelto a bodega (mismo detalle que la devolución de Fertirriego)
+    for (const x of estado.devoluciones ?? []) {
+      if (x.estacion_id !== estacion.id) continue
+      const clave = `v${x.id}`
+      const destino = DESTINOS_DEVOLUCION.find((d) => d.id === x.destino)?.nombre ?? x.destino
+      const vehiculo = [x.vehiculo_tipo?.toLowerCase(), x.vehiculo].filter(Boolean).join(' ') || null
+      lista.push({
+        clave,
+        dia: diaLocal(x.fecha_hora),
+        ts: x.fecha_hora,
+        motorId: null,
+        tanqueId: x.tanque_id,
+        conAlerta: false,
+        fila: (
+          <FilaToque
+            key={clave}
+            atributos={{ 'data-devolucion-motor': x.id, 'data-destino': x.id }}
+            nivel={x.anulado_at ? 'gris' : 'info'}
+            titulo={<span className={x.anulado_at ? 'line-through opacity-60' : ''}>Devuelto a {destino.toUpperCase()} · {cantidad(x.galones)} gal</span>}
+            linea2={`Tanque ${tanqueNombre.get(x.tanque_id) ?? '—'} · retiró ${x.chofer ?? '—'}`}
+            onToque={() => alternar(clave)}
+            abierta={abierta === clave}
+          >
+            <div className="mx-3 mb-2 mt-1 rounded-xl bg-slate-50 p-3 ring-1 ring-inset ring-slate-200" data-detalle-devolucion-motor>
+              <dl className="grid grid-cols-2 gap-x-3 gap-y-2">
+                <DatoHoja etiqueta="Galones" valor={cantidad(x.galones)} />
+                <DatoHoja etiqueta="A dónde" valor={destino} />
+                <DatoHoja etiqueta="Fecha y hora" valor={formatearFechaHora(x.fecha_hora)} />
+                <DatoHoja etiqueta="Tanque" valor={tanqueNombre.get(x.tanque_id) ?? null} />
+                <DatoHoja etiqueta="Saldo antes" valor={x.saldo_antes === null ? null : `${cantidad(x.saldo_antes)} gal`} />
+                <DatoHoja etiqueta="Saldo después" valor={x.saldo_despues === null ? null : `${cantidad(x.saldo_despues)} gal`} />
+                <DatoHoja etiqueta="Retiró" valor={x.chofer} />
+                <DatoHoja etiqueta="Vehículo" valor={vehiculo} />
+                <DatoHoja etiqueta="Registró" valor={x.registrado_por_nombre ?? nombreQuien(estado, x.registrado_por)} />
+                <DatoHoja etiqueta="Ubicación" valor={x.lat !== null && x.lon !== null ? `${x.lat.toFixed(5)}, ${x.lon.toFixed(5)}` : null} />
+                <DatoHoja etiqueta="Motivo" valor={x.motivo} ancho />
+              </dl>
+              {x.anulado_at && (
+                <p className="mt-2 text-xs font-semibold text-red-700">
+                  Anulado{x.anulado_por_nombre ? ` por ${x.anulado_por_nombre}` : ''}{x.motivo_anulacion ? `: ${x.motivo_anulacion}` : ''}
+                </p>
+              )}
+              {puede && !x.anulado_at && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Boton tamano="md" variante="peligro" className="min-h-11" onClick={() => setAnulando({ tipo: 'diesel_devolucion', id: x.id, texto: `Devolución de ${x.galones} gal a ${destino}` })} data-anular-motor="diesel_devolucion">
+                    Anular
+                  </Boton>
+                </div>
+              )}
             </div>
           </FilaToque>
         ),

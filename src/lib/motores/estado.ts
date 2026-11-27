@@ -92,6 +92,32 @@ export type RecepcionMotor = {
   motivo_anulacion: string | null
 }
 
+/** sql/155: diésel devuelto de un tanque a Suministros, Bodega o Taller (mismo detalle que la devolución de Fertirriego). */
+export type DevolucionMotor = {
+  id: string
+  tanque_id: string
+  estacion_id: string
+  galones: number
+  fecha_hora: string
+  destino: 'SUMINISTROS' | 'BODEGA' | 'TALLER'
+  motivo: string
+  chofer_id: string | null
+  vehiculo_id: string | null
+  /** Nombre, placa y tipo tal como quedaron guardados (no cambian si se edita el catálogo). */
+  chofer: string | null
+  vehiculo: string | null
+  vehiculo_tipo: string | null
+  saldo_antes: number | null
+  saldo_despues: number | null
+  registrado_por: string | null
+  registrado_por_nombre: string | null
+  anulado_at: string | null
+  anulado_por_nombre: string | null
+  motivo_anulacion: string | null
+  lat: number | null
+  lon: number | null
+}
+
 export type MantenimientoMotor = {
   id: string
   equipo_id: string
@@ -180,6 +206,8 @@ export type EstadoMotores = {
   recepciones: RecepcionMotor[]
   mantenimientos: MantenimientoMotor[]
   asignaciones: AsignacionMotor[]
+  /** sql/155 (opcional: sin la 155 o con datos viejos no viene). */
+  devoluciones?: DevolucionMotor[]
   /** sql/147 (todo opcional: un teléfono con datos viejos no los trae). */
   ayuda?: AyudaMotor[]
   senales?: SenalRegistro[]
@@ -234,6 +262,8 @@ export function saldoTanqueLocal(tanqueId: string, estado: EstadoMotores, pendie
   const activas = pendientes.filter((o) => o.estado_local === 'PENDIENTE')
   for (const op of activas) {
     if (op.tipo === 'diesel_recibir' && tanqueDeRecepcion(estado, op.datos) === tanqueId) saldo += num(op.datos.galones)
+    // sql/155: lo devuelto a bodega sale del tanque
+    if (op.tipo === 'diesel_devolver' && op.datos.tanque_id === tanqueId) saldo -= num(op.datos.galones)
   }
   for (const op of activas) {
     if (op.tipo !== 'motor_registro_diario') continue
@@ -245,6 +275,19 @@ export function saldoTanqueLocal(tanqueId: string, estado: EstadoMotores, pendie
     saldo += extra - Math.max(d.gastado_local !== undefined ? num(d.gastado_local) : num(d.visor_ini) - num(d.visor_fin), 0)
   }
   return Math.round(saldo * 100) / 100
+}
+
+/**
+ * sql/155: galones devueltos a bodega desde un tanque con día (Honduras) en [desde, hasta): lo bajado no anulado más lo pendiente.
+ * Una devolución en un día con registro se toma como hecha DESPUÉS de las lecturas de ese día (igual que la base).
+ */
+export function devueltoEnRango(tanqueId: string, desde: string, hasta: string, estado: EstadoMotores, pendientes: OperacionPendienteMotor[]): number {
+  const dentro = (dia: string) => dia >= desde && dia < hasta
+  const bajado = (estado.devoluciones ?? []).filter((x) => x.tanque_id === tanqueId && !x.anulado_at && dentro(diaLocal(x.fecha_hora))).reduce((t, x) => t + x.galones, 0)
+  const cola = pendientes
+    .filter((o) => o.estado_local === 'PENDIENTE' && o.tipo === 'diesel_devolver' && o.datos.tanque_id === tanqueId && dentro(diaLocal(String(o.datos.fecha_hora ?? ''))))
+    .reduce((t, o) => t + num(o.datos.galones), 0)
+  return Math.round((bajado + cola) * 100) / 100
 }
 
 /** Los motores de una estación (instalados ahí), por código. */
@@ -312,6 +355,9 @@ export function normalizarEstado(e: EstadoMotores): EstadoMotores {
     mantenimientos: e.mantenimientos ?? [],
     asignaciones: (e.asignaciones ?? []).map((a) =>
       conNulos(a, ['estacion_origen', 'estacion_destino', 'tanque_id', 'motivo_codigo', 'destino_saldo', 'destino_devolucion', 'saldo_gal', 'anulado_at'])
+    ),
+    devoluciones: (e.devoluciones ?? []).map((x) =>
+      conNulos(x, ['chofer_id', 'vehiculo_id', 'chofer', 'vehiculo', 'vehiculo_tipo', 'saldo_antes', 'saldo_despues', 'registrado_por', 'registrado_por_nombre', 'anulado_at', 'anulado_por_nombre', 'motivo_anulacion', 'lat', 'lon'])
     ),
     ayuda: e.ayuda ?? [],
     senales: e.senales ?? [],

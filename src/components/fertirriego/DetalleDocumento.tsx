@@ -39,6 +39,7 @@ const NOMBRE_OTRO: Record<string, string> = {
   aplicacion_lote: 'Aplicación por lote',
   motor_registro: 'Registro diario del motor',
   diesel_recepcion: 'Diésel recibido',
+  diesel_devolucion: 'Diésel devuelto a bodega',
   motor_mantenimiento: 'Mantenimiento de motor',
   motor_asignacion: 'Movimiento de motor',
   // 102: lo que aplicó un turno terminado, en un solo renglón (el detalle quedó en AGL)

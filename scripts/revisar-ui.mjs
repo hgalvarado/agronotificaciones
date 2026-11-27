@@ -6,6 +6,8 @@
  * botones por fila, casillas de selección, colores fijos, selects nativos…). La guía está en docs/guia-ui-ux.md;
  * este revisor detecta por patrones las violaciones más repetidas y avisa a Claude. Nunca bloquea.
  *
+ * AGL: también revisa las vistas .js de AGLGestion_App/frontend (revisarAgl) y recuerda la lista visual de AGL.
+ *
  * Uso:
  *   - Hook PostToolUse (Edit|Write): revisa el archivo editado en src (solo .tsx) y devuelve `additionalContext`.
  *   - Hook Stop: `--recordatorio` imprime la lista de comprobación visual si hay .tsx cambiados en git.
@@ -195,6 +197,46 @@ const LISTA = [
   'Filas compactas agrupadas, sin scroll infinito; tocar la fila abre el detalle (Anular/Eliminar/Editar solo ahí).',
 ]
 
+
+// ---------------------------------------------------------------- AGL (vanilla JS + CSS, C:\HENRYALVARADO2022\AGLGestion_App\frontend)
+// Por qué: el usuario se quejó (2026-11-25) de que en AGL había fechas sin borde, alertas gigantes con botones estirados y
+// tarjetas que no hacían nada al tocarlas, y que este revisor no avisaba (solo miraba .tsx de AgroNoti).
+const AGL_FRONT = /[\\/]AGLGestion_App[\\/]frontend[\\/]/i
+
+function revisarAgl(src, rel) {
+  const h = []
+  const lineas = src.split('\n')
+  lineas.forEach((l, i) => {
+    const okMarca = /ui-ok:/.test(l) || /ui-ok:/.test(lineas[i - 1] ?? '')
+    if (okMarca || /^\s*(\/\/|\*|\/\*)/.test(l)) return
+    const add = (regla, txt) => h.push({ archivo: rel, linea: i + 1, regla, mensaje: txt })
+    if (/type:\s*"date"/.test(l) && !/className/.test(l))
+      add('fecha-sin-estilo', 'Campo de fecha sin clase: queda sin borde. Use className "fr-fecha" (o el de su módulo) dentro de una barra con etiqueta arriba.')
+    if (/el\("(input|select|textarea)"/.test(l) && !/className/.test(l) && !/type:\s*"(checkbox|radio|hidden|file)"/.test(l))
+      add('campo-nativo', 'Campo sin clase de estilo: se ve nativo (de los 90). Use INPUT de ui/clases.js o la clase del módulo.')
+    if (/el\("label",\s*\{\s*\},\s*"[^"]*\s",\s*\w+\)/.test(l))
+      add('etiqueta-en-linea', 'Etiqueta y campo pegados en línea («Desde [ ]»): use label.fr-campo (texto arriba, campo abajo).')
+    if (/#[0-9a-fA-F]{3,8}\b/.test(l) && /["'`]/.test(l) && !/href|url\(|data-|aria-/.test(l))
+      add('color-fijo', 'Color fijo en JS: no cambia con el tema oscuro. Use una clase CSS con variables (--c-*).')
+    if (/\bstyle:\s*["{]|\.style\.\w+\s*=/.test(l) && !/display|width|height|transform|--/.test(l))
+      add('estilo-en-linea', 'Estilo en línea: muévalo a una clase CSS del módulo.')
+    if (/\.map\(/.test(l) && /el\("li"/.test(l) && /BTN\.(primario|secundario|alerta|contorno)\b(?!\}?\$\{BTN_CHICO)/.test(l))
+      add('boton-grande-por-fila', 'Botón grande en cada fila de una lista: use BTN_CHICO y agrupe las acciones a la derecha de una fila compacta.')
+  })
+  if (/el\("li"[^)]*fr-[a-z-]*alerta/.test(src) && !/BTN_CHICO/.test(src))
+    h.push({ archivo: rel, linea: 1, regla: 'alertas-gigantes', mensaje: 'Lista de alertas con botones normales: use la lista compacta (views/motoresAlertas.js: listaAlertas).' })
+  return h
+}
+
+const LISTA_AGL = [
+  'Abrí la pantalla de AGL en Chrome (copia aislada o 5001, nunca escribir en 5000) con datos reales o DEMO',
+  'Fechas y selectores con borde, mismo alto, etiqueta arriba',
+  'Listas compactas: una línea por fila, acciones chicas a la derecha, nada estirado a lo ancho',
+  'Todo lo que tiene color (tarjeta, semáforo) explica qué significa y al tocarlo muestra el detalle',
+  'Alertas: se pueden descartar con motivo; repetidas por día se agrupan',
+  'Tema oscuro y ventana angosta sin desbordes',
+]
+
 async function main() {
   const args = process.argv.slice(2)
   if (args[0] === '--todo') {
@@ -217,7 +259,7 @@ async function main() {
   }
   if (args[0] === '--archivo' && args[1]) {
     const p = resolve(args[1])
-    const h = revisar(readFileSync(p, 'utf8'), relp(p))
+    const h = AGL_FRONT.test(p) ? revisarAgl(readFileSync(p, 'utf8'), p) : revisar(readFileSync(p, 'utf8'), relp(p))
     console.log(h.length ? fmt(h) : 'Sin hallazgos.')
     process.exit(0)
   }
@@ -251,6 +293,16 @@ async function main() {
   if (!archivo) process.exit(0)
   const ruta = resolve(archivo)
   const rel = relp(ruta)
+  if (AGL_FRONT.test(ruta) && extname(ruta) === '.js' && existsSync(ruta)) {
+    const h = revisarAgl(readFileSync(ruta, 'utf8'), ruta.replace(/.*AGLGestion_App[\\/]/i, 'AGL/'))
+    if (!h.length) process.exit(0)
+    process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext:
+      `REVISOR DE UI/UX · AGL (el usuario se quejó de pantallas «de los 90»). Posibles violaciones:
+${fmt(h)}
+` +
+      'Corrígelas o marca la línea con «// ui-ok: motivo». Verifica en Chrome (copia aislada de AGL).' } }))
+    process.exit(0)
+  }
   if (rel.startsWith('..') || !rel.startsWith('src/') || extname(ruta) !== '.tsx' || /\.(test|spec)\./.test(ruta) || !existsSync(ruta)) process.exit(0)
   const h = revisar(readFileSync(ruta, 'utf8'), rel)
   if (!h.length) process.exit(0)
