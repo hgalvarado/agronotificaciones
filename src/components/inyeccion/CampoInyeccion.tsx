@@ -11,7 +11,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AvisoDestinoPerdido, useAplicarDestino, useDestinoAlerta, useResaltarDestino } from '@/lib/alertas/useDestinoAlerta'
 import { Alerta, Boton, ListaEsqueleto } from '@/components/ui/Primitivos'
-import { SelectorBuscable } from '@/components/ui/SelectorBuscable'
+import { EncabezadoModulo } from '@/components/campo/EncabezadoModulo'
+import { FiltroEstaciones } from '@/components/campo/FiltroEstaciones'
+import { useEstacionElegida } from '@/lib/campo/estacionElegida'
 import { RegistroServiceWorker } from '@/components/fertirriego/RegistroServiceWorker'
 import { CLAVE_BODEGA_GENERAL, type BodegaGeneral } from '@/lib/fertirriego/bodegaGeneral'
 import { conCustodiaLocal, saldosLocales } from '@/lib/fertirriego/calculos'
@@ -49,25 +51,18 @@ export function CampoInyeccion({ usuarioId }: { usuarioId: string }) {
   // sql/140: permiso temporal de «Registro histórico» y «Eliminar por completo» (de Inyección)
   const extras = useCampoExtras(usuarioId, 'inyeccion')
   const { estado, cola } = campo
-  const [estacionId, setEstacionId] = useState('')
+  const { estacionId, elegirEstacion: setEstacionId, zona, elegirZona } = useEstacionElegida(usuarioId)
   const [pestana, setPestana] = useState<Pestana>('historial')
   const [ventana, setVentana] = useState<{ lote?: string; categoria?: string } | null>(null)
   const [ficha, setFicha] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
   const [fallo, setFallo] = useState<GuardadoFallido | null>(null)
 
-  // La estación que eligió la última vez (en este teléfono; la misma preferencia que Fertirriego)
-  const { preferencia, guardarPreferencia } = campo
   // Enlace profundo de una alerta (?pestana=&estacion=&registro=&fecha=): manda sobre la preferencia
   const alerta = useDestinoAlerta()
   const [preparado, setPreparado] = useState(false)
   const alListo = useCallback(() => setPreparado(true), [])
   const ponerPestana = useCallback((p: string) => setPestana(p as Pestana), [])
-  const destinoEstacion = alerta.destino.estacion
-  useEffect(() => {
-    if (destinoEstacion) return
-    void preferencia<string>('estacion').then((v) => v && setEstacionId(v))
-  }, [preferencia, destinoEstacion])
 
   const estaciones = estado?.estaciones ?? []
   useAplicarDestino({ alerta, hayEstado: Boolean(estado), estaciones, pestanasValidas: PESTANAS.map(([id]) => id), pestanaPorDefecto: pestanaPorDefectoIny, setEstacionId, setPestana: ponerPestana, alListo })
@@ -129,7 +124,8 @@ export function CampoInyeccion({ usuarioId }: { usuarioId: string }) {
   if (campo.cargando && !estado) return <ListaEsqueleto filas={4} />
 
   return (
-    <div className="flex flex-col gap-3 pb-6">
+    <div className="campo-legible flex flex-col gap-3 pb-6">
+      <EncabezadoModulo titulo="Inyección" icono="gota" subtitulo={estacion ? `${estacion.nombre}${estacion.zona ? ` · ${estacion.zona}` : ''}` : null} />
       <RegistroServiceWorker rutas={RUTAS_SW} />
 
       <EncabezadoEnvios campo={campo} onActualizar={iny.actualizar} actualizando={iny.cargando} onCorregir={corregirEnvio} />
@@ -157,28 +153,10 @@ export function CampoInyeccion({ usuarioId }: { usuarioId: string }) {
         <Alerta tono="ambar">No tienes estaciones asignadas. Pide a tu jefe que te asigne en Usuarios → Estaciones de riego.</Alerta>
       ) : (
         <>
-          {estaciones.length > 1 && (
-            <div data-selector-estacion>
-              <SelectorBuscable
-                valor={estacion.id}
-                opciones={estaciones.map((e) => ({ id: e.id, titulo: e.nombre, subtitulo: e.zona ?? undefined }))}
-                onCambiar={(id) => {
-                  setEstacionId(id)
-                  void guardarPreferencia('estacion', id)
-                }}
-                placeholder="Elegir estación…"
-                etiquetaBusqueda="Buscar estación"
-              />
-            </div>
-          )}
+          <FiltroEstaciones estaciones={estaciones} valor={estacion.id} onCambiar={setEstacionId} zona={zona} onZona={elegirZona} />
           <AvisoDestinoPerdido alerta={alerta} />
           <AvisoModoPruebas estacionNombre={estacion.nombre} />
-          <div className="flex flex-wrap items-baseline justify-between gap-x-2">
-            <h1 className="text-xl font-bold tracking-tight text-slate-900" data-estacion={estacion.nombre}>
-              Inyección · {estacion.nombre}
-            </h1>
-            <span className="text-xs text-slate-600">{estacion.zona}</span>
-          </div>
+          <span hidden data-estacion={estacion.nombre} />
 
           {puedeRegistrar ? (
             <Boton className="min-h-14 w-full text-lg" onClick={() => setVentana({})} data-aplicar-por-lote>

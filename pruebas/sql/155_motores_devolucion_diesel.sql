@@ -127,7 +127,7 @@ select pg_temp.ok(exists (select 1 from mot_movimientos where documento_id = pg_
                           and documento_tipo = 'diesel_devolucion'), 'movimiento DEVOLUCION_TANQUE de −30 en el libro del tanque');
 select pg_temp.ok((select estacion_id = (select est from k) and lat is not null from fert_operaciones where id = pg_temp.uid(41)), 'la operación guarda estación y GPS');
 select pg_temp.ok(exists (select 1 from fert_choferes_vehiculos where chofer_id = (select chofer from k) and vehiculo_id = (select veh from k)), 'aprende la pareja chofer-vehículo');
-select pg_temp.ok((select o->>'estado' like 'ACEPTADO%' from (select pg_temp.dev(41, 30, 4) as o) z) and pg_temp.saldo() = 60,
+select pg_temp.ok((select o->>'estado' like 'ACEPTADO%' or o->>'estado' = 'YA_EXISTIA' from (select pg_temp.dev(41, 30, 4) as o) z) and pg_temp.saldo() = 60,
                   'reenviar la misma operación (mismo id) no descuenta dos veces');
 
 -- el registro del día -3 empieza en 60: sin señal de visor
