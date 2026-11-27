@@ -192,7 +192,7 @@ export function horasMantDetalle(
 type RegSenal = Pick<
   RegistroMotor,
   'id' | 'equipo_id' | 'fecha' | 'estacion_id' | 'tanque_id' | 'horo_ini' | 'horo_fin' | 'horas' | 'visor_ini' | 'visor_fin' | 'gastado_gal' | 'recibido_gal' | 'rendimiento_gal_h' | 'rpm' | 'horo_cambiado' | 'visor_cambiado' | 'dif_visor_gal' | 'horas_estimadas' | 'rend_ref_gal_h' | 'anulado_at'
->
+> & { fecha_hora?: string }
 
 /** Las señales de un día, con el registro anterior del mismo motor (`prev`) y los 10 anteriores con rendimiento (`hist`). */
 export function senalesDeRegistro(
@@ -201,7 +201,13 @@ export function senalesDeRegistro(
   hist: RegSenal[],
   recepciones: Pick<RecepcionMotor, 'tanque_id' | 'galones' | 'fecha_hora' | 'anulado_at'>[],
   /** sql/155: diésel devuelto a bodega (resta entre el día anterior, incluido, y este día, excluido: igual que la base). */
-  devoluciones: Pick<RecepcionMotor, 'tanque_id' | 'galones' | 'fecha_hora' | 'anulado_at'>[] = []
+  devoluciones: Pick<RecepcionMotor, 'tanque_id' | 'galones' | 'fecha_hora' | 'anulado_at'>[] = [],
+  /**
+   * Registro anterior del MISMO TANQUE (de cualquier motor): el visor sigue al tanque, no al motor (reemplazo temporal: otro motor
+   * gastó de ese tanque entre medio). Sin pasarlo (undefined) se usa `prev`, como antes.
+   */
+  prevTanque?: RegSenal | null,
+  codigoMotor?: (equipoId: string) => string | null
 ): Aviso[] {
   const out: Aviso[] = []
   const add = (nivel: NivelAviso, codigo: string, texto: string) => out.push({ nivel, codigo, texto })
@@ -209,7 +215,17 @@ export function senalesDeRegistro(
     if (r.horo_ini < prev.horo_fin - 0.005) add('rojo', 'HORO_RETROCEDE', `Horómetro retrocede: inicia ${t(r.horo_ini, 2)}, antes ${t(prev.horo_fin, 2)}.`)
     else if (r.horo_ini > prev.horo_fin + 0.005) add('amarillo', 'HORO_SALTA', `Horómetro salta ${t(r.horo_ini - prev.horo_fin, 2)} h.`)
   }
-  if (prev && prev.tanque_id === r.tanque_id && !r.visor_cambiado) {
+  const pt = prevTanque === undefined ? (prev && prev.tanque_id === r.tanque_id ? prev : null) : prevTanque
+  if (pt && pt.equipo_id !== r.equipo_id && pt.gastado_gal > 0) {
+    add('info', 'TANQUE_OTRO_MOTOR', `Antes, este tanque alimentó a ${codigoMotor?.(pt.equipo_id) ?? 'otro motor'}: ${t(pt.gastado_gal)} gal el ${pt.fecha.slice(8, 10)}/${pt.fecha.slice(5, 7)}.`)
+  }
+  if (pt && pt.fecha === r.fecha && !r.visor_cambiado) {
+    // el mismo día otro registro del tanque terminó antes: el visor inicial sigue donde ese terminó
+    const d = r.visor_ini - pt.visor_fin
+    if (d < -TOLERANCIA_GAL) add('rojo', 'VISOR_FALTA', `Visor inicial: faltan ${t(-d)} gal.`)
+    else if (d > TOLERANCIA_GAL + Math.max(0, r.recibido_gal)) add('amarillo', 'VISOR_SOBRA', `Visor inicial: sobran ${t(d)} gal. ¿Falta recibir combustible?`)
+  } else if (pt && !r.visor_cambiado) {
+    const prev = pt
     // suministros entre el día anterior y este día (este incluido): lo recibido en el tanque o lo declarado en el registro
     const enRango = recepciones.filter((x) => !x.anulado_at && x.tanque_id === r.tanque_id && diaLocal(x.fecha_hora) > prev.fecha && diaLocal(x.fecha_hora) < r.fecha).reduce((s, x) => s + x.galones, 0)
     const delDia = recepciones.filter((x) => !x.anulado_at && x.tanque_id === r.tanque_id && diaLocal(x.fecha_hora) === r.fecha).reduce((s, x) => s + x.galones, 0)
@@ -246,16 +262,24 @@ export function senalesDeRegistro(
 export function senalesPorRegistro(
   registros: RegSenal[],
   recepciones: Pick<RecepcionMotor, 'tanque_id' | 'galones' | 'fecha_hora' | 'anulado_at'>[],
-  devoluciones: Pick<RecepcionMotor, 'tanque_id' | 'galones' | 'fecha_hora' | 'anulado_at'>[] = []
+  devoluciones: Pick<RecepcionMotor, 'tanque_id' | 'galones' | 'fecha_hora' | 'anulado_at'>[] = [],
+  codigoMotor?: (equipoId: string) => string | null
 ): Map<string, Aviso[]> {
   const mapa = new Map<string, Aviso[]>()
+  const vigentes = registros.filter((r) => !r.anulado_at)
+  const orden = (a: RegSenal, b: RegSenal) => a.fecha.localeCompare(b.fecha) || (a.fecha_hora ?? '').localeCompare(b.fecha_hora ?? '') || b.visor_ini - a.visor_ini || a.id.localeCompare(b.id)
+  // el visor sigue al TANQUE: el anterior del tanque puede ser de otro motor (reemplazo temporal)
+  const anteriorTanque = new Map<string, RegSenal | null>()
+  const porTanque = new Map<string, RegSenal[]>()
+  for (const r of vigentes) porTanque.set(r.tanque_id, [...(porTanque.get(r.tanque_id) ?? []), r])
+  for (const lista of porTanque.values()) [...lista].sort(orden).forEach((r, i, asc) => anteriorTanque.set(r.id, i > 0 ? asc[i - 1] : null))
   const porMotor = new Map<string, RegSenal[]>()
-  for (const r of registros) if (!r.anulado_at) porMotor.set(r.equipo_id, [...(porMotor.get(r.equipo_id) ?? []), r])
+  for (const r of vigentes) porMotor.set(r.equipo_id, [...(porMotor.get(r.equipo_id) ?? []), r])
   for (const lista of porMotor.values()) {
-    const asc = [...lista].sort((a, b) => a.fecha.localeCompare(b.fecha))
+    const asc = [...lista].sort(orden)
     asc.forEach((r, i) => {
       const hist = asc.slice(0, i).reverse()
-      mapa.set(r.id, senalesDeRegistro(r, i > 0 ? asc[i - 1] : null, hist, recepciones, devoluciones))
+      mapa.set(r.id, senalesDeRegistro(r, i > 0 ? asc[i - 1] : null, hist, recepciones, devoluciones, anteriorTanque.get(r.id) ?? null, codigoMotor))
     })
   }
   return mapa
