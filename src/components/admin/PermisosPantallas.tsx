@@ -347,7 +347,10 @@ export function PermisosPantallas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pantallas, q, soloConAcceso, rol, celdas, catalogo])
 
-  const totalVe = rol ? pantallas.filter((p) => configDe(rol.id, p.codigo, 'ver').permitido).length : 0
+  /** Con acceso = «Ver» o una acción que abre sola (159: «Ver registros»). */
+  const tieneAcceso = (rolId: number, p: Pantalla) =>
+    p.acciones.some((a) => (a === 'ver' || Boolean(catalogo.get(a)?.abre_sola)) && configDe(rolId, p.codigo, a).permitido)
+  const totalVe = rol ? pantallas.filter((p) => tieneAcceso(rol.id, p)).length : 0
 
   function comparacionDe(p: Pantalla) {
     if (!otro || !rol) return null
@@ -569,7 +572,7 @@ export function PermisosPantallas({
             <summary className="flex cursor-pointer list-none items-center justify-between rounded-xl bg-slate-100/70 px-3.5 py-2">
               <span className="text-xs font-bold uppercase tracking-wide text-slate-600">{modulo}</span>
               <span className="text-xs text-slate-400">
-                {lista.filter((p) => configDe(rol.id, p.codigo, 'ver').permitido).length}/{lista.length} con acceso
+                {lista.filter((p) => tieneAcceso(rol.id, p)).length}/{lista.length} con acceso
               </span>
             </summary>
             <div className="mt-2 grid grid-cols-1 gap-2 lg:grid-cols-2">
