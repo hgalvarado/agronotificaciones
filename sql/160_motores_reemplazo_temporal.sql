@@ -177,6 +177,10 @@ begin
     v_obs := v_obs || public._mot_aplicar_asignacion(p_id, jsonb_build_object(
         'equipo_id', v_danado, 'fecha_hora', v_fecha2, 'estacion_destino', r.estacion_id, 'tanque_id', r.tanque_id,
         'horometro', d->'horometro', 'observacion', 'Reparado · fin del reemplazo temporal'), p_creado, 'DE_VUELTA');
+    -- en el historial se lee «Reparado y reactivado» (la regla general pone «Regreso del taller» sin código)
+    update public.mot_asignaciones
+       set motivo = 'Reparado · fin del reemplazo temporal (sale ' || coalesce(v_cod_s, 'el sustituto') || ')', motivo_codigo = 'DANO_REEMPLAZO'
+     where id = p_id;
 
     update public.mot_reemplazos set hasta = v_fecha, cerrado_por = (select auth.uid()), fin_operacion = p_id where id = r.id;
     return v_obs;
